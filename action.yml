@@ -21,7 +21,7 @@ inputs:
     description: 'Target branch for comparison'
     required: true
   output_format:
-    description: 'Output format for documentation files (.md, .rst, or .html)'
+    description: 'Output format for documentation files (.md, .mdx, .rst, or .html)'
     required: false
     default: '.md'
 
@@ -337,8 +337,8 @@ runs:
         OUTPUT_FORMAT="${{ inputs.output_format }}"
         
         # Validate output format
-        if [[ "$OUTPUT_FORMAT" != ".md" && "$OUTPUT_FORMAT" != ".rst" && "$OUTPUT_FORMAT" != ".html" ]]; then
-          echo "Error: Invalid output format '$OUTPUT_FORMAT'. Must be either '.md', '.rst', or '.html'"
+        if [[ "$OUTPUT_FORMAT" != ".md" && "$OUTPUT_FORMAT" != ".mdx" && "$OUTPUT_FORMAT" != ".rst" && "$OUTPUT_FORMAT" != ".html" ]]; then
+          echo "Error: Invalid output format '$OUTPUT_FORMAT'. Must be either '.md', '.mdx', '.rst', or '.html'"
           exit 1
         fi
         
