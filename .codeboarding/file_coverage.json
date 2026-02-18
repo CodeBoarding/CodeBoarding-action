@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "generated_at": "2026-02-18T04:21:11.922716+00:00",
+  "analyzed_files": [],
+  "not_analyzed_files": [
+    {
+      "path": "README.md",
+      "reason": "other"
+    },
+    {
+      "path": "action.yml",
+      "reason": "other"
+    },
+    {
+      "path": "assets/icon.svg",
+      "reason": "other"
+    }
+  ],
+  "summary": {
+    "total_files": 3,
+    "analyzed": 0,
+    "not_analyzed": 3,
+    "not_analyzed_by_reason": {
+      "other": 3
+    }
+  }
+}

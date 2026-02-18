@@ -1,0 +1,104 @@
+{
+  "metadata": {
+    "generated_at": "2026-02-18T04:21:11.922415+00:00",
+    "repo_name": "CodeBoarding-GHAction",
+    "depth_level": 1,
+    "file_coverage_summary": {
+      "total_files": 3,
+      "analyzed": 0,
+      "not_analyzed": 3,
+      "not_analyzed_by_reason": {
+        "other": 3
+      }
+    }
+  },
+  "description": "The `CodeBoarding-GHAction` is designed as a GitHub Action to automate the generation of code documentation using static analysis and Large Language Models (LLMs). It operates as a pipeline, starting with an orchestrator that triggers the fetching of source code from a repository. The fetched code then undergoes static analysis to extract structural and semantic information. This analysis output is fed into an LLM via a dedicated interface, which processes the information and generates raw documentation. A documentation generator then formats this raw output into a structured document, which is finally handled by an output component responsible for publishing or committing the documentation back to the repository.",
+  "components": [
+    {
+      "name": "Action Orchestrator",
+      "description": "Manages the overall GitHub Action workflow, parses inputs, and orchestrates the execution of other components. It serves as the primary entry point for the action.",
+      "key_entities": [],
+      "assigned_files": [],
+      "source_cluster_ids": [],
+      "can_expand": false,
+      "component_id": "e689fa47-c6a3-4d11-ae41-7362a96f81a1"
+    },
+    {
+      "name": "Code Fetcher & Version Control Integrator",
+      "description": "Responsible for securely fetching the source code from the GitHub repository, handling version control specifics (e.g., branch, commit), and making it available for subsequent analysis steps.",
+      "key_entities": [],
+      "assigned_files": [],
+      "source_cluster_ids": [],
+      "can_expand": false,
+      "component_id": "55b38f1d-001e-47fd-a3a8-f49883cd2910"
+    },
+    {
+      "name": "Static Code Analyzer",
+      "description": "Performs static analysis on the fetched source code to extract relevant structural information, dependencies, and code metrics. This structured output is crucial for informing the LLM.",
+      "key_entities": [],
+      "assigned_files": [],
+      "source_cluster_ids": [],
+      "can_expand": false,
+      "component_id": "61be7a09-faf4-42a2-a736-42bdd3aaf9a9"
+    },
+    {
+      "name": "LLM Interface & Prompt Engineer",
+      "description": "Manages the communication with the Large Language Model, including constructing effective prompts based on the static code analysis results and parsing the LLM's responses into a usable format.",
+      "key_entities": [],
+      "assigned_files": [],
+      "source_cluster_ids": [],
+      "can_expand": false,
+      "component_id": "81e7fe97-3dc4-48ed-b019-d8f52549deca"
+    },
+    {
+      "name": "Documentation Generator & Formatter",
+      "description": "Takes the raw documentation output from the LLM and formats it into a structured and readable document, typically using Markdown or reStructuredText, applying predefined templates.",
+      "key_entities": [],
+      "assigned_files": [],
+      "source_cluster_ids": [],
+      "can_expand": false,
+      "component_id": "c0050c67-3762-4a0b-a137-36c8d160308e"
+    },
+    {
+      "name": "Output Handler",
+      "description": "Manages how the final generated documentation is published or made available, such as committing it back to the repository, creating a pull request comment, or setting action outputs.",
+      "key_entities": [],
+      "assigned_files": [],
+      "source_cluster_ids": [],
+      "can_expand": false,
+      "component_id": "d587846d-35a5-4e06-bb88-1c39e7c2170d"
+    }
+  ],
+  "components_relations": [
+    {
+      "relation": "triggers",
+      "src_name": "Action Orchestrator",
+      "dst_name": "Code Fetcher & Version Control Integrator"
+    },
+    {
+      "relation": "provides_code_to",
+      "src_name": "Code Fetcher & Version Control Integrator",
+      "dst_name": "Static Code Analyzer"
+    },
+    {
+      "relation": "generates_analysis_for",
+      "src_name": "Static Code Analyzer",
+      "dst_name": "LLM Interface & Prompt Engineer"
+    },
+    {
+      "relation": "produces_raw_docs_for",
+      "src_name": "LLM Interface & Prompt Engineer",
+      "dst_name": "Documentation Generator & Formatter"
+    },
+    {
+      "relation": "creates_final_docs_for",
+      "src_name": "Documentation Generator & Formatter",
+      "dst_name": "Output Handler"
+    },
+    {
+      "relation": "reports_status_to",
+      "src_name": "Output Handler",
+      "dst_name": "Action Orchestrator"
+    }
+  ]
+}
