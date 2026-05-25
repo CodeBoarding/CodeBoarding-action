@@ -215,20 +215,30 @@ runs:
           exit 1
         fi
 
-        # Strip leading/trailing whitespace + CR. Pasting a key into the
-        # GitHub secret UI often picks up a trailing newline; OpenRouter then
-        # 401s because the Bearer header gets the whitespace included.
-        OPENROUTER_API_KEY="$(printf '%s' "$OPENROUTER_API_KEY" | tr -d '[:space:]')"
-        export OPENROUTER_API_KEY
-        AGENT_MODEL="$(printf '%s' "$AGENT_MODEL" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-        export AGENT_MODEL
-        PARSING_MODEL="$(printf '%s' "$PARSING_MODEL" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-        export PARSING_MODEL
+        # Strip whitespace and surrounding quotes — pasting a key into the
+        # GitHub secret UI often picks up trailing newlines or wrap-around
+        # quotes from `KEY=value` lines, both of which break Bearer auth.
+        _strip() {
+          printf '%s' "$1" | tr -d '[:space:]' | sed -e 's/^"//;s/"$//' -e "s/^'//;s/'\$//"
+        }
+        OPENROUTER_API_KEY="$(_strip "$OPENROUTER_API_KEY")"; export OPENROUTER_API_KEY
+        AGENT_MODEL="$(_strip "$AGENT_MODEL")"; export AGENT_MODEL
+        PARSING_MODEL="$(_strip "$PARSING_MODEL")"; export PARSING_MODEL
 
-        # Quick auth sanity-check against OpenRouter — fail in 2s instead of
-        # ~9min of agent retries if the key is invalid/expired.
+        # If the user pasted `OPENROUTER_API_KEY=sk-...` (whole env line)
+        # into the secret UI, drop the prefix.
+        case "$OPENROUTER_API_KEY" in
+          OPENROUTER_API_KEY=*) OPENROUTER_API_KEY="${OPENROUTER_API_KEY#OPENROUTER_API_KEY=}";;
+          openrouter_api_key=*) OPENROUTER_API_KEY="${OPENROUTER_API_KEY#openrouter_api_key=}";;
+        esac
+        OPENROUTER_API_KEY="$(_strip "$OPENROUTER_API_KEY")"; export OPENROUTER_API_KEY
+
         KEY_LEN=${#OPENROUTER_API_KEY}
-        echo "OPENROUTER_API_KEY length after strip: $KEY_LEN chars"
+        case "$OPENROUTER_API_KEY" in
+          sk-or-v1-*) KEY_PREFIX_OK=1 ;;
+          *) KEY_PREFIX_OK=0 ;;
+        esac
+        echo "OPENROUTER_API_KEY length after strip: $KEY_LEN chars; prefix-looks-like-OpenRouter: $KEY_PREFIX_OK"
         AUTH_STATUS=$(curl -sS -o /tmp/openrouter-auth.json -w "%{http_code}" \
           -H "Authorization: Bearer $OPENROUTER_API_KEY" \
           --max-time 10 \
