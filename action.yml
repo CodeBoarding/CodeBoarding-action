@@ -257,22 +257,42 @@ runs:
         REPO_NAME="${{ github.event.repository.name }}"
         RUN_ID="${{ github.run_id }}-${{ github.run_attempt }}"
 
-        # Use run_incremental directly against the already-checked-out PR
-        # head — avoids generate_analysis()'s redundant clone (which only
-        # gets 'main' as a local head and fails on checkout_repo).
+        # Use run_incremental against the already-checked-out PR head.
+        # On IncrementalCacheMissingError (legacy pkl, tiny repo with no
+        # cluster baseline, first-ever incremental run) fall back to a full
+        # run — yields a fresh analysis.json that we can still diff against
+        # the base SHA's analysis.json.
         uv run python -c "
         from pathlib import Path
-        from codeboarding_workflows.analysis import run_incremental
-        result = run_incremental(
-            repo_path=Path('$TARGET_REPO'),
-            output_dir=Path('$SEED_DIR'),
-            project_name='$REPO_NAME',
-            run_id='$RUN_ID',
-            log_path='/tmp/cb-analysis.log',
-            base_ref='$BASE_SHA',
-            target_ref='$HEAD_SHA',
-            source_sha='$HEAD_SHA',
-        )
+        from codeboarding_workflows.analysis import run_incremental, run_full
+        from diagram_analysis.exceptions import IncrementalCacheMissingError
+        try:
+            result = run_incremental(
+                repo_path=Path('$TARGET_REPO'),
+                output_dir=Path('$SEED_DIR'),
+                project_name='$REPO_NAME',
+                run_id='$RUN_ID',
+                log_path='/tmp/cb-analysis.log',
+                base_ref='$BASE_SHA',
+                target_ref='$HEAD_SHA',
+                source_sha='$HEAD_SHA',
+            )
+        except IncrementalCacheMissingError as exc:
+            print(f'Incremental unavailable ({exc}); falling back to full analysis.')
+            # Wipe the seed dir so run_full starts clean (it picks up
+            # depth_level from env / default).
+            for p in Path('$SEED_DIR').glob('*'):
+                if p.is_file():
+                    p.unlink()
+            result = run_full(
+                repo_name='$REPO_NAME',
+                repo_path=Path('$TARGET_REPO'),
+                output_dir=Path('$SEED_DIR'),
+                run_id='$RUN_ID',
+                log_path='/tmp/cb-analysis.log',
+                depth_level=int('${{ inputs.depth_level }}'),
+                source_sha='$HEAD_SHA',
+            )
         print(f'Wrote: {result}')
         "
 
