@@ -1,0 +1,94 @@
+{
+  "metadata": {
+    "generated_at": "2026-05-25T20:11:22.655182+00:00",
+    "commit_hash": "189e8f32abca4ac64d2449da313fc3e553e66b2e",
+    "repo_name": "CodeBoarding-action",
+    "depth_level": 1,
+    "file_coverage_summary": {
+      "total_files": 3,
+      "analyzed": 0,
+      "not_analyzed": 3,
+      "not_analyzed_by_reason": {
+        "other": 3
+      }
+    }
+  },
+  "description": "This architecture represents the lifecycle of a remote documentation analysis job within a GitHub Action environment. The flow begins with environment normalization, proceeds through an asynchronous polling-based job orchestration with a remote API, and concludes with the extraction and mapping of results to the GitHub runner's output context.",
+  "files": {},
+  "methods_index": {},
+  "components": [
+    {
+      "name": "Environment & Context Resolver",
+      "description": "Normalizes GitHub environment variables and user inputs into a canonical format. Handles conversion of SSH repository URLs to HTTPS for remote backend compatibility and validates the presence of required secrets like CODEBOARDING_API_KEY.",
+      "key_entities": [],
+      "source_cluster_ids": [
+        1
+      ],
+      "file_methods": [],
+      "component_id": "1",
+      "can_expand": false
+    },
+    {
+      "name": "Remote Job Orchestrator",
+      "description": "Core engine managing the lifecycle of remote analysis jobs, including initial registration and a persistent polling loop. Encapsulates HTTP communication logic, exponential backoff via 60-second intervals, and timeout enforcement with a 90-minute limit.",
+      "key_entities": [],
+      "source_cluster_ids": [
+        2,
+        3
+      ],
+      "file_methods": [],
+      "component_id": "2",
+      "can_expand": false
+    },
+    {
+      "name": "Artifact & Result Processor",
+      "description": "Parses the final JSON payload from the remote server once job status reaches COMPLETED. Extracts generated documentation content and maps it to GitHub Action output parameters for availability in subsequent workflow steps.",
+      "key_entities": [],
+      "source_cluster_ids": [
+        4,
+        5
+      ],
+      "file_methods": [],
+      "component_id": "3",
+      "can_expand": false
+    }
+  ],
+  "components_relations": [
+    {
+      "relation": "passes resolved repository URL and branch to initiate remote job request",
+      "src_name": "Environment & Context Resolver",
+      "dst_name": "Remote Job Orchestrator",
+      "src_id": "1",
+      "dst_id": "2",
+      "edge_count": 0,
+      "is_static": false
+    },
+    {
+      "relation": "hands off JSON response containing full job results after COMPLETED status detection",
+      "src_name": "Remote Job Orchestrator",
+      "dst_name": "Artifact & Result Processor",
+      "src_id": "2",
+      "dst_id": "3",
+      "edge_count": 0,
+      "is_static": false
+    },
+    {
+      "relation": "writes extracted documentation data to runner filesystem and sets action output variables",
+      "src_name": "Artifact & Result Processor",
+      "dst_name": "Artifact & Result Processor",
+      "src_id": "3",
+      "dst_id": "3",
+      "edge_count": 0,
+      "is_static": false
+    },
+    {
+      "relation": "manages job configuration and polls for status updates via REST/HTTPS",
+      "src_name": "Remote Job Orchestrator",
+      "dst_name": "Remote Job Orchestrator",
+      "src_id": "2",
+      "dst_id": "2",
+      "edge_count": 0,
+      "is_static": false
+    }
+  ]
+}
