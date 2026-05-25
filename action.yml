@@ -215,10 +215,20 @@ runs:
           exit 1
         fi
 
+        # Strip leading/trailing whitespace + CR. Pasting a key into the
+        # GitHub secret UI often picks up a trailing newline; OpenRouter then
+        # 401s because the Bearer header gets the whitespace included.
+        OPENROUTER_API_KEY="$(printf '%s' "$OPENROUTER_API_KEY" | tr -d '[:space:]')"
+        export OPENROUTER_API_KEY
+        AGENT_MODEL="$(printf '%s' "$AGENT_MODEL" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        export AGENT_MODEL
+        PARSING_MODEL="$(printf '%s' "$PARSING_MODEL" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+        export PARSING_MODEL
+
         # Quick auth sanity-check against OpenRouter — fail in 2s instead of
-        # ~9min of agent retries if the key is invalid/expired/whitespace-padded.
+        # ~9min of agent retries if the key is invalid/expired.
         KEY_LEN=${#OPENROUTER_API_KEY}
-        echo "OPENROUTER_API_KEY length: $KEY_LEN chars"
+        echo "OPENROUTER_API_KEY length after strip: $KEY_LEN chars"
         AUTH_STATUS=$(curl -sS -o /tmp/openrouter-auth.json -w "%{http_code}" \
           -H "Authorization: Bearer $OPENROUTER_API_KEY" \
           --max-time 10 \
