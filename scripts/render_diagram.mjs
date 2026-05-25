@@ -143,6 +143,39 @@ async function main() {
       } catch {
         console.log('No diff classes appeared — proceeding with screenshot anyway (diff may be empty).');
       }
+
+      // Hide UI chrome that obscures the graph in a static screenshot:
+      // welcome overlay, demo banner, help/tour overlay, side controls.
+      await page.addStyleTag({
+        content: `
+          [data-testid="welcome-overlay"],
+          .welcome-overlay__backdrop,
+          [data-testid="demo-banner"],
+          .demo-banner,
+          .analysis-controls,
+          .view-controls,
+          .help-tour-button,
+          .help-h-indicator,
+          .help-instructions,
+          [data-tour-target],
+          .commit-picker,
+          .commit-timeline,
+          .branch-state-banner,
+          .outdated-banner { display: none !important; }
+          .react-flow { background: transparent !important; }
+        `,
+      });
+
+      // Re-fit so the graph fills the viewport for the screenshot.
+      // React Flow exposes its store on .react-flow via a known internal,
+      // but the simplest approach is to dispatch a custom event the app
+      // already wires up, or just click any present fit button. Fallback:
+      // do nothing and trust the auto-layout.
+      await page.evaluate(() => {
+        const btn = document.querySelector('[aria-label*="fit" i], [title*="fit" i]');
+        if (btn) btn.click();
+      });
+
       await page.waitForTimeout(1500);
     }
 
