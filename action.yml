@@ -214,6 +214,22 @@ runs:
           echo "::error::OPENROUTER_API_KEY is empty. Set it as a repo secret and pass via the 'llm_api_key' input."
           exit 1
         fi
+
+        # Quick auth sanity-check against OpenRouter — fail in 2s instead of
+        # ~9min of agent retries if the key is invalid/expired/whitespace-padded.
+        KEY_LEN=${#OPENROUTER_API_KEY}
+        echo "OPENROUTER_API_KEY length: $KEY_LEN chars"
+        AUTH_STATUS=$(curl -sS -o /tmp/openrouter-auth.json -w "%{http_code}" \
+          -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+          --max-time 10 \
+          https://openrouter.ai/api/v1/auth/key || echo "curl-fail")
+        echo "OpenRouter /auth/key response: HTTP $AUTH_STATUS"
+        if [ "$AUTH_STATUS" != "200" ]; then
+          echo "::error::OpenRouter rejected the API key (HTTP $AUTH_STATUS). Verify the OPENROUTER_API_KEY secret value."
+          cat /tmp/openrouter-auth.json 2>/dev/null || true
+          exit 1
+        fi
+
         TARGET_REPO="${{ github.workspace }}/target-repo"
         SEED_DIR="${{ steps.base.outputs.seed_dir }}"
         BASE_SHA="${{ steps.guard.outputs.base_sha }}"
