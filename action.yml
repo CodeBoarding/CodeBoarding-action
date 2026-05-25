@@ -180,8 +180,12 @@ runs:
         BASE_SHA="${{ steps.guard.outputs.base_sha }}"
         BASE_SEED_DIR=$(mktemp -d)
         if git show "${BASE_SHA}:.codeboarding/analysis.json" > "${BASE_SEED_DIR}/analysis.json" 2>/dev/null; then
-          # Also copy the manifest if present — analysis.py needs metadata.
+          # Also copy manifest + static_analysis.pkl if present (manifest is
+          # harmless if absent; pkl avoids IncrementalCacheMissingError).
           git show "${BASE_SHA}:.codeboarding/analysis_manifest.json" > "${BASE_SEED_DIR}/analysis_manifest.json" 2>/dev/null || true
+          git show "${BASE_SHA}:.codeboarding/static_analysis.pkl" > "${BASE_SEED_DIR}/static_analysis.pkl" 2>/dev/null && \
+            echo "Seeded static_analysis.pkl from base" || \
+            (rm -f "${BASE_SEED_DIR}/static_analysis.pkl"; echo "No static_analysis.pkl at base; full re-cluster will run")
           echo "found=true" >> $GITHUB_OUTPUT
           echo "seed_dir=${BASE_SEED_DIR}" >> $GITHUB_OUTPUT
           echo "Base analysis seeded into ${BASE_SEED_DIR}"
@@ -200,42 +204,47 @@ runs:
         OPENROUTER_API_KEY: ${{ inputs.llm_api_key }}
         AGENT_MODEL: ${{ inputs.agent_model }}
         PARSING_MODEL: ${{ inputs.parsing_model }}
-        REPO_ROOT: ${{ github.workspace }}/codeboarding-engine/repos
         STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
         PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
         DIAGRAM_DEPTH_LEVEL: ${{ inputs.depth_level }}
         CACHING_DOCUMENTATION: 'false'
         ENABLE_MONITORING: 'false'
       run: |
-        mkdir -p repos
-        REPO_URL="${{ github.event.pull_request.head.repo.clone_url }}"
-        HEAD_REF="${{ github.event.pull_request.head.ref }}"
-        BASE_REF="${{ github.event.pull_request.base.ref }}"
-        # Seed incremental analysis from the base-SHA snapshot (NOT from
-        # the PR head's on-disk .codeboarding/, which already reflects PR
-        # changes and would contaminate the diff baseline).
-        EXISTING_ANALYSIS_DIR="${{ steps.base.outputs.seed_dir }}"
-
-        uv run python -c "
-        from github_action import generate_analysis
-        result_dir = generate_analysis(
-            repo_url='$REPO_URL',
-            source_branch='$HEAD_REF',
-            target_branch='$BASE_REF',
-            extension='.md',
-            output_dir='.codeboarding',
-            existing_analysis_dir='$EXISTING_ANALYSIS_DIR' or None,
-        )
-        print(f'Generated in: {result_dir}')
-        "
-
-        # generate_analysis writes into a temp directory under codeboarding-engine/temp/
-        ENGINE_TEMP=$(find temp -maxdepth 1 -mindepth 1 -type d | head -1)
-        if [ -z "$ENGINE_TEMP" ] || [ ! -f "$ENGINE_TEMP/analysis.json" ]; then
-          echo "::error::Analysis ran but no analysis.json produced."
+        if [ -z "$OPENROUTER_API_KEY" ]; then
+          echo "::error::OPENROUTER_API_KEY is empty. Set it as a repo secret and pass via the 'llm_api_key' input."
           exit 1
         fi
-        echo "current_analysis=$GITHUB_WORKSPACE/codeboarding-engine/$ENGINE_TEMP/analysis.json" >> $GITHUB_OUTPUT
+        TARGET_REPO="${{ github.workspace }}/target-repo"
+        SEED_DIR="${{ steps.base.outputs.seed_dir }}"
+        BASE_SHA="${{ steps.guard.outputs.base_sha }}"
+        HEAD_SHA="${{ steps.guard.outputs.head_sha }}"
+        REPO_NAME="${{ github.event.repository.name }}"
+        RUN_ID="${{ github.run_id }}-${{ github.run_attempt }}"
+
+        # Use run_incremental directly against the already-checked-out PR
+        # head — avoids generate_analysis()'s redundant clone (which only
+        # gets 'main' as a local head and fails on checkout_repo).
+        uv run python -c "
+        from pathlib import Path
+        from codeboarding_workflows.analysis import run_incremental
+        result = run_incremental(
+            repo_path=Path('$TARGET_REPO'),
+            output_dir=Path('$SEED_DIR'),
+            project_name='$REPO_NAME',
+            run_id='$RUN_ID',
+            log_path='/tmp/cb-analysis.log',
+            base_ref='$BASE_SHA',
+            target_ref='$HEAD_SHA',
+            source_sha='$HEAD_SHA',
+        )
+        print(f'Wrote: {result}')
+        "
+
+        if [ ! -f "$SEED_DIR/analysis.json" ]; then
+          echo "::error::Analysis ran but $SEED_DIR/analysis.json is missing."
+          exit 1
+        fi
+        echo "current_analysis=$SEED_DIR/analysis.json" >> $GITHUB_OUTPUT
 
     - name: Compute diff JSON
       if: steps.guard.outputs.skip != 'true' && steps.base.outputs.found == 'true'
