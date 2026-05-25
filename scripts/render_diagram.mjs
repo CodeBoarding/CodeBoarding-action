@@ -77,7 +77,6 @@ function serveDir(dir, port, analysisJsonPath) {
 }
 
 async function main() {
-  const analysis = JSON.parse(fs.readFileSync(analysisPath, 'utf8'));
   const diff = JSON.parse(fs.readFileSync(diffPath, 'utf8'));
 
   if (diff && diff.error) {
