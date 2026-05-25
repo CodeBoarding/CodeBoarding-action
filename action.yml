@@ -18,10 +18,6 @@ inputs:
     description: 'Git ref of CodeBoarding/CodeBoarding to use as the analysis engine.'
     required: false
     default: 'main'
-  vscode_ref:
-    description: 'Git ref of CodeBoarding/CodeBoarding-vscode to use for the diagram renderer.'
-    required: false
-    default: 'main'
   depth_level:
     description: 'Diagram depth (1-3). Higher is slower and more detailed.'
     required: false
@@ -87,14 +83,6 @@ runs:
         ref: ${{ inputs.engine_ref }}
         path: codeboarding-engine
 
-    - name: Checkout CodeBoarding webview (for diagram renderer)
-      if: steps.guard.outputs.skip != 'true'
-      uses: actions/checkout@v4
-      with:
-        repository: CodeBoarding/CodeBoarding-vscode
-        ref: ${{ inputs.vscode_ref }}
-        path: codeboarding-vscode
-
     - name: Checkout target repository (PR head)
       if: steps.guard.outputs.skip != 'true'
       uses: actions/checkout@v4
@@ -150,15 +138,6 @@ runs:
         restore-keys: |
           cb-lsp-${{ runner.os }}-
 
-    - name: Cache webview-ui node_modules
-      if: steps.guard.outputs.skip != 'true'
-      uses: actions/cache@v4
-      with:
-        path: codeboarding-vscode/webview-ui/node_modules
-        key: cb-webview-${{ runner.os }}-${{ hashFiles('codeboarding-vscode/webview-ui/package-lock.json') }}
-        restore-keys: |
-          cb-webview-${{ runner.os }}-
-
     - name: Cache Playwright browsers
       if: steps.guard.outputs.skip != 'true'
       uses: actions/cache@v4
@@ -180,14 +159,6 @@ runs:
       working-directory: codeboarding-engine
       run: |
         uv run python install.py --auto-install-npm
-
-    - name: Build webview-ui (for headless rendering)
-      if: steps.guard.outputs.skip != 'true'
-      shell: bash
-      working-directory: codeboarding-vscode/webview-ui
-      run: |
-        npm ci
-        npm run build
 
     - name: Install Playwright runtime (in action dir)
       if: steps.guard.outputs.skip != 'true' && steps.base.outputs.found == 'true'
@@ -284,7 +255,7 @@ runs:
       shell: bash
       run: |
         node ${{ github.action_path }}/scripts/render_diagram.mjs \
-          --webview-dir codeboarding-vscode/webview-ui/dist \
+          --webview-dir "${{ github.action_path }}/webview-dist" \
           --analysis "${{ steps.analyze.outputs.current_analysis }}" \
           --diff /tmp/diff.json \
           --out /tmp/diff.png
