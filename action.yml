@@ -160,17 +160,6 @@ runs:
       run: |
         uv run python install.py --auto-install-npm
 
-    - name: Install Playwright runtime (in action dir)
-      if: steps.guard.outputs.skip != 'true' && steps.base.outputs.found == 'true'
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      run: |
-        if [ ! -f package.json ]; then
-          npm init -y > /dev/null
-        fi
-        npm install --no-save playwright@1.49.0
-        npx playwright install chromium
-
     - name: Seed base analysis.json (from PR base commit)
       if: steps.guard.outputs.skip != 'true'
       id: base
@@ -313,6 +302,17 @@ runs:
           --current-analysis "${{ steps.analyze.outputs.current_analysis }}" \
           --out /tmp/diff.json
         echo "json_path=/tmp/diff.json" >> $GITHUB_OUTPUT
+
+    - name: Install Playwright runtime (in action dir)
+      if: steps.guard.outputs.skip != 'true' && steps.base.outputs.found == 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        if [ ! -f package.json ]; then
+          npm init -y > /dev/null
+        fi
+        npm install --no-save playwright@1.49.0
+        npx playwright install chromium
 
     - name: Render diagram PNG
       if: steps.guard.outputs.skip != 'true' && steps.base.outputs.found == 'true'
