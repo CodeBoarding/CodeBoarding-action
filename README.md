@@ -50,7 +50,6 @@ You need **one secret**: an LLM API key. OpenRouter is the default; pass your ow
 | `llm_api_key` | (required) | LLM API key. Currently OpenRouter (`OPENROUTER_API_KEY`). |
 | `github_token` | `${{ github.token }}` | Token used to post the comment and push the image. |
 | `engine_ref` | `main` | Git ref of `CodeBoarding/CodeBoarding`. Pin in production. |
-| `vscode_ref` | `main` | Git ref of `CodeBoarding/CodeBoarding-vscode`. Pin in production. |
 | `depth_level` | `1` | Diagram depth (1–3). Higher = slower + more detail. |
 | `agent_model` | `openrouter/anthropic/claude-sonnet-4` | LLM for analysis. |
 | `parsing_model` | `openrouter/anthropic/claude-sonnet-4` | LLM for parsing. |
@@ -69,7 +68,10 @@ You need **one secret**: an LLM API key. OpenRouter is the default; pass your ow
 
 The action reads the `.codeboarding/analysis.json` that was committed at the PR base commit. If your repo has never been analyzed, the first PR will skip the diff and post a "no baseline yet" comment.
 
-To create the baseline, run the existing CodeBoarding docs workflow once on `main`. It will commit a fresh `analysis.json` to `.codeboarding/`. After that, every PR shows what changed.
+To create the baseline:
+
+1. Run the existing CodeBoarding docs workflow ([`CodeBoarding/.github/workflows/docs.yml`](https://github.com/CodeBoarding/CodeBoarding/blob/main/.github/workflows/docs.yml)) once on `main`. It commits a fresh `.codeboarding/analysis.json` to your repo.
+2. After that, every PR opened against `main` shows what changed.
 
 We recommend a companion workflow that keeps the baseline fresh on every push to `main`. A pre-canned snippet for this is on the roadmap — see TODOs below.
 
@@ -84,6 +86,7 @@ PRs from forks cannot push to your image branch. The action still computes the d
 - **No focus / crop mode** for huge diagrams with tiny changes — the whole graph is rendered. Coming in V2.
 - **Re-clones the target repo** inside the analysis engine (legacy `generate_analysis()` API). One extra clone per run; harmless but measurable on huge repos.
 - **Image branch grows unbounded.** A scheduled cleanup workflow is on the roadmap.
+- **Webview bundle is committed in this repo** (`webview-dist/`). Until the upstream `CodeBoarding-vscode` repo ships its dist as a public release asset, rebuilding is a manual step: `cd CodeBoarding-vscode/webview-ui && npm ci && npm run build`, then copy `dist/` into this repo's `webview-dist/`.
 
 ## TODOs (require changes outside this repo)
 
