@@ -98,15 +98,11 @@ async function main() {
       });
     });
 
-    page.on('console', (msg) => {
-      const t = msg.type();
-      if (t === 'error' || t === 'warning') console.log(`[browser ${t}]`, msg.text());
-    });
+    page.on('console', (msg) => console.log(`[browser ${msg.type()}]`, msg.text()));
+    page.on('pageerror', (err) => console.log('[browser pageerror]', err.message));
 
     await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#root', { timeout: 10_000 });
-
-    // Give the message listeners time to attach (BackendMessageProvider mounts in useEffect)
     await page.waitForTimeout(500);
 
     // 1. Load the analysis (the "after" / PR-head state)
@@ -119,42 +115,53 @@ async function main() {
       }, '*');
     }, analysis);
 
-    // 2. Wait until React Flow has actually rendered nodes
-    await page.waitForSelector('.react-flow__node', { timeout: 30_000 });
-    await page.waitForFunction(
-      () => document.querySelectorAll('.react-flow__node').length >= 1,
-      null,
-      { timeout: 30_000 }
-    );
-
-    // 3. Inject the diff result — this applies the diff_status classes
-    await page.evaluate((diffResult) => {
-      window.postMessage({ type: 'commit-diff-result', diffResult }, '*');
-    }, diff);
-
-    // 4. Wait for diff classes to actually appear on nodes (the only
-    //    reliable signal that the diff was processed)
+    // 2. Wait for React Flow nodes — short timeout, then capture DOM
+    //    state for debugging instead of dying silently.
+    let nodesAppeared = false;
     try {
-      await page.waitForFunction(() => {
-        const selectors = [
-          '.commit-diff-added', '.commit-diff-deleted',
-          '.commit-diff-modified', '.commit-diff-unchanged',
-        ];
-        return selectors.some((s) => document.querySelector(s) !== null);
-      }, null, { timeout: 10_000 });
+      await page.waitForSelector('.react-flow__node', { timeout: 15_000 });
+      nodesAppeared = true;
+      console.log('React Flow nodes appeared.');
     } catch {
-      console.log('No diff classes appeared — proceeding with screenshot anyway (diff may be empty).');
+      console.log('::warning::No .react-flow__node within 15s — dumping DOM for diagnosis.');
+      const dom = await page.evaluate(() => {
+        const root = document.getElementById('root');
+        return {
+          rootHTMLLen: root ? root.innerHTML.length : 0,
+          rootHTMLHead: root ? root.innerHTML.slice(0, 3000) : '(no #root)',
+          hasReactFlow: !!document.querySelector('.react-flow'),
+          knownSelectors: {
+            welcome: !!document.querySelector('[data-testid^="welcome"], .welcome-card, [class*="Welcome"]'),
+            demoBanner: !!document.querySelector('[class*="demo"]'),
+            outdated: !!document.querySelector('[class*="outdated"]'),
+          },
+        };
+      });
+      console.log('DOM diagnosis:', JSON.stringify(dom, null, 2));
     }
 
-    // Settle layout (ELK + React Flow fit)
-    await page.waitForTimeout(1500);
+    if (nodesAppeared) {
+      // 3. Inject the diff result — this applies the diff_status classes
+      await page.evaluate((diffResult) => {
+        window.postMessage({ type: 'commit-diff-result', diffResult }, '*');
+      }, diff);
+      try {
+        await page.waitForFunction(() => {
+          const sels = ['.commit-diff-added', '.commit-diff-deleted', '.commit-diff-modified', '.commit-diff-unchanged'];
+          return sels.some((s) => document.querySelector(s) !== null);
+        }, null, { timeout: 10_000 });
+      } catch {
+        console.log('No diff classes appeared — proceeding with screenshot anyway (diff may be empty).');
+      }
+      await page.waitForTimeout(1500);
+    }
 
-    // Capture the React Flow renderer, not just the viewport — we want
-    // background + grid included for context.
-    const target = await page.$('.react-flow');
-    if (!target) throw new Error('Could not find .react-flow element to screenshot');
-    await target.screenshot({ path: outPath, omitBackground: false });
-    console.log(`Wrote ${outPath}`);
+    // Always screenshot — even when nodes never showed we want to see
+    // what state the webview ended up in.
+    const target = (await page.$('.react-flow')) || (await page.$('#root')) || (await page.$('body'));
+    await target.screenshot({ path: outPath, omitBackground: false, fullPage: false });
+    console.log(`Wrote ${outPath} (nodes_appeared=${nodesAppeared})`);
+    if (!nodesAppeared) process.exit(4);
   } finally {
     await browser.close();
     server.close();
