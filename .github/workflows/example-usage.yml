@@ -26,7 +26,5 @@ jobs:
         uses: ./
         with:
           llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
-          # Match the models in the local .env used to generate the
-          # baseline analysis.json so CI hits the same OpenRouter presets.
-          agent_model: '@preset/production'
-          parsing_model: '@preset/production-parser'
+          agent_model: ${{ secrets.AGENT_MODEL }}
+          parsing_model: ${{ secrets.PARSING_MODEL }}
