@@ -375,9 +375,19 @@ runs:
       shell: bash
       run: |
         HEADER="${{ inputs.comment_header }}"
+        BASE_REF="${{ github.event.pull_request.base.ref }}"
         BASE_SHA="${{ steps.guard.outputs.base_sha }}"
         BASE_SHORT="${BASE_SHA:0:7}"
         BODY_FILE=$(mktemp)
+
+        # Helpers: pluralized headline ("1 component changed" / "5 components changed" / "no architectural changes")
+        headline() {
+          local n="$1"
+          if [ "$n" = "0" ]; then echo "no architectural changes";
+          elif [ "$n" = "1" ]; then echo "1 component changed";
+          else echo "${n} components changed";
+          fi
+        }
 
         if [ "${{ steps.base.outputs.found }}" = "false" ]; then
           cat > "$BODY_FILE" <<EOF
@@ -388,14 +398,13 @@ runs:
         <sub>codeboarding-action · run ${{ github.run_id }}</sub>
         EOF
         elif [ "${{ steps.guard.outputs.is_fork }}" = "true" ]; then
-          # Counts from the diff JSON
           N_CHANGED=$(python3 -c "import json; d=json.load(open('/tmp/diff.json')); print(sum(1 for c in d.get('components',[]) if c.get('diff_status') in ('added','deleted','modified')))" 2>/dev/null || echo "?")
           cat > "$BODY_FILE" <<EOF
-        ### ${HEADER} · ${N_CHANGED} component(s) changed (image disabled — fork PR)
+        ### ${HEADER} · $(headline "$N_CHANGED") (image disabled — fork PR)
 
         Fork PRs cannot push images to the base repository. A maintainer can re-run this workflow from the Actions tab to render the diagram.
 
-        Compared against \`${BASE_SHORT}\`.
+        Compared against \`${BASE_REF}\`.
 
         <sub>codeboarding-action · run ${{ github.run_id }}</sub>
         EOF
@@ -403,11 +412,11 @@ runs:
           IMG_URL="${{ steps.upload.outputs.image_url }}"
           N_CHANGED=$(python3 -c "import json; d=json.load(open('/tmp/diff.json')); print(sum(1 for c in d.get('components',[]) if c.get('diff_status') in ('added','deleted','modified')))" 2>/dev/null || echo "?")
           cat > "$BODY_FILE" <<EOF
-        ### ${HEADER} · ${N_CHANGED} component(s) changed
+        ### ${HEADER} · $(headline "$N_CHANGED")
 
         ![Architecture diff](${IMG_URL})
 
-        Compared against \`${BASE_SHORT}\`.
+        Compared against \`${BASE_REF}\`.
 
         <sub>codeboarding-action · run ${{ github.run_id }}</sub>
         EOF
