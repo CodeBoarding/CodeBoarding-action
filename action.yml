@@ -291,6 +291,41 @@ runs:
         fi
         echo "current_analysis=$SEED_DIR/analysis.json" >> $GITHUB_OUTPUT
 
+        # Run health checks against the just-persisted static analysis,
+        # write the warning/critical counts to /tmp/health.json so the
+        # comment-build step can surface them.
+        uv run python -c "
+        import json
+        from pathlib import Path
+        try:
+            from static_analyzer.analysis_cache import StaticAnalysisCache
+            from health.runner import run_health_checks
+            from health.models import Severity
+            cache = StaticAnalysisCache(artifact_dir=Path('$SEED_DIR'), repo_root=Path('$TARGET_REPO'))
+            sa = cache.get()
+            if sa is None:
+                print('No static_analysis available; skipping health checks.')
+                Path('/tmp/health.json').write_text(json.dumps({'warnings': 0, 'critical': 0}))
+            else:
+                report = run_health_checks(sa, repo_name='$REPO_NAME', repo_path=Path('$TARGET_REPO'))
+                n_warn = n_crit = 0
+                if report is not None:
+                    for cs in report.check_summaries:
+                        for fg in getattr(cs, 'finding_groups', []):
+                            if fg.severity == Severity.WARNING:
+                                n_warn += len(fg.entities)
+                            elif fg.severity == Severity.CRITICAL:
+                                n_crit += len(fg.entities)
+                Path('/tmp/health.json').write_text(json.dumps({
+                    'warnings': n_warn, 'critical': n_crit,
+                    'overall_score': report.overall_score if report else None,
+                }))
+                print(f'Health: {n_warn} warning(s), {n_crit} critical(s)')
+        except Exception as exc:
+            print(f'Health checks failed ({exc}); continuing without warnings count.')
+            Path('/tmp/health.json').write_text(json.dumps({'warnings': 0, 'critical': 0}))
+        "
+
     - name: Compute diff JSON
       if: steps.guard.outputs.skip != 'true' && steps.base.outputs.found == 'true'
       id: diff
@@ -389,6 +424,21 @@ runs:
           fi
         }
 
+        # Warnings footer: surface health-check findings if any were detected.
+        # Reads /tmp/health.json written by the analyze step.
+        warnings_footer() {
+          if [ ! -f /tmp/health.json ]; then return; fi
+          local n_warn n_crit
+          n_warn=$(python3 -c "import json; print(json.load(open('/tmp/health.json')).get('warnings', 0))" 2>/dev/null || echo 0)
+          n_crit=$(python3 -c "import json; print(json.load(open('/tmp/health.json')).get('critical', 0))" 2>/dev/null || echo 0)
+          if [ "$n_warn" = "0" ] && [ "$n_crit" = "0" ]; then return; fi
+          local total=$((n_warn + n_crit))
+          local label
+          if [ "$total" = "1" ]; then label="warning"; else label="warnings"; fi
+          echo ""
+          echo "${total} code-health ${label} detected — see more at [codeboarding.org](https://codeboarding.org)."
+        }
+
         if [ "${{ steps.base.outputs.found }}" = "false" ]; then
           cat > "$BODY_FILE" <<EOF
         ### ${HEADER} · no baseline yet
@@ -411,12 +461,13 @@ runs:
         else
           IMG_URL="${{ steps.upload.outputs.image_url }}"
           N_CHANGED=$(python3 -c "import json; d=json.load(open('/tmp/diff.json')); print(sum(1 for c in d.get('components',[]) if c.get('diff_status') in ('added','deleted','modified')))" 2>/dev/null || echo "?")
+          WARN_FOOTER="$(warnings_footer)"
           cat > "$BODY_FILE" <<EOF
         ### ${HEADER} · $(headline "$N_CHANGED")
 
         ![Architecture diff](${IMG_URL})
 
-        Compared against \`${BASE_REF}\`.
+        Compared against \`${BASE_REF}\`.${WARN_FOOTER}
 
         <sub>codeboarding-action · run ${{ github.run_id }}</sub>
         EOF
