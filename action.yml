@@ -225,7 +225,6 @@ runs:
       id: analyze
       shell: bash
       working-directory: codeboarding-engine
-      timeout-minutes: 45
       env:
         OPENROUTER_API_KEY: ${{ inputs.llm_api_key }}
         AGENT_MODEL: ${{ inputs.agent_model }}
