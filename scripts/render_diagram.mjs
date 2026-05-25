@@ -179,10 +179,43 @@ async function main() {
       await page.waitForTimeout(1500);
     }
 
-    // Always screenshot — even when nodes never showed we want to see
-    // what state the webview ended up in.
-    const target = (await page.$('.react-flow')) || (await page.$('#root')) || (await page.$('body'));
-    await target.screenshot({ path: outPath, omitBackground: false, fullPage: false });
+    if (nodesAppeared) {
+      // Crop the screenshot to the union of node bounding rects + padding,
+      // so the PNG is just the diagram (no empty canvas, no chrome).
+      // Playwright clip is in CSS px and respects deviceScaleFactor.
+      const pad = 80;
+      const rect = await page.evaluate((pad) => {
+        const nodes = document.querySelectorAll('.react-flow__node');
+        if (nodes.length === 0) return null;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const n of nodes) {
+          const r = n.getBoundingClientRect();
+          if (r.left < minX) minX = r.left;
+          if (r.top < minY) minY = r.top;
+          if (r.right > maxX) maxX = r.right;
+          if (r.bottom > maxY) maxY = r.bottom;
+        }
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const x = Math.max(0, Math.floor(minX - pad));
+        const y = Math.max(0, Math.floor(minY - pad));
+        const width = Math.min(vw - x, Math.ceil(maxX - minX + pad * 2));
+        const height = Math.min(vh - y, Math.ceil(maxY - minY + pad * 2));
+        return { x, y, width, height };
+      }, pad);
+
+      if (rect && rect.width > 0 && rect.height > 0) {
+        console.log(`Cropping to node bounds + ${pad}px pad: ${rect.width}x${rect.height} at (${rect.x},${rect.y})`);
+        await page.screenshot({ path: outPath, clip: rect, omitBackground: false });
+      } else {
+        console.log('Could not compute node bounds; falling back to full .react-flow screenshot.');
+        const target = (await page.$('.react-flow')) || (await page.$('body'));
+        await target.screenshot({ path: outPath, omitBackground: false });
+      }
+    } else {
+      // No nodes — capture whatever state the page ended up in for debug.
+      const target = (await page.$('#root')) || (await page.$('body'));
+      await target.screenshot({ path: outPath, omitBackground: false });
+    }
     console.log(`Wrote ${outPath} (nodes_appeared=${nodesAppeared})`);
     if (!nodesAppeared) process.exit(4);
   } finally {
