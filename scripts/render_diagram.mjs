@@ -34,7 +34,7 @@ const port = Number(args['port'] || 4567);
 const width = Number(args['width'] || 1600);
 const height = Number(args['height'] || 1000);
 
-function serveDir(dir, port) {
+function serveDir(dir, port, analysisJsonPath) {
   const mime = {
     '.html': 'text/html', '.js': 'application/javascript', '.mjs': 'application/javascript',
     '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml',
@@ -44,6 +44,17 @@ function serveDir(dir, port) {
   const server = http.createServer((req, res) => {
     let urlPath = decodeURIComponent(req.url.split('?')[0]);
     if (urlPath === '/' || urlPath === '') urlPath = '/index.html';
+
+    // Intercept /sample-analysis.json — browser-dev-mock fetches this on
+    // boot when __BROWSER_DEV__ is set, then postMessages it as
+    // 'analysis-loaded'. By serving our real analysis here we let the
+    // webview boot the same way it does in dev mode.
+    if (urlPath === '/sample-analysis.json' && analysisJsonPath) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      fs.createReadStream(analysisJsonPath).pipe(res);
+      return;
+    }
+
     const filePath = path.join(dir, urlPath);
     if (!filePath.startsWith(dir)) { res.writeHead(403).end(); return; }
     fs.stat(filePath, (err, stat) => {
@@ -74,8 +85,8 @@ async function main() {
     process.exit(3);
   }
 
-  const server = await serveDir(webviewDir, port);
-  console.log(`Serving ${webviewDir} on http://127.0.0.1:${port}`);
+  const server = await serveDir(webviewDir, port, analysisPath);
+  console.log(`Serving ${webviewDir} on http://127.0.0.1:${port} (analysis at /sample-analysis.json)`);
 
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
   try {
@@ -85,35 +96,15 @@ async function main() {
     });
     const page = await context.newPage();
 
-    // Pre-define acquireVsCodeApi so the index.html inline script's
-    // ``typeof acquireVsCodeApi === 'undefined'`` check is false. That
-    // skips both the mock stub AND the __BROWSER_DEV__ flag, so the
-    // dev-mode sample-analysis fetch never fires and overwrites our data.
-    await page.addInitScript(() => {
-      // eslint-disable-next-line no-undef
-      window.acquireVsCodeApi = () => ({
-        postMessage: () => {},
-        getState: () => ({}),
-        setState: () => {},
-      });
-    });
-
     page.on('console', (msg) => console.log(`[browser ${msg.type()}]`, msg.text()));
     page.on('pageerror', (err) => console.log('[browser pageerror]', err.message));
 
+    // No init script — let the index.html inline stub define the vscode API
+    // AND set __BROWSER_DEV__=true. The browser-dev-mock will then fetch
+    // /sample-analysis.json (which we serve as our real analysis) and post
+    // it as 'analysis-loaded' through the normal dev-mode path.
     await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#root', { timeout: 10_000 });
-    await page.waitForTimeout(500);
-
-    // 1. Load the analysis (the "after" / PR-head state)
-    await page.evaluate((data) => {
-      window.postMessage({
-        type: 'analysis-loaded',
-        data,
-        isDemoAnalysis: false,
-        isOutdatedAnalysis: false,
-      }, '*');
-    }, analysis);
 
     // 2. Wait for React Flow nodes — short timeout, then capture DOM
     //    state for debugging instead of dying silently.
