@@ -309,6 +309,21 @@ runs:
         }
         def humanize(check_name: str) -> str:
             return LABELS.get(check_name, check_name.replace('_', ' '))
+        def display_name(entity) -> str:
+            # Prefer the last identifier-like segment of the qualified name.
+            # Filter out placeholders like '<function>', '<lambda>', '<module>'.
+            raw = (entity.entity_name or '').replace('/', '.').strip('.')
+            parts = [p for p in raw.split('.') if p and not (p.startswith('<') and p.endswith('>'))]
+            if parts:
+                # Take last 2 segments joined when the leaf looks generic ('main',
+                # '__init__'), otherwise just the leaf.
+                if len(parts) >= 2 and parts[-1] in ('main', '__init__', 'run'):
+                    return '.'.join(parts[-2:])
+                return parts[-1]
+            # No identifier — fall back to file basename, then raw, then 'unknown'
+            if getattr(entity, 'file_path', None):
+                return entity.file_path.split('/')[-1]
+            return raw or 'unknown'
         try:
             from static_analyzer.analysis_cache import StaticAnalysisCache
             from health.runner import run_health_checks
@@ -322,6 +337,7 @@ runs:
                 report = run_health_checks(sa, repo_name='$REPO_NAME', repo_path=Path('$TARGET_REPO'))
                 n_warn = n_crit = 0
                 examples: list[str] = []
+                seen_keys: set[tuple[str, str]] = set()
                 if report is not None:
                     for cs in report.check_summaries:
                         for fg in getattr(cs, 'finding_groups', []):
@@ -332,9 +348,17 @@ runs:
                                 n_crit += len(fg.entities)
                             else:
                                 continue
-                            if len(examples) < 2 and fg.entities:
-                                entity = fg.entities[0].entity_name.split('/')[-1].split('.')[-1] or fg.entities[0].entity_name
-                                examples.append(f'{humanize(cs.check_name)} in \`{entity}\`')
+                            for ent in fg.entities:
+                                if len(examples) >= 2:
+                                    break
+                                name = display_name(ent)
+                                if not name or name == 'unknown':
+                                    continue
+                                key = (cs.check_name, name)
+                                if key in seen_keys:
+                                    continue
+                                seen_keys.add(key)
+                                examples.append(f'{humanize(cs.check_name)} in \`{name}\`')
                 Path('/tmp/health.json').write_text(json.dumps({
                     'warnings': n_warn, 'critical': n_crit,
                     'examples': examples,
