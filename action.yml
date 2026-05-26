@@ -291,12 +291,24 @@ runs:
         fi
         echo "current_analysis=$SEED_DIR/analysis.json" >> $GITHUB_OUTPUT
 
-        # Run health checks against the just-persisted static analysis,
-        # write the warning/critical counts to /tmp/health.json so the
-        # comment-build step can surface them.
+        # Run health checks; persist counts + a couple of sample findings
+        # to /tmp/health.json so the comment-build step can surface them.
         uv run python -c "
         import json
         from pathlib import Path
+        # check_name -> short human phrase used in the inline examples
+        LABELS = {
+            'circular_dependencies': 'circular dependency',
+            'god_classes': 'god class',
+            'function_size': 'oversized function',
+            'fan_out': 'high fan-out',
+            'fan_in': 'high fan-in',
+            'package_instability': 'unstable package',
+            'inheritance_depth': 'deep inheritance hierarchy',
+            'unused_code_diagnostics': 'unused code',
+        }
+        def humanize(check_name: str) -> str:
+            return LABELS.get(check_name, check_name.replace('_', ' '))
         try:
             from static_analyzer.analysis_cache import StaticAnalysisCache
             from health.runner import run_health_checks
@@ -305,25 +317,33 @@ runs:
             sa = cache.get()
             if sa is None:
                 print('No static_analysis available; skipping health checks.')
-                Path('/tmp/health.json').write_text(json.dumps({'warnings': 0, 'critical': 0}))
+                Path('/tmp/health.json').write_text(json.dumps({'warnings': 0, 'critical': 0, 'examples': []}))
             else:
                 report = run_health_checks(sa, repo_name='$REPO_NAME', repo_path=Path('$TARGET_REPO'))
                 n_warn = n_crit = 0
+                examples: list[str] = []
                 if report is not None:
                     for cs in report.check_summaries:
                         for fg in getattr(cs, 'finding_groups', []):
-                            if fg.severity == Severity.WARNING:
+                            sev = fg.severity
+                            if sev == Severity.WARNING:
                                 n_warn += len(fg.entities)
-                            elif fg.severity == Severity.CRITICAL:
+                            elif sev == Severity.CRITICAL:
                                 n_crit += len(fg.entities)
+                            else:
+                                continue
+                            if len(examples) < 2 and fg.entities:
+                                entity = fg.entities[0].entity_name.split('/')[-1].split('.')[-1] or fg.entities[0].entity_name
+                                examples.append(f'{humanize(cs.check_name)} in \`{entity}\`')
                 Path('/tmp/health.json').write_text(json.dumps({
                     'warnings': n_warn, 'critical': n_crit,
+                    'examples': examples,
                     'overall_score': report.overall_score if report else None,
                 }))
-                print(f'Health: {n_warn} warning(s), {n_crit} critical(s)')
+                print(f'Health: {n_warn} warning(s), {n_crit} critical(s); examples={examples}')
         except Exception as exc:
             print(f'Health checks failed ({exc}); continuing without warnings count.')
-            Path('/tmp/health.json').write_text(json.dumps({'warnings': 0, 'critical': 0}))
+            Path('/tmp/health.json').write_text(json.dumps({'warnings': 0, 'critical': 0, 'examples': []}))
         "
 
     - name: Compute diff JSON
@@ -425,18 +445,27 @@ runs:
         }
 
         # Warnings footer: surface health-check findings if any were detected.
-        # Reads /tmp/health.json written by the analyze step.
+        # Reads /tmp/health.json written by the analyze step. Format:
+        #   ⚠️ **N architecture warnings detected.**
+        #   *(e.g., circular dependency in `auth_service`, ...)*
+        #   [ View full trace & diagnostic logs ](https://codeboarding.org/pr/123)
         warnings_footer() {
           if [ ! -f /tmp/health.json ]; then return; fi
-          local n_warn n_crit
-          n_warn=$(python3 -c "import json; print(json.load(open('/tmp/health.json')).get('warnings', 0))" 2>/dev/null || echo 0)
-          n_crit=$(python3 -c "import json; print(json.load(open('/tmp/health.json')).get('critical', 0))" 2>/dev/null || echo 0)
-          if [ "$n_warn" = "0" ] && [ "$n_crit" = "0" ]; then return; fi
-          local total=$((n_warn + n_crit))
+          local total examples_md
+          total=$(python3 -c "import json; d=json.load(open('/tmp/health.json')); print(d.get('warnings', 0) + d.get('critical', 0))" 2>/dev/null || echo 0)
+          if [ "$total" = "0" ]; then return; fi
+          examples_md=$(python3 -c "import json; d=json.load(open('/tmp/health.json')); print(', '.join(d.get('examples', [])[:2]))" 2>/dev/null || echo "")
           local label
           if [ "$total" = "1" ]; then label="warning"; else label="warnings"; fi
+          local pr_num="${{ steps.guard.outputs.pr_number }}"
+          local trace_url="https://codeboarding.org/pr/${pr_num}"
           echo ""
-          echo "${total} code-health ${label} detected — see more at [codeboarding.org](https://codeboarding.org)."
+          echo "⚠️ **${total} architecture ${label} detected.**"
+          if [ -n "$examples_md" ]; then
+            echo "*(e.g., ${examples_md})*"
+          fi
+          echo ""
+          echo "[ View full trace & diagnostic logs ](${trace_url})"
         }
 
         if [ "${{ steps.base.outputs.found }}" = "false" ]; then
