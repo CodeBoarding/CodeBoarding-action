@@ -1,9 +1,11 @@
 """Build the call-to-action footer appended to the architecture-diff PR comment.
 
-The footer links into CodeBoarding's click proxy (so owner/repo/pr are tracked):
-a "see issues live" banner (only when real health findings exist), an
-"explore in browser" workspace link, an editor-specific "open in your editor"
-link, and an "install the extension" link.
+The footer links into CodeBoarding's click proxy (so owner/repo/pr are tracked)
+and currently drives straight to the VS Code/Cursor **extension**: an "open this
+architecture in your editor" link (editor-specific) plus an "install the
+extension" link, and a warning banner when real health findings exist. A
+no-install hosted-webview ("explore in browser") tier is intentionally deferred
+(see docs/COMMIT_STRATEGY.md) — the committed analysis already supports it later.
 
 Editor coverage is deliberately limited to **VS Code and Cursor**. Per the 2025
 Stack Overflow Developer Survey (https://survey.stackoverflow.co/2025/technology/),
@@ -53,17 +55,16 @@ def build_cta(cta_base: str, owner: str, repo: str, pr: str, repo_path: Path, is
     def link(path: str, **extra: str) -> str:
         return f"{base}/{path}?" + urlencode({"owner": owner, "repo": repo, "pr": pr, **extra})
 
+    editor_links = " · ".join(
+        f"[**Open in {_EDITOR_LABEL[e]} →**]({link('open-in-editor', editor=e)})" for e in detect_editors(repo_path)
+    )
+
     lines = ["", "---"]
     if issues > 0:
         noun = "issue" if issues == 1 else "issues"
-        lines += [f"⚠️ **{issues} architecture {noun} found.** [**See live in your browser →**]({link('use-workspace')})", ""]
+        lines += [f"⚠️ **{issues} architecture {noun} found** — open CodeBoarding to explore them.", ""]
 
-    lines += [f"🔍 This is the flattened map. [**Explore this diff live in your browser →**]({link('use-workspace')})", ""]
-
-    editor_links = [
-        f"[**Open in {_EDITOR_LABEL[e]} →**]({link('open-in-editor', editor=e)})" for e in detect_editors(repo_path)
-    ]
-    lines += [f"🛠️ Already have CodeBoarding? {' · '.join(editor_links)}", ""]
+    lines += [f"🧭 See this architecture in your editor: {editor_links}", ""]
 
     lines += [f"💡 New to CodeBoarding? [**Get the extension →**]({link('use-marketplace')})"]
     return "\n".join(lines)

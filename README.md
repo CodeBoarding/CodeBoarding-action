@@ -69,7 +69,7 @@ Comment **`/codeboarding`** on any pull request to (re)run the diagram on demand
 | `diagram_direction` | `LR` | Mermaid layout direction: `LR`, `TD`, `TB`, `RL`, or `BT`. |
 | `changed_only` | `false` | Draw only changed components and their incident edges. |
 | `render_depth` | `1` | Component levels to **draw** in the PR diagram, independent of `depth_level`: `1` = top-level flat, `2` = +one nesting level as subgraphs. Analyze deep, display shallow. |
-| `cta_base_url` | `''` | Base URL of a click proxy. When set, the comment adds "explore in browser" / "open in VS Code or Cursor" / "get the extension" links (with `owner`/`repo`/`pr` appended). Empty disables the CTA. |
+| `cta_base_url` | `''` | Base URL of a click proxy. When set, the comment adds "open in VS Code / Cursor" + "get the extension" links (with `owner`/`repo`/`pr` appended) that drive straight to the extension. Empty disables the CTA. |
 | `trigger_command` | `/codeboarding` | PR-comment slash-command that triggers an on-demand run (requires the `issue_comment` trigger in your workflow). |
 
 ## Outputs

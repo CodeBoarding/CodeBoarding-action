@@ -37,7 +37,7 @@ class TestBuildCta(unittest.TestCase):
     def test_links_banner_and_cursor_only(self):
         out = bc.build_cta("https://x.dev/", "Org", "Repo", "9", repo_with(".cursor"), issues=2)
         self.assertIn("2 architecture issues found", out)
-        self.assertIn("use-workspace?owner=Org&repo=Repo&pr=9", out)
+        self.assertNotIn("use-workspace", out)  # webview/browser tier deferred — extension-direct
         self.assertIn("open-in-editor?owner=Org&repo=Repo&pr=9&editor=cursor", out)
         self.assertIn("use-marketplace?owner=Org&repo=Repo&pr=9", out)
         self.assertNotIn("Open in VS Code", out)  # cursor-only repo
