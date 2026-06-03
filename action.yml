@@ -50,6 +50,10 @@ inputs:
     description: 'Base URL of the click proxy (e.g. https://go.codeboarding.org). When set, the comment adds "open in workspace" / "get the extension" links with owner/repo/pr appended. Empty disables the CTA.'
     required: false
     default: ''
+  trigger_command:
+    description: 'Slash-command that triggers the action from a PR comment (issue_comment event). A comment whose first word is this runs the diagram on-demand.'
+    required: false
+    default: '/codeboarding'
 
 outputs:
   diagram_md:
@@ -65,19 +69,58 @@ outputs:
 runs:
   using: 'composite'
   steps:
-    - name: Guard — PR event only
+    - name: Guard — resolve the target PR
       id: guard
       shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        # Read from env, NEVER interpolated into the script — a comment body is
+        # untrusted input and must not reach the shell as code (injection).
+        COMMENT_BODY: ${{ github.event.comment.body }}
+        TRIGGER: ${{ inputs.trigger_command }}
+        EVENT: ${{ github.event_name }}
       run: |
-        if [ -z "${{ github.event.pull_request.number }}" ]; then
-          echo "::warning::CodeBoarding Architecture Diff only runs on pull_request events. Skipping."
-          echo "skip=true" >> $GITHUB_OUTPUT
+        skip() { echo "::notice::$1 Skipping."; echo "skip=true" >> $GITHUB_OUTPUT; exit 0; }
+
+        if [ "$EVENT" = "pull_request" ] || [ "$EVENT" = "pull_request_target" ]; then
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+        elif [ "$EVENT" = "issue_comment" ]; then
+          # On-demand "/codeboarding" command. Must be a PR comment whose first
+          # word is the trigger; the payload lacks SHAs so we query the API.
+          [ -n "${{ github.event.issue.pull_request.url }}" ] || skip "Comment is on a plain issue, not a PR."
+          FIRST_WORD="$(printf '%s' "$COMMENT_BODY" | tr -d '\r' | awk 'NR==1{print $1; exit}')"
+          [ "$FIRST_WORD" = "$TRIGGER" ] || skip "Comment does not start with '$TRIGGER'."
+          PR_NUMBER="${{ github.event.issue.number }}"
+          PR_JSON="$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}")"
+          BASE_SHA="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["base"]["sha"])')"
+          HEAD_SHA="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["head"]["sha"])')"
+          BASE_REF="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["base"]["ref"])')"
         else
-          echo "skip=false" >> $GITHUB_OUTPUT
-          echo "base_sha=${{ github.event.pull_request.base.sha }}" >> $GITHUB_OUTPUT
-          echo "head_sha=${{ github.event.pull_request.head.sha }}" >> $GITHUB_OUTPUT
-          echo "pr_number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          skip "Unsupported event '$EVENT' (use pull_request or issue_comment)."
         fi
+
+        [ -n "$PR_NUMBER" ] || skip "No pull request in context."
+        {
+          echo "skip=false"
+          echo "pr_number=$PR_NUMBER"
+          echo "base_sha=$BASE_SHA"
+          echo "head_sha=$HEAD_SHA"
+          echo "base_ref=$BASE_REF"
+        } >> $GITHUB_OUTPUT
+        echo "Resolved PR #$PR_NUMBER (base=$BASE_SHA head=$HEAD_SHA) via $EVENT"
+
+    - name: Acknowledge command
+      if: steps.guard.outputs.skip != 'true' && github.event_name == 'issue_comment'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        # 👀 react to the triggering comment so the user knows it was picked up.
+        gh api -X POST "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+          -f content=eyes >/dev/null 2>&1 || true
 
     - name: Checkout CodeBoarding engine
       if: steps.guard.outputs.skip != 'true'
@@ -379,7 +422,7 @@ runs:
       shell: bash
       run: |
         HEADER="${{ inputs.comment_header }}"
-        BASE_REF="${{ github.event.pull_request.base.ref }}"
+        BASE_REF="${{ steps.guard.outputs.base_ref }}"
         N="${{ steps.diagram.outputs.n_changed }}"
         RENDERED="${{ steps.diagram.outputs.rendered }}"
         TRUNC="${{ steps.diagram.outputs.truncated }}"
@@ -440,5 +483,6 @@ runs:
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         header: codeboarding-architecture-diff
+        number: ${{ steps.guard.outputs.pr_number }}
         path: ${{ steps.body.outputs.body_file }}
         GITHUB_TOKEN: ${{ inputs.github_token }}

@@ -25,14 +25,21 @@ name: Architecture diff
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:               # enables the /codeboarding command on PRs
+    types: [created]
 
 permissions:
-  pull-requests: write       # the only permission needed — nothing is pushed
+  pull-requests: write         # the only permission needed — nothing is pushed
 
 jobs:
   diagram:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
+    # Run on (non-draft) PR events, OR when someone comments "/codeboarding" on a PR.
+    # The if-gate is important: without it a runner spins up for every comment.
+    if: >
+      (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
+       startsWith(github.event.comment.body, '/codeboarding'))
     timeout-minutes: 60
     steps:
       - uses: codeboarding/codeboarding-action@v1
@@ -41,6 +48,12 @@ jobs:
 ```
 
 You need **one secret**: an LLM API key. OpenRouter is the default; pass your own model via the `agent_model` / `parsing_model` inputs if you prefer.
+
+### On-demand: the `/codeboarding` command
+
+Comment **`/codeboarding`** on any pull request to (re)run the diagram on demand — handy after the engine/baseline changes, or on draft PRs you don't auto-review. The action reacts with 👀 to acknowledge. Change the word via the `trigger_command` input.
+
+> **Note:** GitHub runs `issue_comment` workflows from the **default branch's** copy of the workflow file. So the command only works once this workflow is merged to your default branch — a workflow that exists only on a feature branch won't respond to comments.
 
 ## Inputs
 
@@ -57,6 +70,7 @@ You need **one secret**: an LLM API key. OpenRouter is the default; pass your ow
 | `changed_only` | `false` | Draw only changed components and their incident edges. |
 | `render_depth` | `1` | Component levels to **draw** in the PR diagram, independent of `depth_level`: `1` = top-level flat, `2` = +one nesting level as subgraphs. Analyze deep, display shallow. |
 | `cta_base_url` | `''` | Base URL of a click proxy. When set, the comment adds "explore in browser" / "open in VS Code or Cursor" / "get the extension" links (with `owner`/`repo`/`pr` appended). Empty disables the CTA. |
+| `trigger_command` | `/codeboarding` | PR-comment slash-command that triggers an on-demand run (requires the `issue_comment` trigger in your workflow). |
 
 ## Outputs
 
