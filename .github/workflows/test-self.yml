@@ -21,3 +21,4 @@ jobs:
           llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
           agent_model: ${{ secrets.AGENT_MODEL }}
           parsing_model: ${{ secrets.PARSING_MODEL }}
+          cta_base_url: https://codeboarding.pontux-inc.workers.dev

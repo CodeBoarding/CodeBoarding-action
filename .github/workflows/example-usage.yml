@@ -1,8 +1,9 @@
 name: Architecture diff
 
+# Reference example only (the README shows the real pull_request usage). Manual
+# trigger so it doesn't run the published @v1 against this repo's own PRs.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
 
 # Only a PR comment is posted — no image is pushed — so contents:write is not needed.
 permissions:

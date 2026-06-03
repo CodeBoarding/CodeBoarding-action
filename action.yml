@@ -46,6 +46,10 @@ inputs:
     description: 'Draw depth>1 sub-components as nested subgraphs (pair with depth_level >= 2).'
     required: false
     default: 'false'
+  cta_base_url:
+    description: 'Base URL of the click proxy (e.g. https://go.codeboarding.org). When set, the comment adds "open in workspace" / "get the extension" links with owner/repo/pr appended. Empty disables the CTA.'
+    required: false
+    default: ''
 
 outputs:
   diagram_md:
@@ -340,10 +344,28 @@ runs:
         TRUNC="${{ steps.diagram.outputs.truncated }}"
         BODY_FILE=$(mktemp)
 
+        OWNER_REPO="${{ github.repository }}"
+        OWNER="${OWNER_REPO%%/*}"; REPO="${OWNER_REPO##*/}"
+        PR="${{ steps.guard.outputs.pr_number }}"
+        CTA_BASE="${{ inputs.cta_base_url }}"
+
         headline() {
           if [ "$1" = "0" ]; then echo "no architectural changes";
           elif [ "$1" = "1" ]; then echo "1 component changed";
           else echo "$1 components changed"; fi
+        }
+
+        # Call-to-action: links open the live workspace (github.dev-equivalent) and
+        # the extension via the click proxy, with owner/repo/pr appended for tracking.
+        cta() {
+          [ -z "$CTA_BASE" ] && return
+          local ws="${CTA_BASE}/use-workspace?owner=${OWNER}&repo=${REPO}&pr=${PR}"
+          local mp="${CTA_BASE}/use-marketplace?owner=${OWNER}&repo=${REPO}&pr=${PR}"
+          echo ""
+          echo "---"
+          echo "🔍 **This is the flattened map.** [**Explore it live in your browser →**](${ws}) — expand each component, follow every dependency, and click straight through to the code that changed. No install; it opens right here on this PR."
+          echo ""
+          echo "💡 Want this on every PR? [**Add the CodeBoarding extension →**](${mp})"
         }
 
         {
@@ -355,7 +377,7 @@ runs:
             cat "${{ steps.diagram.outputs.diagram_md }}"
             echo ""
             echo ""
-            echo "🟩 added · 🟨 modified · 🟥 deleted — compared against \`${BASE_REF}\`."
+            echo "Components are tinted by the files that changed inside them — 🟩 added · 🟨 modified · 🟥 removed — versus \`${BASE_REF}\` (not whole subsystems being added or dropped)."
             if [ "$TRUNC" = "true" ]; then
               echo ""
               echo "<sub>Showing changed components only — the full graph exceeds GitHub's inline Mermaid limit.</sub>"
@@ -363,6 +385,7 @@ runs:
           else
             echo "**$(headline "$N")** versus \`${BASE_REF}\`, but the diagram is too large to render inline (GitHub caps inline Mermaid at 500 edges)."
           fi
+          cta
           echo ""
           echo "<sub>codeboarding-action · run ${{ github.run_id }}</sub>"
         } > "$BODY_FILE"
