@@ -363,9 +363,9 @@ runs:
           local mp="${CTA_BASE}/use-marketplace?owner=${OWNER}&repo=${REPO}&pr=${PR}"
           echo ""
           echo "---"
-          echo "🔍 **This is the flattened map.** [**Explore it live in your browser →**](${ws}) — expand each component, follow every dependency, and click straight through to the code that changed. No install; it opens right here on this PR."
+          echo "🔍 **This is the flattened map.** [**Explore this diff live in your browser →**](${ws}) — expand every component, follow each dependency, and click straight through to the changed code. Opens in your browser, no install."
           echo ""
-          echo "💡 Want this on every PR? [**Add the CodeBoarding extension →**](${mp})"
+          echo "💡 Prefer your editor? [**Get the CodeBoarding VS Code extension →**](${mp}) to explore these architecture diffs right inside VS Code."
         }
 
         {
