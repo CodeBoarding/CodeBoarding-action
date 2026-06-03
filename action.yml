@@ -119,6 +119,8 @@ runs:
     - name: Install uv
       if: steps.guard.outputs.skip != 'true'
       uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true   # cache ~/.cache/uv (wheels/builds) for fast cold installs
 
     - name: Cache uv venv (engine)
       if: steps.guard.outputs.skip != 'true'
@@ -145,7 +147,7 @@ runs:
       shell: bash
       working-directory: codeboarding-engine
       run: |
-        uv venv --clear
+        test -d .venv || uv venv   # reuse the cached venv instead of wiping it (--clear defeated the cache)
         uv pip install -e .
 
     - name: Install LSP servers
