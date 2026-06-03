@@ -1,0 +1,23 @@
+name: Self-test architecture diff
+
+# Exercises THIS branch's action (uses: ./) against the action repo itself, so a
+# PR posts a Mermaid architecture-diff comment. Remove before merge.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  diagram:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          agent_model: ${{ secrets.AGENT_MODEL }}
+          parsing_model: ${{ secrets.PARSING_MODEL }}
