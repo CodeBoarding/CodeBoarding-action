@@ -309,6 +309,7 @@ def render_mermaid(
     node_padding: int | None = None,
     node_spacing: int | None = None,
     rank_spacing: int | None = None,
+    max_label: int = _EDGE_LABEL_MAX,
 ) -> tuple:
     """Return (mermaid_text, meta). ``mermaid_text`` is None when there's nothing to draw.
 
@@ -339,7 +340,7 @@ def render_mermaid(
             dst = scope.resolve(rel.get("dst_id", ""), rel.get("dst_name", ""), present)
             if src is None or dst is None:
                 continue  # endpoint not drawn — skip, don't consume an edge index
-            label = _esc(_truncate(rel.get("relation", ""))) if edge_labels else ""
+            label = _esc(_truncate(rel.get("relation", ""), max_label)) if edge_labels else ""
             body.append(f'{pad}{src} -- "{label}" --> {dst}' if label else f"{pad}{src} --> {dst}")
             if status in edge_styles:
                 edge_styles[status].append(counters["edges"])
@@ -423,6 +424,7 @@ def main() -> int:
     p.add_argument("--node-padding", type=int, default=None, help="Interior padding around each node label")
     p.add_argument("--node-spacing", type=int, default=None, help="Space between nodes in the same rank")
     p.add_argument("--rank-spacing", type=int, default=None, help="Space between ranks")
+    p.add_argument("--max-label", type=int, default=_EDGE_LABEL_MAX, help="Max characters in an edge label before truncation")
     args = p.parse_args()
 
     diff = build_diff(load_analysis(args.base), load_analysis(args.head))
@@ -436,6 +438,7 @@ def main() -> int:
         node_padding=args.node_padding,
         node_spacing=args.node_spacing,
         rank_spacing=args.rank_spacing,
+        max_label=args.max_label,
     )
 
     args.out.write_text(mermaid if mermaid is not None else "", encoding="utf-8")
