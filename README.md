@@ -48,14 +48,15 @@ You need **one secret**: an LLM API key. OpenRouter is the default; pass your ow
 |---|---|---|
 | `llm_api_key` | (required) | LLM API key. Currently OpenRouter (`OPENROUTER_API_KEY`). |
 | `github_token` | `${{ github.token }}` | Token used to post the comment. |
-| `engine_ref` | `main` | Git ref of `CodeBoarding/CodeBoarding`. Pin in production. |
-| `depth_level` | `1` | Diagram depth (1–3). Higher = slower + more detail. |
+| `engine_ref` | `v0.12.0` | Git ref of `CodeBoarding/CodeBoarding` (pinned to a release). Override to track a newer ref. |
+| `depth_level` | `1` | Engine **analysis** depth (1–3). Higher = slower + richer data. See `render_depth` for the diagram. |
 | `agent_model` | `openrouter/anthropic/claude-sonnet-4` | LLM for analysis. |
 | `parsing_model` | `openrouter/anthropic/claude-sonnet-4` | LLM for parsing. |
 | `comment_header` | `Architecture review` | Header line of the PR comment. |
 | `diagram_direction` | `LR` | Mermaid layout direction: `LR`, `TD`, `TB`, `RL`, or `BT`. |
 | `changed_only` | `false` | Draw only changed components and their incident edges. |
 | `render_depth` | `1` | Component levels to **draw** in the PR diagram, independent of `depth_level`: `1` = top-level flat, `2` = +one nesting level as subgraphs. Analyze deep, display shallow. |
+| `cta_base_url` | `''` | Base URL of a click proxy. When set, the comment adds "explore in browser" / "open in VS Code or Cursor" / "get the extension" links (with `owner`/`repo`/`pr` appended). Empty disables the CTA. |
 
 ## Outputs
 

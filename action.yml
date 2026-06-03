@@ -15,9 +15,9 @@ inputs:
     required: false
     default: ${{ github.token }}
   engine_ref:
-    description: 'Git ref of CodeBoarding/CodeBoarding to use as the analysis engine.'
+    description: 'Git ref (tag/branch/SHA) of CodeBoarding/CodeBoarding used as the analysis engine. Pinned to a release for reproducibility; override to track a newer ref.'
     required: false
-    default: 'main'
+    default: 'v0.12.0'
   depth_level:
     description: 'Diagram depth (1-3). Higher is slower and more detailed.'
     required: false
