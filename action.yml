@@ -396,23 +396,15 @@ runs:
           else echo "$1 components changed"; fi
         }
 
-        # Call-to-action: links open the live workspace (github.dev-equivalent) and
-        # the VS Code extension via the click proxy, with owner/repo/pr for tracking.
-        # The warning banner is shown only when real health findings exist.
+        # Call-to-action footer (workspace + editor + extension links via the click
+        # proxy, plus a warning banner when real health findings exist). Editor
+        # links auto-select VS Code / Cursor from the repo's .vscode/.cursor dirs.
+        # See scripts/build_cta.py for the copy and the market-share rationale.
         cta() {
           [ -z "$CTA_BASE" ] && return
-          local ws="${CTA_BASE}/use-workspace?owner=${OWNER}&repo=${REPO}&pr=${PR}"
-          local mp="${CTA_BASE}/use-marketplace?owner=${OWNER}&repo=${REPO}&pr=${PR}"
-          echo ""
-          echo "---"
-          if [ -n "$ISSUES" ] && [ "$ISSUES" != "0" ]; then
-            local noun="issue"; [ "$ISSUES" != "1" ] && noun="issues"
-            echo "⚠️ **${ISSUES} architecture ${noun} found.** [**See live in your browser →**](${ws})"
-            echo ""
-          fi
-          echo "🔍 This is the flattened map. [**Explore this diff live in your browser →**](${ws})"
-          echo ""
-          echo "💡 Prefer your editor? [**Get the CodeBoarding VS Code extension →**](${mp})"
+          python3 "${{ github.action_path }}/scripts/build_cta.py" \
+            --cta-base "$CTA_BASE" --owner "$OWNER" --repo "$REPO" --pr "$PR" \
+            --repo-path "${{ github.workspace }}/target-repo" --issues "${ISSUES:-0}"
         }
 
         {
