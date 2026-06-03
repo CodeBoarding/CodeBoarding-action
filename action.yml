@@ -311,6 +311,46 @@ runs:
         echo "base_analysis=$BASE_DIR/analysis.json" >> $GITHUB_OUTPUT
         echo "head_analysis=$HEAD_DIR/analysis.json" >> $GITHUB_OUTPUT
 
+    - name: Architecture health check (best-effort)
+      if: steps.guard.outputs.skip != 'true'
+      id: health
+      continue-on-error: true
+      shell: bash
+      working-directory: codeboarding-engine
+      env:
+        STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
+        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
+      run: |
+        HEAD_DIR="${{ steps.base.outputs.head_dir }}"
+        TARGET="${{ github.workspace }}/target-repo"
+        # Count real WARNING/CRITICAL findings from the head analysis. Never fails
+        # the run — a missing/old health module just yields 0 issues (no banner).
+        uv run python -c "
+        import json
+        from pathlib import Path
+        issues = 0
+        try:
+            from static_analyzer.analysis_cache import StaticAnalysisCache
+            from health.runner import run_health_checks
+            from health.models import Severity
+            cache = StaticAnalysisCache(artifact_dir=Path('$HEAD_DIR'), repo_root=Path('$TARGET'))
+            sa = cache.get()
+            if sa is not None:
+                report = run_health_checks(sa, repo_name='${{ github.event.repository.name }}', repo_path=Path('$TARGET'))
+                if report is not None:
+                    for cs in report.check_summaries:
+                        for fg in getattr(cs, 'finding_groups', []):
+                            if getattr(fg, 'severity', None) in (Severity.WARNING, Severity.CRITICAL):
+                                issues += len(fg.entities)
+            print(f'Architecture issues found: {issues}')
+        except Exception as exc:
+            print(f'Health check skipped ({exc}).')
+        Path('/tmp/cb-issues.txt').write_text(str(issues))
+        "
+        N=$(cat /tmp/cb-issues.txt 2>/dev/null || echo 0)
+        echo "issues=$N" >> $GITHUB_OUTPUT
+        echo "Architecture issues: $N"
+
     - name: Diff analyses → Mermaid
       if: steps.guard.outputs.skip != 'true'
       id: diagram
@@ -348,6 +388,7 @@ runs:
         OWNER="${OWNER_REPO%%/*}"; REPO="${OWNER_REPO##*/}"
         PR="${{ steps.guard.outputs.pr_number }}"
         CTA_BASE="${{ inputs.cta_base_url }}"
+        ISSUES="${{ steps.health.outputs.issues }}"
 
         headline() {
           if [ "$1" = "0" ]; then echo "no architectural changes";
@@ -356,16 +397,22 @@ runs:
         }
 
         # Call-to-action: links open the live workspace (github.dev-equivalent) and
-        # the extension via the click proxy, with owner/repo/pr appended for tracking.
+        # the VS Code extension via the click proxy, with owner/repo/pr for tracking.
+        # The warning banner is shown only when real health findings exist.
         cta() {
           [ -z "$CTA_BASE" ] && return
           local ws="${CTA_BASE}/use-workspace?owner=${OWNER}&repo=${REPO}&pr=${PR}"
           local mp="${CTA_BASE}/use-marketplace?owner=${OWNER}&repo=${REPO}&pr=${PR}"
           echo ""
           echo "---"
-          echo "🔍 **This is the flattened map.** [**Explore this diff live in your browser →**](${ws}) — expand every component, follow each dependency, and click straight through to the changed code. Opens in your browser, no install."
+          if [ -n "$ISSUES" ] && [ "$ISSUES" != "0" ]; then
+            local noun="issue"; [ "$ISSUES" != "1" ] && noun="issues"
+            echo "⚠️ **${ISSUES} architecture ${noun} found.** [**See live in your browser →**](${ws})"
+            echo ""
+          fi
+          echo "🔍 This is the flattened map. [**Explore this diff live in your browser →**](${ws})"
           echo ""
-          echo "💡 Prefer your editor? [**Get the CodeBoarding VS Code extension →**](${mp}) to explore these architecture diffs right inside VS Code."
+          echo "💡 Prefer your editor? [**Get the CodeBoarding VS Code extension →**](${mp})"
         }
 
         {
@@ -377,7 +424,7 @@ runs:
             cat "${{ steps.diagram.outputs.diagram_md }}"
             echo ""
             echo ""
-            echo "Components are tinted by the files that changed inside them — 🟩 added · 🟨 modified · 🟥 removed — versus \`${BASE_REF}\` (not whole subsystems being added or dropped)."
+            echo "Colours indicate components that have been 🟩 added · 🟨 modified · 🟥 removed — versus \`${BASE_REF}\`."
             if [ "$TRUNC" = "true" ]; then
               echo ""
               echo "<sub>Showing changed components only — the full graph exceeds GitHub's inline Mermaid limit.</sub>"
