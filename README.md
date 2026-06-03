@@ -1,111 +1,134 @@
 <div align="center">
   <img src="assets/icon.svg" alt="CodeBoarding Logo" height="150" />
-  
-  # CodeBoarding [Diagram-First Documentation]
-  
-  [![GitHub Action](https://img.shields.io/badge/GitHub-Action-blue?logo=github-actions)](https://github.com/marketplace/actions/codeboarding-diagram-first-documentation)
+
+  # CodeBoarding Architecture Diff (Mermaid)
+
+  Posts a PR comment with a **Mermaid** architecture diagram showing which components changed — **green** added, **yellow** modified, **red** deleted — for both nodes and arrows.
 </div>
 
-Generates diagram-first visualizations of your codebase using static analysis and large language models.
+## What it does
+
+On every pull request, this action:
+
+1. Resolves a **base ("before") analysis**: it reads the `.codeboarding/analysis.json` committed at the PR base commit if one exists; otherwise it runs a full CodeBoarding analysis on the base commit to produce one.
+2. Runs an **incremental analysis on the PR head**, seeded from the base analysis — only LLM-calling the components whose code actually changed, so a typical PR costs a handful of LLM calls.
+3. **Diffs the two analyses** and renders the architecture graph as a Mermaid block with changed components and relations colored:
+   - **green** — added
+   - **yellow** — modified
+   - **red** (dashed) — deleted
+4. Posts a sticky PR comment containing the Mermaid block. **GitHub renders the diagram inline** — no image, no Playwright, no extra branch.
 
 ## Usage
 
 ```yaml
-name: Generate Documentation
+name: Architecture diff
 on:
-  push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  pull-requests: write       # the only permission needed — nothing is pushed
 
 jobs:
-  documentation:
+  diagram:
     runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    timeout-minutes: 60
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: codeboarding/codeboarding-action@v1
         with:
-          fetch-depth: 0  # Required to access branch history
-        
-      - name: Generate Documentation
-        uses: codeboarding/codeboarding-ghaction@v1
-        with:
-          repository_url: ${{ github.server_url }}/${{ github.repository }}
-          source_branch: ${{ github.head_ref || github.ref_name }}
-          target_branch: ${{ github.base_ref || 'main' }}
-          output_directory: 'docs'
-          output_format: '.md'
-          
-      - name: Upload Documentation
-        uses: actions/upload-artifact@v4
-        with:
-          name: documentation
-          path: |
-            docs/
-            .codeboarding/
+          llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
+
+You need **one secret**: an LLM API key. OpenRouter is the default; pass your own model via the `agent_model` / `parsing_model` inputs if you prefer.
 
 ## Inputs
 
-| Input | Description | Required | Default |
-|-------|-------------|----------|---------|
-| `repository_url` | Repository URL for which documentation will be generated | Yes | - |
-| `source_branch` | Source branch for comparison (typically the PR branch) | Yes | - |
-| `target_branch` | Target branch for comparison (typically the base branch) | Yes | - |
-| `output_directory` | Directory where documentation files will be saved | No | `docs` |
-| `output_format` | Format for documentation files (either `.md` or `.rst`) | No | `.md` |
+| Input | Default | Description |
+|---|---|---|
+| `llm_api_key` | (required) | LLM API key. Currently OpenRouter (`OPENROUTER_API_KEY`). |
+| `github_token` | `${{ github.token }}` | Token used to post the comment. |
+| `engine_ref` | `main` | Git ref of `CodeBoarding/CodeBoarding`. Pin in production. |
+| `depth_level` | `1` | Diagram depth (1–3). Higher = slower + more detail. |
+| `agent_model` | `openrouter/anthropic/claude-sonnet-4` | LLM for analysis. |
+| `parsing_model` | `openrouter/anthropic/claude-sonnet-4` | LLM for parsing. |
+| `comment_header` | `Architecture review` | Header line of the PR comment. |
+| `diagram_direction` | `LR` | Mermaid layout direction: `LR`, `TD`, `TB`, `RL`, or `BT`. |
+| `changed_only` | `false` | Draw only changed components and their incident edges. |
+| `nested` | `false` | Draw depth>1 sub-components as nested subgraphs (pair with `depth_level >= 2`). |
 
 ## Outputs
 
 | Output | Description |
-|--------|-------------|
-| `markdown_files_created` | Number of documentation files created |
-| `json_files_created` | Number of JSON files created |
-| `output_directory` | Directory where documentation files were saved |
-| `json_directory` | Directory where JSON files were saved (always `.codeboarding`) |
-| `has_changes` | Whether any files were created or changed |
+|---|---|
+| `diagram_md` | Path to the rendered ```` ```mermaid ```` block in the runner workspace. |
+| `n_changed` | Number of top-level components added/modified/deleted. |
+| `truncated` | `true` if the diagram was reduced to changed-only to fit GitHub's Mermaid limit. |
 
-## How It Works
+## How the diff is colored
 
-The action works by:
+Nodes are styled with Mermaid `classDef` / `class`; arrows are styled with positional `linkStyle`. A relation counts as **modified** when its endpoints are unchanged but its label text changed. Example of the emitted block:
 
-1. Analyzing the differences introduced in the source branch and putting the results in the target branch
-2. Generating documentation files based on the latest version of the source branch
-3. Outputting two types of files:
-   - Documentation files (Markdown or RST) in the specified output directory
-   - Metadata files in the `.codeboarding` directory
+```mermaid
+graph LR
+    Api["API Gateway"]
+    Auth["Auth Service"]
+    Cache["Cache"]
+    Api -- "routes to" --> Auth
+    Auth -- "reads/writes" --> Cache
+    classDef added fill:#1f883d,stroke:#0b5d23,color:#ffffff;
+    classDef modified fill:#bf8700,stroke:#7d4e00,color:#ffffff;
+    classDef deleted fill:#cf222e,stroke:#82071e,color:#ffffff,stroke-dasharray:5 3;
+    class Cache added;
+    class Auth modified;
+    class Api deleted;
+    linkStyle 0 stroke:#cf222e,stroke-width:2px,stroke-dasharray:5 3;
+    linkStyle 1 stroke:#1f883d,stroke-width:2px;
+```
+
+## No baseline required
+
+If `.codeboarding/analysis.json` isn't committed at the PR base commit, the action **generates the baseline itself** by running a full analysis on the base commit, then diffs the head against it. Committing a baseline on your default branch makes runs cheaper (the base run is skipped) and the diff more stable, but it is not required.
+
+## Fork PRs
+
+Because nothing is pushed (the diagram is inline Mermaid), there is no image step to skip on forks. The one caveat is GitHub's own policy: **secrets are withheld from `pull_request`-triggered runs on forks**, so the LLM key is unavailable and the run fails early with a clear message. A maintainer can re-run from the Actions tab, or use `pull_request_target` if you understand its security implications.
+
+## Limitations
+
+- **GitHub Mermaid caps.** Inline Mermaid in comments is capped (≈500 edges / 50 000 chars). The action stays under this by auto-falling-back to a changed-only graph; if even that overflows it posts a text summary instead of a broken diagram.
+- **Nesting.** By default only the top-level component graph is drawn (matching the engine's default `graph LR`). Set `nested: true` with `depth_level >= 2` to draw sub-components as nested subgraphs — leaf nodes filled, parent containers outlined, both colored by status. Large nested graphs are more likely to hit GitHub's Mermaid caps (above), in which case the action degrades to changed-only or a text summary.
+- **Renames show as remove + add.** Components are matched across the two analyses by name (the stable join), so a renamed component appears as a red removal plus a green addition rather than a single yellow change.
+- **No click-through.** GitHub renders Mermaid in strict security mode, so node hyperlinks are disabled.
+
+## Local testing
+
+A GitHub run is slow (engine install + two analyses). To iterate locally, use `scripts/run_local.sh`. It mirrors `action.yml` and writes `.cb-local/diagram.md` plus a `.cb-local/preview.html` you open in a browser (rendered with mermaid.js in GitHub's strict mode, so it looks like the comment will).
+
+**Fast — no LLM, instant.** Diff two existing `analysis.json` files. Great for iterating on colors/layout. For a realistic pair, pull two revisions of a committed analysis:
+
+```bash
+git show <old-sha>:.codeboarding/analysis.json > /tmp/base.json
+git show <new-sha>:.codeboarding/analysis.json > /tmp/head.json
+scripts/run_local.sh --base-json /tmp/base.json --head-json /tmp/head.json
+```
+
+**Full pipeline — needs an LLM key.** Runs the engine on two refs of a local repo exactly like the action (committed-or-generated base, then incremental head):
+
+```bash
+export OPENROUTER_API_KEY=sk-or-...
+scripts/run_local.sh --repo /path/to/repo --base <base-ref> --head <head-ref> \
+  --engine /path/to/CodeBoarding      # defaults to ../CodeBoarding
+```
+
+Flags: `--depth N`, `--direction LR|TD|…`, `--nested`, `--changed-only`, `--no-edge-labels`, `--out DIR`, `--no-open`.
+
+The diagram step alone is also directly runnable:
+
+```bash
+python3 scripts/diff_to_mermaid.py --base base/analysis.json --head head/analysis.json --out diagram.md
+```
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details.
-
-# CodeBoarding GitHub Action
-
-## Important: Timeout Configuration
-
-For large repositories, the analysis can take 15-45 minutes. Make sure to configure appropriate timeouts in your workflow:
-
-```yaml
-jobs:
-  generate-docs:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60  # Set to 60+ minutes for large repositories
-    steps:
-      - uses: actions/checkout@v4
-      - uses: your-username/codeboarding-ghaction@v1
-        with:
-          # your inputs here
-```
-
-## Timeout Guidelines
-
-- **Small repositories** (<1k files): 10-15 minutes
-- **Medium repositories** (1k-5k files): 20-30 minutes  
-- **Large repositories** (5k+ files): 30-60 minutes
-- **Very large repositories** (10k+ files): 45-90 minutes
-
-If your workflow consistently times out, consider:
-1. Increasing `timeout-minutes` to 90 or higher
-2. Running the action on a schedule during off-peak hours
-3. Analyzing specific branches with smaller diffs
+MIT — see [LICENSE](LICENSE).

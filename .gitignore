@@ -2,6 +2,9 @@
 test_response.json
 test_codeboarding/
 
+# Local test harness output (scripts/run_local.sh)
+.cb-local/
+
 # Environment files
 .env
 
