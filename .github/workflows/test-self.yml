@@ -22,3 +22,5 @@ jobs:
           agent_model: ${{ secrets.AGENT_MODEL }}
           parsing_model: ${{ secrets.PARSING_MODEL }}
           cta_base_url: https://codeboarding.pontux-inc.workers.dev
+          depth_level: '2'   # analyze deep (rich nested data for the workspace/extension)
+          render_depth: '1'  # but draw a clean top-level diagram in the PR

@@ -27,7 +27,7 @@ DEPTH="1"
 DIRECTION="LR"
 CHANGED_ONLY=""
 NO_EDGE_LABELS=""
-NESTED=""
+RENDER_DEPTH=""
 EXTRA=""
 OPEN="auto"
 REPO="" BASE_REF="" HEAD_REF="" BASE_JSON="" HEAD_JSON=""
@@ -47,7 +47,7 @@ while [ $# -gt 0 ]; do
     --direction) DIRECTION="$2"; shift 2;;
     --changed-only) CHANGED_ONLY="--changed-only"; shift;;
     --no-edge-labels) NO_EDGE_LABELS="--no-edge-labels"; shift;;
-    --nested) NESTED="--nested"; shift;;
+    --render-depth) RENDER_DEPTH="--render-depth $2"; shift 2;;
     --extra) EXTRA="$2"; shift 2;;   # raw args forwarded to diff_to_mermaid.py, e.g. --extra "--font-size 20 --node-padding 16"
     --no-open) OPEN="no"; shift;;
     -h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}"; exit 0;;
@@ -125,7 +125,7 @@ fi
 echo "== Diff -> Mermaid =="
 META="$(python3 "$ACTION_DIR/scripts/diff_to_mermaid.py" \
   --base "$BASE_ANALYSIS" --head "$HEAD_ANALYSIS" \
-  --out "$OUT/diagram.md" --direction "$DIRECTION" $CHANGED_ONLY $NO_EDGE_LABELS $NESTED $EXTRA)"
+  --out "$OUT/diagram.md" --direction "$DIRECTION" $CHANGED_ONLY $NO_EDGE_LABELS $RENDER_DEPTH $EXTRA)"
 echo "  $META"
 
 # Browser preview: render the (fence-stripped) mermaid via mermaid.js, strict mode

@@ -42,10 +42,10 @@ inputs:
     description: 'Render only changed components and their incident edges (also auto-applied when the full graph exceeds GitHub''s Mermaid limit).'
     required: false
     default: 'false'
-  nested:
-    description: 'Draw depth>1 sub-components as nested subgraphs (pair with depth_level >= 2).'
+  render_depth:
+    description: 'Component levels to DRAW in the PR Mermaid (independent of depth_level): 1 = top-level flat (default), 2 = +one nesting level as subgraphs, etc. Lets you analyze deep (depth_level=2) but display a clean level-1 diagram.'
     required: false
-    default: 'false'
+    default: '1'
   cta_base_url:
     description: 'Base URL of the click proxy (e.g. https://go.codeboarding.org). When set, the comment adds "open in workspace" / "get the extension" links with owner/repo/pr appended. Empty disables the CTA.'
     required: false
@@ -356,9 +356,8 @@ runs:
       id: diagram
       shell: bash
       run: |
-        FLAG=""
+        FLAG="--render-depth ${{ inputs.render_depth }}"
         [ "${{ inputs.changed_only }}" = "true" ] && FLAG="$FLAG --changed-only"
-        [ "${{ inputs.nested }}" = "true" ] && FLAG="$FLAG --nested"
         META=$(python3 ${{ github.action_path }}/scripts/diff_to_mermaid.py \
           --base "${{ steps.analyze.outputs.base_analysis }}" \
           --head "${{ steps.analyze.outputs.head_analysis }}" \

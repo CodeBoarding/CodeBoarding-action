@@ -304,7 +304,7 @@ def render_mermaid(
     direction: str = "LR",
     changed_only: bool = False,
     edge_labels: bool = True,
-    nested: bool = False,
+    render_depth: int = 1,
     font_size: int | None = None,
     node_padding: int | None = None,
     node_spacing: int | None = None,
@@ -312,10 +312,13 @@ def render_mermaid(
 ) -> tuple:
     """Return (mermaid_text, meta). ``mermaid_text`` is None when there's nothing to draw.
 
-    With ``nested`` the depth>1 sub-components are drawn as Mermaid subgraphs —
-    leaf nodes get a filled class, parent containers a stroke-only ``*Box``
-    class. A wholly-added parent forces ``added`` onto its subtree (the engine
-    only diff-annotates surviving branches; an added subtree arrives raw).
+    ``render_depth`` controls how many component levels are drawn, independent of
+    the engine's analysis depth: 1 = top-level flat (default), 2 = top-level plus
+    one level of sub-components as subgraphs, etc. So you can analyze deep
+    (depth_level=2) yet render a clean level-1 PR diagram. At each drawn nesting
+    level, parent containers get a stroke-only ``*Box`` class and leaf nodes a
+    filled class. A wholly-added parent forces ``added`` onto its subtree (the
+    engine only diff-annotates surviving branches; an added subtree arrives raw).
     """
     components = diff.get("components") or []
     relations = diff.get("components_relations") or []
@@ -345,17 +348,17 @@ def render_mermaid(
                 edge_styles[status].append(counters["edges"])
             counters["edges"] += 1
 
-    def emit_level(comps: list, rels: list, indent: int, force: str | None) -> None:
+    def emit_level(comps: list, rels: list, indent: int, force: str | None, level: int) -> None:
         pad = "    " * indent
         scope = _Scope(comps, used, force)
         for key, label, status, comp in scope.entries:
-            children = comp.get("components") if nested else None
+            children = comp.get("components") if level < render_depth else None  # cap drawn nesting
             if children:
                 body.append(f'{pad}subgraph {key}["{_esc(label)}"]')
                 if status in box_classes:
                     box_classes[status].append(key)
                 child_force = force or (status if status == "added" else None)
-                emit_level(children, comp.get("components_relations") or [], indent + 1, child_force)
+                emit_level(children, comp.get("components_relations") or [], indent + 1, child_force, level + 1)
                 body.append(f"{pad}end")
             else:
                 body.append(f'{pad}{key}["{_esc(label)}"]')
@@ -364,7 +367,7 @@ def render_mermaid(
             counters["nodes"] += 1
         emit_edges(rels, scope, pad, force)
 
-    emit_level(components, relations, 1, None)
+    emit_level(components, relations, 1, None, 1)
     if counters["nodes"] == 0:
         return None, {"n_changed": n_changed, "n_nodes": 0, "n_edges": 0, "truncated": False}
 
@@ -418,7 +421,7 @@ def main() -> int:
     p.add_argument("--direction", default="LR", choices=["LR", "TD", "TB", "RL", "BT"])
     p.add_argument("--changed-only", action="store_true", help="Render only changed components + incident edges")
     p.add_argument("--no-edge-labels", dest="edge_labels", action="store_false", help="Draw arrows without relation labels")
-    p.add_argument("--nested", action="store_true", help="Draw depth>1 sub-components as subgraphs")
+    p.add_argument("--render-depth", type=int, default=1, help="Component levels to draw: 1=top-level flat, 2=+one nesting level, ...")
     p.add_argument("--font-size", type=int, default=None, help="Node label font size in px (bigger label ⇒ bigger node)")
     p.add_argument("--node-padding", type=int, default=None, help="Interior padding around each node label")
     p.add_argument("--node-spacing", type=int, default=None, help="Space between nodes in the same rank")
@@ -431,7 +434,7 @@ def main() -> int:
         direction=args.direction,
         changed_only=args.changed_only,
         edge_labels=args.edge_labels,
-        nested=args.nested,
+        render_depth=args.render_depth,
         font_size=args.font_size,
         node_padding=args.node_padding,
         node_spacing=args.node_spacing,

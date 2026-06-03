@@ -55,7 +55,7 @@ You need **one secret**: an LLM API key. OpenRouter is the default; pass your ow
 | `comment_header` | `Architecture review` | Header line of the PR comment. |
 | `diagram_direction` | `LR` | Mermaid layout direction: `LR`, `TD`, `TB`, `RL`, or `BT`. |
 | `changed_only` | `false` | Draw only changed components and their incident edges. |
-| `nested` | `false` | Draw depth>1 sub-components as nested subgraphs (pair with `depth_level >= 2`). |
+| `render_depth` | `1` | Component levels to **draw** in the PR diagram, independent of `depth_level`: `1` = top-level flat, `2` = +one nesting level as subgraphs. Analyze deep, display shallow. |
 
 ## Outputs
 
@@ -97,7 +97,7 @@ Because nothing is pushed (the diagram is inline Mermaid), there is no image ste
 ## Limitations
 
 - **GitHub Mermaid caps.** Inline Mermaid in comments is capped (≈500 edges / 50 000 chars). The action stays under this by auto-falling-back to a changed-only graph; if even that overflows it posts a text summary instead of a broken diagram.
-- **Nesting.** By default only the top-level component graph is drawn (matching the engine's default `graph LR`). Set `nested: true` with `depth_level >= 2` to draw sub-components as nested subgraphs — leaf nodes filled, parent containers outlined, both colored by status. Large nested graphs are more likely to hit GitHub's Mermaid caps (above), in which case the action degrades to changed-only or a text summary.
+- **Analysis depth vs. display depth.** `depth_level` controls how deep the engine *analyzes* (so the workspace/extension get rich nested data); `render_depth` controls how many levels the PR Mermaid *draws*. Keep `render_depth: 1` (default) for a clean top-level PR diagram even when `depth_level: 2`. Set `render_depth: 2` to draw one level of sub-components as subgraphs (leaf nodes filled, parent containers outlined). Large nested graphs are more likely to hit GitHub's Mermaid caps (above), in which case the action degrades to changed-only or a text summary.
 - **Renames show as remove + add.** Components are matched across the two analyses by name (the stable join), so a renamed component appears as a red removal plus a green addition rather than a single yellow change.
 - **No click-through.** GitHub renders Mermaid in strict security mode, so node hyperlinks are disabled.
 
@@ -121,7 +121,7 @@ scripts/run_local.sh --repo /path/to/repo --base <base-ref> --head <head-ref> \
   --engine /path/to/CodeBoarding      # defaults to ../CodeBoarding
 ```
 
-Flags: `--depth N`, `--direction LR|TD|…`, `--nested`, `--changed-only`, `--no-edge-labels`, `--out DIR`, `--no-open`.
+Flags: `--depth N`, `--direction LR|TD|…`, `--render-depth N`, `--changed-only`, `--no-edge-labels`, `--out DIR`, `--no-open`.
 
 The diagram step alone is also directly runnable:
 
