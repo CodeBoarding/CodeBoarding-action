@@ -161,7 +161,10 @@ def _diff_components(base_components: list, current_components: list) -> list:
 
     for comp in base:
         if _comp_name(comp) not in matched_names:
-            ghost = {k: v for k, v in comp.items() if k not in ("components", "components_relations", "can_expand")}
+            # Keep the subtree: a deleted parent's children/relations render as a
+            # deleted subgraph (the renderer forces 'deleted' down), mirroring how
+            # an added parent renders its whole subtree.
+            ghost = {k: v for k, v in comp.items() if k != "can_expand"}
             ghost["diff_status"] = "deleted"
             result.append(ghost)
 
@@ -186,13 +189,23 @@ def _sanitize(name: str) -> str:
     return re.sub(r"\W+", "_", name or "")
 
 
-def _esc(text: str) -> str:
-    """Escape arbitrary text for a mermaid label under GitHub's strict security.
+# Mermaid label metacharacters → numeric/named char-refs (the ``#NNN;`` form
+# GitHub's strict renderer accepts). A bare ``]`` / ``)`` / ``}`` terminates a
+# node label and breaks the whole diagram, so escape the shape chars too — not
+# just ``#`` and ``"``.
+_ESC_MAP = {
+    "&": "#amp;", '"': "#quot;", "<": "#lt;", ">": "#gt;",
+    "[": "#91;", "]": "#93;", "(": "#40;", ")": "#41;",
+    "{": "#123;", "}": "#125;", "|": "#124;",
+}
 
-    ``#`` first (so the entities we inject are not re-escaped), then ``"``.
-    """
+
+def _esc(text: str) -> str:
+    """Escape arbitrary text for a Mermaid label under GitHub's strict renderer."""
     out = (text or "").replace("\n", " ").replace("\r", " ").strip()
-    out = out.replace("#", "#35;").replace('"', "#quot;")
+    out = out.replace("#", "#35;")  # first: literal '#'; the entities below add their own '#'
+    for ch, ent in _ESC_MAP.items():
+        out = out.replace(ch, ent)
     return out
 
 
@@ -258,15 +271,18 @@ def _filter_changed(components: list, relations: list) -> tuple:
             keep_ids.add(_comp_id(c))
             keep_names.add(_comp_name(c))
     for r in changed_rels:  # so a changed edge between two unchanged nodes still draws its endpoints
-        keep_ids.update((r.get("src_id", ""), r.get("dst_id", "")))
-        keep_names.update((r.get("src_name", ""), r.get("dst_name", "")))
+        keep_ids.update(x for x in (r.get("src_id", ""), r.get("dst_id", "")) if x)
+        keep_names.update(x for x in (r.get("src_name", ""), r.get("dst_name", "")) if x)
+    keep_ids.discard("")
+    keep_names.discard("")
 
-    kept = [c for c in components if _comp_id(c) in keep_ids or _comp_name(c) in keep_names]
-    kept_ids = {_comp_id(c) for c in kept}
-    kept_names = {_comp_name(c) for c in kept}
+    kept = [c for c in components if (_comp_id(c) and _comp_id(c) in keep_ids) or (_comp_name(c) and _comp_name(c) in keep_names)]
+    kept_ids = {_comp_id(c) for c in kept if _comp_id(c)}
+    kept_names = {_comp_name(c) for c in kept if _comp_name(c)}
 
     def touches(r: dict, side_id: str, side_name: str) -> bool:
-        return r.get(side_id, "") in kept_ids or r.get(side_name, "") in kept_names
+        rid, rname = r.get(side_id, ""), r.get(side_name, "")
+        return bool((rid and rid in kept_ids) or (rname and rname in kept_names))
 
     rels = [
         r
@@ -299,6 +315,26 @@ def _init_directive(font_size, node_padding, node_spacing, rank_spacing) -> str 
     return "%%{init: " + json.dumps(cfg) + "}%%" if cfg else None
 
 
+def _count_changed_components(components: list) -> int:
+    """Recursively count components whose diff_status is added/modified/deleted."""
+    n = 0
+    for c in components or []:
+        if c.get("diff_status") in CHANGED:
+            n += 1
+        n += _count_changed_components(c.get("components") or [])
+    return n
+
+
+def _has_changed_relations(components: list, relations: list) -> bool:
+    """Recursively: is any relation (at any nesting level) added/modified/deleted?"""
+    if any(r.get("diff_status") in CHANGED for r in relations or []):
+        return True
+    for c in components or []:
+        if _has_changed_relations(c.get("components") or [], c.get("components_relations") or []):
+            return True
+    return False
+
+
 def render_mermaid(
     diff: dict,
     direction: str = "LR",
@@ -314,97 +350,110 @@ def render_mermaid(
 
     ``render_depth`` controls how many component levels are drawn, independent of
     the engine's analysis depth: 1 = top-level flat (default), 2 = top-level plus
-    one level of sub-components as subgraphs, etc. So you can analyze deep
-    (depth_level=2) yet render a clean level-1 PR diagram. At each drawn nesting
-    level, parent containers get a stroke-only ``*Box`` class and leaf nodes a
-    filled class. A wholly-added parent forces ``added`` onto its subtree (the
-    engine only diff-annotates surviving branches; an added subtree arrives raw).
+    one level of sub-components as subgraphs, etc. ``meta`` reports ``n_changed``
+    (recursive changed-component count) and ``changed`` (any changed component OR
+    relation at any level) so the caller never mistakes a relation/nested change
+    for "no changes". On overflow of GitHub's Mermaid caps the full graph degrades
+    to a changed-only graph (and finally to None) rather than emitting an
+    unrenderable blob.
     """
-    components = diff.get("components") or []
-    relations = diff.get("components_relations") or []
-    n_changed = sum(1 for c in components if c.get("diff_status") in CHANGED)
-
-    if changed_only or len(relations) > MAX_EDGES:
-        components, relations = _filter_changed(components, relations)
-
-    used: set = set()
-    body: list = []
-    node_classes: dict = {"added": [], "modified": [], "deleted": []}
-    box_classes: dict = {"added": [], "modified": [], "deleted": []}
-    edge_styles: dict = {"added": [], "modified": [], "deleted": []}
-    counters = {"edges": 0, "nodes": 0}
-
-    def emit_edges(rels: list, scope: _Scope, pad: str, force: str | None) -> None:
-        for rel in rels:
-            status = force or rel.get("diff_status", "unchanged")
-            present = status != "deleted"
-            src = scope.resolve(rel.get("src_id", ""), rel.get("src_name", ""), present)
-            dst = scope.resolve(rel.get("dst_id", ""), rel.get("dst_name", ""), present)
-            if src is None or dst is None:
-                continue  # endpoint not drawn — skip, don't consume an edge index
-            label = _esc(_truncate(rel.get("relation", ""))) if edge_labels else ""
-            body.append(f'{pad}{src} -- "{label}" --> {dst}' if label else f"{pad}{src} --> {dst}")
-            if status in edge_styles:
-                edge_styles[status].append(counters["edges"])
-            counters["edges"] += 1
-
-    def emit_level(comps: list, rels: list, indent: int, force: str | None, level: int) -> None:
-        pad = "    " * indent
-        scope = _Scope(comps, used, force)
-        for key, label, status, comp in scope.entries:
-            children = comp.get("components") if level < render_depth else None  # cap drawn nesting
-            if children:
-                body.append(f'{pad}subgraph {key}["{_esc(label)}"]')
-                if status in box_classes:
-                    box_classes[status].append(key)
-                child_force = force or (status if status == "added" else None)
-                emit_level(children, comp.get("components_relations") or [], indent + 1, child_force, level + 1)
-                body.append(f"{pad}end")
-            else:
-                body.append(f'{pad}{key}["{_esc(label)}"]')
-                if status in node_classes:
-                    node_classes[status].append(key)
-            counters["nodes"] += 1
-        emit_edges(rels, scope, pad, force)
-
-    emit_level(components, relations, 1, None, 1)
-    if counters["nodes"] == 0:
-        return None, {"n_changed": n_changed, "n_nodes": 0, "n_edges": 0, "truncated": False}
-
-    style: list = [
-        f'    classDef added fill:{COLORS["added"]["fill"]},stroke:{COLORS["added"]["stroke"]},color:#ffffff;',
-        f'    classDef modified fill:{COLORS["modified"]["fill"]},stroke:{COLORS["modified"]["stroke"]},color:#ffffff;',
-        f'    classDef deleted fill:{COLORS["deleted"]["fill"]},stroke:{COLORS["deleted"]["stroke"]},'
-        f"color:#ffffff,stroke-dasharray:5 3;",
-    ]
-    if any(box_classes.values()):  # stroke-only containers so big parents aren't solid blocks
-        for st in CHANGED:
-            dash = ",stroke-dasharray:5 3" if st == "deleted" else ""
-            style.append(f'    classDef {st}Box stroke:{COLORS[st]["stroke"]},stroke-width:2px,fill:none{dash};')
-    for status in CHANGED:
-        if node_classes[status]:
-            style.append(f'    class {",".join(node_classes[status])} {status};')
-        if box_classes[status]:
-            style.append(f'    class {",".join(box_classes[status])} {status}Box;')
-    for status in CHANGED:
-        idxs = edge_styles[status]
-        if not idxs:
-            continue
-        s = f'stroke:{COLORS[status]["stroke"]},stroke-width:2px'
-        if status == "deleted":
-            s += ",stroke-dasharray:5 3"
-        style.append(f'    linkStyle {",".join(str(i) for i in idxs)} {s};')
-
+    all_components = diff.get("components") or []
+    all_relations = diff.get("components_relations") or []
+    n_changed = _count_changed_components(all_components)
+    changed = n_changed > 0 or _has_changed_relations(all_components, all_relations)
     directive = _init_directive(font_size, node_padding, node_spacing, rank_spacing)
-    head = ["```mermaid"] + ([directive] if directive else []) + [f"graph {direction}"]
-    text = "\n".join(head + body + style + ["```"])
+
+    def build(only_changed: bool):
+        components, relations = (
+            _filter_changed(all_components, all_relations) if only_changed else (all_components, all_relations)
+        )
+        used: set = set()
+        body: list = []
+        node_classes: dict = {"added": [], "modified": [], "deleted": []}
+        box_classes: dict = {"added": [], "modified": [], "deleted": []}
+        edge_styles: dict = {"added": [], "modified": [], "deleted": []}
+        counters = {"edges": 0, "nodes": 0}
+
+        def emit_edges(rels, scope, pad, force):
+            for rel in rels:
+                status = force or rel.get("diff_status", "unchanged")
+                present = status != "deleted"
+                src = scope.resolve(rel.get("src_id", ""), rel.get("src_name", ""), present)
+                dst = scope.resolve(rel.get("dst_id", ""), rel.get("dst_name", ""), present)
+                if src is None or dst is None:
+                    continue  # endpoint not drawn — skip, don't consume an edge index
+                label = _esc(_truncate(rel.get("relation", ""))) if edge_labels else ""
+                body.append(f'{pad}{src} -- "{label}" --> {dst}' if label else f"{pad}{src} --> {dst}")
+                if status in edge_styles:
+                    edge_styles[status].append(counters["edges"])
+                counters["edges"] += 1
+
+        def emit_level(comps, rels, indent, force, level):
+            pad = "    " * indent
+            scope = _Scope(comps, used, force)
+            for key, label, status, comp in scope.entries:
+                children = comp.get("components") if level < render_depth else None  # cap drawn nesting
+                if children:
+                    body.append(f'{pad}subgraph {key}["{_esc(label)}"]')
+                    if status in box_classes:
+                        box_classes[status].append(key)
+                    child_force = force or (status if status in ("added", "deleted") else None)
+                    emit_level(children, comp.get("components_relations") or [], indent + 1, child_force, level + 1)
+                    body.append(f"{pad}end")
+                else:
+                    body.append(f'{pad}{key}["{_esc(label)}"]')
+                    if status in node_classes:
+                        node_classes[status].append(key)
+                counters["nodes"] += 1
+            emit_edges(rels, scope, pad, force)
+
+        emit_level(components, relations, 1, None, 1)
+        if counters["nodes"] == 0:
+            return None, 0, 0
+
+        style: list = [
+            f'    classDef added fill:{COLORS["added"]["fill"]},stroke:{COLORS["added"]["stroke"]},color:#ffffff;',
+            f'    classDef modified fill:{COLORS["modified"]["fill"]},stroke:{COLORS["modified"]["stroke"]},color:#ffffff;',
+            f'    classDef deleted fill:{COLORS["deleted"]["fill"]},stroke:{COLORS["deleted"]["stroke"]},'
+            f"color:#ffffff,stroke-dasharray:5 3;",
+        ]
+        if any(box_classes.values()):  # stroke-only containers so big parents aren't solid blocks
+            for st in CHANGED:
+                dash = ",stroke-dasharray:5 3" if st == "deleted" else ""
+                style.append(f'    classDef {st}Box stroke:{COLORS[st]["stroke"]},stroke-width:2px,fill:none{dash};')
+        for status in CHANGED:
+            if node_classes[status]:
+                style.append(f'    class {",".join(node_classes[status])} {status};')
+            if box_classes[status]:
+                style.append(f'    class {",".join(box_classes[status])} {status}Box;')
+        for status in CHANGED:
+            idxs = edge_styles[status]
+            if not idxs:
+                continue
+            s = f'stroke:{COLORS[status]["stroke"]},stroke-width:2px'
+            if status == "deleted":
+                s += ",stroke-dasharray:5 3"
+            style.append(f'    linkStyle {",".join(str(i) for i in idxs)} {s};')
+
+        head = ["```mermaid"] + ([directive] if directive else []) + [f"graph {direction}"]
+        return "\n".join(head + body + style + ["```"]), counters["nodes"], counters["edges"]
+
+    text, n_nodes, n_edges = build(changed_only)
+    truncated = changed_only
+    # Degrade an oversized full graph to changed-only before giving up (GitHub caps).
+    if text is not None and (n_edges > MAX_EDGES or len(text) > MAX_TEXT) and not changed_only:
+        t2, nn2, ne2 = build(True)
+        if t2 is not None:
+            text, n_nodes, n_edges, truncated = t2, nn2, ne2, True
+
     meta = {
         "n_changed": n_changed,
-        "n_nodes": counters["nodes"],
-        "n_edges": counters["edges"],
-        "truncated": bool(changed_only or len(diff.get("components_relations") or []) > MAX_EDGES),
+        "changed": changed,
+        "n_nodes": n_nodes if text is not None else 0,
+        "n_edges": n_edges if text is not None else 0,
+        "truncated": bool(truncated or text is None),
     }
-    if len(text) > MAX_TEXT or counters["edges"] > MAX_EDGES:  # never trip GitHub's red error box
+    if text is None or n_edges > MAX_EDGES or len(text) > MAX_TEXT:  # never trip GitHub's red error box
         meta["truncated"] = True
         return None, meta
     return text, meta

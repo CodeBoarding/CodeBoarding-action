@@ -47,26 +47,34 @@ _EDITOR_LABEL = {"vscode": "VS Code", "cursor": "Cursor"}
 
 
 def build_cta(cta_base: str, owner: str, repo: str, pr: str, repo_path: Path, issues: int = 0) -> str:
-    """Return the markdown CTA footer, or '' when ``cta_base`` is unset."""
-    if not cta_base:
-        return ""
-    base = cta_base.rstrip("/")
+    """Return the markdown CTA footer (the warning banner shows even without a proxy URL).
 
-    def link(path: str, **extra: str) -> str:
-        return f"{base}/{path}?" + urlencode({"owner": owner, "repo": repo, "pr": pr, **extra})
-
-    editor_links = " · ".join(
-        f"[**Open in {_EDITOR_LABEL[e]} →**]({link('open-in-editor', editor=e)})" for e in detect_editors(repo_path)
-    )
-
-    lines = ["", "---"]
+    The ⚠️ health banner is informational and needs no proxy, so it renders
+    whenever ``issues > 0``; the editor/marketplace links require ``cta_base``.
+    Returns '' only when there's nothing to show.
+    """
+    parts: list[str] = []
     if issues > 0:
         noun = "issue" if issues == 1 else "issues"
-        lines += [f"⚠️ **{issues} architecture {noun} found** — open CodeBoarding to explore them.", ""]
+        parts.append(f"⚠️ **{issues} architecture {noun} found** — open CodeBoarding to explore them.")
 
-    lines += [f"🧭 See this architecture in your editor: {editor_links}", ""]
+    if cta_base:
+        base = cta_base.rstrip("/")
 
-    lines += [f"💡 New to CodeBoarding? [**Get the extension →**]({link('use-marketplace')})"]
+        def link(path: str, **extra: str) -> str:
+            return f"{base}/{path}?" + urlencode({"owner": owner, "repo": repo, "pr": pr, **extra})
+
+        editor_links = " · ".join(
+            f"[**Open in {_EDITOR_LABEL[e]} →**]({link('open-in-editor', editor=e)})" for e in detect_editors(repo_path)
+        )
+        parts.append(f"🧭 See this architecture in your editor: {editor_links}")
+        parts.append(f"💡 New to CodeBoarding? [**Get the extension →**]({link('use-marketplace')})")
+
+    if not parts:
+        return ""
+    lines = ["", "---"]
+    for p in parts:
+        lines += ["", p]
     return "\n".join(lines)
 
 

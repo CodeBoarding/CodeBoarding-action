@@ -29,8 +29,8 @@ jobs:
         run: |
           set -euo pipefail
           ver="${TAG#v}"
-          if ! printf '%s' "$ver" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then
-            echo "::notice::Tag '$TAG' is not vMAJOR.MINOR.PATCH semver; skipping major-tag move."
+          if ! printf '%s' "$ver" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::notice::Tag '$TAG' is not a clean vMAJOR.MINOR.PATCH release (prerelease/suffix); skipping major-tag move."
             exit 0
           fi
           major="v${ver%%.*}"

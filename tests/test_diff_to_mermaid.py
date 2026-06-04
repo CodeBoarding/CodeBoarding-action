@@ -103,6 +103,39 @@ class TestRender(unittest.TestCase):
         self.assertIn("#quot;", text)
         self.assertIn("#35;", text)
 
+    def test_label_escaping_brackets_break_chars(self):
+        # `]` / `(` / `&` would break GitHub's renderer if left raw.
+        self.assertEqual(dm._esc("Has]Bracket"), "Has#93;Bracket")
+        self.assertEqual(dm._esc("f(x)"), "f#40;x#41;")
+        self.assertEqual(dm._esc("A & B"), "A #amp; B")
+        head = {"components": [comp("Weird]Name(x)"), comp("B")], "components_relations": []}
+        base = {"components": [comp("B")], "components_relations": []}
+        text, _ = dm.render_mermaid(dm.build_diff(base, head))
+        self.assertNotIn("]Name", text)  # no raw ] inside a label
+        self.assertIn("#93;", text)
+
+    def test_changed_flag_relation_only(self):
+        # A label-only relation change leaves n_changed=0 but must report changed=True.
+        base = {"components": [comp("A"), comp("B")], "components_relations": [rel("A", "B", "uses")]}
+        head = {"components": [comp("A"), comp("B")], "components_relations": [rel("A", "B", "calls")]}
+        text, meta = dm.render_mermaid(dm.build_diff(base, head))
+        self.assertEqual(meta["n_changed"], 0)
+        self.assertTrue(meta["changed"])
+        self.assertIsNotNone(text)
+
+    def test_changed_flag_false_when_identical(self):
+        d = {"components": [comp("A"), comp("B")], "components_relations": [rel("A", "B")]}
+        _, meta = dm.render_mermaid(dm.build_diff(d, d))
+        self.assertEqual(meta["n_changed"], 0)
+        self.assertFalse(meta["changed"])
+
+    def test_changed_flag_counts_nested(self):
+        base = {"components": [comp("P", subs=[comp("c1")], subrels=[])], "components_relations": []}
+        head = {"components": [comp("P", subs=[comp("c1", {"x.py": ["f"]})], subrels=[])], "components_relations": []}
+        _, meta = dm.render_mermaid(dm.build_diff(base, head), render_depth=2)
+        self.assertEqual(meta["n_changed"], 1)  # the nested child counts
+        self.assertTrue(meta["changed"])
+
     def test_changed_only_truncates(self):
         text, meta = dm.render_mermaid(self._diff(), render_depth=1, changed_only=True)
         self.assertIsNotNone(text)

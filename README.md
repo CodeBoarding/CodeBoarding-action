@@ -31,21 +31,31 @@ on:
 permissions:
   pull-requests: write         # the only permission needed — nothing is pushed
 
+# Cancel a superseded run when new commits land on the same PR (avoid stacking
+# multi-minute LLM jobs).
+concurrency:
+  group: codeboarding-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
 jobs:
   diagram:
     runs-on: ubuntu-latest
-    # Run on (non-draft) PR events, OR when someone comments "/codeboarding" on a PR.
-    # The if-gate is important: without it a runner spins up for every comment.
+    # Run on (non-draft) PR events, OR when a TRUSTED collaborator comments exactly
+    # "/codeboarding" on a PR. The if-gate matters: (1) without it a runner spins up
+    # for every comment; (2) the author_association check is a SECURITY gate — see below.
     if: >
       (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
-       startsWith(github.event.comment.body, '/codeboarding'))
+       (github.event.comment.body == '/codeboarding' || startsWith(github.event.comment.body, '/codeboarding ')) &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     timeout-minutes: 60
     steps:
       - uses: codeboarding/codeboarding-action@v1
         with:
           llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
+
+> ⚠️ **Security — the `author_association` gate is required.** `issue_comment` workflows run from your default branch **with full repository secrets, for any commenter**. Without the `OWNER`/`MEMBER`/`COLLABORATOR` check, anyone could comment `/codeboarding` on a fork PR and have the action check out and run the engine over their PR-head code with your `OPENROUTER_API_KEY` present (a "pwn request"). The action's guard enforces this too, but gate it at the workflow level so a runner never even starts for an untrusted commenter.
 
 You need **one secret**: an LLM API key. OpenRouter is the default; pass your own model via the `agent_model` / `parsing_model` inputs if you prefer.
 

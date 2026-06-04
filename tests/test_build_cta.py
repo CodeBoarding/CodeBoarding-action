@@ -34,6 +34,11 @@ class TestBuildCta(unittest.TestCase):
     def test_empty_base_yields_no_footer(self):
         self.assertEqual(bc.build_cta("", "o", "r", "1", repo_with()), "")
 
+    def test_warning_shows_without_cta_base(self):
+        out = bc.build_cta("", "o", "r", "1", repo_with(), issues=3)
+        self.assertIn("3 architecture issues found", out)
+        self.assertNotIn("http", out)  # no links without a proxy base
+
     def test_links_banner_and_cursor_only(self):
         out = bc.build_cta("https://x.dev/", "Org", "Repo", "9", repo_with(".cursor"), issues=2)
         self.assertIn("2 architecture issues found", out)
