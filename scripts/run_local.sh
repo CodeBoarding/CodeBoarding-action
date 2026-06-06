@@ -128,7 +128,7 @@ echo "== Diff -> Mermaid =="
 META="$(python3 "$ACTION_DIR/scripts/diff_to_mermaid.py" \
   --base "$BASE_ANALYSIS" --head "$HEAD_ANALYSIS" \
   --out "$OUT/diagram.md" --direction "$DIRECTION" \
-  "${CHANGED_ONLY[@]}" "${NO_EDGE_LABELS[@]}" "${RENDER_DEPTH[@]}" "${EXTRA[@]}")"
+  ${CHANGED_ONLY[@]+"${CHANGED_ONLY[@]}"} ${NO_EDGE_LABELS[@]+"${NO_EDGE_LABELS[@]}"} ${RENDER_DEPTH[@]+"${RENDER_DEPTH[@]}"} ${EXTRA[@]+"${EXTRA[@]}"})"
 echo "  $META"
 
 # Browser preview: render the (fence-stripped) mermaid via mermaid.js, strict mode
