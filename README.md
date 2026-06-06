@@ -90,7 +90,7 @@ jobs:
           llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
 
-Add the API key as a repository secret (Settings → Secrets and variables → Actions):
+Add the API key as a [repository secret](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets) (Settings → Secrets and variables → Actions):
 
 ```text
 OPENROUTER_API_KEY = sk-or-...
