@@ -51,7 +51,7 @@ inputs:
     required: false
     default: '1'
   cta_base_url:
-    description: 'Base URL of the click proxy (e.g. https://go.codeboarding.org) for the "open in VS Code/Cursor" / "get the extension" links, so owner/repo/pr are tracked. Empty (default) links straight to the editor deep link and Marketplace instead.'
+    description: 'Base URL of the click proxy (e.g. https://go.codeboarding.org). When set, the editor link deep-links into VS Code/Cursor via the proxy and a "get the extension" link is added (owner/repo/pr tracked). Empty (default) links to the extension listing instead, since GitHub strips vscode:/cursor: schemes from comment links.'
     required: false
     default: ''
   trigger_command:
@@ -573,8 +573,8 @@ runs:
           else echo "$N components changed"; fi
         }
 
-        # CTA footer: editor + extension links (via the click proxy when CTA_BASE is
-        # set, else straight to the editor deep link / Marketplace) plus the ⚠️ banner.
+        # CTA footer: an editor link (proxy deep-link when CTA_BASE is set, else the
+        # extension's https listing — GitHub strips vscode:/cursor:) plus the ⚠️ banner.
         cta() {
           python3 "$ACTION_PATH/scripts/build_cta.py" \
             --cta-base "$CTA_BASE" --owner "$OWNER" --repo "$REPO" --pr "$PR" \

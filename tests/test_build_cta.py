@@ -31,17 +31,22 @@ class TestDetectEditors(unittest.TestCase):
 
 
 class TestBuildCta(unittest.TestCase):
-    def test_no_proxy_falls_back_to_editor_deeplink_and_marketplace(self):
+    def test_no_proxy_links_editor_to_https_listing_no_get_extension(self):
         out = bc.build_cta("", "o", "r", "1", repo_with(".cursor"), issues=3)
         self.assertIn("3 architecture issues found", out)
-        self.assertIn("[**Open in Cursor →**](cursor:extension/Codeboarding.codeboarding)", out)
-        self.assertIn("marketplace.visualstudio.com/items?itemName=Codeboarding.codeboarding", out)
-        self.assertNotIn("open-in-editor", out)  # no proxy routing
+        # Cursor -> Open VSX https listing. A cursor: scheme would be stripped by GitHub.
+        self.assertIn("[**Open in Cursor →**](https://open-vsx.org/extension/CodeBoarding/codeboarding)", out)
+        self.assertNotIn("cursor:extension", out)
+        self.assertNotIn("Get the extension", out)  # dropped without a proxy
         self.assertNotIn("Open in VS Code", out)  # cursor-only repo
 
-    def test_no_proxy_default_vscode_deeplink_no_banner_at_zero(self):
+    def test_no_proxy_vscode_marketplace_https_no_banner_at_zero(self):
         out = bc.build_cta("", "o", "r", "1", repo_with())  # neither dir, no issues
-        self.assertIn("[**Open in VS Code →**](vscode:extension/Codeboarding.codeboarding)", out)
+        self.assertIn(
+            "[**Open in VS Code →**](https://marketplace.visualstudio.com/items?itemName=Codeboarding.codeboarding)", out
+        )
+        self.assertNotIn("vscode:extension", out)  # custom scheme stripped by GitHub
+        self.assertNotIn("Get the extension", out)
         self.assertNotIn("architecture issue", out)  # banner suppressed at 0 issues
 
     def test_links_banner_and_cursor_only(self):
