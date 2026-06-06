@@ -1,9 +1,11 @@
 """Build the call-to-action footer appended to the architecture-diff PR comment.
 
-The footer links into CodeBoarding's click proxy (so owner/repo/pr are tracked)
-and currently drives straight to the VS Code/Cursor **extension**: an "open this
+The footer drives straight to the VS Code/Cursor **extension**: an "open this
 architecture in your editor" link (editor-specific) plus an "install the
-extension" link, and a warning banner when real health findings exist. A
+extension" link, and a warning banner when real health findings exist. When a
+click proxy (``cta_base``) is set the links route through it so owner/repo/pr are
+tracked; otherwise they point at the final destinations directly — the editor
+``<scheme>:extension/...`` deep link and the Marketplace listing. A
 no-install hosted-webview ("explore in browser") tier is intentionally deferred
 (see docs/COMMIT_STRATEGY.md) — the committed analysis already supports it later.
 
@@ -45,33 +47,42 @@ def detect_editors(repo_path: Path) -> list[str]:
 
 _EDITOR_LABEL = {"vscode": "VS Code", "cursor": "Cursor"}
 
+# No-proxy fallback targets: the final destinations the click proxy would route to.
+_EXTENSION_ID = "Codeboarding.codeboarding"
+_EDITOR_DEEPLINK = {e: f"{e}:extension/{_EXTENSION_ID}" for e in _EDITOR_LABEL}
+_MARKETPLACE_URL = f"https://marketplace.visualstudio.com/items?itemName={_EXTENSION_ID}"
+
 
 def build_cta(cta_base: str, owner: str, repo: str, pr: str, repo_path: Path, issues: int = 0) -> str:
-    """Return the markdown CTA footer (the warning banner shows even without a proxy URL).
+    """Return the markdown CTA footer: a health-warning banner plus editor/extension links.
 
-    The ⚠️ health banner is informational and needs no proxy, so it renders
-    whenever ``issues > 0``; the editor/marketplace links require ``cta_base``.
-    Returns '' only when there's nothing to show.
+    With a ``cta_base`` proxy the links route through it (owner/repo/pr tracked);
+    without one they point straight to the destinations the proxy would route to —
+    the editor's ``<scheme>:extension/...`` deep link and the Marketplace listing.
+    The ⚠️ banner shows whenever ``issues > 0``.
     """
     parts: list[str] = []
     if issues > 0:
         noun = "issue" if issues == 1 else "issues"
         parts.append(f"⚠️ **{issues} architecture {noun} found** — open CodeBoarding to explore them.")
 
+    editors = detect_editors(repo_path)
     if cta_base:
         base = cta_base.rstrip("/")
 
         def link(path: str, **extra: str) -> str:
             return f"{base}/{path}?" + urlencode({"owner": owner, "repo": repo, "pr": pr, **extra})
 
-        editor_links = " · ".join(
-            f"[**Open in {_EDITOR_LABEL[e]} →**]({link('open-in-editor', editor=e)})" for e in detect_editors(repo_path)
-        )
-        parts.append(f"See this architecture in your editor: {editor_links}")
-        parts.append(f"💡 New to CodeBoarding? [**Get the extension →**]({link('use-marketplace')})")
+        editor_href = {e: link("open-in-editor", editor=e) for e in editors}
+        extension_href = link("use-marketplace")
+    else:
+        editor_href = {e: _EDITOR_DEEPLINK[e] for e in editors}
+        extension_href = _MARKETPLACE_URL
 
-    if not parts:
-        return ""
+    editor_links = " · ".join(f"[**Open in {_EDITOR_LABEL[e]} →**]({editor_href[e]})" for e in editors)
+    parts.append(f"See this architecture in your editor: {editor_links}")
+    parts.append(f"💡 New to CodeBoarding? [**Get the extension →**]({extension_href})")
+
     lines = ["", "---"]
     for p in parts:
         lines += ["", p]
