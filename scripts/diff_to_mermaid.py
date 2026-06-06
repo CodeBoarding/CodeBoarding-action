@@ -82,26 +82,16 @@ def _methods_by_file(c: dict) -> dict:
 def _has_structural_changes(base: dict, current: dict) -> bool:
     base_files = {fm.get("file_path", "") for fm in _file_methods(base)}
     current_files = {fm.get("file_path", "") for fm in _file_methods(current)}
-    if base_files != current_files:
-        return True
-    if len(base.get("components") or []) != len(current.get("components") or []):
-        return True
-    return False
+    return base_files != current_files or len(base.get("components") or []) != len(current.get("components") or [])
 
 
-def _diff_methods(base: dict, current: dict) -> dict:
+def _has_method_changes(base: dict, current: dict) -> bool:
     base_by_file = _methods_by_file(base)
     current_by_file = _methods_by_file(current)
-    added: dict = {}
-    removed: dict = {}
-    for file_path in set(base_by_file) | set(current_by_file):
-        a = sorted(current_by_file.get(file_path, set()) - base_by_file.get(file_path, set()))
-        r = sorted(base_by_file.get(file_path, set()) - current_by_file.get(file_path, set()))
-        if a:
-            added[file_path] = a
-        if r:
-            removed[file_path] = r
-    return {"added": added, "removed": removed}
+    return any(
+        base_by_file.get(fp, set()) != current_by_file.get(fp, set())
+        for fp in set(base_by_file) | set(current_by_file)
+    )
 
 
 def _rel_key(r: dict) -> tuple:
@@ -180,11 +170,9 @@ def _diff_components(base_components: list, current_components: list) -> list:
             continue
         matched_names.add(_comp_name(base_match))
         structural = _has_structural_changes(base_match, comp)
-        method_diff = _diff_methods(base_match, comp)
-        has_method_changes = bool(method_diff["added"] or method_diff["removed"])
-        diff_status = "modified" if (structural or has_method_changes) else "unchanged"
+        diff_status = "modified" if (structural or _has_method_changes(base_match, comp)) else "unchanged"
 
-        annotated = {**comp, "diff_status": diff_status, "method_diff": method_diff}
+        annotated = {**comp, "diff_status": diff_status}
 
         base_subs = base_match.get("components") or []
         current_subs = comp.get("components") or []
