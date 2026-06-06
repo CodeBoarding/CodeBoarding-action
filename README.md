@@ -87,7 +87,38 @@ That's the only required setup — it's passed via `llm_api_key` above. (For loc
           parsing_model: google/gemini-3-flash-preview      # optional
 ```
 
-**Model format:** a bare OpenRouter slug (e.g. `anthropic/claude-sonnet-4`) — exactly one `/`, **no `openrouter/` prefix** (that's the LiteLLM form; the action rejects it early).
+**Model format (OpenRouter):** a bare OpenRouter slug (e.g. `anthropic/claude-sonnet-4`) — exactly one `/`, **no `openrouter/` prefix** (that's the LiteLLM form; the action rejects it early). Other providers use their own native model ids.
+
+## Bring your own LLM provider
+
+OpenRouter is the default, but you can use any provider the engine supports — set `llm_provider` and pass that provider's key:
+
+```yaml
+        with:
+          llm_provider: anthropic                  # omit for OpenRouter (default)
+          llm_api_key:  ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+`llm_provider: <name>` hands your key to the engine as `<NAME>_API_KEY`, and the engine auto-selects that provider. Set **exactly one** key per run.
+
+<details><summary><strong>Supported providers</strong></summary>
+
+| `llm_provider` | env var the engine reads |
+|---|---|
+| `openrouter` *(default)* | `OPENROUTER_API_KEY` |
+| `openai` | `OPENAI_API_KEY` |
+| `anthropic` | `ANTHROPIC_API_KEY` |
+| `google` | `GOOGLE_API_KEY` |
+| `vercel` | `VERCEL_API_KEY` |
+| `deepseek` | `DEEPSEEK_API_KEY` |
+| `cerebras` | `CEREBRAS_API_KEY` |
+| `glm` / `kimi` | `GLM_API_KEY` / `KIMI_API_KEY` |
+| `aws_bedrock` | `AWS_BEARER_TOKEN_BEDROCK` |
+| `ollama` | `OLLAMA_BASE_URL` |
+
+This table mirrors the engine and may lag it — the source of truth is the engine's provider registry ([`agents/llm_config.py`](https://github.com/CodeBoarding/CodeBoarding/blob/main/agents/llm_config.py)). Any provider it adds that follows the `<NAME>_API_KEY` convention works here with no action change.
+
+</details>
 
 ## When it runs
 
@@ -100,7 +131,8 @@ The command needs the `issue_comment` trigger and runs from your **default branc
 
 | Input | Default | Description |
 |---|---|---|
-| `llm_api_key` | required | LLM API key. OpenRouter is the default provider. |
+| `llm_api_key` | required | Your LLM provider API key (see `llm_provider`). |
+| `llm_provider` | `openrouter` | Provider for the key — mapped to `<NAME>_API_KEY` (e.g. `anthropic`, `openai`, `google`). |
 | `github_token` | `${{ github.token }}` | Token used to post/update the PR comment. |
 | `engine_ref` | `v0.12.0` | CodeBoarding engine ref. Pin for reproducibility. |
 | `depth_level` | `1` | Analysis depth, 1 to 3. Higher is slower and richer. |
