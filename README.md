@@ -165,7 +165,7 @@ The command needs the `issue_comment` trigger and runs from your default branch 
 | `parsing_model` | `google/gemini-3.1-flash-lite-preview` | Parsing model. OpenRouter default shown; other providers use their own engine default. |
 | `comment_header` | `Architecture review` | Heading for the PR comment. |
 | `trigger_command` | `/codeboarding` | Slash command for trusted on-demand runs. |
-| `cta_base_url` | empty | Optional click-proxy base URL for editor and extension links. |
+| `cta_base_url` | empty | Click-proxy base URL for the editor/extension links (tracks owner/repo/pr). Empty links straight to the editor deep link and Marketplace. |
 
 ## Outputs
 
