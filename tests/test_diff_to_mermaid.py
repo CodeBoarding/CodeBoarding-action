@@ -123,6 +123,17 @@ class TestRender(unittest.TestCase):
         self.assertNotIn("]Name", text)  # no raw ] inside a label
         self.assertIn("#93;", text)
 
+    def test_esc_strips_newlines(self):
+        # A raw newline/CR in a label breaks the whole Mermaid block.
+        self.assertNotIn("\n", dm._esc("line1\nline2"))
+        self.assertNotIn("\r", dm._esc("a\r\nb"))
+
+    def test_truncate_caps_long_edge_label_with_ellipsis(self):
+        out = dm._truncate("x" * 60)
+        self.assertLessEqual(len(out), dm._EDGE_LABEL_MAX)
+        self.assertTrue(out.endswith("…"))
+        self.assertEqual(dm._truncate("short"), "short")  # under the cap: unchanged
+
     def test_changed_flag_relation_only(self):
         # A label-only relation change leaves n_changed=0 but must report changed=True.
         base = {"components": [comp("A"), comp("B")], "components_relations": [rel("A", "B", "uses")]}

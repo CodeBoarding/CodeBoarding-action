@@ -131,6 +131,14 @@ class TestAnalysis(_Base):
         self.assertFalse((Path(out) / "stale.json").exists())  # head dir wiped before full
         self.assertFalse((Path(out) / "health").exists())  # nested stale artifacts wiped too
 
+    def test_head_falls_back_to_full_on_baseline_unavailable(self):
+        analysis, _, BaseUnavail = self._install()  # the other warm-start failure must also fall back
+        rf = _Rec()
+        analysis.run_full = rf
+        analysis.run_incremental = _Rec(raises=BaseUnavail)
+        cb_engine.run_head("/repo", tempfile.mkdtemp(), "r", "rid", 1, "base", "head", "head")
+        self.assertEqual(len(rf.calls), 1)  # BaselineUnavailableError also triggers the full re-run
+
 
 class TestHealth(_Base):
     def _install_health(self, report):
