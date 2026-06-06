@@ -1,16 +1,25 @@
-<div align="center">
-  <img src="assets/icon.svg" alt="CodeBoarding Logo" height="120" />
+# CodeBoarding Visual Architecture Review
 
-  # CodeBoarding Visual Architecture Review
+Review system design on every pull request, not just the diff.
 
-  Visual system-design review for pull requests. CodeBoarding analyzes the architecture before and after a change, then comments on the PR with an inline Mermaid diagram showing what changed.
-</div>
+CodeBoarding analyzes your architecture before and after a change, then comments on the PR with an inline Mermaid diagram of what changed — added, modified, and deleted components and the relationships between them. It runs the [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) engine in CI: static analysis combined with LLM reasoning.
 
-## What It Does
+[CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) · [Website](https://codeboarding.org) · [Explore examples](https://codeboarding.org/diagrams) · [VS Code extension](https://marketplace.visualstudio.com/items?itemName=Codeboarding.codeboarding) · [Discord](https://discord.gg/T5zHTJYFuy)
+
+[![JavaScript](https://img.shields.io/badge/JavaScript-222222?style=flat-square&logo=javascript&logoColor=F7DF1E)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Java](https://img.shields.io/badge/Java-E76F00?style=flat-square&logo=openjdk&logoColor=white)](https://www.java.com/)
+[![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Go](https://img.shields.io/badge/Go-00ADD8?style=flat-square&logo=go&logoColor=white)](https://go.dev/)
+[![PHP](https://img.shields.io/badge/PHP-777BB4?style=flat-square&logo=php&logoColor=white)](https://www.php.net/)
+[![Rust](https://img.shields.io/badge/Rust-000000?style=flat-square&logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![C#](https://custom-icon-badges.demolab.com/badge/C%23-512BD4.svg?style=flat-square&logo=cshrp&logoColor=white)](https://learn.microsoft.com/en-us/dotnet/csharp/)
+
+## What it does
 
 - Builds or reuses a baseline architecture analysis for the PR base.
 - Runs incremental analysis on the PR head, then diffs components and relationships.
-- Posts a sticky PR comment with an inline Mermaid map — 🟩 added · 🟨 modified · 🟥 deleted (dashed), for both nodes and edges.
+- Posts a sticky PR comment with an inline Mermaid map. Green is added, yellow is modified, red (dashed) is deleted, for both nodes and edges.
 
 A PR comment looks like this:
 
@@ -31,7 +40,7 @@ graph LR
     linkStyle 1 stroke:#1f883d,stroke-width:2px;
 ```
 
-## Usage
+## Quick start
 
 Create `.github/workflows/codeboarding.yml`:
 
@@ -40,7 +49,7 @@ name: CodeBoarding review
 
 on:
   pull_request:
-    # Generate ONCE, when the PR becomes reviewable — not on every push, so you
+    # Generate once, when the PR becomes reviewable, not on every push, so you
     # don't spend an LLM job per commit. Use [opened] for strictly creation-only,
     # or add `synchronize` to re-run on each push. Refresh anytime with /codeboarding.
     types: [opened, reopened, ready_for_review]
@@ -70,15 +79,15 @@ jobs:
           llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
 
-Add the API key as a repository secret (**Settings → Secrets and variables → Actions**):
+Add the API key as a repository secret (Settings → Secrets and variables → Actions):
 
 ```text
 OPENROUTER_API_KEY = sk-or-...
 ```
 
-That's the only required setup — it's passed via `llm_api_key` above. (For local runs with `scripts/run_local.sh`, export `OPENROUTER_API_KEY` as an env var instead.)
+That is the only required setup, passed via `llm_api_key` above. For local runs with `scripts/run_local.sh`, export `OPENROUTER_API_KEY` as an environment variable instead.
 
-**Models are optional.** Omit `agent_model` / `parsing_model` to use the engine's default for your provider, or pin them — inline or from a repository **variable** (a model name isn't a secret, so use `vars.`, not `secrets.`):
+Models are optional. Omit `agent_model` and `parsing_model` to use the engine's default for your provider, or pin them inline or from a repository variable (a model name is not a secret, so use `vars.`, not `secrets.`):
 
 ```yaml
         with:
@@ -87,11 +96,11 @@ That's the only required setup — it's passed via `llm_api_key` above. (For loc
           parsing_model: google/gemini-3-flash-preview      # optional
 ```
 
-**Model format (OpenRouter):** a bare OpenRouter slug (e.g. `anthropic/claude-sonnet-4`) — exactly one `/`, **no `openrouter/` prefix** (that's the LiteLLM form; the action rejects it early). Other providers use their own native model ids.
+Model format on OpenRouter is a bare slug (e.g. `anthropic/claude-sonnet-4`): exactly one `/`, with no `openrouter/` prefix (that is the LiteLLM form, which the action rejects early). Other providers use their own native model ids.
 
 ## Bring your own LLM provider
 
-OpenRouter is the default, but you can use any provider the engine supports — set `llm_provider` and pass that provider's key:
+OpenRouter is the default, but you can use any provider the engine supports. Set `llm_provider` and pass that provider's key:
 
 ```yaml
         with:
@@ -99,13 +108,13 @@ OpenRouter is the default, but you can use any provider the engine supports — 
           llm_api_key:  ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-`llm_provider: <name>` hands your key to the engine as `<NAME>_API_KEY`, and the engine auto-selects that provider. Set **exactly one** key per run.
+`llm_provider: <name>` hands your key to the engine as `<NAME>_API_KEY`, and the engine auto-selects that provider. Set exactly one key per run.
 
-<details><summary><strong>Supported providers</strong></summary>
+<details><summary>Supported providers</summary>
 
-| `llm_provider` | env var the engine reads |
+| `llm_provider` | Environment variable the engine reads |
 |---|---|
-| `openrouter` *(default)* | `OPENROUTER_API_KEY` |
+| `openrouter` (default) | `OPENROUTER_API_KEY` |
 | `openai` | `OPENAI_API_KEY` |
 | `anthropic` | `ANTHROPIC_API_KEY` |
 | `google` | `GOOGLE_API_KEY` |
@@ -116,31 +125,31 @@ OpenRouter is the default, but you can use any provider the engine supports — 
 | `aws_bedrock` | `AWS_BEARER_TOKEN_BEDROCK` |
 | `ollama` | `OLLAMA_BASE_URL` |
 
-This table mirrors the engine and may lag it — the source of truth is the engine's provider registry ([`agents/llm_config.py`](https://github.com/CodeBoarding/CodeBoarding/blob/main/agents/llm_config.py)). Any provider it adds that follows the `<NAME>_API_KEY` convention works here with no action change.
+This table mirrors the engine and may lag it. The source of truth is the engine's provider registry, [`agents/llm_config.py`](https://github.com/CodeBoarding/CodeBoarding/blob/main/agents/llm_config.py). Any provider it adds that follows the `<NAME>_API_KEY` convention works here with no action change.
 
 </details>
 
 ## When it runs
 
-- **PR opened / reopened / marked ready** — generated once (per the `on:` triggers above). It does **not** re-run on every push, so you never spend an LLM job per commit; the comment reflects that point until refreshed.
-- **`/codeboarding` comment** — a trusted collaborator (`OWNER`/`MEMBER`/`COLLABORATOR`) regenerates the diagram against the **current** PR head, even if one already exists. It re-runs and updates the same comment in place (the action reacts with 👀). Change the keyword via `trigger_command`.
+- On a PR being opened, reopened, or marked ready for review, the diagram is generated once (per the `on:` triggers above). It does not re-run on every push, so you never spend an LLM job per commit; the comment reflects that point until refreshed.
+- On a `/codeboarding` comment, a trusted collaborator (`OWNER`, `MEMBER`, or `COLLABORATOR`) regenerates the diagram against the current PR head, even if one already exists. It re-runs and updates the same comment in place. Change the keyword via `trigger_command`.
 
-The command needs the `issue_comment` trigger and runs from your **default branch** (GitHub's rule), so it only works once the workflow is merged there. On-demand runs on fork PRs are refused, so fork code is never analyzed with your secrets.
+The command needs the `issue_comment` trigger and runs from your default branch (a GitHub rule), so it only works once the workflow is merged there. On-demand runs on fork PRs are refused, so fork code is never analyzed with your secrets.
 
 ## Inputs
 
 | Input | Default | Description |
 |---|---|---|
 | `llm_api_key` | required | Your LLM provider API key (see `llm_provider`). |
-| `llm_provider` | `openrouter` | Provider for the key — mapped to `<NAME>_API_KEY` (e.g. `anthropic`, `openai`, `google`). |
-| `github_token` | `${{ github.token }}` | Token used to post/update the PR comment. |
+| `llm_provider` | `openrouter` | Provider for the key, mapped to `<NAME>_API_KEY` (e.g. `anthropic`, `openai`, `google`). |
+| `github_token` | `${{ github.token }}` | Token used to post or update the PR comment. |
 | `engine_ref` | `v0.12.0` | CodeBoarding engine ref. Pin for reproducibility. |
 | `depth_level` | `1` | Analysis depth, 1 to 3. Higher is slower and richer. |
 | `render_depth` | `1` | Display depth for the PR diagram. Keep `1` for a clean top-level view. |
 | `diagram_direction` | `LR` | Mermaid direction: `LR`, `TD`, `TB`, `RL`, or `BT`. |
 | `changed_only` | `false` | Render only changed components and incident edges. |
-| `agent_model` | engine default | Analysis model. Bare OpenRouter slug (e.g. `anthropic/claude-sonnet-4`); empty = engine's per-provider default. |
-| `parsing_model` | engine default | Parsing model. Bare OpenRouter slug; empty = engine's per-provider default. |
+| `agent_model` | engine default | Analysis model. Bare OpenRouter slug (e.g. `anthropic/claude-sonnet-4`); empty uses the engine's per-provider default. |
+| `parsing_model` | engine default | Parsing model. Bare OpenRouter slug; empty uses the engine's per-provider default. |
 | `comment_header` | `Architecture review` | Heading for the PR comment. |
 | `trigger_command` | `/codeboarding` | Slash command for trusted on-demand runs. |
 | `cta_base_url` | empty | Optional click-proxy base URL for editor and extension links. |
@@ -160,7 +169,7 @@ The command needs the `issue_comment` trigger and runs from your **default branc
 - Do not use `pull_request_target` for this action. It can expose secrets to PR-head code.
 - GitHub renders Mermaid in strict mode, so node click-through links are not supported in the PR diagram.
 
-## Local Testing
+## Local testing
 
 Fast path, no LLM calls:
 
