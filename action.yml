@@ -1,5 +1,5 @@
-name: 'CodeBoarding Architecture Diff (Mermaid)'
-description: 'Posts a PR comment with a Mermaid architecture diagram showing which components changed (green added / yellow modified / red deleted) — nodes and arrows.'
+name: 'CodeBoarding Review'
+description: 'Visual system-design review on pull requests: a Mermaid diagram of the architectural changes — added, modified, and deleted components and relations.'
 author: 'CodeBoarding'
 
 branding:
