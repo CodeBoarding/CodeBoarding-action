@@ -23,13 +23,13 @@ inputs:
     required: false
     default: '1'
   agent_model:
-    description: 'LLM model identifier used for analysis (AGENT_MODEL env var).'
+    description: 'Analysis model (AGENT_MODEL env var). A bare OpenRouter slug, e.g. anthropic/claude-sonnet-4. Empty (default) uses the engine''s own per-provider default.'
     required: false
-    default: 'openrouter/anthropic/claude-sonnet-4'
+    default: ''
   parsing_model:
-    description: 'LLM model identifier used for parsing (PARSING_MODEL env var).'
+    description: 'Parsing model (PARSING_MODEL env var). A bare OpenRouter slug. Empty (default) uses the engine''s own per-provider default.'
     required: false
-    default: 'openrouter/anthropic/claude-sonnet-4'
+    default: ''
   comment_header:
     description: 'Header line used inside the sticky PR comment.'
     required: false
@@ -338,9 +338,13 @@ runs:
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
       run: |
         OPENROUTER_API_KEY="$(cat "${RUNNER_TEMP}/cb-openrouter-key")"
+        export OPENROUTER_API_KEY
+        # Export the model env only when the user set it; empty -> the engine uses
+        # its own valid per-provider default (no stale hardcoded model id to rot).
         AGENT_MODEL="$(cat "${RUNNER_TEMP}/cb-agent-model")"
         PARSING_MODEL="$(cat "${RUNNER_TEMP}/cb-parsing-model")"
-        export OPENROUTER_API_KEY AGENT_MODEL PARSING_MODEL
+        if [ -n "$AGENT_MODEL" ]; then export AGENT_MODEL; fi
+        if [ -n "$PARSING_MODEL" ]; then export PARSING_MODEL; fi
 
         BASE_SRC="${RUNNER_TEMP}/base-src"
         # Clean up any stale registration before re-adding (rm -rf alone leaves a
@@ -391,9 +395,13 @@ runs:
         HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
       run: |
         OPENROUTER_API_KEY="$(cat "${RUNNER_TEMP}/cb-openrouter-key")"
+        export OPENROUTER_API_KEY
+        # Export the model env only when the user set it; empty -> the engine uses
+        # its own valid per-provider default (no stale hardcoded model id to rot).
         AGENT_MODEL="$(cat "${RUNNER_TEMP}/cb-agent-model")"
         PARSING_MODEL="$(cat "${RUNNER_TEMP}/cb-parsing-model")"
-        export OPENROUTER_API_KEY AGENT_MODEL PARSING_MODEL
+        if [ -n "$AGENT_MODEL" ]; then export AGENT_MODEL; fi
+        if [ -n "$PARSING_MODEL" ]; then export PARSING_MODEL; fi
 
         # Seed the head dir from the base analysis so incremental stitches
         # component ids from the baseline (stable diff). Base dir is left
