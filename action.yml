@@ -1,4 +1,4 @@
-name: 'CodeBoarding Review'
+name: 'CodeBoarding Action'
 description: 'Visual system-design review on pull requests: a Mermaid diagram of the architectural changes — added, modified, and deleted components and relations.'
 author: 'CodeBoarding'
 
