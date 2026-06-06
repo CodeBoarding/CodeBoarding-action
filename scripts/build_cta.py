@@ -1,13 +1,15 @@
 """Build the call-to-action footer appended to the architecture-diff PR comment.
 
-The footer drives straight to the VS Code/Cursor **extension**: an "open this
-architecture in your editor" link (editor-specific) plus an "install the
-extension" link, and a warning banner when real health findings exist. When a
-click proxy (``cta_base``) is set the links route through it so owner/repo/pr are
-tracked; otherwise they point at the final destinations directly — the editor
-``<scheme>:extension/...`` deep link and the Marketplace listing. A
-no-install hosted-webview ("explore in browser") tier is intentionally deferred
-(see docs/COMMIT_STRATEGY.md) — the committed analysis already supports it later.
+The footer drives to the VS Code/Cursor **extension** with an editor link, and a
+warning banner when real health findings exist. With a click proxy (``cta_base``)
+the links route through it (owner/repo/pr tracked) and can deep-link into the
+editor (the proxy redirects to a ``vscode:``/``cursor:`` URL) plus a separate
+"install the extension" link. Without a proxy GitHub's comment sanitizer strips
+custom ``vscode:``/``cursor:`` schemes — a deep link would render as dead text —
+so the editor link points at the extension's plain-https listing instead (VS Code
+Marketplace, Cursor via Open VSX), which is the only clickable option. A no-install
+hosted-webview ("explore in browser") tier is intentionally deferred (see
+docs/COMMIT_STRATEGY.md) — the committed analysis already supports it later.
 
 Editor coverage is deliberately limited to **VS Code and Cursor**. Per the 2025
 Stack Overflow Developer Survey (https://survey.stackoverflow.co/2025/technology/),
@@ -47,18 +49,22 @@ def detect_editors(repo_path: Path) -> list[str]:
 
 _EDITOR_LABEL = {"vscode": "VS Code", "cursor": "Cursor"}
 
-# No-proxy fallback targets: the final destinations the click proxy would route to.
-_EXTENSION_ID = "Codeboarding.codeboarding"
-_EDITOR_DEEPLINK = {e: f"{e}:extension/{_EXTENSION_ID}" for e in _EDITOR_LABEL}
-_MARKETPLACE_URL = f"https://marketplace.visualstudio.com/items?itemName={_EXTENSION_ID}"
+# No-proxy editor targets. Must be plain https: GitHub strips custom URI schemes
+# (vscode:/cursor:) from comment links, so a deep link renders as dead text. Each
+# editor points at its extension listing instead — clickable, and installs there.
+_EDITOR_MARKETPLACE = {
+    "vscode": "https://marketplace.visualstudio.com/items?itemName=Codeboarding.codeboarding",
+    "cursor": "https://open-vsx.org/extension/CodeBoarding/codeboarding",
+}
 
 
 def build_cta(cta_base: str, owner: str, repo: str, pr: str, repo_path: Path, issues: int = 0) -> str:
-    """Return the markdown CTA footer: a health-warning banner plus editor/extension links.
+    """Return the markdown CTA footer: a health-warning banner plus an editor link.
 
-    With a ``cta_base`` proxy the links route through it (owner/repo/pr tracked);
-    without one they point straight to the destinations the proxy would route to —
-    the editor's ``<scheme>:extension/...`` deep link and the Marketplace listing.
+    With a ``cta_base`` proxy the links route through it (owner/repo/pr tracked),
+    deep-link into the editor, and add a separate "get the extension" link. Without
+    a proxy the editor link is the extension's https listing (GitHub strips custom
+    ``vscode:``/``cursor:`` schemes), and the redundant install link is dropped.
     The ⚠️ banner shows whenever ``issues > 0``.
     """
     parts: list[str] = []
@@ -74,14 +80,15 @@ def build_cta(cta_base: str, owner: str, repo: str, pr: str, repo_path: Path, is
             return f"{base}/{path}?" + urlencode({"owner": owner, "repo": repo, "pr": pr, **extra})
 
         editor_href = {e: link("open-in-editor", editor=e) for e in editors}
-        extension_href = link("use-marketplace")
+        extension_href: str | None = link("use-marketplace")
     else:
-        editor_href = {e: _EDITOR_DEEPLINK[e] for e in editors}
-        extension_href = _MARKETPLACE_URL
+        editor_href = {e: _EDITOR_MARKETPLACE[e] for e in editors}
+        extension_href = None
 
     editor_links = " · ".join(f"[**Open in {_EDITOR_LABEL[e]} →**]({editor_href[e]})" for e in editors)
     parts.append(f"See this architecture in your editor: {editor_links}")
-    parts.append(f"💡 New to CodeBoarding? [**Get the extension →**]({extension_href})")
+    if extension_href:
+        parts.append(f"💡 New to CodeBoarding? [**Get the extension →**]({extension_href})")
 
     lines = ["", "---"]
     for p in parts:
