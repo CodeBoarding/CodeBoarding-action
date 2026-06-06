@@ -1,0 +1,41 @@
+name: Move major version tag
+
+# Marketplace actions are pinned by consumers as `@v1`, a *moving* major tag that
+# should always point at the newest v1.x.x release. This re-points it on every
+# published (non-pre) release, e.g. publishing v1.4.2 moves `v1` -> v1.4.2.
+#
+# First release is still manual (cut a `vX.Y.Z` release once); after that `vX`
+# is maintained here automatically.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  major-tag:
+    if: github.event.release.prerelease == false
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Re-point major tag at ${{ github.event.release.tag_name }}
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          ver="${TAG#v}"
+          if ! printf '%s' "$ver" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::notice::Tag '$TAG' is not a clean vMAJOR.MINOR.PATCH release (prerelease/suffix); skipping major-tag move."
+            exit 0
+          fi
+          major="v${ver%%.*}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -fa "$major" -m "Update ${major} to ${TAG}"
+          git push origin "refs/tags/${major}" --force
+          echo "::notice::${major} now points at ${TAG}"

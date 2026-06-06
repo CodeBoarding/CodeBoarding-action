@@ -1,447 +1,613 @@
-name: 'CodeBoarding [Diagram-First Documentation]'
-description: 'Generates diagram-first visualizations of your codebase using static analysis and large language models.'
+name: 'CodeBoarding Architecture Diff (Mermaid)'
+description: 'Posts a PR comment with a Mermaid architecture diagram showing which components changed (green added / yellow modified / red deleted) — nodes and arrows.'
 author: 'CodeBoarding'
 
 branding:
-  icon: 'book-open'  # or 'layers', 'git-branch', 'book-open', 'target'
+  icon: 'git-pull-request'
   color: 'blue'
 
 inputs:
-  output_directory:
-    description: 'Directory where documentation files will be saved'
+  llm_api_key:
+    description: 'Your LLM provider API key (see llm_provider). Required.'
+    required: true
+  llm_provider:
+    description: 'Provider for llm_api_key. The key is handed to the engine as that provider''s env var (anthropic -> ANTHROPIC_API_KEY, openai -> OPENAI_API_KEY, ...; aws_bedrock -> AWS_BEARER_TOKEN_BEDROCK, ollama -> OLLAMA_BASE_URL) and the engine auto-selects it. Default openrouter.'
     required: false
-    default: 'docs'
-  repository_url:
-    description: 'Repository URL to fetch documentation for (defaults to current repository)'
-    required: true
-  source_branch:
-    description: 'Source branch for comparison'
-    required: true
-  target_branch:
-    description: 'Target branch for comparison'
-    required: true
-  output_format:
-    description: 'Output format for documentation files (.md, .mdx, .rst, or .html)'
+    default: 'openrouter'
+  github_token:
+    description: 'GITHUB_TOKEN used to post the PR comment. Defaults to the workflow token.'
     required: false
-    default: '.md'
+    default: ${{ github.token }}
+  engine_ref:
+    description: 'Git ref (tag/branch/SHA) of CodeBoarding/CodeBoarding used as the analysis engine. Pinned to a release for reproducibility; override to track a newer ref.'
+    required: false
+    default: 'v0.12.0'
+  depth_level:
+    description: 'Diagram depth (1-3). Higher is slower and more detailed.'
+    required: false
+    default: '1'
+  agent_model:
+    description: 'Analysis model (AGENT_MODEL env var). A bare OpenRouter slug, e.g. anthropic/claude-sonnet-4. Empty (default) uses the engine''s own per-provider default.'
+    required: false
+    default: ''
+  parsing_model:
+    description: 'Parsing model (PARSING_MODEL env var). A bare OpenRouter slug. Empty (default) uses the engine''s own per-provider default.'
+    required: false
+    default: ''
+  comment_header:
+    description: 'Header line used inside the sticky PR comment.'
+    required: false
+    default: 'Architecture review'
+  diagram_direction:
+    description: 'Mermaid layout direction: LR, TD, TB, RL, or BT.'
+    required: false
+    default: 'LR'
+  changed_only:
+    description: 'Render only changed components and their incident edges (also auto-applied when the full graph exceeds GitHub''s Mermaid limit).'
+    required: false
+    default: 'false'
+  render_depth:
+    description: 'Component levels to DRAW in the PR Mermaid (independent of depth_level): 1 = top-level flat (default), 2 = +one nesting level as subgraphs, etc. Lets you analyze deep (depth_level=2) but display a clean level-1 diagram.'
+    required: false
+    default: '1'
+  cta_base_url:
+    description: 'Base URL of the click proxy (e.g. https://go.codeboarding.org). When set, the comment adds "open in VS Code/Cursor" / "get the extension" links with owner/repo/pr appended. Empty disables the CTA.'
+    required: false
+    default: ''
+  trigger_command:
+    description: 'Slash-command that triggers the action from a PR comment (issue_comment event). A comment whose first word is this runs the diagram on-demand.'
+    required: false
+    default: '/codeboarding'
 
 outputs:
-  markdown_files_created:
-    description: 'Number of Markdown files created'
-    value: ${{ steps.process-docs.outputs.markdown_files_created }}
-  json_files_created:
-    description: 'Number of JSON files created'
-    value: ${{ steps.process-docs.outputs.json_files_created }}
-  output_directory:
-    description: 'Directory where Markdown files were saved'
-    value: ${{ steps.process-docs.outputs.output_directory }}
-  json_directory:
-    description: 'Directory where JSON files were saved (.codeboarding)'
-    value: ${{ steps.process-docs.outputs.json_directory }}
-  has_changes:
-    description: 'Whether any files were created or changed'
-    value: ${{ steps.process-docs.outputs.has_changes }}
-  repo_url:
-    description: 'Repository URL that was analyzed'
-    value: ${{ steps.repo-url.outputs.repo_url }}
+  diagram_md:
+    description: 'Path to the rendered ```mermaid block (in the runner workspace).'
+    value: ${{ steps.diagram.outputs.diagram_md }}
+  n_changed:
+    description: 'Number of components added/modified/deleted, counted recursively.'
+    value: ${{ steps.diagram.outputs.n_changed }}
+  truncated:
+    description: 'True if the diagram was reduced to changed-only to fit GitHub''s Mermaid limit.'
+    value: ${{ steps.diagram.outputs.truncated }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Determine repository URL
-      id: repo-url
+    - name: Guard — resolve the target PR
+      id: guard
       shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        # Read from env, NEVER interpolated into the script — a comment body is
+        # untrusted input and must not reach the shell as code (injection).
+        COMMENT_BODY: ${{ github.event.comment.body }}
+        AUTHOR_ASSOC: ${{ github.event.comment.author_association }}
+        TRIGGER: ${{ inputs.trigger_command }}
+        EVENT: ${{ github.event_name }}
+        REPOSITORY: ${{ github.repository }}
+        PR_NUMBER_PULL: ${{ github.event.pull_request.number }}
+        PULL_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PULL_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PULL_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        PULL_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+        PULL_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        ISSUE_NUMBER: ${{ github.event.issue.number }}
+        ISSUE_PR_URL: ${{ github.event.issue.pull_request.url }}
       run: |
-        # Use the provided repository URL if it's not empty
-        if [ -n "${{ inputs.repository_url }}" ]; then
-          REPO_URL="${{ inputs.repository_url }}"
-          echo "Using provided repository URL: $REPO_URL"
-        # Otherwise try to determine from git if we're in a git repository
-        elif git config --get remote.origin.url > /dev/null 2>&1; then
-          REPO_URL=$(git config --get remote.origin.url)
-          # Convert SSH URL to HTTPS if needed
-          if [[ $REPO_URL == git@* ]]; then
-            REPO_URL=$(echo $REPO_URL | sed 's|git@github.com:|https://github.com/|')
-          fi
-          echo "Using git remote URL: $REPO_URL"
-        else
-          REPO_URL="${{ github.server_url }}/${{ github.repository }}"
-          echo "Using GitHub context URL: $REPO_URL"
-        fi
-        echo "repo_url=$REPO_URL" >> $GITHUB_OUTPUT
+        set -uo pipefail
+        skip() { echo "::notice::$1 Skipping."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
 
-    - name: Create and poll documentation job
-      id: fetch-docs
-      shell: bash
-      run: |
-        CREATE_JOB_URL="https://server.codeboarding.org/github_action/jobs"
-        REPO_URL="${{ steps.repo-url.outputs.repo_url }}"
-        SOURCE_BRANCH="${{ inputs.source_branch }}"
-        TARGET_BRANCH="${{ inputs.target_branch }}"
-        OUTPUT_DIRECTORY="${{ inputs.output_directory }}"
-        OUTPUT_FORMAT="${{ inputs.output_format }}"
-        
-        echo "🚀 Creating CodeBoarding analysis job...$CREATE_JOB_URL"
-        echo "📊 Repository: $REPO_URL"
-        echo "🌿 Source branch: $SOURCE_BRANCH"
-        echo "🎯 Target branch: $TARGET_BRANCH"
-        echo "📄 Output format: $OUTPUT_FORMAT"
-        
-        # Create JSON payload
-        JSON_PAYLOAD=$(jq -n \
-          --arg url "$REPO_URL" \
-          --arg source_branch "$SOURCE_BRANCH" \
-          --arg target_branch "$TARGET_BRANCH" \
-          --arg output_directory "$OUTPUT_DIRECTORY" \
-          --arg extension "$OUTPUT_FORMAT" \
-          '{
-            url: $url,
-            source_branch: $source_branch,
-            target_branch: $target_branch,
-            output_directory: $output_directory,
-            extension: $extension
-          }')
-        
-        echo "📋 Request payload:"
-        echo "$JSON_PAYLOAD"
-        
-        # Create temporary file for response
-        TEMP_FILE=$(mktemp)
-        
-        echo "🌐 Making API request to create job..."
-        
-        # Make the API call to create job
-        response=$(curl -s -w "%{http_code}" -o "$TEMP_FILE" \
-          -X POST \
-          -H "Content-Type: application/json" \
-          -d "$JSON_PAYLOAD" \
-          --max-time 60 \
-          --connect-timeout 30 \
-          "$CREATE_JOB_URL")
-        curl_exit_code=$?
-        
-        http_code=${response: -3}
-        
-        echo "✅ Job creation request completed!"
-        echo "📋 Response status code: $http_code"
-        echo "🔧 Curl exit code: $curl_exit_code"
-        
-        # Handle curl errors
-        if [ $curl_exit_code -ne 0 ]; then
-          echo "❌ Error: Curl failed with exit code $curl_exit_code"
-          case $curl_exit_code in
-            6) echo "🌐 Couldn't resolve host - check network connectivity" ;;
-            7) echo "🔌 Failed to connect to host - server might be down" ;;
-            28) echo "⏰ Request timed out - server might be busy" ;;
-            *) echo "❓ Unknown curl error - check network and server status" ;;
+        if [ "$EVENT" = "pull_request" ]; then
+          PR_NUMBER="$PR_NUMBER_PULL"
+          BASE_SHA="$PULL_BASE_SHA"
+          HEAD_SHA="$PULL_HEAD_SHA"
+          BASE_REF="$PULL_BASE_REF"
+          BASE_REPO="$PULL_BASE_REPO"
+          HEAD_REPO="$PULL_HEAD_REPO"
+        elif [ "$EVENT" = "pull_request_target" ]; then
+          skip "pull_request_target is not supported because it can expose secrets to PR-head code; use pull_request or trusted issue_comment."
+        elif [ "$EVENT" = "issue_comment" ]; then
+          # On-demand "/codeboarding" command. Must be a PR comment whose first
+          # word is the trigger; the payload lacks SHAs so we query the API.
+          [ -n "$ISSUE_PR_URL" ] || skip "Comment is on a plain issue, not a PR."
+          FIRST_WORD="$(printf '%s' "$COMMENT_BODY" | tr -d '\r' | awk 'NR==1{print $1; exit}')"
+          [ "$FIRST_WORD" = "$TRIGGER" ] || skip "Comment does not start with '$TRIGGER'."
+          # SECURITY (pwn-request guard): issue_comment runs in the base repo WITH
+          # secrets for ANY commenter. Only a trusted collaborator may trigger an
+          # analysis that checks out + runs over PR-head code with the LLM key present.
+          case "$AUTHOR_ASSOC" in
+            OWNER|MEMBER|COLLABORATOR) : ;;
+            *) skip "Commenter is '$AUTHOR_ASSOC' (not OWNER/MEMBER/COLLABORATOR)." ;;
           esac
-          rm -f "$TEMP_FILE"
-          exit 1
+          PR_NUMBER="$ISSUE_NUMBER"
+          PR_JSON="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" 2>/dev/null)" || skip "Could not fetch PR #$PR_NUMBER from the API."
+          BASE_SHA="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["base"]["sha"])' 2>/dev/null)" || skip "Could not parse base SHA from the PR API."
+          HEAD_SHA="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["head"]["sha"])' 2>/dev/null)" || skip "Could not parse head SHA from the PR API."
+          BASE_REF="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["base"]["ref"])' 2>/dev/null)" || BASE_REF=""
+          BASE_REPO="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["base"]["repo"]["full_name"])' 2>/dev/null)" || skip "Could not parse base repo from the PR API."
+          HEAD_REPO="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["head"]["repo"]["full_name"])' 2>/dev/null)" || skip "Could not parse head repo from the PR API."
+          [ "$HEAD_REPO" = "$REPOSITORY" ] || skip "On-demand runs with secrets are disabled for fork PRs."
+        else
+          skip "Unsupported event '$EVENT' (use pull_request or issue_comment)."
         fi
-        
-        if [ "$http_code" != "202" ]; then
-          echo "❌ Error: Job creation failed with status code $http_code"
-          echo "📄 Response content:"
-          cat "$TEMP_FILE"
-          
-          # Try to parse as JSON for better error message
-          if jq -e '.detail' "$TEMP_FILE" > /dev/null 2>&1; then
-            echo "🔍 Error details: $(jq -r '.detail' "$TEMP_FILE")"
-          fi
-          
-          rm -f "$TEMP_FILE"
-          exit 1
-        fi
-        
-        # Check if response is valid JSON
-        if ! jq empty "$TEMP_FILE" 2>/dev/null; then
-          echo "❌ Error: Invalid JSON response"
-          echo "📄 Response content:"
-          cat "$TEMP_FILE"
-          rm -f "$TEMP_FILE"
-          exit 1
-        fi
-        
-        # Extract job_id from response
-        JOB_ID=$(jq -r '.job_id' "$TEMP_FILE")
-        
-        if [ "$JOB_ID" = "null" ] || [ -z "$JOB_ID" ]; then
-          echo "❌ Error: No job_id found in response"
-          echo "📄 Response content:"
-          cat "$TEMP_FILE"
-          rm -f "$TEMP_FILE"
-          exit 1
-        fi
-        
-        echo "✅ Job created successfully!"
-        echo "🆔 Job ID: $JOB_ID"
-        
-        # Start polling job status
-        STATUS_URL="https://server.codeboarding.org/github_action/jobs/$JOB_ID"
-        
-        echo "📊 Starting job status polling..."
-        echo "⏰ This may take 15-45 minutes for large repositories..."
-        echo "💡 If your workflow times out, increase 'timeout-minutes' in your job configuration"
-        
-        # Polling loop
-        POLL_COUNT=0
-        MAX_POLLS=90  # 90 minutes max (90 * 1 minute intervals)
-        
-        while [ $POLL_COUNT -lt $MAX_POLLS ]; do
-          POLL_COUNT=$((POLL_COUNT + 1))
-          
-          echo "🔍 Polling attempt $POLL_COUNT of $MAX_POLLS ($(date '+%H:%M:%S'))"
-          
-          # Make status check API call
-          response=$(curl -s -w "%{http_code}" -o "$TEMP_FILE" \
-            --max-time 30 \
-            --connect-timeout 10 \
-            "$STATUS_URL")
-          
-          curl_exit_code=$?
-          http_code=${response: -3}
-          
-          # Handle curl errors
-          if [ $curl_exit_code -ne 0 ]; then
-            echo "⚠️  Warning: Status check failed with curl exit code $curl_exit_code"
-            echo "🔄 Retrying in 30 seconds..."
-            sleep 30
-            continue
-          fi
-          
-          if [ "$http_code" != "200" ]; then
-            echo "⚠️  Warning: Status check failed with HTTP code $http_code"
-            echo "📄 Response content:"
-            cat "$TEMP_FILE"
-            echo "🔄 Retrying in 30 seconds..."
-            sleep 30
-            continue
-          fi
-          
-          # Check if response is valid JSON
-          if ! jq empty "$TEMP_FILE" 2>/dev/null; then
-            echo "⚠️  Warning: Invalid JSON response"
-            echo "📄 Response content:"
-            cat "$TEMP_FILE"
-            echo "🔄 Retrying in 30 seconds..."
-            sleep 30
-            continue
-          fi
-          
-          # Extract status from response
-          STATUS=$(jq -r '.status' "$TEMP_FILE")
-          
-          echo "📊 Current job status: $STATUS"
-          
-          if [ "$STATUS" = "COMPLETED" ]; then
-            echo "✅ Job completed successfully!"
-            
-            # Check if result field exists and contains files
-            if jq -e '.result' "$TEMP_FILE" > /dev/null; then
-              echo "📦 Result field found, preparing output..."
-              
-              # Check if result is a JSON string or already a JSON object
-              RESULT_TYPE=$(jq -r '.result | type' "$TEMP_FILE")
-              
-              if [ "$RESULT_TYPE" = "string" ]; then
-                echo "🔧 Result is a JSON string, parsing it..."
-                # Parse the JSON string in the result field
-                jq -r '.result' "$TEMP_FILE" | jq '.' > "${TEMP_FILE}_result"
-              else
-                echo "🔧 Result is already a JSON object, extracting it..."
-                # Extract the result object directly
-                jq '.result' "$TEMP_FILE" > "${TEMP_FILE}_result"
-              fi
-              
-              # Verify the extracted result
-              if jq -e '.files' "${TEMP_FILE}_result" > /dev/null; then
-                echo "✅ Files extracted successfully"
-                mv "${TEMP_FILE}_result" "$TEMP_FILE"
-                echo "response_file=$TEMP_FILE" >> $GITHUB_OUTPUT
-                exit 0  # Successfully extracted files, exit with success
-              else
-                echo "❌ Error: Extracted result is missing files structure"
-                echo "📄 Extracted content:"
-                cat "${TEMP_FILE}_result"
-                rm -f "${TEMP_FILE}_result" "$TEMP_FILE"
-                exit 1
-              fi
-            else
-              echo "❌ Error: Job completed but no result or result.files found in response"
-              echo "📄 Response structure:"
-              jq '.' "$TEMP_FILE"
-              
-              # If result exists, show what it contains
-              if jq -e '.result' "$TEMP_FILE" > /dev/null; then
-                echo "📄 Result field content:"
-                RESULT_TYPE=$(jq -r '.result | type' "$TEMP_FILE")
-                echo "Result type: $RESULT_TYPE"
-                
-                if [ "$RESULT_TYPE" = "string" ]; then
-                  echo "Result string content:"
-                  jq -r '.result' "$TEMP_FILE"
-                else
-                  echo "Result object content:"
-                  jq '.result' "$TEMP_FILE"
-                fi
-              fi
-              
-              rm -f "$TEMP_FILE"
-              exit 1
-            fi
-          elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "ERROR" ]; then
-            echo "❌ Job failed with status: $STATUS"
-            echo "📄 Response content:"
-            cat "$TEMP_FILE"
-            rm -f "$TEMP_FILE"
-            exit 1
-          else
-            # Job still in progress
-            echo "⏳ Job in progress (status: $STATUS)..."
-            
-            # Show additional progress information if available
-            if jq -e '.updated_at' "$TEMP_FILE" > /dev/null; then
-              UPDATED_AT=$(jq -r '.updated_at' "$TEMP_FILE")
-              echo "🕐 Last updated: $UPDATED_AT"
-            fi
-            
-            echo "💤 Waiting 15 seconds before next check..."
-            sleep 15
-          fi
-        done
-        
-        # Only reach here if we've exceeded max polls without completion
-        echo "❌ Error: Job polling timed out after $MAX_POLLS attempts"
-        echo "🏗️  The repository analysis is taking longer than expected."
-        echo "📊 This might be due to:"
-        echo "   • Very large repository size (>10k files)"
-        echo "   • Complex codebase requiring extensive analysis"
-        echo "   • Server load or processing delays"
-        echo ""
-        echo "💡 Suggestions:"
-        echo "   • Try again later when server load might be lower"
-        echo "   • Consider analyzing smaller branches or specific directories"
-        echo "   • Increase your GitHub Actions job timeout-minutes to 120+"
-        echo "   • Contact support if the issue persists"
-        
-        rm -f "$TEMP_FILE"
-        exit 1
 
-    - name: Process documentation files
-      id: process-docs
+        { [ -n "$PR_NUMBER" ] && [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ] && [ -n "$BASE_REPO" ] && [ -n "$HEAD_REPO" ]; } || skip "Could not resolve PR/base/head SHAs/repos."
+        {
+          echo "skip=false"
+          echo "pr_number=$PR_NUMBER"
+          echo "base_sha=$BASE_SHA"
+          echo "head_sha=$HEAD_SHA"
+          echo "base_ref=$BASE_REF"
+          echo "base_repo=$BASE_REPO"
+          echo "head_repo=$HEAD_REPO"
+        } >> "$GITHUB_OUTPUT"
+        echo "Resolved PR #$PR_NUMBER (base=$BASE_REPO@$BASE_SHA head=$HEAD_REPO@$HEAD_SHA) via $EVENT"
+
+    - name: Acknowledge command
+      if: steps.guard.outputs.skip != 'true' && github.event_name == 'issue_comment'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPOSITORY: ${{ github.repository }}
+        COMMENT_ID: ${{ github.event.comment.id }}
+      run: |
+        # 👀 react to the triggering comment so the user knows it was picked up.
+        gh api -X POST "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" \
+          -f content=eyes >/dev/null 2>&1 || true
+
+    - name: Checkout CodeBoarding engine
+      if: steps.guard.outputs.skip != 'true'
+      uses: actions/checkout@v4
+      with:
+        repository: CodeBoarding/CodeBoarding
+        ref: ${{ inputs.engine_ref }}
+        path: codeboarding-engine
+        persist-credentials: false
+
+    - name: Checkout target repository (PR head)
+      if: steps.guard.outputs.skip != 'true'
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ steps.guard.outputs.head_repo }}
+        path: target-repo
+        fetch-depth: 0
+        ref: ${{ steps.guard.outputs.head_sha }}
+        persist-credentials: false
+
+    - name: Ensure PR base commit is fetched
+      if: steps.guard.outputs.skip != 'true'
+      shell: bash
+      working-directory: target-repo
+      env:
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        BASE_REPO: ${{ steps.guard.outputs.base_repo }}
+      run: |
+        git fetch origin "$BASE_SHA" --depth=1 || true
+        if ! git cat-file -e "$BASE_SHA" 2>/dev/null; then
+          git remote add base "https://github.com/${BASE_REPO}.git" 2>/dev/null || git remote set-url base "https://github.com/${BASE_REPO}.git"
+          git fetch base "$BASE_SHA" --depth=1 || true
+        fi
+        git cat-file -e "$BASE_SHA" && echo "Base commit reachable." || \
+          (echo "::error::Base commit $BASE_SHA is not reachable." && exit 1)
+
+    - name: Set up Python 3.13
+      if: steps.guard.outputs.skip != 'true'
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+
+    - name: Set up Node.js 20
+      if: steps.guard.outputs.skip != 'true'
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install uv
+      if: steps.guard.outputs.skip != 'true'
+      uses: astral-sh/setup-uv@v4
+      with:
+        enable-cache: true   # cache ~/.cache/uv (wheels/builds) for fast cold installs
+
+    - name: Cache uv venv (engine)
+      if: steps.guard.outputs.skip != 'true'
+      uses: actions/cache@v4
+      with:
+        path: codeboarding-engine/.venv
+        # No restore-keys: a lockfile change must force a clean cold venv, not
+        # restore a venv built from a different lock (`uv pip install -e .` won't
+        # downgrade/sync already-installed transitive deps back to this uv.lock).
+        key: cb-uv-${{ runner.os }}-${{ hashFiles('codeboarding-engine/pyproject.toml', 'codeboarding-engine/uv.lock') }}
+
+    - name: Cache LSP servers
+      if: steps.guard.outputs.skip != 'true'
+      uses: actions/cache@v4
+      with:
+        path: |
+          codeboarding-engine/static_analyzer/servers/node_modules
+          codeboarding-engine/static_analyzer/servers/bin
+        key: cb-lsp-${{ runner.os }}-v1
+        restore-keys: |
+          cb-lsp-${{ runner.os }}-
+
+    - name: Install Python dependencies
+      if: steps.guard.outputs.skip != 'true'
+      shell: bash
+      working-directory: codeboarding-engine
+      run: |
+        test -d .venv || uv venv   # reuse the cached venv instead of wiping it (--clear defeated the cache)
+        uv pip install -e .
+
+    - name: Install LSP servers
+      if: steps.guard.outputs.skip != 'true'
+      shell: bash
+      working-directory: codeboarding-engine
+      run: |
+        uv run python install.py --auto-install-npm
+
+    - name: Prepare & verify LLM key
+      if: steps.guard.outputs.skip != 'true'
+      shell: bash
+      env:
+        RAW_KEY: ${{ inputs.llm_api_key }}
+        RAW_PROVIDER: ${{ inputs.llm_provider }}
+        RAW_AGENT_MODEL: ${{ inputs.agent_model }}
+        RAW_PARSING_MODEL: ${{ inputs.parsing_model }}
+      run: |
+        AUTH_FILE="${RUNNER_TEMP}/openrouter-auth.json"
+        trap 'rm -f "$AUTH_FILE"' EXIT
+        if [ -z "$RAW_KEY" ]; then
+          echo "::error::llm_api_key is empty. On fork PRs, repo secrets are withheld by GitHub."
+          exit 1
+        fi
+        # Resolve the provider -> the env var the engine reads. Convention is
+        # <NAME>_API_KEY; two providers don't follow it. The engine is the source
+        # of truth: an unknown provider just yields an env var it won't recognize,
+        # and the engine errors with the list of valid keys.
+        PROVIDER="$(printf '%s' "$RAW_PROVIDER" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_')"
+        PROVIDER="${PROVIDER:-openrouter}"
+        case "$PROVIDER" in
+          aws_bedrock) PROVIDER_ENV="AWS_BEARER_TOKEN_BEDROCK" ;;
+          ollama)      PROVIDER_ENV="OLLAMA_BASE_URL" ;;
+          *)           PROVIDER_ENV="$(printf '%s' "$PROVIDER" | tr '[:lower:]' '[:upper:]')_API_KEY" ;;
+        esac
+
+        # Normalize a pasted key: strip whitespace/quotes and a leading `<ENV>=`.
+        _strip() { printf '%s' "$1" | tr -d '[:space:]' | sed -e 's/^"//;s/"$//' -e "s/^'//;s/'\$//"; }
+        KEY="$(_strip "$RAW_KEY")"
+        case "$KEY" in "${PROVIDER_ENV}="*) KEY="${KEY#${PROVIDER_ENV}=}";; esac
+        KEY="$(_strip "$KEY")"
+        AGENT_MODEL="$(_strip "$RAW_AGENT_MODEL")"
+        PARSING_MODEL="$(_strip "$RAW_PARSING_MODEL")"
+        echo "::add-mask::$KEY"
+        echo "Provider: $PROVIDER -> $PROVIDER_ENV; key length: ${#KEY}"
+
+        if [ "$PROVIDER" = "openrouter" ]; then
+          # OpenRouter-only checks. The litellm 'openrouter/...' model prefix 400s
+          # the engine's native OpenRouter call; other providers use native ids.
+          for M in "$AGENT_MODEL" "$PARSING_MODEL"; do
+            case "$M" in
+              openrouter/*)
+                echo "::error::Invalid model '$M': drop the 'openrouter/' prefix and use a bare OpenRouter slug, e.g. anthropic/claude-sonnet-4."
+                exit 1 ;;
+            esac
+          done
+          # Cheap preflight; other providers are validated by the engine at run time.
+          STATUS=$(curl -sS -o "$AUTH_FILE" -w "%{http_code}" \
+            -H "Authorization: Bearer $KEY" --max-time 10 \
+            https://openrouter.ai/api/v1/auth/key || echo "curl-fail")
+          echo "OpenRouter /auth/key response: HTTP $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            # Surface the upstream error MESSAGE only — never the whole auth body (avoid leaking).
+            MSG="$(AUTH_FILE="$AUTH_FILE" python3 -c 'import json,os;print(json.load(open(os.environ["AUTH_FILE"])).get("error",{}).get("message",""))' 2>/dev/null || true)"
+            echo "::error::OpenRouter rejected the API key (HTTP $STATUS). ${MSG:-Verify the OPENROUTER_API_KEY secret.}"
+            exit 1
+          fi
+        fi
+
+        # Store key material in runner-temp files. Later shell steps read these
+        # explicitly; third-party post-comment actions do not inherit the LLM key.
+        umask 077
+        printf '%s' "$KEY" > "${RUNNER_TEMP}/cb-llm-key"
+        printf '%s' "$PROVIDER_ENV" > "${RUNNER_TEMP}/cb-provider-env"
+        printf '%s' "$AGENT_MODEL" > "${RUNNER_TEMP}/cb-agent-model"
+        printf '%s' "$PARSING_MODEL" > "${RUNNER_TEMP}/cb-parsing-model"
+
+    - name: Resolve base analysis (committed baseline)
+      if: steps.guard.outputs.skip != 'true'
+      id: base
+      shell: bash
+      working-directory: target-repo
+      env:
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+      run: |
+        BASE_DIR="${RUNNER_TEMP}/cb-base"
+        HEAD_DIR="${RUNNER_TEMP}/cb-head"
+        mkdir -p "$BASE_DIR" "$HEAD_DIR"
+        echo "base_dir=$BASE_DIR" >> $GITHUB_OUTPUT
+        echo "head_dir=$HEAD_DIR" >> $GITHUB_OUTPUT
+        if git show "${BASE_SHA}:.codeboarding/analysis.json" > "${BASE_DIR}/analysis.json" 2>/dev/null; then
+          echo "committed=true" >> $GITHUB_OUTPUT
+          echo "Using committed .codeboarding/analysis.json at ${BASE_SHA}."
+        else
+          rm -f "${BASE_DIR}/analysis.json"
+          echo "committed=false" >> $GITHUB_OUTPUT
+          echo "No committed baseline at ${BASE_SHA}; will generate one via a full analysis on the base commit."
+        fi
+
+    - name: Restore base artifacts (keyed by base SHA)
+      if: steps.guard.outputs.skip != 'true'
+      id: basecache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.temp }}/cb-base
+        key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+
+    - name: Generate base analysis (no committed baseline)
+      if: steps.guard.outputs.skip != 'true' && steps.base.outputs.committed == 'false' && steps.basecache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: codeboarding-engine
+      env:
+        STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
+        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
+        DIAGRAM_DEPTH_LEVEL: ${{ inputs.depth_level }}
+        CACHING_DOCUMENTATION: 'false'
+        ENABLE_MONITORING: 'false'
+        ACTION_PATH: ${{ github.action_path }}
+        TARGET: ${{ github.workspace }}/target-repo
+        BASE_DIR: ${{ steps.base.outputs.base_dir }}
+        REPO_NAME: ${{ github.event.repository.name }}
+        RUN_ID_BASE: ${{ github.run_id }}-${{ github.run_attempt }}-base
+        DEPTH: ${{ inputs.depth_level }}
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+      run: |
+        # Export the key under the selected provider's env var (only this one),
+        # so the engine auto-selects that provider.
+        PROVIDER_ENV="$(cat "${RUNNER_TEMP}/cb-provider-env")"
+        export "$PROVIDER_ENV"="$(cat "${RUNNER_TEMP}/cb-llm-key")"
+        # Export the model env only when the user set it; empty -> the engine uses
+        # its own valid per-provider default (no stale hardcoded model id to rot).
+        AGENT_MODEL="$(cat "${RUNNER_TEMP}/cb-agent-model")"
+        PARSING_MODEL="$(cat "${RUNNER_TEMP}/cb-parsing-model")"
+        if [ -n "$AGENT_MODEL" ]; then export AGENT_MODEL; fi
+        if [ -n "$PARSING_MODEL" ]; then export PARSING_MODEL; fi
+
+        BASE_SRC="${RUNNER_TEMP}/base-src"
+        # Clean up any stale registration before re-adding (rm -rf alone leaves a
+        # dangling worktree entry that makes a retry's `worktree add` fail).
+        git -C "$TARGET" worktree remove --force "$BASE_SRC" 2>/dev/null || true
+        git -C "$TARGET" worktree prune
+        rm -rf "$BASE_SRC"
+        git -C "$TARGET" worktree add --detach "$BASE_SRC" "$BASE_SHA"
+        uv run python "$ACTION_PATH/scripts/cb_engine.py" base \
+          --repo "$BASE_SRC" \
+          --out "$BASE_DIR" \
+          --name "$REPO_NAME" \
+          --run-id "$RUN_ID_BASE" \
+          --depth "$DEPTH" \
+          --source-sha "$BASE_SHA"
+        git -C "$TARGET" worktree remove --force "$BASE_SRC" 2>/dev/null || true
+        if [ ! -f "$BASE_DIR/analysis.json" ]; then
+          echo "::error::Base full analysis ran but analysis.json is missing."
+          exit 1
+        fi
+
+    - name: Save generated base artifacts
+      if: steps.guard.outputs.skip != 'true' && steps.base.outputs.committed == 'false' && steps.basecache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/cb-base
+        key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+
+    - name: Analyze PR head (incremental from base)
+      if: steps.guard.outputs.skip != 'true'
+      id: analyze
+      shell: bash
+      working-directory: codeboarding-engine
+      env:
+        STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
+        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
+        DIAGRAM_DEPTH_LEVEL: ${{ inputs.depth_level }}
+        CACHING_DOCUMENTATION: 'false'
+        ENABLE_MONITORING: 'false'
+        ACTION_PATH: ${{ github.action_path }}
+        TARGET_REPO: ${{ github.workspace }}/target-repo
+        BASE_DIR: ${{ steps.base.outputs.base_dir }}
+        HEAD_DIR: ${{ steps.base.outputs.head_dir }}
+        REPO_NAME: ${{ github.event.repository.name }}
+        RUN_ID_HEAD: ${{ github.run_id }}-${{ github.run_attempt }}-head
+        DEPTH: ${{ inputs.depth_level }}
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
+      run: |
+        # Export the key under the selected provider's env var (only this one),
+        # so the engine auto-selects that provider.
+        PROVIDER_ENV="$(cat "${RUNNER_TEMP}/cb-provider-env")"
+        export "$PROVIDER_ENV"="$(cat "${RUNNER_TEMP}/cb-llm-key")"
+        # Export the model env only when the user set it; empty -> the engine uses
+        # its own valid per-provider default (no stale hardcoded model id to rot).
+        AGENT_MODEL="$(cat "${RUNNER_TEMP}/cb-agent-model")"
+        PARSING_MODEL="$(cat "${RUNNER_TEMP}/cb-parsing-model")"
+        if [ -n "$AGENT_MODEL" ]; then export AGENT_MODEL; fi
+        if [ -n "$PARSING_MODEL" ]; then export PARSING_MODEL; fi
+
+        # Seed the head dir from the base analysis so incremental stitches
+        # component ids from the baseline (stable diff). Base dir is left
+        # untouched as the "before" snapshot for the diff.
+        cp -a "$BASE_DIR"/. "$HEAD_DIR"/ 2>/dev/null || true
+        rm -rf "$HEAD_DIR/health"
+        uv run python "$ACTION_PATH/scripts/cb_engine.py" head \
+          --repo "$TARGET_REPO" \
+          --out "$HEAD_DIR" \
+          --name "$REPO_NAME" \
+          --run-id "$RUN_ID_HEAD" \
+          --depth "$DEPTH" \
+          --base-ref "$BASE_SHA" \
+          --target-ref "$HEAD_SHA" \
+          --source-sha "$HEAD_SHA"
+        if [ ! -f "$HEAD_DIR/analysis.json" ]; then
+          echo "::error::Head analysis ran but analysis.json is missing."
+          exit 1
+        fi
+        echo "base_analysis=$BASE_DIR/analysis.json" >> $GITHUB_OUTPUT
+        echo "head_analysis=$HEAD_DIR/analysis.json" >> $GITHUB_OUTPUT
+
+    - name: Architecture health check (best-effort)
+      if: steps.guard.outputs.skip != 'true'
+      id: health
+      continue-on-error: true
+      shell: bash
+      working-directory: codeboarding-engine
+      env:
+        STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
+        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
+        ACTION_PATH: ${{ github.action_path }}
+        ARTIFACT_DIR: ${{ steps.base.outputs.head_dir }}
+        TARGET_REPO: ${{ github.workspace }}/target-repo
+        REPO_NAME: ${{ github.event.repository.name }}
+      run: |
+        rm -f /tmp/cb-issues.txt
+        # cb_engine writes the WARNING/CRITICAL count (0 on any failure — best-effort).
+        uv run python "$ACTION_PATH/scripts/cb_engine.py" health \
+          --artifact-dir "$ARTIFACT_DIR" \
+          --repo "$TARGET_REPO" \
+          --name "$REPO_NAME" \
+          --issues-out /tmp/cb-issues.txt || true
+        N=$(cat /tmp/cb-issues.txt 2>/dev/null || echo 0)
+        echo "issues=$N" >> $GITHUB_OUTPUT
+        echo "Architecture issues: $N"
+
+    - name: Drop LLM key material
+      if: always() && steps.guard.outputs.skip != 'true'
       shell: bash
       run: |
-        RESPONSE_FILE="${{ steps.fetch-docs.outputs.response_file }}"
-        MD_OUTPUT_DIR="${{ inputs.output_directory }}"
-        JSON_OUTPUT_DIR=".codeboarding"
-        OUTPUT_FORMAT="${{ inputs.output_format }}"
-        
-        # Validate output format
-        if [[ "$OUTPUT_FORMAT" != ".md" && "$OUTPUT_FORMAT" != ".mdx" && "$OUTPUT_FORMAT" != ".rst" && "$OUTPUT_FORMAT" != ".html" ]]; then
-          echo "Error: Invalid output format '$OUTPUT_FORMAT'. Must be either '.md', '.mdx', '.rst', or '.html'"
-          exit 1
-        fi
-        
-        # Clean and create the output directories
-        mkdir -p "$MD_OUTPUT_DIR"
-        
-        # Remove existing .codeboarding files before adding new ones
-        if [ -d "$JSON_OUTPUT_DIR" ]; then
-          echo "Cleaning existing JSON files from $JSON_OUTPUT_DIR"
-          rm -rf "$JSON_OUTPUT_DIR"
-        fi
-        mkdir -p "$JSON_OUTPUT_DIR"
-        
-        # Initialize counters
-        MARKDOWN_FILES_CREATED=0
-        JSON_FILES_CREATED=0
-        
-        echo "=== Processing Documentation Files ==="
-        echo "Response JSON structure:"
-        jq . "$RESPONSE_FILE"
-        echo "Using output format: $OUTPUT_FORMAT"
-          # Parse JSON response and create files using keys as filenames
-        if jq -e '.files' "$RESPONSE_FILE" > /dev/null; then
-          echo "Files key found, proceeding to create files..."
-          
-          # Check if files object is empty
-          FILES_COUNT=$(jq '.files | length' "$RESPONSE_FILE")
-          if [ "$FILES_COUNT" -eq 0 ]; then
-            echo "ℹ️  No documentation files were generated for this repository/branch combination."
-            echo "📝 This might be because:"
-            echo "   • No changes were detected between the source and target branches"
-            echo "   • The repository or branches don't exist or are not accessible"
-            echo "   • No analyzable code files were found"
-            echo "   • The branches are identical (no diff to analyze)"
+        rm -f "${RUNNER_TEMP}/cb-llm-key" \
+              "${RUNNER_TEMP}/cb-provider-env" \
+              "${RUNNER_TEMP}/cb-agent-model" \
+              "${RUNNER_TEMP}/cb-parsing-model"
+
+    - name: Diff analyses → Mermaid
+      if: steps.guard.outputs.skip != 'true'
+      id: diagram
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        BASE_ANALYSIS: ${{ steps.analyze.outputs.base_analysis }}
+        HEAD_ANALYSIS: ${{ steps.analyze.outputs.head_analysis }}
+        DIRECTION: ${{ inputs.diagram_direction }}
+        RENDER_DEPTH: ${{ inputs.render_depth }}
+        CHANGED_ONLY: ${{ inputs.changed_only }}
+      run: |
+        case "$CHANGED_ONLY" in
+          true|false) ;;
+          *) echo "::error::changed_only must be 'true' or 'false'."; exit 1 ;;
+        esac
+        case "$RENDER_DEPTH" in
+          ''|*[!0-9]*) echo "::error::render_depth must be a positive integer."; exit 1 ;;
+        esac
+
+        args=(
+          --base "$BASE_ANALYSIS"
+          --head "$HEAD_ANALYSIS"
+          --out "${RUNNER_TEMP}/diagram.md"
+          --direction "$DIRECTION"
+          --render-depth "$RENDER_DEPTH"
+        )
+        [ "$CHANGED_ONLY" = "true" ] && args+=(--changed-only)
+        META=$(python3 "$ACTION_PATH/scripts/diff_to_mermaid.py" "${args[@]}")
+        echo "$META" > "${RUNNER_TEMP}/diagram_meta.json"
+        echo "diff meta: $META"
+        read N CHANGED RENDERED TRUNC < <(python3 -c "import json;d=json.load(open('${RUNNER_TEMP}/diagram_meta.json'));print(d['n_changed'], str(d.get('changed', d['n_changed']>0)).lower(), str(d['rendered']).lower(), str(d['truncated']).lower())")
+        echo "n_changed=$N" >> $GITHUB_OUTPUT
+        echo "changed=$CHANGED" >> $GITHUB_OUTPUT
+        echo "rendered=$RENDERED" >> $GITHUB_OUTPUT
+        echo "truncated=$TRUNC" >> $GITHUB_OUTPUT
+        echo "diagram_md=${RUNNER_TEMP}/diagram.md" >> $GITHUB_OUTPUT
+
+    - name: Build PR comment body
+      if: steps.guard.outputs.skip != 'true'
+      id: body
+      shell: bash
+      env:
+        # Pass event/input-derived strings as DATA (not interpolated into the script).
+        HEADER: ${{ inputs.comment_header }}
+        BASE_REF: ${{ steps.guard.outputs.base_ref }}
+        CTA_BASE: ${{ inputs.cta_base_url }}
+        OWNER_REPO: ${{ github.repository }}
+        ACTION_PATH: ${{ github.action_path }}
+        TARGET_REPO: ${{ github.workspace }}/target-repo
+        DIAGRAM_MD: ${{ steps.diagram.outputs.diagram_md }}
+        RUN_ID: ${{ github.run_id }}
+        N: ${{ steps.diagram.outputs.n_changed }}
+        CHANGED: ${{ steps.diagram.outputs.changed }}
+        RENDERED: ${{ steps.diagram.outputs.rendered }}
+        TRUNC: ${{ steps.diagram.outputs.truncated }}
+        PR: ${{ steps.guard.outputs.pr_number }}
+        ISSUES: ${{ steps.health.outputs.issues }}
+      run: |
+        BODY_FILE=$(mktemp)
+        OWNER="${OWNER_REPO%%/*}"; REPO="${OWNER_REPO##*/}"
+
+        headline() {
+          if [ "$CHANGED" != "true" ]; then echo "no architectural changes";
+          elif [ "$N" = "1" ]; then echo "1 component changed";
+          elif [ "$N" = "0" ]; then echo "architecture updated";
+          else echo "$N components changed"; fi
+        }
+
+        # CTA footer (editor + extension links via the click proxy, warning banner
+        # on real health findings). build_cta also emits the ⚠️ banner with no proxy.
+        cta() {
+          python3 "$ACTION_PATH/scripts/build_cta.py" \
+            --cta-base "$CTA_BASE" --owner "$OWNER" --repo "$REPO" --pr "$PR" \
+            --repo-path "$TARGET_REPO" --issues "${ISSUES:-0}"
+        }
+
+        {
+          echo "### ${HEADER} · $(headline)"
+          echo ""
+          if [ "$RENDERED" = "true" ]; then
+            cat "$DIAGRAM_MD"
+            echo ""
+            echo ""
+            echo "Colors indicate component changes compared to \`${BASE_REF}\`: 🟩 Added · 🟨 Modified · 🟥 Removed"
+            if [ "$TRUNC" = "true" ]; then
+              echo ""
+              echo "<sub>Showing changed components only — the full graph exceeds GitHub's inline Mermaid limit.</sub>"
+            fi
+          elif [ "$CHANGED" = "true" ]; then
+            echo "Architecture changed versus \`${BASE_REF}\`, but the diagram is too large to render inline (GitHub caps inline Mermaid at ~500 edges)."
           else
-            # Get each key from files object and create a file with that name
-            while IFS= read -r filename; do
-              echo "Processing file: $filename"
-              
-              # Get the content for this filename
-              content=$(jq -r ".files[\"$filename\"]" "$RESPONSE_FILE")
-              
-              # Determine file type and destination
-              if [[ "$filename" == *.json ]]; then
-                # JSON file
-                output_dir="$JSON_OUTPUT_DIR"
-                output_filename="$filename"
-                echo "$content" > "$output_dir/$output_filename"
-                echo "Created JSON file: $output_dir/$output_filename"
-                JSON_FILES_CREATED=$((JSON_FILES_CREATED + 1))
-              else
-                # Documentation file - add appropriate extension if not present
-                output_dir="$MD_OUTPUT_DIR"
-                
-                # Check if filename has an extension
-                if [[ "$filename" == *.* ]]; then
-                  # Extract basename without extension
-                  basename="${filename%.*}"
-                else
-                  basename="$filename"
-                fi
-                
-                # Add the selected output format extension
-                output_filename="${basename}${OUTPUT_FORMAT}"
-                
-                echo "$content" > "$output_dir/$output_filename"
-                echo "Created documentation file: $output_dir/$output_filename"
-                MARKDOWN_FILES_CREATED=$((MARKDOWN_FILES_CREATED + 1))
-              fi
-            done < <(jq -r '.files | keys[]' "$RESPONSE_FILE")
+            echo "No architectural changes detected versus \`${BASE_REF}\`."
           fi
-        else
-          echo "No 'files' key found in response JSON - checking if job completed with no results"
-        fi
-        
-        # Clean up temporary file
-        rm -f "$RESPONSE_FILE"
-        
-        # Check if any files were created
-        TOTAL_FILES=$((MARKDOWN_FILES_CREATED + JSON_FILES_CREATED))
-        if [ "$TOTAL_FILES" -gt 0 ]; then
-          HAS_CHANGES="true"
-          echo "Created $MARKDOWN_FILES_CREATED Markdown files in $MD_OUTPUT_DIR"
-          echo "Created $JSON_FILES_CREATED JSON files in $JSON_OUTPUT_DIR"
-          
-          # List created files
-          if [ "$MARKDOWN_FILES_CREATED" -gt 0 ]; then
-            echo "Markdown files created:"
-            ls -la "$MD_OUTPUT_DIR"
-          fi
-          
-          if [ "$JSON_FILES_CREATED" -gt 0 ]; then
-            echo "JSON files created:"
-            ls -la "$JSON_OUTPUT_DIR"
-          fi
-        else
-          HAS_CHANGES="false"
-          echo "No files were created"
-        fi
-        
-        # Set outputs
-        echo "markdown_files_created=$MARKDOWN_FILES_CREATED" >> $GITHUB_OUTPUT
-        echo "json_files_created=$JSON_FILES_CREATED" >> $GITHUB_OUTPUT
-        echo "output_directory=$MD_OUTPUT_DIR" >> $GITHUB_OUTPUT
-        echo "json_directory=$JSON_OUTPUT_DIR" >> $GITHUB_OUTPUT
-        echo "has_changes=$HAS_CHANGES" >> $GITHUB_OUTPUT
+          cta
+          echo ""
+          echo "<sub>codeboarding-action · run ${RUN_ID}</sub>"
+        } > "$BODY_FILE"
+
+        echo "body_file=$BODY_FILE" >> "$GITHUB_OUTPUT"
+
+    - name: Post sticky PR comment
+      if: steps.guard.outputs.skip != 'true'
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: codeboarding-architecture-diff
+        number: ${{ steps.guard.outputs.pr_number }}
+        path: ${{ steps.body.outputs.body_file }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    # If any analysis step failed, replace the sticky comment with a short failure
+    # note (same header) instead of leaving the PR with nothing / a stale diagram.
+    - name: Post failure comment
+      if: failure() && steps.guard.outputs.skip != 'true'
+      continue-on-error: true
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: codeboarding-architecture-diff
+        number: ${{ steps.guard.outputs.pr_number }}
+        message: |
+          ### ${{ inputs.comment_header }} · failed
+
+          The architecture diff couldn't be generated for this run. See the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.
+
+          <sub>codeboarding-action · run ${{ github.run_id }}</sub>
+        GITHUB_TOKEN: ${{ inputs.github_token }}
