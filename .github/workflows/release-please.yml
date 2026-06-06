@@ -1,0 +1,41 @@
+name: release-please
+
+# Automated releases from Conventional Commits. On each push to main, release-
+# please maintains a "chore: release X.Y.Z" PR (version bump + CHANGELOG). Merge
+# that PR to cut the release: it tags vX.Y.Z, creates the GitHub Release, and the
+# step below re-points the moving major tag (e.g. v1 -> v1.2.0).
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Move the moving major tag here rather than in release-major-tag.yml: a
+      # release created with GITHUB_TOKEN does NOT trigger other workflows, so the
+      # `release: published` listener wouldn't fire for release-please releases.
+      - uses: actions/checkout@v4
+        if: ${{ steps.release.outputs.release_created }}
+        with:
+          fetch-depth: 0
+      - name: Update major tag
+        if: ${{ steps.release.outputs.release_created }}
+        env:
+          TAG: ${{ steps.release.outputs.tag_name }}
+          MAJOR: ${{ steps.release.outputs.major }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -fa "v${MAJOR}" -m "v${MAJOR} -> ${TAG}" "${TAG}"
+          git push origin "v${MAJOR}" --force
