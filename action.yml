@@ -448,7 +448,7 @@ runs:
             cat "$DIAGRAM_MD"
             echo ""
             echo ""
-            echo "Colours indicate components that have been 🟩 added · 🟨 modified · 🟥 removed — versus \`${BASE_REF}\`."
+            echo "Colors indicate component changes compared to \`${BASE_REF}\`: 🟩 Added · 🟨 Modified · 🟥 Removed"
             if [ "$TRUNC" = "true" ]; then
               echo ""
               echo "<sub>Showing changed components only — the full graph exceeds GitHub's inline Mermaid limit.</sub>"

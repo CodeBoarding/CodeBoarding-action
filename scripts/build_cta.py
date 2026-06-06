@@ -67,7 +67,7 @@ def build_cta(cta_base: str, owner: str, repo: str, pr: str, repo_path: Path, is
         editor_links = " · ".join(
             f"[**Open in {_EDITOR_LABEL[e]} →**]({link('open-in-editor', editor=e)})" for e in detect_editors(repo_path)
         )
-        parts.append(f"🧭 See this architecture in your editor: {editor_links}")
+        parts.append(f"See this architecture in your editor: {editor_links}")
         parts.append(f"💡 New to CodeBoarding? [**Get the extension →**]({link('use-marketplace')})")
 
     if not parts:
