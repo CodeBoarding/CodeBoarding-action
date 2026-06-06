@@ -31,8 +31,10 @@ RENDER_DEPTH=()
 EXTRA=()
 OPEN="auto"
 REPO="" BASE_REF="" HEAD_REF="" BASE_JSON="" HEAD_JSON=""
-AGENT_MODEL="${AGENT_MODEL:-openrouter/anthropic/claude-sonnet-4}"
-PARSING_MODEL="${PARSING_MODEL:-openrouter/anthropic/claude-sonnet-4}"
+# Empty by default: the engine then uses its own valid per-provider default.
+# Override with a bare OpenRouter slug, e.g. AGENT_MODEL=anthropic/claude-sonnet-4
+AGENT_MODEL="${AGENT_MODEL:-}"
+PARSING_MODEL="${PARSING_MODEL:-}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -58,15 +60,16 @@ done
 mkdir -p "$OUT"
 
 run_engine() {
-  ( cd "$ENGINE" && \
-    STATIC_ANALYSIS_CONFIG="$ENGINE/static_analysis_config.yml" \
-    PROJECT_ROOT="$ENGINE" \
-    DIAGRAM_DEPTH_LEVEL="$DEPTH" \
-    CACHING_DOCUMENTATION="false" \
-    ENABLE_MONITORING="false" \
-    OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}" \
-    AGENT_MODEL="$AGENT_MODEL" \
-    PARSING_MODEL="$PARSING_MODEL" \
+  ( cd "$ENGINE"
+    export STATIC_ANALYSIS_CONFIG="$ENGINE/static_analysis_config.yml" \
+           PROJECT_ROOT="$ENGINE" \
+           DIAGRAM_DEPTH_LEVEL="$DEPTH" \
+           CACHING_DOCUMENTATION="false" \
+           ENABLE_MONITORING="false" \
+           OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
+    # Pass the model only when set; empty -> engine's own valid per-provider default.
+    if [ -n "$AGENT_MODEL" ]; then export AGENT_MODEL; fi
+    if [ -n "$PARSING_MODEL" ]; then export PARSING_MODEL; fi
     uv run python "$ACTION_DIR/scripts/cb_engine.py" "$@" )
 }
 
