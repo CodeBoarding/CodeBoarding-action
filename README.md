@@ -78,14 +78,16 @@ OPENROUTER_API_KEY = sk-or-...
 
 That's the only required setup — it's passed via `llm_api_key` above. (For local runs with `scripts/run_local.sh`, export `OPENROUTER_API_KEY` as an env var instead.)
 
-**Models are optional.** Omit `agent_model` / `parsing_model` to use the engine's default for your provider, or pin them to a **bare OpenRouter slug** (no `openrouter/` prefix) — inline or from a secret:
+**Models are optional.** Omit `agent_model` / `parsing_model` to use the engine's default for your provider, or pin them — inline or from a repository **variable** (a model name isn't a secret, so use `vars.`, not `secrets.`):
 
 ```yaml
         with:
-          llm_api_key:   ${{ secrets.OPENROUTER_API_KEY }}
-          agent_model:   anthropic/claude-sonnet-4      # optional; or ${{ secrets.AGENT_MODEL }}
-          parsing_model: google/gemini-3-flash-preview  # optional
+          llm_api_key:   ${{ secrets.OPENROUTER_API_KEY }}  # secret
+          agent_model:   anthropic/claude-sonnet-4          # optional; or ${{ vars.AGENT_MODEL }}
+          parsing_model: google/gemini-3-flash-preview      # optional
 ```
+
+**Model format:** a bare OpenRouter slug (e.g. `anthropic/claude-sonnet-4`) — exactly one `/`, **no `openrouter/` prefix** (that's the LiteLLM form; the action rejects it early).
 
 ## When it runs
 
