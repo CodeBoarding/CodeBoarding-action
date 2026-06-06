@@ -70,10 +70,21 @@ jobs:
           llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
 
-Add one repository secret:
+Add the API key as a repository secret (**Settings → Secrets and variables → Actions**):
 
 ```text
-OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_API_KEY = sk-or-...
+```
+
+That's the only required setup — it's passed via `llm_api_key` above. (For local runs with `scripts/run_local.sh`, export `OPENROUTER_API_KEY` as an env var instead.)
+
+**Models are optional.** Omit `agent_model` / `parsing_model` to use the engine's default for your provider, or pin them to a **bare OpenRouter slug** (no `openrouter/` prefix) — inline or from a secret:
+
+```yaml
+        with:
+          llm_api_key:   ${{ secrets.OPENROUTER_API_KEY }}
+          agent_model:   anthropic/claude-sonnet-4      # optional; or ${{ secrets.AGENT_MODEL }}
+          parsing_model: google/gemini-3-flash-preview  # optional
 ```
 
 ## When it runs
@@ -94,8 +105,8 @@ The command needs the `issue_comment` trigger and runs from your **default branc
 | `render_depth` | `1` | Display depth for the PR diagram. Keep `1` for a clean top-level view. |
 | `diagram_direction` | `LR` | Mermaid direction: `LR`, `TD`, `TB`, `RL`, or `BT`. |
 | `changed_only` | `false` | Render only changed components and incident edges. |
-| `agent_model` | `openrouter/anthropic/claude-sonnet-4` | Model used for analysis. |
-| `parsing_model` | `openrouter/anthropic/claude-sonnet-4` | Model used for parsing. |
+| `agent_model` | engine default | Analysis model. Bare OpenRouter slug (e.g. `anthropic/claude-sonnet-4`); empty = engine's per-provider default. |
+| `parsing_model` | engine default | Parsing model. Bare OpenRouter slug; empty = engine's per-provider default. |
 | `comment_header` | `Architecture review` | Heading for the PR comment. |
 | `trigger_command` | `/codeboarding` | Slash command for trusted on-demand runs. |
 | `cta_base_url` | empty | Optional click-proxy base URL for editor and extension links. |
