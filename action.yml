@@ -155,6 +155,21 @@ runs:
         gh api -X POST "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" \
           -f content=eyes >/dev/null 2>&1 || true
 
+    - name: Post in-progress comment
+      if: steps.guard.outputs.skip != 'true'
+      continue-on-error: true
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: codeboarding-architecture-diff
+        number: ${{ steps.guard.outputs.pr_number }}
+        message: |
+          ### ${{ inputs.comment_header }} · analyzing…
+
+          ⏳ CodeBoarding is analyzing the architecture changes in this PR. This usually takes a few minutes.
+
+          <sub>codeboarding-action · run ${{ github.run_id }}</sub>
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+
     - name: Checkout CodeBoarding engine
       if: steps.guard.outputs.skip != 'true'
       uses: actions/checkout@v4
