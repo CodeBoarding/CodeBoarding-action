@@ -1,4 +1,4 @@
-# CodeBoarding Visual Architecture Review
+# CodeBoarding Review
 
 Review system design on every pull request, not just the diff.
 
@@ -25,19 +25,30 @@ A PR comment looks like this:
 
 ```mermaid
 graph LR
-    Gateway["API Gateway"]
-    Auth["Auth Service"]
-    Cache["Cache"]
-    Gateway -- "routes to" --> Auth
-    Auth -- "reads/writes" --> Cache
+    Orchestration_Workflow_Manager["Orchestration & Workflow Manager"]
+    Incremental_Analysis_Controller["Incremental Analysis Controller"]
+    Static_Analysis_Engine["Static Analysis Engine"]
+    Agentic_Intelligence_Core["Agentic Intelligence Core"]
+    Health_Quality_Monitor["Health & Quality Monitor"]
+    Rendering_Output_Engine["Rendering & Output Engine"]
+    Persistence_Provider_Infrastructure["Persistence & Provider Infrastructure"]
+    Orchestration_Workflow_Manager -- "triggers change detection" --> Incremental_Analysis_Controller
+    Incremental_Analysis_Controller -- "passes filtered file sets" --> Static_Analysis_Engine
+    Static_Analysis_Engine -- "provides CFGs and symbol tables" --> Agentic_Intelligence_Core
+    Static_Analysis_Engine -- "supplies structural metrics" --> Health_Quality_Monitor
+    Agentic_Intelligence_Core -- "delivers summaries and diagrams" --> Rendering_Output_Engine
+    Health_Quality_Monitor -- "provides health reports" --> Rendering_Output_Engine
+    Persistence_Provider_Infrastructure -- "supplies LLM clients" --> Agentic_Intelligence_Core
+    Orchestration_Workflow_Manager -- "persists pipeline state" --> Persistence_Provider_Infrastructure
     classDef added fill:#1f883d,stroke:#0b5d23,color:#fff;
     classDef modified fill:#bf8700,stroke:#7d4e00,color:#fff;
     classDef deleted fill:#cf222e,stroke:#82071e,color:#fff,stroke-dasharray:5 3;
-    class Cache added;
-    class Auth modified;
-    class Gateway deleted;
-    linkStyle 0 stroke:#cf222e,stroke-width:2px,stroke-dasharray:5 3;
-    linkStyle 1 stroke:#1f883d,stroke-width:2px;
+    class Health_Quality_Monitor added;
+    class Static_Analysis_Engine,Agentic_Intelligence_Core modified;
+    class Persistence_Provider_Infrastructure deleted;
+    linkStyle 3,5 stroke:#1f883d,stroke-width:2px;
+    linkStyle 2 stroke:#bf8700,stroke-width:2px;
+    linkStyle 6,7 stroke:#cf222e,stroke-width:2px,stroke-dasharray:5 3;
 ```
 
 ## Quick start
