@@ -5,6 +5,8 @@ import sys
 import tempfile
 import types
 import unittest
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
@@ -68,18 +70,47 @@ class TestAnalysis(_Base):
     def test_base_calls_run_full(self):
         rf = _Rec()
         self._install(run_full=rf)
-        cb_engine.run_base("/repo", "/out", "myrepo", "rid-base", "2", "abc123")
+        cb_engine.run_base("/repo", "/out", "myrepo", "rid-base", 2, "abc123")
         self.assertEqual(len(rf.calls), 1)
         k = rf.calls[0]
         self.assertEqual(k["repo_name"], "myrepo")
         self.assertEqual(str(k["repo_path"]), "/repo")
-        self.assertEqual(k["depth_level"], 2)  # coerced to int
+        self.assertEqual(k["depth_level"], 2)
         self.assertEqual(k["source_sha"], "abc123")
+
+    def test_main_parses_depth_as_int(self):
+        rf = _Rec()
+        self._install(run_full=rf)
+        cb_engine.main([
+            "base",
+            "--repo", "/repo",
+            "--out", "/out",
+            "--name", "myrepo",
+            "--run-id", "rid-base",
+            "--depth", "2",
+            "--source-sha", "abc123",
+        ])
+        self.assertEqual(rf.calls[0]["depth_level"], 2)
+
+    def test_main_rejects_invalid_depth(self):
+        for depth in ("0", "4", "x"):
+            with self.subTest(depth=depth):
+                with redirect_stderr(StringIO()):
+                    with self.assertRaises(SystemExit):
+                        cb_engine.main([
+                            "base",
+                            "--repo", "/repo",
+                            "--out", "/out",
+                            "--name", "myrepo",
+                            "--run-id", "rid-base",
+                            "--depth", depth,
+                            "--source-sha", "abc123",
+                        ])
 
     def test_head_uses_incremental(self):
         ri, rf = _Rec(), _Rec()
         self._install(run_full=rf, run_incremental=ri)
-        cb_engine.run_head("/repo", "/out", "r", "rid", "1", "base", "head", "head")
+        cb_engine.run_head("/repo", "/out", "r", "rid", 1, "base", "head", "head")
         self.assertEqual(len(ri.calls), 1)
         self.assertEqual(len(rf.calls), 0)  # no fallback
         self.assertEqual(ri.calls[0]["base_ref"], "base")
@@ -92,10 +123,13 @@ class TestAnalysis(_Base):
         analysis.run_incremental = _Rec(raises=IncMiss)
         out = tempfile.mkdtemp()
         (Path(out) / "stale.json").write_text("{}")  # must be wiped before the full run
-        cb_engine.run_head("/repo", out, "r", "rid", "3", "base", "head", "head")
+        (Path(out) / "health").mkdir()
+        (Path(out) / "health" / "stale.json").write_text("{}")
+        cb_engine.run_head("/repo", out, "r", "rid", 3, "base", "head", "head")
         self.assertEqual(len(rf.calls), 1)  # fell back to full
         self.assertEqual(rf.calls[0]["depth_level"], 3)
         self.assertFalse((Path(out) / "stale.json").exists())  # head dir wiped before full
+        self.assertFalse((Path(out) / "health").exists())  # nested stale artifacts wiped too
 
 
 class TestHealth(_Base):
@@ -130,6 +164,33 @@ class TestHealth(_Base):
         report = types.SimpleNamespace(check_summaries=[CS()])
         self._install_health(report=report)
         self.assertEqual(cb_engine.run_health("/art", "/repo", "r"), 3)  # 2 warnings + 1 critical, info ignored
+
+    def test_prefers_written_health_report(self):
+        artifact_dir = Path(tempfile.mkdtemp())
+        report_dir = artifact_dir / "health"
+        report_dir.mkdir()
+        (report_dir / "health_report.json").write_text(
+            """
+            {
+              "check_summaries": [
+                {"finding_groups": [
+                  {"severity": "warning", "entities": [{}, {}]},
+                  {"severity": "critical", "entities": [{}]},
+                  {"severity": "info", "entities": [{}, {}, {}, {}, {}]}
+                ]}
+              ]
+            }
+            """,
+            encoding="utf-8",
+        )
+        self.assertEqual(cb_engine.run_health(str(artifact_dir), "/repo", "r"), 3)
+
+    def test_malformed_health_report_falls_back(self):
+        artifact_dir = Path(tempfile.mkdtemp())
+        report_dir = artifact_dir / "health"
+        report_dir.mkdir()
+        (report_dir / "health_report.json").write_text("[]", encoding="utf-8")
+        self.assertEqual(cb_engine.run_health(str(artifact_dir), "/repo", "r"), 0)
 
     def test_missing_module_yields_zero(self):
         # No health.* modules installed -> import fails -> 0, never raises.

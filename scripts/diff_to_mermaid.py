@@ -21,6 +21,7 @@ Self-contained stdlib.
 from __future__ import annotations
 
 import argparse
+from collections import defaultdict
 import json
 import re
 import sys
@@ -110,21 +111,59 @@ def _rel_key(r: dict) -> tuple:
 
 
 def _diff_relations(base_rels: list, current_rels: list) -> list:
-    base_edges = {_rel_key(r): r for r in (base_rels or [])}
-    current_edges = {_rel_key(r): r for r in (current_rels or [])}
+    base_by_endpoint: dict = defaultdict(list)
+    current_by_endpoint: dict = defaultdict(list)
+    for rel in base_rels or []:
+        base_by_endpoint[_rel_key(rel)].append(rel)
+    for rel in current_rels or []:
+        current_by_endpoint[_rel_key(rel)].append(rel)
+
     result: list = []
-    for key, rel in current_edges.items():
-        if key not in base_edges:
-            status = "added"
-        elif (base_edges[key].get("relation") or "") != (rel.get("relation") or ""):
-            status = "modified"
+    keys = list(current_by_endpoint)
+    keys.extend(k for k in base_by_endpoint if k not in current_by_endpoint)
+    for key in keys:
+        base_group = base_by_endpoint.get(key, [])
+        current_group = current_by_endpoint.get(key, [])
+        if not base_group:
+            result.extend({**rel, "diff_status": "added"} for rel in current_group)
+            continue
+        if not current_group:
+            result.extend({**rel, "diff_status": "deleted"} for rel in base_group)
+            continue
+
+        if len(base_group) == 1 and len(current_group) == 1:
+            status = "unchanged" if (base_group[0].get("relation") or "") == (current_group[0].get("relation") or "") else "modified"
+            result.append({**current_group[0], "diff_status": status})
+            continue
+
+        unmatched_base = list(base_group)
+        unmatched_current = []
+        for rel in current_group:
+            label = rel.get("relation") or ""
+            match_idx = next((i for i, b in enumerate(unmatched_base) if (b.get("relation") or "") == label), None)
+            if match_idx is None:
+                unmatched_current.append(rel)
+            else:
+                unmatched_base.pop(match_idx)
+                result.append({**rel, "diff_status": "unchanged"})
+
+        if len(unmatched_base) == 1 and len(unmatched_current) == 1:
+            result.append({**unmatched_current[0], "diff_status": "modified"})
         else:
-            status = "unchanged"
-        result.append({**rel, "diff_status": status})
-    for key, rel in base_edges.items():
-        if key not in current_edges:
-            result.append({**rel, "diff_status": "deleted"})
+            result.extend({**rel, "diff_status": "added"} for rel in unmatched_current)
+            result.extend({**rel, "diff_status": "deleted"} for rel in unmatched_base)
     return result
+
+
+def _has_changes(components: list, relations: list) -> bool:
+    if any(r.get("diff_status") in CHANGED for r in relations or []):
+        return True
+    for comp in components or []:
+        if comp.get("diff_status") in CHANGED:
+            return True
+        if _has_changes(comp.get("components") or [], comp.get("components_relations") or []):
+            return True
+    return False
 
 
 def _diff_components(base_components: list, current_components: list) -> list:
@@ -156,6 +195,12 @@ def _diff_components(base_components: list, current_components: list) -> list:
         current_sub_rels = comp.get("components_relations") or []
         if base_sub_rels or current_sub_rels:
             annotated["components_relations"] = _diff_relations(base_sub_rels, current_sub_rels)
+
+        if diff_status == "unchanged" and _has_changes(
+            annotated.get("components") or [],
+            annotated.get("components_relations") or [],
+        ):
+            annotated["display_status"] = "modified"
 
         result.append(annotated)
 
@@ -214,6 +259,10 @@ def _truncate(text: str, limit: int = _EDGE_LABEL_MAX) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
+def _display_status(comp: dict, force: str | None = None) -> str:
+    return force or comp.get("display_status") or comp.get("diff_status", "unchanged")
+
+
 class _Scope:
     """Per-level name/id -> mermaid key resolver for one nesting level.
 
@@ -232,7 +281,7 @@ class _Scope:
         self.del_by_id: dict = {}
         self.del_by_name: dict = {}
         for comp in components:
-            status = force or comp.get("diff_status", "unchanged")
+            status = _display_status(comp, force)
             present = status != "deleted"
             cid, cname = _comp_id(comp), _comp_name(comp)
             base = ("n_" if present else "del_") + _sanitize(cname or cid or "node")
@@ -262,12 +311,18 @@ class _Scope:
 
 
 def _filter_changed(components: list, relations: list) -> tuple:
-    """Keep changed components, the endpoints of changed edges, and edges among the kept — the size fallback."""
+    """Keep changed components, changed-edge endpoints, ancestors, and edges among the kept."""
     changed_rels = [r for r in relations if r.get("diff_status") in CHANGED]
     keep_ids: set = set()
     keep_names: set = set()
+    filtered_children: dict[int, tuple] = {}
     for c in components:
-        if c.get("diff_status") in CHANGED:
+        child_components, child_relations = _filter_changed(
+            c.get("components") or [],
+            c.get("components_relations") or [],
+        )
+        filtered_children[id(c)] = (child_components, child_relations)
+        if _display_status(c) in CHANGED or child_components or child_relations:
             keep_ids.add(_comp_id(c))
             keep_names.add(_comp_name(c))
     for r in changed_rels:  # so a changed edge between two unchanged nodes still draws its endpoints
@@ -276,7 +331,15 @@ def _filter_changed(components: list, relations: list) -> tuple:
     keep_ids.discard("")
     keep_names.discard("")
 
-    kept = [c for c in components if (_comp_id(c) and _comp_id(c) in keep_ids) or (_comp_name(c) and _comp_name(c) in keep_names)]
+    kept = []
+    for c in components:
+        if not ((_comp_id(c) and _comp_id(c) in keep_ids) or (_comp_name(c) and _comp_name(c) in keep_names)):
+            continue
+        child_components, child_relations = filtered_children[id(c)]
+        status = _display_status(c)
+        if child_components or child_relations or status == "modified":
+            c = {**c, "components": child_components, "components_relations": child_relations}
+        kept.append(c)
     kept_ids = {_comp_id(c) for c in kept if _comp_id(c)}
     kept_names = {_comp_name(c) for c in kept if _comp_name(c)}
 
@@ -327,12 +390,10 @@ def _count_changed_components(components: list) -> int:
 
 def _has_changed_relations(components: list, relations: list) -> bool:
     """Recursively: is any relation (at any nesting level) added/modified/deleted?"""
-    if any(r.get("diff_status") in CHANGED for r in relations or []):
-        return True
-    for c in components or []:
-        if _has_changed_relations(c.get("components") or [], c.get("components_relations") or []):
-            return True
-    return False
+    return _has_changes([], relations) or any(
+        _has_changed_relations(c.get("components") or [], c.get("components_relations") or [])
+        for c in components or []
+    )
 
 
 def render_mermaid(
@@ -439,12 +500,14 @@ def render_mermaid(
         return "\n".join(head + body + style + ["```"]), counters["nodes"], counters["edges"]
 
     text, n_nodes, n_edges = build(changed_only)
-    truncated = changed_only
+    rendered_changed_only = changed_only
+    truncated = False
     # Degrade an oversized full graph to changed-only before giving up (GitHub caps).
     if text is not None and (n_edges > MAX_EDGES or len(text) > MAX_TEXT) and not changed_only:
         t2, nn2, ne2 = build(True)
         if t2 is not None:
             text, n_nodes, n_edges, truncated = t2, nn2, ne2, True
+            rendered_changed_only = True
 
     meta = {
         "n_changed": n_changed,
@@ -452,6 +515,8 @@ def render_mermaid(
         "n_nodes": n_nodes if text is not None else 0,
         "n_edges": n_edges if text is not None else 0,
         "truncated": bool(truncated or text is None),
+        "changed_only": bool(rendered_changed_only),
+        "requested_changed_only": bool(changed_only),
     }
     if text is None or n_edges > MAX_EDGES or len(text) > MAX_TEXT:  # never trip GitHub's red error box
         meta["truncated"] = True

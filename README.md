@@ -29,7 +29,9 @@ on:
     types: [created]
 
 permissions:
-  pull-requests: write         # the only permission needed — nothing is pushed
+  contents: read               # checkout + fetch PR/base commits
+  pull-requests: write         # post/update the PR comment
+  issues: write                # issue_comment command reactions/comments
 
 # Cancel a superseded run when new commits land on the same PR (avoid stacking
 # multi-minute LLM jobs).
@@ -40,13 +42,11 @@ concurrency:
 jobs:
   diagram:
     runs-on: ubuntu-latest
-    # Run on (non-draft) PR events, OR when a TRUSTED collaborator comments exactly
-    # "/codeboarding" on a PR. The if-gate matters: (1) without it a runner spins up
-    # for every comment; (2) the author_association check is a SECURITY gate — see below.
+    # Run on (non-draft) PR events, OR when a TRUSTED collaborator comments on a PR.
+    # The action itself checks whether the first word matches `trigger_command`.
     if: >
       (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
-       (github.event.comment.body == '/codeboarding' || startsWith(github.event.comment.body, '/codeboarding ')) &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     timeout-minutes: 60
     steps:
@@ -61,7 +61,7 @@ You need **one secret**: an LLM API key. OpenRouter is the default; pass your ow
 
 ### On-demand: the `/codeboarding` command
 
-Comment **`/codeboarding`** on any pull request to (re)run the diagram on demand — handy after the engine/baseline changes, or on draft PRs you don't auto-review. The action reacts with 👀 to acknowledge. Change the word via the `trigger_command` input.
+Comment **`/codeboarding`** on any same-repository pull request to (re)run the diagram on demand — handy after the engine/baseline changes, or on draft PRs you don't auto-review. The action reacts with 👀 to acknowledge. Change the word via the `trigger_command` input.
 
 > **Note:** GitHub runs `issue_comment` workflows from the **default branch's** copy of the workflow file. So the command only works once this workflow is merged to your default branch — a workflow that exists only on a feature branch won't respond to comments.
 
@@ -87,7 +87,7 @@ Comment **`/codeboarding`** on any pull request to (re)run the diagram on demand
 | Output | Description |
 |---|---|
 | `diagram_md` | Path to the rendered ```` ```mermaid ```` block in the runner workspace. |
-| `n_changed` | Number of top-level components added/modified/deleted. |
+| `n_changed` | Number of components added/modified/deleted, counted recursively. |
 | `truncated` | `true` if the diagram was reduced to changed-only to fit GitHub's Mermaid limit. |
 
 ## How the diff is colored
@@ -117,7 +117,7 @@ If `.codeboarding/analysis.json` isn't committed at the PR base commit, the acti
 
 ## Fork PRs
 
-Because nothing is pushed (the diagram is inline Mermaid), there is no image step to skip on forks. The one caveat is GitHub's own policy: **secrets are withheld from `pull_request`-triggered runs on forks**, so the LLM key is unavailable and the run fails early with a clear message. A maintainer can re-run from the Actions tab, or use `pull_request_target` if you understand its security implications.
+Because nothing is pushed (the diagram is inline Mermaid), there is no image step to skip on forks. The one caveat is GitHub's own policy: **secrets are withheld from `pull_request`-triggered runs on forks**, so the LLM key is unavailable and the run fails early with a clear message. Do not use `pull_request_target` for this action; it would analyze PR-head code while secrets are available. The trusted `/codeboarding` `issue_comment` path is intentionally limited to same-repository PRs, so fork code is not analyzed with repository secrets present.
 
 ## Limitations
 

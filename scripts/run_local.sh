@@ -25,10 +25,10 @@ ENGINE="${ENGINE:-$ACTION_DIR/../CodeBoarding}"
 OUT="$ACTION_DIR/.cb-local"
 DEPTH="1"
 DIRECTION="LR"
-CHANGED_ONLY=""
-NO_EDGE_LABELS=""
-RENDER_DEPTH=""
-EXTRA=""
+CHANGED_ONLY=()
+NO_EDGE_LABELS=()
+RENDER_DEPTH=()
+EXTRA=()
 OPEN="auto"
 REPO="" BASE_REF="" HEAD_REF="" BASE_JSON="" HEAD_JSON=""
 AGENT_MODEL="${AGENT_MODEL:-openrouter/anthropic/claude-sonnet-4}"
@@ -45,10 +45,10 @@ while [ $# -gt 0 ]; do
     --out) OUT="$2"; shift 2;;
     --depth) DEPTH="$2"; shift 2;;
     --direction) DIRECTION="$2"; shift 2;;
-    --changed-only) CHANGED_ONLY="--changed-only"; shift;;
-    --no-edge-labels) NO_EDGE_LABELS="--no-edge-labels"; shift;;
-    --render-depth) RENDER_DEPTH="--render-depth $2"; shift 2;;
-    --extra) EXTRA="$2"; shift 2;;   # raw args forwarded to diff_to_mermaid.py, e.g. --extra "--font-size 20 --node-padding 16"
+    --changed-only) CHANGED_ONLY=(--changed-only); shift;;
+    --no-edge-labels) NO_EDGE_LABELS=(--no-edge-labels); shift;;
+    --render-depth) RENDER_DEPTH=(--render-depth "$2"); shift 2;;
+    --extra) read -r -a EXTRA <<< "$2"; shift 2;;   # raw args forwarded to diff_to_mermaid.py, e.g. --extra "--font-size 20 --node-padding 16"
     --no-open) OPEN="no"; shift;;
     -h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}"; exit 0;;
     *) echo "Unknown arg: $1" >&2; exit 2;;
@@ -57,7 +57,7 @@ done
 
 mkdir -p "$OUT"
 
-run_engine() {  # $1 = uv-runnable python source
+run_engine() {
   ( cd "$ENGINE" && \
     STATIC_ANALYSIS_CONFIG="$ENGINE/static_analysis_config.yml" \
     PROJECT_ROOT="$ENGINE" \
@@ -67,7 +67,7 @@ run_engine() {  # $1 = uv-runnable python source
     OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}" \
     AGENT_MODEL="$AGENT_MODEL" \
     PARSING_MODEL="$PARSING_MODEL" \
-    uv run python -c "$1" )
+    uv run python "$ACTION_DIR/scripts/cb_engine.py" "$@" )
 }
 
 if [ -n "$BASE_JSON" ] && [ -n "$HEAD_JSON" ]; then
@@ -85,39 +85,38 @@ else
 
   echo "== Resolving base analysis at $BASE_REF =="
   if git -C "$REPO" show "$BASE_REF:.codeboarding/analysis.json" > "$BASE_DIR/analysis.json" 2>/dev/null; then
-    git -C "$REPO" show "$BASE_REF:.codeboarding/static_analysis.pkl" > "$BASE_DIR/static_analysis.pkl" 2>/dev/null \
-      && echo "  using committed baseline (+ static_analysis.pkl)" || { rm -f "$BASE_DIR/static_analysis.pkl"; echo "  using committed baseline"; }
+    echo "  using committed baseline"
   else
     rm -f "$BASE_DIR/analysis.json"
     echo "  no committed baseline; running FULL analysis on base (LLM)..."
-    BASE_SRC="$OUT/base-src"; rm -rf "$BASE_SRC"
+    BASE_SRC="$OUT/base-src"
+    git -C "$REPO" worktree remove --force "$BASE_SRC" 2>/dev/null || true
+    git -C "$REPO" worktree prune
+    rm -rf "$BASE_SRC"
     git -C "$REPO" worktree add --detach "$BASE_SRC" "$BASE_REF" >/dev/null
-    run_engine "
-from pathlib import Path
-from codeboarding_workflows.analysis import run_full
-print(run_full(repo_name='$(basename "$REPO")', repo_path=Path('$BASE_SRC'), output_dir=Path('$BASE_DIR'),
-               run_id='local-base', log_path='/tmp/cb-local-base.log', depth_level=int('$DEPTH'), source_sha='$BASE_REF'))
-"
+    run_engine base \
+      --repo "$BASE_SRC" \
+      --out "$BASE_DIR" \
+      --name "$(basename "$REPO")" \
+      --run-id local-base \
+      --depth "$DEPTH" \
+      --source-sha "$BASE_REF"
     git -C "$REPO" worktree remove --force "$BASE_SRC" >/dev/null 2>&1 || true
+    [ -f "$BASE_DIR/analysis.json" ] || { echo "Base full analysis ran but analysis.json is missing." >&2; exit 1; }
   fi
 
   echo "== Analyzing head at $HEAD_REF (incremental from base) =="
   cp -a "$BASE_DIR"/. "$HEAD_DIR"/ 2>/dev/null || true
-  run_engine "
-from pathlib import Path
-from codeboarding_workflows.analysis import run_incremental, run_full, BaselineUnavailableError
-from diagram_analysis.exceptions import IncrementalCacheMissingError
-repo=Path('$REPO'); out=Path('$HEAD_DIR'); name='$(basename "$REPO")'
-try:
-    print(run_incremental(repo_path=repo, output_dir=out, project_name=name, run_id='local-head',
-                          log_path='/tmp/cb-local-head.log', base_ref='$BASE_REF', target_ref='$HEAD_REF', source_sha='$HEAD_REF'))
-except (IncrementalCacheMissingError, BaselineUnavailableError) as exc:
-    print(f'Incremental unavailable ({exc}); full analysis on head.')
-    for p in out.glob('*'):
-        if p.is_file(): p.unlink()
-    print(run_full(repo_name=name, repo_path=repo, output_dir=out, run_id='local-head',
-                   log_path='/tmp/cb-local-head.log', depth_level=int('$DEPTH'), source_sha='$HEAD_REF'))
-"
+  run_engine head \
+    --repo "$REPO" \
+    --out "$HEAD_DIR" \
+    --name "$(basename "$REPO")" \
+    --run-id local-head \
+    --depth "$DEPTH" \
+    --base-ref "$BASE_REF" \
+    --target-ref "$HEAD_REF" \
+    --source-sha "$HEAD_REF"
+  [ -f "$HEAD_DIR/analysis.json" ] || { echo "Head analysis ran but analysis.json is missing." >&2; exit 1; }
   BASE_ANALYSIS="$BASE_DIR/analysis.json"
   HEAD_ANALYSIS="$HEAD_DIR/analysis.json"
 fi
@@ -125,7 +124,8 @@ fi
 echo "== Diff -> Mermaid =="
 META="$(python3 "$ACTION_DIR/scripts/diff_to_mermaid.py" \
   --base "$BASE_ANALYSIS" --head "$HEAD_ANALYSIS" \
-  --out "$OUT/diagram.md" --direction "$DIRECTION" $CHANGED_ONLY $NO_EDGE_LABELS $RENDER_DEPTH $EXTRA)"
+  --out "$OUT/diagram.md" --direction "$DIRECTION" \
+  "${CHANGED_ONLY[@]}" "${NO_EDGE_LABELS[@]}" "${RENDER_DEPTH[@]}" "${EXTRA[@]}")"
 echo "  $META"
 
 # Browser preview: render the (fence-stripped) mermaid via mermaid.js, strict mode

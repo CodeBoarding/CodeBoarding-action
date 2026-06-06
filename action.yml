@@ -47,7 +47,7 @@ inputs:
     required: false
     default: '1'
   cta_base_url:
-    description: 'Base URL of the click proxy (e.g. https://go.codeboarding.org). When set, the comment adds "open in workspace" / "get the extension" links with owner/repo/pr appended. Empty disables the CTA.'
+    description: 'Base URL of the click proxy (e.g. https://go.codeboarding.org). When set, the comment adds "open in VS Code/Cursor" / "get the extension" links with owner/repo/pr appended. Empty disables the CTA.'
     required: false
     default: ''
   trigger_command:
@@ -60,7 +60,7 @@ outputs:
     description: 'Path to the rendered ```mermaid block (in the runner workspace).'
     value: ${{ steps.diagram.outputs.diagram_md }}
   n_changed:
-    description: 'Number of top-level components added/modified/deleted.'
+    description: 'Number of components added/modified/deleted, counted recursively.'
     value: ${{ steps.diagram.outputs.n_changed }}
   truncated:
     description: 'True if the diagram was reduced to changed-only to fit GitHub''s Mermaid limit.'
@@ -80,19 +80,32 @@ runs:
         AUTHOR_ASSOC: ${{ github.event.comment.author_association }}
         TRIGGER: ${{ inputs.trigger_command }}
         EVENT: ${{ github.event_name }}
+        REPOSITORY: ${{ github.repository }}
+        PR_NUMBER_PULL: ${{ github.event.pull_request.number }}
+        PULL_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PULL_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PULL_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        PULL_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+        PULL_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        ISSUE_NUMBER: ${{ github.event.issue.number }}
+        ISSUE_PR_URL: ${{ github.event.issue.pull_request.url }}
       run: |
         set -uo pipefail
         skip() { echo "::notice::$1 Skipping."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
 
-        if [ "$EVENT" = "pull_request" ] || [ "$EVENT" = "pull_request_target" ]; then
-          PR_NUMBER="${{ github.event.pull_request.number }}"
-          BASE_SHA="${{ github.event.pull_request.base.sha }}"
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-          BASE_REF="${{ github.event.pull_request.base.ref }}"
+        if [ "$EVENT" = "pull_request" ]; then
+          PR_NUMBER="$PR_NUMBER_PULL"
+          BASE_SHA="$PULL_BASE_SHA"
+          HEAD_SHA="$PULL_HEAD_SHA"
+          BASE_REF="$PULL_BASE_REF"
+          BASE_REPO="$PULL_BASE_REPO"
+          HEAD_REPO="$PULL_HEAD_REPO"
+        elif [ "$EVENT" = "pull_request_target" ]; then
+          skip "pull_request_target is not supported because it can expose secrets to PR-head code; use pull_request or trusted issue_comment."
         elif [ "$EVENT" = "issue_comment" ]; then
           # On-demand "/codeboarding" command. Must be a PR comment whose first
           # word is the trigger; the payload lacks SHAs so we query the API.
-          [ -n "${{ github.event.issue.pull_request.url }}" ] || skip "Comment is on a plain issue, not a PR."
+          [ -n "$ISSUE_PR_URL" ] || skip "Comment is on a plain issue, not a PR."
           FIRST_WORD="$(printf '%s' "$COMMENT_BODY" | tr -d '\r' | awk 'NR==1{print $1; exit}')"
           [ "$FIRST_WORD" = "$TRIGGER" ] || skip "Comment does not start with '$TRIGGER'."
           # SECURITY (pwn-request guard): issue_comment runs in the base repo WITH
@@ -102,33 +115,40 @@ runs:
             OWNER|MEMBER|COLLABORATOR) : ;;
             *) skip "Commenter is '$AUTHOR_ASSOC' (not OWNER/MEMBER/COLLABORATOR)." ;;
           esac
-          PR_NUMBER="${{ github.event.issue.number }}"
-          PR_JSON="$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" 2>/dev/null)" || skip "Could not fetch PR #$PR_NUMBER from the API."
+          PR_NUMBER="$ISSUE_NUMBER"
+          PR_JSON="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" 2>/dev/null)" || skip "Could not fetch PR #$PR_NUMBER from the API."
           BASE_SHA="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["base"]["sha"])' 2>/dev/null)" || skip "Could not parse base SHA from the PR API."
           HEAD_SHA="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["head"]["sha"])' 2>/dev/null)" || skip "Could not parse head SHA from the PR API."
           BASE_REF="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["base"]["ref"])' 2>/dev/null)" || BASE_REF=""
+          BASE_REPO="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["base"]["repo"]["full_name"])' 2>/dev/null)" || skip "Could not parse base repo from the PR API."
+          HEAD_REPO="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["head"]["repo"]["full_name"])' 2>/dev/null)" || skip "Could not parse head repo from the PR API."
+          [ "$HEAD_REPO" = "$REPOSITORY" ] || skip "On-demand runs with secrets are disabled for fork PRs."
         else
           skip "Unsupported event '$EVENT' (use pull_request or issue_comment)."
         fi
 
-        { [ -n "$PR_NUMBER" ] && [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ]; } || skip "Could not resolve PR/base/head SHAs."
+        { [ -n "$PR_NUMBER" ] && [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ] && [ -n "$BASE_REPO" ] && [ -n "$HEAD_REPO" ]; } || skip "Could not resolve PR/base/head SHAs/repos."
         {
           echo "skip=false"
           echo "pr_number=$PR_NUMBER"
           echo "base_sha=$BASE_SHA"
           echo "head_sha=$HEAD_SHA"
           echo "base_ref=$BASE_REF"
+          echo "base_repo=$BASE_REPO"
+          echo "head_repo=$HEAD_REPO"
         } >> "$GITHUB_OUTPUT"
-        echo "Resolved PR #$PR_NUMBER (base=$BASE_SHA head=$HEAD_SHA) via $EVENT"
+        echo "Resolved PR #$PR_NUMBER (base=$BASE_REPO@$BASE_SHA head=$HEAD_REPO@$HEAD_SHA) via $EVENT"
 
     - name: Acknowledge command
       if: steps.guard.outputs.skip != 'true' && github.event_name == 'issue_comment'
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github_token }}
+        REPOSITORY: ${{ github.repository }}
+        COMMENT_ID: ${{ github.event.comment.id }}
       run: |
         # 👀 react to the triggering comment so the user knows it was picked up.
-        gh api -X POST "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions" \
+        gh api -X POST "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" \
           -f content=eyes >/dev/null 2>&1 || true
 
     - name: Checkout CodeBoarding engine
@@ -138,23 +158,33 @@ runs:
         repository: CodeBoarding/CodeBoarding
         ref: ${{ inputs.engine_ref }}
         path: codeboarding-engine
+        persist-credentials: false
 
     - name: Checkout target repository (PR head)
       if: steps.guard.outputs.skip != 'true'
       uses: actions/checkout@v4
       with:
+        repository: ${{ steps.guard.outputs.head_repo }}
         path: target-repo
         fetch-depth: 0
         ref: ${{ steps.guard.outputs.head_sha }}
+        persist-credentials: false
 
     - name: Ensure PR base commit is fetched
       if: steps.guard.outputs.skip != 'true'
       shell: bash
       working-directory: target-repo
+      env:
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        BASE_REPO: ${{ steps.guard.outputs.base_repo }}
       run: |
-        git fetch origin "${{ steps.guard.outputs.base_sha }}" --depth=1 || true
-        git cat-file -e "${{ steps.guard.outputs.base_sha }}" && echo "Base commit reachable." || \
-          (echo "::error::Base commit ${{ steps.guard.outputs.base_sha }} is not reachable." && exit 1)
+        git fetch origin "$BASE_SHA" --depth=1 || true
+        if ! git cat-file -e "$BASE_SHA" 2>/dev/null; then
+          git remote add base "https://github.com/${BASE_REPO}.git" 2>/dev/null || git remote set-url base "https://github.com/${BASE_REPO}.git"
+          git fetch base "$BASE_SHA" --depth=1 || true
+        fi
+        git cat-file -e "$BASE_SHA" && echo "Base commit reachable." || \
+          (echo "::error::Base commit $BASE_SHA is not reachable." && exit 1)
 
     - name: Set up Python 3.13
       if: steps.guard.outputs.skip != 'true'
@@ -217,8 +247,10 @@ runs:
         RAW_AGENT_MODEL: ${{ inputs.agent_model }}
         RAW_PARSING_MODEL: ${{ inputs.parsing_model }}
       run: |
+        AUTH_FILE="${RUNNER_TEMP}/openrouter-auth.json"
+        trap 'rm -f "$AUTH_FILE"' EXIT
         if [ -z "$RAW_KEY" ]; then
-          echo "::error::llm_api_key is empty. On fork PRs, repo secrets are withheld by GitHub — a maintainer must re-run, or use pull_request_target."
+          echo "::error::llm_api_key is empty. On fork PRs, repo secrets are withheld by GitHub."
           exit 1
         fi
         # Pasting a key into the secret UI often picks up trailing newlines,
@@ -238,46 +270,38 @@ runs:
 
         case "$KEY" in sk-or-v1-*) PFX=1 ;; *) PFX=0 ;; esac
         echo "OPENROUTER_API_KEY length: ${#KEY}; looks-like-OpenRouter: $PFX"
-        STATUS=$(curl -sS -o /tmp/openrouter-auth.json -w "%{http_code}" \
+        STATUS=$(curl -sS -o "$AUTH_FILE" -w "%{http_code}" \
           -H "Authorization: Bearer $KEY" --max-time 10 \
           https://openrouter.ai/api/v1/auth/key || echo "curl-fail")
         echo "OpenRouter /auth/key response: HTTP $STATUS"
         if [ "$STATUS" != "200" ]; then
           # Surface the upstream error MESSAGE only — never the whole auth body (avoid leaking).
-          MSG="$(python3 -c 'import json,sys;print(json.load(open("/tmp/openrouter-auth.json")).get("error",{}).get("message",""))' 2>/dev/null || true)"
+          MSG="$(AUTH_FILE="$AUTH_FILE" python3 -c 'import json,os;print(json.load(open(os.environ["AUTH_FILE"])).get("error",{}).get("message",""))' 2>/dev/null || true)"
           echo "::error::OpenRouter rejected the API key (HTTP $STATUS). ${MSG:-Verify the OPENROUTER_API_KEY secret.}"
-          rm -f /tmp/openrouter-auth.json
           exit 1
         fi
 
-        # Export (masked) for the analysis steps.
-        {
-          echo "OPENROUTER_API_KEY=$KEY"
-          echo "AGENT_MODEL=$AGENT_MODEL"
-          echo "PARSING_MODEL=$PARSING_MODEL"
-        } >> "$GITHUB_ENV"
+        # Store key material in runner-temp files. Later shell steps read these
+        # explicitly; third-party post-comment actions do not inherit the LLM key.
+        umask 077
+        printf '%s' "$KEY" > "${RUNNER_TEMP}/cb-openrouter-key"
+        printf '%s' "$AGENT_MODEL" > "${RUNNER_TEMP}/cb-agent-model"
+        printf '%s' "$PARSING_MODEL" > "${RUNNER_TEMP}/cb-parsing-model"
 
     - name: Resolve base analysis (committed baseline)
       if: steps.guard.outputs.skip != 'true'
       id: base
       shell: bash
       working-directory: target-repo
+      env:
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
       run: |
-        BASE_SHA="${{ steps.guard.outputs.base_sha }}"
         BASE_DIR="${RUNNER_TEMP}/cb-base"
         HEAD_DIR="${RUNNER_TEMP}/cb-head"
         mkdir -p "$BASE_DIR" "$HEAD_DIR"
         echo "base_dir=$BASE_DIR" >> $GITHUB_OUTPUT
         echo "head_dir=$HEAD_DIR" >> $GITHUB_OUTPUT
         if git show "${BASE_SHA}:.codeboarding/analysis.json" > "${BASE_DIR}/analysis.json" 2>/dev/null; then
-          # Warm-start needs BOTH the pkl AND its .sha tag; seed them as a pair or not at all.
-          if git show "${BASE_SHA}:.codeboarding/static_analysis.pkl" > "${BASE_DIR}/static_analysis.pkl" 2>/dev/null \
-             && git show "${BASE_SHA}:.codeboarding/static_analysis.sha" > "${BASE_DIR}/static_analysis.sha" 2>/dev/null; then
-            echo "Seeded committed static_analysis.pkl + .sha (head warm-start enabled)."
-          else
-            rm -f "${BASE_DIR}/static_analysis.pkl" "${BASE_DIR}/static_analysis.sha"
-            echo "No committed pkl+sha pair; head will run a full (cold) static analysis."
-          fi
           echo "committed=true" >> $GITHUB_OUTPUT
           echo "Using committed .codeboarding/analysis.json at ${BASE_SHA}."
         else
@@ -286,10 +310,10 @@ runs:
           echo "No committed baseline at ${BASE_SHA}; will generate one via a full analysis on the base commit."
         fi
 
-    - name: Cache generated base analysis (keyed by base SHA)
-      if: steps.guard.outputs.skip != 'true' && steps.base.outputs.committed == 'false'
+    - name: Restore base artifacts (keyed by base SHA)
+      if: steps.guard.outputs.skip != 'true'
       id: basecache
-      uses: actions/cache@v4
+      uses: actions/cache/restore@v4
       with:
         path: ${{ runner.temp }}/cb-base
         key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}
@@ -304,27 +328,45 @@ runs:
         DIAGRAM_DEPTH_LEVEL: ${{ inputs.depth_level }}
         CACHING_DOCUMENTATION: 'false'
         ENABLE_MONITORING: 'false'
+        ACTION_PATH: ${{ github.action_path }}
+        TARGET: ${{ github.workspace }}/target-repo
+        BASE_DIR: ${{ steps.base.outputs.base_dir }}
+        REPO_NAME: ${{ github.event.repository.name }}
+        RUN_ID_BASE: ${{ github.run_id }}-${{ github.run_attempt }}-base
+        DEPTH: ${{ inputs.depth_level }}
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
       run: |
+        OPENROUTER_API_KEY="$(cat "${RUNNER_TEMP}/cb-openrouter-key")"
+        AGENT_MODEL="$(cat "${RUNNER_TEMP}/cb-agent-model")"
+        PARSING_MODEL="$(cat "${RUNNER_TEMP}/cb-parsing-model")"
+        export OPENROUTER_API_KEY AGENT_MODEL PARSING_MODEL
+
         BASE_SRC="${RUNNER_TEMP}/base-src"
-        TARGET="${{ github.workspace }}/target-repo"
         # Clean up any stale registration before re-adding (rm -rf alone leaves a
         # dangling worktree entry that makes a retry's `worktree add` fail).
         git -C "$TARGET" worktree remove --force "$BASE_SRC" 2>/dev/null || true
         git -C "$TARGET" worktree prune
         rm -rf "$BASE_SRC"
-        git -C "$TARGET" worktree add --detach "$BASE_SRC" "${{ steps.guard.outputs.base_sha }}"
-        uv run python "${{ github.action_path }}/scripts/cb_engine.py" base \
+        git -C "$TARGET" worktree add --detach "$BASE_SRC" "$BASE_SHA"
+        uv run python "$ACTION_PATH/scripts/cb_engine.py" base \
           --repo "$BASE_SRC" \
-          --out "${{ steps.base.outputs.base_dir }}" \
-          --name "${{ github.event.repository.name }}" \
-          --run-id "${{ github.run_id }}-${{ github.run_attempt }}-base" \
-          --depth "${{ inputs.depth_level }}" \
-          --source-sha "${{ steps.guard.outputs.base_sha }}"
+          --out "$BASE_DIR" \
+          --name "$REPO_NAME" \
+          --run-id "$RUN_ID_BASE" \
+          --depth "$DEPTH" \
+          --source-sha "$BASE_SHA"
         git -C "$TARGET" worktree remove --force "$BASE_SRC" 2>/dev/null || true
-        if [ ! -f "${{ steps.base.outputs.base_dir }}/analysis.json" ]; then
+        if [ ! -f "$BASE_DIR/analysis.json" ]; then
           echo "::error::Base full analysis ran but analysis.json is missing."
           exit 1
         fi
+
+    - name: Save generated base artifacts
+      if: steps.guard.outputs.skip != 'true' && steps.base.outputs.committed == 'false' && steps.basecache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/cb-base
+        key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}
 
     - name: Analyze PR head (incremental from base)
       if: steps.guard.outputs.skip != 'true'
@@ -337,22 +379,35 @@ runs:
         DIAGRAM_DEPTH_LEVEL: ${{ inputs.depth_level }}
         CACHING_DOCUMENTATION: 'false'
         ENABLE_MONITORING: 'false'
+        ACTION_PATH: ${{ github.action_path }}
+        TARGET_REPO: ${{ github.workspace }}/target-repo
+        BASE_DIR: ${{ steps.base.outputs.base_dir }}
+        HEAD_DIR: ${{ steps.base.outputs.head_dir }}
+        REPO_NAME: ${{ github.event.repository.name }}
+        RUN_ID_HEAD: ${{ github.run_id }}-${{ github.run_attempt }}-head
+        DEPTH: ${{ inputs.depth_level }}
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
       run: |
-        BASE_DIR="${{ steps.base.outputs.base_dir }}"
-        HEAD_DIR="${{ steps.base.outputs.head_dir }}"
+        OPENROUTER_API_KEY="$(cat "${RUNNER_TEMP}/cb-openrouter-key")"
+        AGENT_MODEL="$(cat "${RUNNER_TEMP}/cb-agent-model")"
+        PARSING_MODEL="$(cat "${RUNNER_TEMP}/cb-parsing-model")"
+        export OPENROUTER_API_KEY AGENT_MODEL PARSING_MODEL
+
         # Seed the head dir from the base analysis so incremental stitches
         # component ids from the baseline (stable diff). Base dir is left
         # untouched as the "before" snapshot for the diff.
         cp -a "$BASE_DIR"/. "$HEAD_DIR"/ 2>/dev/null || true
-        uv run python "${{ github.action_path }}/scripts/cb_engine.py" head \
-          --repo "${{ github.workspace }}/target-repo" \
+        rm -rf "$HEAD_DIR/health"
+        uv run python "$ACTION_PATH/scripts/cb_engine.py" head \
+          --repo "$TARGET_REPO" \
           --out "$HEAD_DIR" \
-          --name "${{ github.event.repository.name }}" \
-          --run-id "${{ github.run_id }}-${{ github.run_attempt }}-head" \
-          --depth "${{ inputs.depth_level }}" \
-          --base-ref "${{ steps.guard.outputs.base_sha }}" \
-          --target-ref "${{ steps.guard.outputs.head_sha }}" \
-          --source-sha "${{ steps.guard.outputs.head_sha }}"
+          --name "$REPO_NAME" \
+          --run-id "$RUN_ID_HEAD" \
+          --depth "$DEPTH" \
+          --base-ref "$BASE_SHA" \
+          --target-ref "$HEAD_SHA" \
+          --source-sha "$HEAD_SHA"
         if [ ! -f "$HEAD_DIR/analysis.json" ]; then
           echo "::error::Head analysis ran but analysis.json is missing."
           exit 1
@@ -369,30 +424,59 @@ runs:
       env:
         STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
         PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
+        ACTION_PATH: ${{ github.action_path }}
+        ARTIFACT_DIR: ${{ steps.base.outputs.head_dir }}
+        TARGET_REPO: ${{ github.workspace }}/target-repo
+        REPO_NAME: ${{ github.event.repository.name }}
       run: |
         rm -f /tmp/cb-issues.txt
         # cb_engine writes the WARNING/CRITICAL count (0 on any failure — best-effort).
-        uv run python "${{ github.action_path }}/scripts/cb_engine.py" health \
-          --artifact-dir "${{ steps.base.outputs.head_dir }}" \
-          --repo "${{ github.workspace }}/target-repo" \
-          --name "${{ github.event.repository.name }}" \
+        uv run python "$ACTION_PATH/scripts/cb_engine.py" health \
+          --artifact-dir "$ARTIFACT_DIR" \
+          --repo "$TARGET_REPO" \
+          --name "$REPO_NAME" \
           --issues-out /tmp/cb-issues.txt || true
         N=$(cat /tmp/cb-issues.txt 2>/dev/null || echo 0)
         echo "issues=$N" >> $GITHUB_OUTPUT
         echo "Architecture issues: $N"
 
+    - name: Drop LLM key material
+      if: always() && steps.guard.outputs.skip != 'true'
+      shell: bash
+      run: |
+        rm -f "${RUNNER_TEMP}/cb-openrouter-key" \
+              "${RUNNER_TEMP}/cb-agent-model" \
+              "${RUNNER_TEMP}/cb-parsing-model"
+
     - name: Diff analyses → Mermaid
       if: steps.guard.outputs.skip != 'true'
       id: diagram
       shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        BASE_ANALYSIS: ${{ steps.analyze.outputs.base_analysis }}
+        HEAD_ANALYSIS: ${{ steps.analyze.outputs.head_analysis }}
+        DIRECTION: ${{ inputs.diagram_direction }}
+        RENDER_DEPTH: ${{ inputs.render_depth }}
+        CHANGED_ONLY: ${{ inputs.changed_only }}
       run: |
-        FLAG="--render-depth ${{ inputs.render_depth }}"
-        [ "${{ inputs.changed_only }}" = "true" ] && FLAG="$FLAG --changed-only"
-        META=$(python3 ${{ github.action_path }}/scripts/diff_to_mermaid.py \
-          --base "${{ steps.analyze.outputs.base_analysis }}" \
-          --head "${{ steps.analyze.outputs.head_analysis }}" \
-          --out "${RUNNER_TEMP}/diagram.md" \
-          --direction "${{ inputs.diagram_direction }}" $FLAG)
+        case "$CHANGED_ONLY" in
+          true|false) ;;
+          *) echo "::error::changed_only must be 'true' or 'false'."; exit 1 ;;
+        esac
+        case "$RENDER_DEPTH" in
+          ''|*[!0-9]*) echo "::error::render_depth must be a positive integer."; exit 1 ;;
+        esac
+
+        args=(
+          --base "$BASE_ANALYSIS"
+          --head "$HEAD_ANALYSIS"
+          --out "${RUNNER_TEMP}/diagram.md"
+          --direction "$DIRECTION"
+          --render-depth "$RENDER_DEPTH"
+        )
+        [ "$CHANGED_ONLY" = "true" ] && args+=(--changed-only)
+        META=$(python3 "$ACTION_PATH/scripts/diff_to_mermaid.py" "${args[@]}")
         echo "$META" > "${RUNNER_TEMP}/diagram_meta.json"
         echo "diff meta: $META"
         read N CHANGED RENDERED TRUNC < <(python3 -c "import json;d=json.load(open('${RUNNER_TEMP}/diagram_meta.json'));print(d['n_changed'], str(d.get('changed', d['n_changed']>0)).lower(), str(d['rendered']).lower(), str(d['truncated']).lower())")
@@ -464,9 +548,6 @@ runs:
         } > "$BODY_FILE"
 
         echo "body_file=$BODY_FILE" >> "$GITHUB_OUTPUT"
-        echo "--- comment preview ---"
-        cat "$BODY_FILE"
-        echo "--- end preview ---"
 
     - name: Post sticky PR comment
       if: steps.guard.outputs.skip != 'true'
@@ -481,6 +562,7 @@ runs:
     # note (same header) instead of leaving the PR with nothing / a stale diagram.
     - name: Post failure comment
       if: failure() && steps.guard.outputs.skip != 'true'
+      continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         header: codeboarding-architecture-diff

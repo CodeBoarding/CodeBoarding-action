@@ -19,10 +19,22 @@ those modules and assert we call the engine with the right arguments.
 from __future__ import annotations
 
 import argparse
+import json
+import shutil
 from pathlib import Path
 
-_BASE_LOG = "/tmp/cb-base.log"
-_HEAD_LOG = "/tmp/cb-head.log"
+
+def _log_path(out: str, name: str) -> str:
+    return str(Path(out) / name)
+
+
+def _clear_dir(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    for child in path.iterdir():
+        if child.is_dir() and not child.is_symlink():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
 
 
 def run_base(repo: str, out: str, name: str, run_id: str, depth: int, source_sha: str) -> None:
@@ -33,8 +45,8 @@ def run_base(repo: str, out: str, name: str, run_id: str, depth: int, source_sha
         repo_path=Path(repo),
         output_dir=Path(out),
         run_id=run_id,
-        log_path=_BASE_LOG,
-        depth_level=int(depth),
+        log_path=_log_path(out, "cb-base.log"),
+        depth_level=depth,
         source_sha=source_sha,
     )
     print(f"Base analysis written: {res}")
@@ -50,30 +62,60 @@ def run_head(repo: str, out: str, name: str, run_id: str, depth: int, base_ref: 
             output_dir=Path(out),
             project_name=name,
             run_id=run_id,
-            log_path=_HEAD_LOG,
+            log_path=_log_path(out, "cb-head.log"),
             base_ref=base_ref,
             target_ref=target_ref,
             source_sha=source_sha,
         )
     except (IncrementalCacheMissingError, BaselineUnavailableError) as exc:
         print(f"Incremental unavailable ({exc}); running full analysis on head.")
-        for p in Path(out).glob("*"):
-            if p.is_file():
-                p.unlink()
+        _clear_dir(Path(out))
         res = run_full(
             repo_name=name,
             repo_path=Path(repo),
             output_dir=Path(out),
             run_id=run_id,
-            log_path=_HEAD_LOG,
-            depth_level=int(depth),
+            log_path=_log_path(out, "cb-head.log"),
+            depth_level=depth,
             source_sha=source_sha,
         )
     print(f"Head analysis written: {res}")
 
 
+def _count_report_issues(report: dict) -> int:
+    issues = 0
+    if not isinstance(report, dict):
+        raise ValueError("health report root is not an object")
+    for cs in report.get("check_summaries") or []:
+        if not isinstance(cs, dict):
+            continue
+        for fg in cs.get("finding_groups") or []:
+            if not isinstance(fg, dict):
+                continue
+            if fg.get("severity") in ("warning", "critical"):
+                entities = fg.get("entities") or []
+                issues += len(entities) if isinstance(entities, list) else 0
+    return issues
+
+
+def _count_health_report(artifact_dir: str) -> int | None:
+    report_path = Path(artifact_dir) / "health" / "health_report.json"
+    if not report_path.is_file():
+        return None
+    try:
+        return _count_report_issues(json.loads(report_path.read_text(encoding="utf-8")))
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        print(f"Health report unreadable ({exc}); falling back to health runner.")
+        return None
+
+
 def run_health(artifact_dir: str, repo: str, name: str) -> int:
     """Return the WARNING/CRITICAL finding count; 0 on any failure (best-effort)."""
+    report_count = _count_health_report(artifact_dir)
+    if report_count is not None:
+        print(f"Architecture issues found in health report: {report_count}")
+        return report_count
+
     try:
         from health.models import Severity
         from health.runner import run_health_checks
@@ -104,12 +146,14 @@ def main(argv=None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     b = sub.add_parser("base")
-    for a in ("--repo", "--out", "--name", "--run-id", "--depth", "--source-sha"):
+    for a in ("--repo", "--out", "--name", "--run-id", "--source-sha"):
         b.add_argument(a, required=True)
+    b.add_argument("--depth", required=True, type=int, choices=range(1, 4))
 
     h = sub.add_parser("head")
-    for a in ("--repo", "--out", "--name", "--run-id", "--depth", "--base-ref", "--target-ref", "--source-sha"):
+    for a in ("--repo", "--out", "--name", "--run-id", "--base-ref", "--target-ref", "--source-sha"):
         h.add_argument(a, required=True)
+    h.add_argument("--depth", required=True, type=int, choices=range(1, 4))
 
     hc = sub.add_parser("health")
     for a in ("--artifact-dir", "--repo", "--name", "--issues-out"):

@@ -64,6 +64,15 @@ class TestDiff(unittest.TestCase):
         statuses = sorted(r["diff_status"] for r in dm.build_diff(base, head)["components_relations"])
         self.assertEqual(statuses, ["added", "deleted"])
 
+    def test_parallel_relation_deletion_is_not_label_modification(self):
+        base = {
+            "components": [comp("A"), comp("B")],
+            "components_relations": [rel("A", "B", "uses"), rel("A", "B", "publishes")],
+        }
+        head = {"components": [comp("A"), comp("B")], "components_relations": [rel("A", "B", "uses")]}
+        statuses = sorted(r["diff_status"] for r in dm.build_diff(base, head)["components_relations"])
+        self.assertEqual(statuses, ["deleted", "unchanged"])
+
 
 class TestRender(unittest.TestCase):
     def _diff(self):
@@ -136,10 +145,68 @@ class TestRender(unittest.TestCase):
         self.assertEqual(meta["n_changed"], 1)  # the nested child counts
         self.assertTrue(meta["changed"])
 
-    def test_changed_only_truncates(self):
+    def test_nested_method_change_highlights_collapsed_parent(self):
+        base = {"components": [comp("P", subs=[comp("c1")], subrels=[])], "components_relations": []}
+        head = {"components": [comp("P", subs=[comp("c1", {"x.py": ["f"]})], subrels=[])], "components_relations": []}
+        text, meta = dm.render_mermaid(dm.build_diff(base, head), render_depth=1)
+        self.assertEqual(meta["n_changed"], 1)
+        self.assertIn("class n_P modified;", text)
+
+    def test_nested_relation_change_highlights_collapsed_parent(self):
+        base = {"components": [comp("P", subs=[comp("c1"), comp("c2")], subrels=[rel("c1", "c2", "uses")])], "components_relations": []}
+        head = {"components": [comp("P", subs=[comp("c1"), comp("c2")], subrels=[rel("c1", "c2", "calls")])], "components_relations": []}
+        text, meta = dm.render_mermaid(dm.build_diff(base, head), render_depth=1)
+        self.assertEqual(meta["n_changed"], 0)
+        self.assertTrue(meta["changed"])
+        self.assertIn("class n_P modified;", text)
+
+    def test_changed_only_keeps_nested_change(self):
+        base = {"components": [comp("P", subs=[comp("c1"), comp("c2")], subrels=[])], "components_relations": []}
+        head = {"components": [comp("P", subs=[comp("c1", {"x.py": ["f"]}), comp("c2")], subrels=[])], "components_relations": []}
+        text, meta = dm.render_mermaid(dm.build_diff(base, head), render_depth=2, changed_only=True)
+        self.assertIsNotNone(text)
+        self.assertTrue(meta["changed"])
+        self.assertFalse(meta["truncated"])
+        self.assertIn("subgraph n_P", text)
+        self.assertIn("class n_c1 modified;", text)
+        self.assertNotIn('n_c2["c2"]', text)
+
+    def test_changed_only_prunes_unchanged_children_of_modified_parent(self):
+        base = {"components": [comp("P", {"p.py": ["old"]}, subs=[comp("c1"), comp("c2")], subrels=[])], "components_relations": []}
+        head = {"components": [comp("P", {"p.py": ["old", "new"]}, subs=[comp("c1"), comp("c2")], subrels=[])], "components_relations": []}
+        text, meta = dm.render_mermaid(dm.build_diff(base, head), render_depth=2, changed_only=True)
+        self.assertIsNotNone(text)
+        self.assertTrue(meta["changed"])
+        self.assertIn('n_P["P"]', text)
+        self.assertNotIn('n_c1["c1"]', text)
+        self.assertNotIn('n_c2["c2"]', text)
+
+    def test_changed_only_is_not_auto_truncated(self):
         text, meta = dm.render_mermaid(self._diff(), render_depth=1, changed_only=True)
         self.assertIsNotNone(text)
+        self.assertFalse(meta["truncated"])
+        self.assertTrue(meta["changed_only"])
+        self.assertTrue(meta["requested_changed_only"])
+
+    def test_auto_truncation_reports_rendered_changed_only(self):
+        base = {
+            "components": [comp("A"), comp("B"), comp("C")],
+            "components_relations": [rel("B", "C", "uses"), rel("C", "B", "uses")],
+        }
+        head = {
+            "components": [comp("A", {"a.py": ["f"]}), comp("B"), comp("C")],
+            "components_relations": [rel("B", "C", "uses"), rel("C", "B", "uses")],
+        }
+        old = dm.MAX_EDGES
+        try:
+            dm.MAX_EDGES = 1
+            text, meta = dm.render_mermaid(dm.build_diff(base, head), render_depth=1)
+        finally:
+            dm.MAX_EDGES = old
+        self.assertIsNotNone(text)
         self.assertTrue(meta["truncated"])
+        self.assertTrue(meta["changed_only"])
+        self.assertFalse(meta["requested_changed_only"])
 
     def test_empty_returns_none(self):
         text, meta = dm.render_mermaid({"components": [], "components_relations": []})

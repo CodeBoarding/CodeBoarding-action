@@ -36,11 +36,11 @@ The engine writes these under `.codeboarding/`:
 ## Now vs. later
 
 - **Now — extension-direct.** Committing `analysis.json` + `health_report.json` on `main` means a user who installs the extension and opens the repo sees the committed diagram + warnings **instantly, with no API key**. The PR comment's CTA points straight at the extension (install / open in editor).
-- **Later — hosted webview.** The webview needs the **same** committed `analysis.json` (+ a diff + health). So committing now is **forward-compatible**: when the viewer is built, the data already exists at each commit — no migration, just a host layer that reads it. (See `scripts/render_diagram.mjs` — it's the headless prototype of that viewer.)
+- **Later — hosted webview.** The webview needs the **same** committed `analysis.json` (+ a diff + health). So committing now is **forward-compatible**: when the viewer is built, the data already exists at each commit — no migration, just a host layer that reads it.
 
 ## Warm-start tradeoff (the `.pkl`)
 
-The committed-baseline warm-start needs the pkl **and** its `.sha`. By caching the pkl (not committing) keyed by base SHA, PR runs restore the base-branch cache → warm-start; on 7-day eviction → cold LSP. This keeps the repo clean and still gets the speedup most of the time.
+The warm-start needs the pkl **and** its `.sha`. When the review action has to generate a base analysis, it saves that generated base artifact directory in `actions/cache` keyed by base SHA / depth / engine ref, then seeds the head analysis from that directory. When a committed `analysis.json` already exists but no matching cache exists, the PR still diffs correctly but may run a cold LSP pass. This keeps the repo clean; the cache improves speed but is not required for correctness.
 
 ## Summary
 

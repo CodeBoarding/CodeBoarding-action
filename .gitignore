@@ -5,6 +5,21 @@ test_codeboarding/
 # Local test harness output (scripts/run_local.sh)
 .cb-local/
 
+# Dependencies
+node_modules/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+
+# CodeBoarding generated cache/log artifacts
+.codeboarding/static_analysis.pkl
+.codeboarding/static_analysis.sha
+.codeboarding/logs/
+.codeboarding/health/*
+!.codeboarding/health/
+!.codeboarding/health/health_report.json
+
 # Environment files
 .env
 
