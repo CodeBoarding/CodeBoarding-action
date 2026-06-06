@@ -27,11 +27,11 @@ inputs:
     required: false
     default: '1'
   agent_model:
-    description: 'Analysis model (AGENT_MODEL env var). A bare OpenRouter slug, e.g. anthropic/claude-sonnet-4. Empty (default) uses the engine''s own per-provider default.'
+    description: 'Analysis model (AGENT_MODEL env var). A bare OpenRouter slug. Defaults to google/gemini-3-flash-preview on OpenRouter; for other providers, empty uses the engine''s per-provider default.'
     required: false
     default: ''
   parsing_model:
-    description: 'Parsing model (PARSING_MODEL env var). A bare OpenRouter slug. Empty (default) uses the engine''s own per-provider default.'
+    description: 'Parsing model (PARSING_MODEL env var). A bare OpenRouter slug. Defaults to google/gemini-3.1-flash-lite-preview on OpenRouter; for other providers, empty uses the engine''s per-provider default.'
     required: false
     default: ''
   comment_header:
@@ -154,6 +154,21 @@ runs:
         # 👀 react to the triggering comment so the user knows it was picked up.
         gh api -X POST "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" \
           -f content=eyes >/dev/null 2>&1 || true
+
+    - name: Post in-progress comment
+      if: steps.guard.outputs.skip != 'true'
+      continue-on-error: true
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: codeboarding-architecture-diff
+        number: ${{ steps.guard.outputs.pr_number }}
+        message: |
+          ### ${{ inputs.comment_header }} · analyzing…
+
+          ⏳ CodeBoarding is analyzing the architecture changes in this PR. This usually takes a few minutes.
+
+          <sub>codeboarding-action · run ${{ github.run_id }}</sub>
+        GITHUB_TOKEN: ${{ inputs.github_token }}
 
     - name: Checkout CodeBoarding engine
       if: steps.guard.outputs.skip != 'true'
@@ -282,6 +297,10 @@ runs:
         echo "Provider: $PROVIDER -> $PROVIDER_ENV; key length: ${#KEY}"
 
         if [ "$PROVIDER" = "openrouter" ]; then
+          # Default models on OpenRouter when the user didn't pin one (cheap Gemini).
+          # Other providers fall through to the engine's own per-provider default.
+          AGENT_MODEL="${AGENT_MODEL:-google/gemini-3-flash-preview}"
+          PARSING_MODEL="${PARSING_MODEL:-google/gemini-3.1-flash-lite-preview}"
           # OpenRouter-only checks. The litellm 'openrouter/...' model prefix 400s
           # the engine's native OpenRouter call; other providers use native ids.
           for M in "$AGENT_MODEL" "$PARSING_MODEL"; do
