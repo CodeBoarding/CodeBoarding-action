@@ -209,9 +209,10 @@ runs:
       uses: actions/cache@v4
       with:
         path: codeboarding-engine/.venv
+        # No restore-keys: a lockfile change must force a clean cold venv, not
+        # restore a venv built from a different lock (`uv pip install -e .` won't
+        # downgrade/sync already-installed transitive deps back to this uv.lock).
         key: cb-uv-${{ runner.os }}-${{ hashFiles('codeboarding-engine/pyproject.toml', 'codeboarding-engine/uv.lock') }}
-        restore-keys: |
-          cb-uv-${{ runner.os }}-
 
     - name: Cache LSP servers
       if: steps.guard.outputs.skip != 'true'
@@ -316,7 +317,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ runner.temp }}/cb-base
-        key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}
+        key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     - name: Generate base analysis (no committed baseline)
       if: steps.guard.outputs.skip != 'true' && steps.base.outputs.committed == 'false' && steps.basecache.outputs.cache-hit != 'true'
@@ -366,7 +367,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.temp }}/cb-base
-        key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}
+        key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     - name: Analyze PR head (incremental from base)
       if: steps.guard.outputs.skip != 'true'
