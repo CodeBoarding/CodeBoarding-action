@@ -1,4 +1,4 @@
-# CodeBoarding Review
+# CodeBoarding Action
 
 Review system design on every pull request, not just the diff.
 
