@@ -63,7 +63,8 @@ on:
     # Generate once, when the PR becomes reviewable, not on every push, so you
     # don't spend an LLM job per commit. Use [opened] for strictly creation-only,
     # or add `synchronize` to re-run on each push. Refresh anytime with /codeboarding.
-    types: [opened, reopened, ready_for_review]
+    # 'closed' only cancels an in-flight review (see concurrency), it doesn't start one.
+    types: [opened, reopened, ready_for_review, closed]
   issue_comment:
     types: [created]
 
@@ -74,14 +75,16 @@ permissions:
 
 concurrency:
   group: codeboarding-${{ github.event.pull_request.number || github.event.issue.number }}
-  cancel-in-progress: true
+  # Cancel only when the PR closes — bot comments (issue_comment) and re-triggers
+  # must not cancel a running review; they queue behind it instead.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
 
 jobs:
   review:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     if: >
-      (github.event_name == 'pull_request' && github.event.pull_request.draft == false) ||
+      (github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.draft == false) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
        startsWith(github.event.comment.body, '/codeboarding') &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
