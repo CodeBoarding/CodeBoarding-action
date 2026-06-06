@@ -266,6 +266,17 @@ runs:
         AGENT_MODEL="$(_strip "$RAW_AGENT_MODEL")"
         PARSING_MODEL="$(_strip "$RAW_PARSING_MODEL")"
 
+        # Catch the most common model-id mistake early: the engine calls OpenRouter
+        # natively (langchain ChatOpenAI), so a model must be a BARE slug like
+        # anthropic/claude-sonnet-4 — NOT the litellm 'openrouter/...' form.
+        for M in "$AGENT_MODEL" "$PARSING_MODEL"; do
+          case "$M" in
+            openrouter/*)
+              echo "::error::Invalid model '$M': drop the 'openrouter/' prefix and use a bare OpenRouter slug, e.g. anthropic/claude-sonnet-4."
+              exit 1 ;;
+          esac
+        done
+
         # Mask the cleaned value (it may differ from the registered secret).
         echo "::add-mask::$KEY"
 
