@@ -65,8 +65,8 @@ run_engine() {
            PROJECT_ROOT="$ENGINE" \
            DIAGRAM_DEPTH_LEVEL="$DEPTH" \
            CACHING_DOCUMENTATION="false" \
-           ENABLE_MONITORING="false" \
-           OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
+           ENABLE_MONITORING="false"
+    # OPENROUTER_API_KEY is inherited from the environment (full mode requires it).
     # Pass the model only when set; empty -> engine's own valid per-provider default.
     if [ -n "$AGENT_MODEL" ]; then export AGENT_MODEL; fi
     if [ -n "$PARSING_MODEL" ]; then export PARSING_MODEL; fi
@@ -78,8 +78,9 @@ if [ -n "$BASE_JSON" ] && [ -n "$HEAD_JSON" ]; then
   BASE_ANALYSIS="$BASE_JSON"
   HEAD_ANALYSIS="$HEAD_JSON"
 else
-  [ -n "$REPO" ] && [ -n "$BASE_REF" ] && [ -n "$HEAD_REF" ] || {
-    echo "Need either --base-json/--head-json, or --repo/--base/--head." >&2; exit 2; }
+  if [ -z "$REPO" ] || [ -z "$BASE_REF" ] || [ -z "$HEAD_REF" ]; then
+    echo "Need either --base-json/--head-json, or --repo/--base/--head." >&2; exit 2
+  fi
   [ -d "$ENGINE" ] || { echo "Engine not found at $ENGINE (set --engine or \$ENGINE)." >&2; exit 2; }
   [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "Export OPENROUTER_API_KEY for the full pipeline." >&2; exit 2; }
   REPO="$(cd "$REPO" && pwd)"
