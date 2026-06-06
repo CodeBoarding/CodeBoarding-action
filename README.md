@@ -107,8 +107,6 @@ Models are optional. Omit `agent_model` and `parsing_model` to use the engine's 
           parsing_model: google/gemini-3-flash-preview      # optional
 ```
 
-Model format on OpenRouter is a bare slug (e.g. `anthropic/claude-sonnet-4`): exactly one `/`, with no `openrouter/` prefix (that is the LiteLLM form, which the action rejects early). Other providers use their own native model ids.
-
 ## Bring your own LLM provider
 
 OpenRouter is the default, but you can use any provider the engine supports. Set `llm_provider` and pass that provider's key:
@@ -159,8 +157,8 @@ The command needs the `issue_comment` trigger and runs from your default branch 
 | `render_depth` | `1` | Display depth for the PR diagram. Keep `1` for a clean top-level view. |
 | `diagram_direction` | `LR` | Mermaid direction: `LR`, `TD`, `TB`, `RL`, or `BT`. |
 | `changed_only` | `false` | Render only changed components and incident edges. |
-| `agent_model` | engine default | Analysis model. Bare OpenRouter slug (e.g. `anthropic/claude-sonnet-4`); empty uses the engine's per-provider default. |
-| `parsing_model` | engine default | Parsing model. Bare OpenRouter slug; empty uses the engine's per-provider default. |
+| `agent_model` | `google/gemini-3-flash-preview` | Analysis model. OpenRouter default shown; other providers use their own engine default. |
+| `parsing_model` | `google/gemini-3.1-flash-lite-preview` | Parsing model. OpenRouter default shown; other providers use their own engine default. |
 | `comment_header` | `Architecture review` | Heading for the PR comment. |
 | `trigger_command` | `/codeboarding` | Slash command for trusted on-demand runs. |
 | `cta_base_url` | empty | Optional click-proxy base URL for editor and extension links. |
