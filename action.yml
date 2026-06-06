@@ -8,8 +8,12 @@ branding:
 
 inputs:
   llm_api_key:
-    description: 'LLM API key (OpenRouter by default). Required.'
+    description: 'Your LLM provider API key (see llm_provider). Required.'
     required: true
+  llm_provider:
+    description: 'Provider for llm_api_key. The key is handed to the engine as that provider''s env var (anthropic -> ANTHROPIC_API_KEY, openai -> OPENAI_API_KEY, ...; aws_bedrock -> AWS_BEARER_TOKEN_BEDROCK, ollama -> OLLAMA_BASE_URL) and the engine auto-selects it. Default openrouter.'
+    required: false
+    default: 'openrouter'
   github_token:
     description: 'GITHUB_TOKEN used to post the PR comment. Defaults to the workflow token.'
     required: false
@@ -245,6 +249,7 @@ runs:
       shell: bash
       env:
         RAW_KEY: ${{ inputs.llm_api_key }}
+        RAW_PROVIDER: ${{ inputs.llm_provider }}
         RAW_AGENT_MODEL: ${{ inputs.agent_model }}
         RAW_PARSING_MODEL: ${{ inputs.parsing_model }}
       run: |
@@ -254,49 +259,56 @@ runs:
           echo "::error::llm_api_key is empty. On fork PRs, repo secrets are withheld by GitHub."
           exit 1
         fi
-        # Pasting a key into the secret UI often picks up trailing newlines,
-        # wrapping quotes, or a whole `KEY=value` line. Normalize all of that.
+        # Resolve the provider -> the env var the engine reads. Convention is
+        # <NAME>_API_KEY; two providers don't follow it. The engine is the source
+        # of truth: an unknown provider just yields an env var it won't recognize,
+        # and the engine errors with the list of valid keys.
+        PROVIDER="$(printf '%s' "$RAW_PROVIDER" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_')"
+        PROVIDER="${PROVIDER:-openrouter}"
+        case "$PROVIDER" in
+          aws_bedrock) PROVIDER_ENV="AWS_BEARER_TOKEN_BEDROCK" ;;
+          ollama)      PROVIDER_ENV="OLLAMA_BASE_URL" ;;
+          *)           PROVIDER_ENV="$(printf '%s' "$PROVIDER" | tr '[:lower:]' '[:upper:]')_API_KEY" ;;
+        esac
+
+        # Normalize a pasted key: strip whitespace/quotes and a leading `<ENV>=`.
         _strip() { printf '%s' "$1" | tr -d '[:space:]' | sed -e 's/^"//;s/"$//' -e "s/^'//;s/'\$//"; }
         KEY="$(_strip "$RAW_KEY")"
-        case "$KEY" in
-          OPENROUTER_API_KEY=*) KEY="${KEY#OPENROUTER_API_KEY=}";;
-          openrouter_api_key=*) KEY="${KEY#openrouter_api_key=}";;
-        esac
+        case "$KEY" in "${PROVIDER_ENV}="*) KEY="${KEY#${PROVIDER_ENV}=}";; esac
         KEY="$(_strip "$KEY")"
         AGENT_MODEL="$(_strip "$RAW_AGENT_MODEL")"
         PARSING_MODEL="$(_strip "$RAW_PARSING_MODEL")"
-
-        # Catch the most common model-id mistake early: the engine calls OpenRouter
-        # natively (langchain ChatOpenAI), so a model must be a BARE slug like
-        # anthropic/claude-sonnet-4 — NOT the litellm 'openrouter/...' form.
-        for M in "$AGENT_MODEL" "$PARSING_MODEL"; do
-          case "$M" in
-            openrouter/*)
-              echo "::error::Invalid model '$M': drop the 'openrouter/' prefix and use a bare OpenRouter slug, e.g. anthropic/claude-sonnet-4."
-              exit 1 ;;
-          esac
-        done
-
-        # Mask the cleaned value (it may differ from the registered secret).
         echo "::add-mask::$KEY"
+        echo "Provider: $PROVIDER -> $PROVIDER_ENV; key length: ${#KEY}"
 
-        case "$KEY" in sk-or-v1-*) PFX=1 ;; *) PFX=0 ;; esac
-        echo "OPENROUTER_API_KEY length: ${#KEY}; looks-like-OpenRouter: $PFX"
-        STATUS=$(curl -sS -o "$AUTH_FILE" -w "%{http_code}" \
-          -H "Authorization: Bearer $KEY" --max-time 10 \
-          https://openrouter.ai/api/v1/auth/key || echo "curl-fail")
-        echo "OpenRouter /auth/key response: HTTP $STATUS"
-        if [ "$STATUS" != "200" ]; then
-          # Surface the upstream error MESSAGE only — never the whole auth body (avoid leaking).
-          MSG="$(AUTH_FILE="$AUTH_FILE" python3 -c 'import json,os;print(json.load(open(os.environ["AUTH_FILE"])).get("error",{}).get("message",""))' 2>/dev/null || true)"
-          echo "::error::OpenRouter rejected the API key (HTTP $STATUS). ${MSG:-Verify the OPENROUTER_API_KEY secret.}"
-          exit 1
+        if [ "$PROVIDER" = "openrouter" ]; then
+          # OpenRouter-only checks. The litellm 'openrouter/...' model prefix 400s
+          # the engine's native OpenRouter call; other providers use native ids.
+          for M in "$AGENT_MODEL" "$PARSING_MODEL"; do
+            case "$M" in
+              openrouter/*)
+                echo "::error::Invalid model '$M': drop the 'openrouter/' prefix and use a bare OpenRouter slug, e.g. anthropic/claude-sonnet-4."
+                exit 1 ;;
+            esac
+          done
+          # Cheap preflight; other providers are validated by the engine at run time.
+          STATUS=$(curl -sS -o "$AUTH_FILE" -w "%{http_code}" \
+            -H "Authorization: Bearer $KEY" --max-time 10 \
+            https://openrouter.ai/api/v1/auth/key || echo "curl-fail")
+          echo "OpenRouter /auth/key response: HTTP $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            # Surface the upstream error MESSAGE only — never the whole auth body (avoid leaking).
+            MSG="$(AUTH_FILE="$AUTH_FILE" python3 -c 'import json,os;print(json.load(open(os.environ["AUTH_FILE"])).get("error",{}).get("message",""))' 2>/dev/null || true)"
+            echo "::error::OpenRouter rejected the API key (HTTP $STATUS). ${MSG:-Verify the OPENROUTER_API_KEY secret.}"
+            exit 1
+          fi
         fi
 
         # Store key material in runner-temp files. Later shell steps read these
         # explicitly; third-party post-comment actions do not inherit the LLM key.
         umask 077
-        printf '%s' "$KEY" > "${RUNNER_TEMP}/cb-openrouter-key"
+        printf '%s' "$KEY" > "${RUNNER_TEMP}/cb-llm-key"
+        printf '%s' "$PROVIDER_ENV" > "${RUNNER_TEMP}/cb-provider-env"
         printf '%s' "$AGENT_MODEL" > "${RUNNER_TEMP}/cb-agent-model"
         printf '%s' "$PARSING_MODEL" > "${RUNNER_TEMP}/cb-parsing-model"
 
@@ -328,7 +340,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ runner.temp }}/cb-base
-        key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+        key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     - name: Generate base analysis (no committed baseline)
       if: steps.guard.outputs.skip != 'true' && steps.base.outputs.committed == 'false' && steps.basecache.outputs.cache-hit != 'true'
@@ -348,8 +360,10 @@ runs:
         DEPTH: ${{ inputs.depth_level }}
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
       run: |
-        OPENROUTER_API_KEY="$(cat "${RUNNER_TEMP}/cb-openrouter-key")"
-        export OPENROUTER_API_KEY
+        # Export the key under the selected provider's env var (only this one),
+        # so the engine auto-selects that provider.
+        PROVIDER_ENV="$(cat "${RUNNER_TEMP}/cb-provider-env")"
+        export "$PROVIDER_ENV"="$(cat "${RUNNER_TEMP}/cb-llm-key")"
         # Export the model env only when the user set it; empty -> the engine uses
         # its own valid per-provider default (no stale hardcoded model id to rot).
         AGENT_MODEL="$(cat "${RUNNER_TEMP}/cb-agent-model")"
@@ -382,7 +396,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.temp }}/cb-base
-        key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+        key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     - name: Analyze PR head (incremental from base)
       if: steps.guard.outputs.skip != 'true'
@@ -405,8 +419,10 @@ runs:
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
         HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
       run: |
-        OPENROUTER_API_KEY="$(cat "${RUNNER_TEMP}/cb-openrouter-key")"
-        export OPENROUTER_API_KEY
+        # Export the key under the selected provider's env var (only this one),
+        # so the engine auto-selects that provider.
+        PROVIDER_ENV="$(cat "${RUNNER_TEMP}/cb-provider-env")"
+        export "$PROVIDER_ENV"="$(cat "${RUNNER_TEMP}/cb-llm-key")"
         # Export the model env only when the user set it; empty -> the engine uses
         # its own valid per-provider default (no stale hardcoded model id to rot).
         AGENT_MODEL="$(cat "${RUNNER_TEMP}/cb-agent-model")"
@@ -464,7 +480,8 @@ runs:
       if: always() && steps.guard.outputs.skip != 'true'
       shell: bash
       run: |
-        rm -f "${RUNNER_TEMP}/cb-openrouter-key" \
+        rm -f "${RUNNER_TEMP}/cb-llm-key" \
+              "${RUNNER_TEMP}/cb-provider-env" \
               "${RUNNER_TEMP}/cb-agent-model" \
               "${RUNNER_TEMP}/cb-parsing-model"
 
