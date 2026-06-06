@@ -1,5 +1,5 @@
 name: 'CodeBoarding Action'
-description: 'Visual system-design review on pull requests: a Mermaid diagram of the architectural changes — added, modified, and deleted components and relations.'
+description: 'Visual system-design review on PRs: a Mermaid diagram of added, modified, and deleted components on every pull request.'
 author: 'CodeBoarding'
 
 branding:
