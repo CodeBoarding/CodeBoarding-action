@@ -97,6 +97,20 @@ runs:
         set -uo pipefail
         skip() { echo "::notice::$1 Skipping."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
 
+        # Sticky-comment targeting. Written up front so the failure-comment step
+        # always has a header even if PR resolution below fails. Automatic
+        # pull_request runs reuse one stable header → the comment is updated in
+        # place. An on-demand /codeboarding run uses a run-unique header so it
+        # posts a NEW comment and never touches comments from earlier runs; its
+        # own in-progress→result→failure steps still share it (one comment per
+        # invocation). Re-running the same run keeps the same run id, so a re-run
+        # updates that invocation's comment rather than spawning another.
+        if [ "$EVENT" = "issue_comment" ]; then
+          echo "sticky_header=codeboarding-architecture-diff-run-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+        else
+          echo "sticky_header=codeboarding-architecture-diff" >> "$GITHUB_OUTPUT"
+        fi
+
         if [ "$EVENT" = "pull_request" ]; then
           PR_NUMBER="$PR_NUMBER_PULL"
           BASE_SHA="$PULL_BASE_SHA"
@@ -160,7 +174,7 @@ runs:
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:
-        header: codeboarding-architecture-diff
+        header: ${{ steps.guard.outputs.sticky_header }}
         number: ${{ steps.guard.outputs.pr_number }}
         message: |
           ### ${{ inputs.comment_header }} · analyzing…
@@ -609,7 +623,7 @@ runs:
       if: steps.guard.outputs.skip != 'true'
       uses: marocchino/sticky-pull-request-comment@v2
       with:
-        header: codeboarding-architecture-diff
+        header: ${{ steps.guard.outputs.sticky_header }}
         number: ${{ steps.guard.outputs.pr_number }}
         path: ${{ steps.body.outputs.body_file }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
@@ -621,7 +635,7 @@ runs:
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:
-        header: codeboarding-architecture-diff
+        header: ${{ steps.guard.outputs.sticky_header }}
         number: ${{ steps.guard.outputs.pr_number }}
         message: |
           ### ${{ inputs.comment_header }} · failed

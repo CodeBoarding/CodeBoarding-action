@@ -145,7 +145,7 @@ This table mirrors the engine and may lag it. The source of truth is the engine'
 ## When it runs
 
 - On a PR being opened, reopened, or marked ready for review, the diagram is generated once (per the `on:` triggers above). It does not re-run on every push, so you never spend an LLM job per commit; the comment reflects that point until refreshed.
-- On a `/codeboarding` comment, a trusted collaborator (`OWNER`, `MEMBER`, or `COLLABORATOR`) regenerates the diagram against the current PR head, even if one already exists. It re-runs and updates the same comment in place. Change the keyword via `trigger_command`.
+- On a `/codeboarding` comment, a trusted collaborator (`OWNER`, `MEMBER`, or `COLLABORATOR`) regenerates the diagram against the current PR head, even if one already exists. Each `/codeboarding` invocation posts a **new** comment and leaves earlier comments untouched (the automatic on-open comment, and any previous `/codeboarding` results, stay put). Change the keyword via `trigger_command`.
 
 The command needs the `issue_comment` trigger and runs from your default branch (a GitHub rule), so it only works once the workflow is merged there. On-demand runs on fork PRs are refused, so fork code is never analyzed with your secrets.
 
