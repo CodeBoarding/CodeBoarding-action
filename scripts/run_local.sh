@@ -90,6 +90,21 @@ else
   echo "== Resolving base analysis at $BASE_REF =="
   if git -C "$REPO" show "$BASE_REF:.codeboarding/analysis.json" > "$BASE_DIR/analysis.json" 2>/dev/null; then
     echo "  using committed baseline"
+    # Mirror action.yml: a committed analysis.json alone can't drive incremental —
+    # the engine needs the base static_analysis.pkl with its cluster baseline.
+    # Seed it deterministically (LSP + clustering, no LLM); fail-open on error.
+    BASE_SRC="$OUT/base-src"
+    git -C "$REPO" worktree remove --force "$BASE_SRC" 2>/dev/null || true
+    git -C "$REPO" worktree prune
+    rm -rf "$BASE_SRC"
+    git -C "$REPO" worktree add --detach "$BASE_SRC" "$BASE_REF" >/dev/null
+    if run_engine seed --repo "$BASE_SRC" --out "$BASE_DIR" --source-sha "$BASE_REF"; then
+      echo "  seeded static-analysis baseline (no LLM)"
+    else
+      rm -f "$BASE_DIR/static_analysis.pkl" "$BASE_DIR/static_analysis.sha"
+      echo "  WARNING: seeding failed; head will fall back to a full run" >&2
+    fi
+    git -C "$REPO" worktree remove --force "$BASE_SRC" >/dev/null 2>&1 || true
   else
     rm -f "$BASE_DIR/analysis.json"
     echo "  no committed baseline; running FULL analysis on base (LLM)..."
