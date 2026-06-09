@@ -19,6 +19,7 @@ _STUBBED = [
     "diagram_analysis", "diagram_analysis.exceptions",
     "health", "health.models", "health.runner",
     "static_analyzer", "static_analyzer.analysis_cache",
+    "static_analyzer.cluster_helpers",
 ]
 
 
@@ -155,6 +156,74 @@ class TestAnalysis(_Base):
         analysis.run_incremental = _Rec(raises=BaseUnavail)
         cb_engine.run_head("/repo", tempfile.mkdtemp(), "r", "rid", 1, "base", "head", "head")
         self.assertEqual(len(rf.calls), 1)  # BaselineUnavailableError also triggers the full re-run
+
+
+class TestSeed(_Base):
+    """run_seed must analyze, cluster, then save — in that order, same results object.
+
+    The save-after-clustering order is the point of the subcommand: the engine
+    persists a pkl on LSP teardown BEFORE clustering, and a pkl saved then has
+    no cluster baseline, which is exactly the state that forces the head run
+    into a full-analysis fallback.
+    """
+
+    def _install(self, fail_at=None):
+        log = []
+        results = object()
+
+        def get_static_analysis(repo_path, cache_dir, skip_cache=False, source_sha=None):
+            log.append(("analyze", str(repo_path), str(cache_dir), source_sha))
+            if fail_at == "analyze":
+                raise RuntimeError("boom")
+            return results
+
+        def build_all_cluster_results(res):
+            log.append(("cluster", res))
+            if fail_at == "cluster":
+                raise RuntimeError("boom")
+            return {"python": types.SimpleNamespace(clusters={1: {"a"}, 2: {"b"}})}
+
+        class _Cache:
+            def __init__(self, artifact_dir, repo_root):
+                log.append(("cache_init", str(artifact_dir), str(repo_root)))
+
+            def save(self, res, source_sha=None):
+                log.append(("save", res, source_sha))
+
+        sa = _mod("static_analyzer", get_static_analysis=get_static_analysis)
+        sa.cluster_helpers = _mod("static_analyzer.cluster_helpers", build_all_cluster_results=build_all_cluster_results)
+        sa.analysis_cache = _mod("static_analyzer.analysis_cache", StaticAnalysisCache=_Cache)
+        return log, results
+
+    def test_seed_analyzes_clusters_then_saves(self):
+        log, results = self._install()
+        cb_engine.run_seed("/repo", "/out", "abc123")
+        self.assertEqual(
+            log,
+            [
+                ("analyze", "/repo", "/out", "abc123"),
+                ("cluster", results),
+                ("cache_init", "/out", "/repo"),
+                ("save", results, "abc123"),
+            ],
+        )
+
+    def test_seed_propagates_engine_errors(self):
+        # Fail-open lives in the action step; run_seed itself must not swallow.
+        for stage in ("analyze", "cluster"):
+            with self.subTest(stage=stage):
+                log, _ = self._install(fail_at=stage)
+                with self.assertRaises(RuntimeError):
+                    cb_engine.run_seed("/repo", "/out", "abc123")
+                self.assertNotIn("save", [e[0] for e in log])
+                self.tearDown()
+
+    def test_main_seed_wires_args(self):
+        log, _ = self._install()
+        rc = cb_engine.main(["seed", "--repo", "/r", "--out", "/o", "--source-sha", "s1"])
+        self.assertEqual(rc, 0)
+        self.assertEqual(log[0], ("analyze", "/r", "/o", "s1"))
+        self.assertEqual(log[-1][0], "save")
 
 
 class TestHealth(_Base):

@@ -4,12 +4,16 @@ in action.yml so it is checked in, reviewable, and unit-testable.
 Subcommands (all paths/refs come in as argv, never interpolated into source):
 
   base    --repo P --out D --name N --run-id ID --depth K --source-sha SHA
+  seed    --repo P --out D --source-sha SHA
   head    --repo P --out D --name N --run-id ID --depth K --base-ref B --target-ref T --source-sha SHA
   health  --artifact-dir D --repo P --name N --issues-out FILE
 
-``base`` runs a full analysis; ``head`` runs incremental, falling back to full on
-``IncrementalCacheMissingError``/``BaselineUnavailableError``; ``health`` writes the
-WARNING/CRITICAL finding count to ``--issues-out`` (and never fails the run).
+``base`` runs a full analysis; ``seed`` builds the SHA-tagged static-analysis
+pkl for a baseline that came from a committed analysis.json (LSP + clustering,
+no LLM) so ``head`` can run incrementally; ``head`` runs incremental, falling
+back to full on ``IncrementalCacheMissingError``/``BaselineUnavailableError``;
+``health`` writes the WARNING/CRITICAL finding count to ``--issues-out`` (and
+never fails the run).
 
 The engine (``codeboarding_workflows`` etc.) is imported lazily inside each
 function so this module imports without the engine venv present — the tests stub
@@ -51,6 +55,36 @@ def run_base(repo: str, out: str, name: str, run_id: str, depth: int, source_sha
         source_sha=source_sha,
     )
     print(f"Base analysis written: {res}")
+
+
+def run_seed(repo: str, out: str, source_sha: str) -> None:
+    """Build the SHA-tagged static-analysis artifact for *repo* with no LLM calls.
+
+    A committed analysis.json gives the head analysis its component ids, but
+    the engine's incremental path also needs the base ``static_analysis.pkl``
+    with a populated cluster cache — which ``git show`` of analysis.json can
+    never provide. LSP indexing plus Leiden clustering are deterministic and
+    cost no LLM spend, so the action seeds the pkl here instead of letting the
+    head run degrade to a full analysis.
+
+    ``build_all_cluster_results`` is the same call the full run's abstraction
+    agent makes, so the seeded cluster baseline matches a real full analysis.
+    The explicit ``save`` AFTER clustering matters: ``get_static_analysis``
+    persists the pkl on LSP teardown, before clustering — saving only there
+    would recreate the pkl-without-cluster-baseline state this fixes.
+
+    Errors propagate; the action step treats a failed seed as fail-open (the
+    head run falls back to a full analysis, today's behavior).
+    """
+    from static_analyzer import get_static_analysis
+    from static_analyzer.analysis_cache import StaticAnalysisCache
+    from static_analyzer.cluster_helpers import build_all_cluster_results
+
+    results = get_static_analysis(Path(repo), cache_dir=Path(out), source_sha=source_sha)
+    cluster_results = build_all_cluster_results(results)
+    StaticAnalysisCache(Path(out), Path(repo)).save(results, source_sha=source_sha)
+    summary = ", ".join(f"{lang}={len(cr.clusters)}" for lang, cr in sorted(cluster_results.items()))
+    print(f"Seeded static-analysis baseline in {out} (clusters: {summary or 'none'})")
 
 
 def run_head(repo: str, out: str, name: str, run_id: str, depth: int, base_ref: str, target_ref: str, source_sha: str) -> None:
@@ -152,6 +186,10 @@ def main(argv=None) -> int:
         b.add_argument(a, required=True)
     b.add_argument("--depth", required=True, type=int, choices=range(1, 4))
 
+    s = sub.add_parser("seed")
+    for a in ("--repo", "--out", "--source-sha"):
+        s.add_argument(a, required=True)
+
     h = sub.add_parser("head")
     for a in ("--repo", "--out", "--name", "--run-id", "--base-ref", "--target-ref", "--source-sha"):
         h.add_argument(a, required=True)
@@ -164,6 +202,8 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     if args.cmd == "base":
         run_base(args.repo, args.out, args.name, args.run_id, args.depth, args.source_sha)
+    elif args.cmd == "seed":
+        run_seed(args.repo, args.out, args.source_sha)
     elif args.cmd == "head":
         run_head(args.repo, args.out, args.name, args.run_id, args.depth, args.base_ref, args.target_ref, args.source_sha)
     elif args.cmd == "health":
