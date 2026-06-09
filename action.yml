@@ -375,6 +375,51 @@ runs:
         path: ${{ runner.temp }}/cb-base
         key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
+    # A committed analysis.json gives the head analysis stable component ids,
+    # but the engine's incremental path ALSO needs the base static_analysis.pkl
+    # with its cluster baseline — which git can't provide (the pkl is never
+    # committed, by design). Build it here deterministically: LSP + Leiden
+    # clustering, no LLM key read. Fail-open: a failed seed degrades to exactly
+    # the previous behavior (the head run falls back to a full analysis).
+    - name: Seed base static-analysis cache (committed baseline, no cached pkl)
+      if: steps.guard.outputs.skip != 'true' && steps.base.outputs.committed == 'true' && steps.basecache.outputs.cache-hit != 'true'
+      id: seedbase
+      continue-on-error: true
+      shell: bash
+      working-directory: codeboarding-engine
+      env:
+        STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
+        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
+        CACHING_DOCUMENTATION: 'false'
+        ENABLE_MONITORING: 'false'
+        ACTION_PATH: ${{ github.action_path }}
+        TARGET: ${{ github.workspace }}/target-repo
+        BASE_DIR: ${{ steps.base.outputs.base_dir }}
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+      run: |
+        # Clean up any stale registration before re-adding (rm -rf alone leaves a
+        # dangling worktree entry that makes a retry's `worktree add` fail).
+        BASE_SRC="${RUNNER_TEMP}/base-src"
+        git -C "$TARGET" worktree remove --force "$BASE_SRC" 2>/dev/null || true
+        git -C "$TARGET" worktree prune
+        rm -rf "$BASE_SRC"
+        git -C "$TARGET" worktree add --detach "$BASE_SRC" "$BASE_SHA"
+        if uv run python "$ACTION_PATH/scripts/cb_engine.py" seed \
+             --repo "$BASE_SRC" \
+             --out "$BASE_DIR" \
+             --source-sha "$BASE_SHA" \
+           && [ -f "$BASE_DIR/static_analysis.pkl" ] && [ -f "$BASE_DIR/static_analysis.sha" ]; then
+          echo "seed_ok=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Seeded base static-analysis cache for ${BASE_SHA}; head analysis can run incrementally."
+        else
+          # Never leave a partial pkl/sha pair behind: the save step below would
+          # cache it under this base SHA's key and suppress every retry.
+          rm -f "$BASE_DIR/static_analysis.pkl" "$BASE_DIR/static_analysis.sha"
+          echo "seed_ok=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::Base static-analysis seeding failed; head analysis will fall back to a full run."
+        fi
+        git -C "$TARGET" worktree remove --force "$BASE_SRC" 2>/dev/null || true
+
     - name: Generate base analysis (no committed baseline)
       if: steps.guard.outputs.skip != 'true' && steps.base.outputs.committed == 'false' && steps.basecache.outputs.cache-hit != 'true'
       shell: bash
@@ -424,8 +469,12 @@ runs:
           exit 1
         fi
 
+    # Covers both base-artifact producers: the full analysis (no committed
+    # baseline) and the seeded pkl (committed baseline). The seed_ok gate is
+    # load-bearing — caching a pkl-less dir under this base SHA's key would
+    # permanently suppress seeding retries for it.
     - name: Save generated base artifacts
-      if: steps.guard.outputs.skip != 'true' && steps.base.outputs.committed == 'false' && steps.basecache.outputs.cache-hit != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.basecache.outputs.cache-hit != 'true' && (steps.base.outputs.committed == 'false' || steps.seedbase.outputs.seed_ok == 'true')
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.temp }}/cb-base
