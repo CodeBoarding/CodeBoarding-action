@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -142,6 +143,7 @@ def run_health(artifact_dir: str, repo: str, name: str) -> int:
 
 
 def main(argv=None) -> int:
+    os.environ.setdefault("CODEBOARDING_SOURCE", "github_action")
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
 

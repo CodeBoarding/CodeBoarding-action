@@ -1,6 +1,7 @@
 """Smoke tests for scripts/cb_engine.py — verify it calls the engine API correctly,
 using stub modules so no real engine venv is needed."""
 
+import os
 import sys
 import tempfile
 import types
@@ -8,6 +9,7 @@ import unittest
 from contextlib import redirect_stderr
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import cb_engine  # noqa: E402
@@ -91,6 +93,21 @@ class TestAnalysis(_Base):
             "--source-sha", "abc123",
         ])
         self.assertEqual(rf.calls[0]["depth_level"], 2)
+
+    def test_main_sets_github_action_source(self):
+        rf = _Rec()
+        self._install(run_full=rf)
+        with patch.dict(os.environ, {}, clear=True):
+            cb_engine.main([
+                "base",
+                "--repo", "/repo",
+                "--out", "/out",
+                "--name", "myrepo",
+                "--run-id", "rid-base",
+                "--depth", "2",
+                "--source-sha", "abc123",
+            ])
+            self.assertEqual(os.environ["CODEBOARDING_SOURCE"], "github_action")
 
     def test_main_rejects_invalid_depth(self):
         for depth in ("0", "4", "x"):
