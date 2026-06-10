@@ -121,7 +121,9 @@ def run_seed(repo: str, out: str, source_sha: str) -> None:
     print(f"Seeded static-analysis baseline in {out} (clusters: {summary or 'none'})")
 
 
-def run_head(repo: str, out: str, name: str, run_id: str, depth: int, base_ref: str, target_ref: str, source_sha: str) -> None:
+def run_head(
+    repo: str, out: str, name: str, run_id: str, depth: int, base_ref: str, target_ref: str, source_sha: str
+) -> None:
     from codeboarding_workflows.analysis import BaselineUnavailableError, run_full, run_incremental
     from diagram_analysis.exceptions import IncrementalCacheMissingError
 
@@ -243,7 +245,9 @@ def main(argv=None) -> int:
     elif args.cmd == "seed":
         run_seed(args.repo, args.out, args.source_sha)
     elif args.cmd == "head":
-        run_head(args.repo, args.out, args.name, args.run_id, args.depth, args.base_ref, args.target_ref, args.source_sha)
+        run_head(
+            args.repo, args.out, args.name, args.run_id, args.depth, args.base_ref, args.target_ref, args.source_sha
+        )
     elif args.cmd == "health":
         Path(args.issues_out).write_text(str(run_health(args.artifact_dir, args.repo, args.name)))
     elif args.cmd == "validate-base":

@@ -76,8 +76,14 @@ class TestDiff(unittest.TestCase):
 
 class TestRender(unittest.TestCase):
     def _diff(self):
-        base = {"components": [comp("A"), comp("B"), comp("Gone")], "components_relations": [rel("A", "B"), rel("A", "Gone")]}
-        head = {"components": [comp("A", {"x.py": ["f"]}), comp("B"), comp("New")], "components_relations": [rel("A", "B"), rel("A", "New")]}
+        base = {
+            "components": [comp("A"), comp("B"), comp("Gone")],
+            "components_relations": [rel("A", "B"), rel("A", "Gone")],
+        }
+        head = {
+            "components": [comp("A", {"x.py": ["f"]}), comp("B"), comp("New")],
+            "components_relations": [rel("A", "B"), rel("A", "New")],
+        }
         return dm.build_diff(base, head)
 
     def test_flat_default_has_no_subgraphs(self):
@@ -88,8 +94,14 @@ class TestRender(unittest.TestCase):
         self.assertTrue(linkstyle_indices_in_range(text))
 
     def test_nested_subgraphs_balanced_and_valid(self):
-        base = {"components": [comp("P", subs=[comp("c1"), comp("c2")], subrels=[rel("c1", "c2")])], "components_relations": []}
-        head = {"components": [comp("P", subs=[comp("c1"), comp("c3")], subrels=[rel("c1", "c3")])], "components_relations": []}
+        base = {
+            "components": [comp("P", subs=[comp("c1"), comp("c2")], subrels=[rel("c1", "c2")])],
+            "components_relations": [],
+        }
+        head = {
+            "components": [comp("P", subs=[comp("c1"), comp("c3")], subrels=[rel("c1", "c3")])],
+            "components_relations": [],
+        }
         text, _ = dm.render_mermaid(dm.build_diff(base, head), render_depth=2)
         sg = sum(1 for line in text.splitlines() if line.strip().startswith("subgraph "))
         en = sum(1 for line in text.splitlines() if line.strip() == "end")
@@ -164,8 +176,14 @@ class TestRender(unittest.TestCase):
         self.assertIn("class n_P modified;", text)
 
     def test_nested_relation_change_highlights_collapsed_parent(self):
-        base = {"components": [comp("P", subs=[comp("c1"), comp("c2")], subrels=[rel("c1", "c2", "uses")])], "components_relations": []}
-        head = {"components": [comp("P", subs=[comp("c1"), comp("c2")], subrels=[rel("c1", "c2", "calls")])], "components_relations": []}
+        base = {
+            "components": [comp("P", subs=[comp("c1"), comp("c2")], subrels=[rel("c1", "c2", "uses")])],
+            "components_relations": [],
+        }
+        head = {
+            "components": [comp("P", subs=[comp("c1"), comp("c2")], subrels=[rel("c1", "c2", "calls")])],
+            "components_relations": [],
+        }
         text, meta = dm.render_mermaid(dm.build_diff(base, head), render_depth=1)
         self.assertEqual(meta["n_changed"], 0)
         self.assertTrue(meta["changed"])
@@ -173,7 +191,10 @@ class TestRender(unittest.TestCase):
 
     def test_changed_only_keeps_nested_change(self):
         base = {"components": [comp("P", subs=[comp("c1"), comp("c2")], subrels=[])], "components_relations": []}
-        head = {"components": [comp("P", subs=[comp("c1", {"x.py": ["f"]}), comp("c2")], subrels=[])], "components_relations": []}
+        head = {
+            "components": [comp("P", subs=[comp("c1", {"x.py": ["f"]}), comp("c2")], subrels=[])],
+            "components_relations": [],
+        }
         text, meta = dm.render_mermaid(dm.build_diff(base, head), render_depth=2, changed_only=True)
         self.assertIsNotNone(text)
         self.assertTrue(meta["changed"])
@@ -183,8 +204,14 @@ class TestRender(unittest.TestCase):
         self.assertNotIn('n_c2["c2"]', text)
 
     def test_changed_only_prunes_unchanged_children_of_modified_parent(self):
-        base = {"components": [comp("P", {"p.py": ["old"]}, subs=[comp("c1"), comp("c2")], subrels=[])], "components_relations": []}
-        head = {"components": [comp("P", {"p.py": ["old", "new"]}, subs=[comp("c1"), comp("c2")], subrels=[])], "components_relations": []}
+        base = {
+            "components": [comp("P", {"p.py": ["old"]}, subs=[comp("c1"), comp("c2")], subrels=[])],
+            "components_relations": [],
+        }
+        head = {
+            "components": [comp("P", {"p.py": ["old", "new"]}, subs=[comp("c1"), comp("c2")], subrels=[])],
+            "components_relations": [],
+        }
         text, meta = dm.render_mermaid(dm.build_diff(base, head), render_depth=2, changed_only=True)
         self.assertIsNotNone(text)
         self.assertTrue(meta["changed"])

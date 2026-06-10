@@ -16,10 +16,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import cb_engine  # noqa: E402
 
 _STUBBED = [
-    "codeboarding_workflows", "codeboarding_workflows.analysis",
-    "diagram_analysis", "diagram_analysis.exceptions",
-    "health", "health.models", "health.runner",
-    "static_analyzer", "static_analyzer.analysis_cache",
+    "codeboarding_workflows",
+    "codeboarding_workflows.analysis",
+    "diagram_analysis",
+    "diagram_analysis.exceptions",
+    "health",
+    "health.models",
+    "health.runner",
+    "static_analyzer",
+    "static_analyzer.analysis_cache",
     "static_analyzer.cluster_helpers",
 ]
 
@@ -85,30 +90,46 @@ class TestAnalysis(_Base):
     def test_main_parses_depth_as_int(self):
         rf = _Rec()
         self._install(run_full=rf)
-        cb_engine.main([
-            "base",
-            "--repo", "/repo",
-            "--out", "/out",
-            "--name", "myrepo",
-            "--run-id", "rid-base",
-            "--depth", "2",
-            "--source-sha", "abc123",
-        ])
+        cb_engine.main(
+            [
+                "base",
+                "--repo",
+                "/repo",
+                "--out",
+                "/out",
+                "--name",
+                "myrepo",
+                "--run-id",
+                "rid-base",
+                "--depth",
+                "2",
+                "--source-sha",
+                "abc123",
+            ]
+        )
         self.assertEqual(rf.calls[0]["depth_level"], 2)
 
     def test_main_sets_github_action_source(self):
         rf = _Rec()
         self._install(run_full=rf)
         with patch.dict(os.environ, {}, clear=True):
-            cb_engine.main([
-                "base",
-                "--repo", "/repo",
-                "--out", "/out",
-                "--name", "myrepo",
-                "--run-id", "rid-base",
-                "--depth", "2",
-                "--source-sha", "abc123",
-            ])
+            cb_engine.main(
+                [
+                    "base",
+                    "--repo",
+                    "/repo",
+                    "--out",
+                    "/out",
+                    "--name",
+                    "myrepo",
+                    "--run-id",
+                    "rid-base",
+                    "--depth",
+                    "2",
+                    "--source-sha",
+                    "abc123",
+                ]
+            )
             self.assertEqual(os.environ["CODEBOARDING_SOURCE"], "github_action")
 
     def test_main_rejects_invalid_depth(self):
@@ -116,15 +137,23 @@ class TestAnalysis(_Base):
             with self.subTest(depth=depth):
                 with redirect_stderr(StringIO()):
                     with self.assertRaises(SystemExit):
-                        cb_engine.main([
-                            "base",
-                            "--repo", "/repo",
-                            "--out", "/out",
-                            "--name", "myrepo",
-                            "--run-id", "rid-base",
-                            "--depth", depth,
-                            "--source-sha", "abc123",
-                        ])
+                        cb_engine.main(
+                            [
+                                "base",
+                                "--repo",
+                                "/repo",
+                                "--out",
+                                "/out",
+                                "--name",
+                                "myrepo",
+                                "--run-id",
+                                "rid-base",
+                                "--depth",
+                                depth,
+                                "--source-sha",
+                                "abc123",
+                            ]
+                        )
 
     def test_head_uses_incremental(self):
         ri, rf = _Rec(), _Rec()
@@ -239,7 +268,9 @@ class TestSeed(_Base):
                 log.append(("save", res, source_sha))
 
         sa = _mod("static_analyzer", get_static_analysis=get_static_analysis)
-        sa.cluster_helpers = _mod("static_analyzer.cluster_helpers", build_all_cluster_results=build_all_cluster_results)
+        sa.cluster_helpers = _mod(
+            "static_analyzer.cluster_helpers", build_all_cluster_results=build_all_cluster_results
+        )
         sa.analysis_cache = _mod("static_analyzer.analysis_cache", StaticAnalysisCache=_Cache)
         return log, results
 
@@ -288,9 +319,13 @@ class TestHealth(_Base):
 
         _mod("health.models", Severity=Severity)
         _mod("health.runner", run_health_checks=lambda sa, repo_name, repo_path: report)
-        _mod("health", )
+        _mod(
+            "health",
+        )
         _mod("static_analyzer.analysis_cache", StaticAnalysisCache=_Cache)
-        _mod("static_analyzer", )
+        _mod(
+            "static_analyzer",
+        )
         return Severity
 
     def test_counts_warning_and_critical(self):
