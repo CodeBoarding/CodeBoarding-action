@@ -84,12 +84,30 @@ else
   [ -d "$ENGINE" ] || { echo "Engine not found at $ENGINE (set --engine or \$ENGINE)." >&2; exit 2; }
   [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "Export OPENROUTER_API_KEY for the full pipeline." >&2; exit 2; }
   REPO="$(cd "$REPO" && pwd)"
+  BASE_SHA="$(git -C "$REPO" rev-parse "$BASE_REF^{commit}")"
+  HEAD_SHA="$(git -C "$REPO" rev-parse "$HEAD_REF^{commit}")"
   BASE_DIR="$OUT/base"; HEAD_DIR="$OUT/head"
   rm -rf "$BASE_DIR" "$HEAD_DIR"; mkdir -p "$BASE_DIR" "$HEAD_DIR"
 
-  echo "== Resolving base analysis at $BASE_REF =="
-  if git -C "$REPO" show "$BASE_REF:.codeboarding/analysis.json" > "$BASE_DIR/analysis.json" 2>/dev/null; then
+  echo "== Resolving base analysis at $BASE_SHA =="
+  if git -C "$REPO" show "$BASE_SHA:.codeboarding/analysis.json" > "$BASE_DIR/analysis.json" 2>/dev/null \
+     && run_engine validate-base --analysis "$BASE_DIR/analysis.json" --expected-sha "$BASE_SHA"; then
     echo "  using committed baseline"
+    # Mirror action.yml: a committed analysis.json alone can't drive incremental —
+    # the engine needs the base static_analysis.pkl with its cluster baseline.
+    # Seed it deterministically (LSP + clustering, no LLM); fail-open on error.
+    BASE_SRC="$OUT/base-src"
+    git -C "$REPO" worktree remove --force "$BASE_SRC" 2>/dev/null || true
+    git -C "$REPO" worktree prune
+    rm -rf "$BASE_SRC"
+    git -C "$REPO" worktree add --detach "$BASE_SRC" "$BASE_SHA" >/dev/null
+    if run_engine seed --repo "$BASE_SRC" --out "$BASE_DIR" --source-sha "$BASE_SHA"; then
+      echo "  seeded static-analysis baseline (no LLM)"
+    else
+      rm -f "$BASE_DIR/static_analysis.pkl" "$BASE_DIR/static_analysis.sha"
+      echo "  WARNING: seeding failed; head will fall back to a full run" >&2
+    fi
+    git -C "$REPO" worktree remove --force "$BASE_SRC" >/dev/null 2>&1 || true
   else
     rm -f "$BASE_DIR/analysis.json"
     echo "  no committed baseline; running FULL analysis on base (LLM)..."
@@ -97,19 +115,19 @@ else
     git -C "$REPO" worktree remove --force "$BASE_SRC" 2>/dev/null || true
     git -C "$REPO" worktree prune
     rm -rf "$BASE_SRC"
-    git -C "$REPO" worktree add --detach "$BASE_SRC" "$BASE_REF" >/dev/null
+    git -C "$REPO" worktree add --detach "$BASE_SRC" "$BASE_SHA" >/dev/null
     run_engine base \
       --repo "$BASE_SRC" \
       --out "$BASE_DIR" \
       --name "$(basename "$REPO")" \
       --run-id local-base \
       --depth "$DEPTH" \
-      --source-sha "$BASE_REF"
+      --source-sha "$BASE_SHA"
     git -C "$REPO" worktree remove --force "$BASE_SRC" >/dev/null 2>&1 || true
     [ -f "$BASE_DIR/analysis.json" ] || { echo "Base full analysis ran but analysis.json is missing." >&2; exit 1; }
   fi
 
-  echo "== Analyzing head at $HEAD_REF (incremental from base) =="
+  echo "== Analyzing head at $HEAD_SHA (incremental from base) =="
   cp -a "$BASE_DIR"/. "$HEAD_DIR"/ 2>/dev/null || true
   run_engine head \
     --repo "$REPO" \
@@ -117,9 +135,9 @@ else
     --name "$(basename "$REPO")" \
     --run-id local-head \
     --depth "$DEPTH" \
-    --base-ref "$BASE_REF" \
-    --target-ref "$HEAD_REF" \
-    --source-sha "$HEAD_REF"
+    --base-ref "$BASE_SHA" \
+    --target-ref "$HEAD_SHA" \
+    --source-sha "$HEAD_SHA"
   [ -f "$HEAD_DIR/analysis.json" ] || { echo "Head analysis ran but analysis.json is missing." >&2; exit 1; }
   BASE_ANALYSIS="$BASE_DIR/analysis.json"
   HEAD_ANALYSIS="$HEAD_DIR/analysis.json"

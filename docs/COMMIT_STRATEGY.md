@@ -21,7 +21,7 @@ The engine writes these under `.codeboarding/`:
 - ✅ `health/health_report.json` — required for warnings in the extension/webview. Small text.
 
 **Do NOT commit (binary, bloat):**
-- ❌ `static_analysis.pkl` — binary, MB-scale, noisy diffs, repo bloat. It is a *rebuildable speed cache*, not display data. Keep it in **`actions/cache` keyed by the base SHA** (or a backend). A cache miss just falls back to a cold (full) LSP pass — slower but correct, and the committed `analysis.json` still drives the diagram.
+- ❌ `static_analysis.pkl` — binary, MB-scale, noisy diffs, repo bloat. It is a *rebuildable speed cache*, not display data. Keep it in **`actions/cache` keyed by the base SHA** (or a backend). On a cache miss the review action **seeds it deterministically** (LSP + clustering, no LLM calls) — the pkl is not optional for incremental: the engine refuses to run incrementally without the cluster baseline stored inside it.
 - `static_analysis.sha` — commit **only** if the pkl is kept reachable (cache/backend); on its own it's harmless but unused.
 
 > **Principle:** version-control the *source-of-truth display data* (text, small); *cache* the *rebuildable speed artifacts* (binary, large). This is exactly what keeps the repo clean — the thing that bloats (`.pkl`) never enters git.
@@ -40,7 +40,13 @@ The engine writes these under `.codeboarding/`:
 
 ## Warm-start tradeoff (the `.pkl`)
 
-The warm-start needs the pkl **and** its `.sha`. When the review action has to generate a base analysis, it saves that generated base artifact directory in `actions/cache` keyed by base SHA / depth / engine ref, then seeds the head analysis from that directory. When a committed `analysis.json` already exists but no matching cache exists, the PR still diffs correctly but may run a cold LSP pass. This keeps the repo clean; the cache improves speed but is not required for correctness.
+The warm-start — and the engine's incremental path itself — needs the pkl **and** its `.sha`: the cluster baseline that drives incremental lives only inside the pkl, so a committed `analysis.json` alone forces the head run into a full (LLM) fallback. The review action therefore guarantees the pair exists for the base SHA:
+
+- **No committed baseline:** the generated base analysis writes the pkl as a side effect; the artifact dir is saved in `actions/cache` keyed by base SHA / depth / engine ref.
+- **Committed baseline:** the action first requires `analysis.json.metadata.commit_hash` to equal the PR base SHA. A stale committed diagram is treated like no baseline, so the base is regenerated at the PR base commit before diffing.
+- **Committed baseline, cache miss:** the action *seeds* the pkl deterministically (`cb_engine.py seed`: LSP indexing + the same clustering call a full run makes — **no LLM calls**), then saves it to the same cache. Seeding is fail-open: if it fails, the head run falls back to a full analysis.
+
+Either way the head analysis is seeded from that directory and runs incrementally. This keeps the repo clean — the pkl never enters git — while the cache + seeding make incremental work from the first PR run.
 
 ## Summary
 
