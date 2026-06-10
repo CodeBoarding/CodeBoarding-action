@@ -1,6 +1,7 @@
 """Smoke tests for scripts/cb_engine.py — verify it calls the engine API correctly,
 using stub modules so no real engine venv is needed."""
 
+import json
 import os
 import sys
 import tempfile
@@ -156,6 +157,53 @@ class TestAnalysis(_Base):
         analysis.run_incremental = _Rec(raises=BaseUnavail)
         cb_engine.run_head("/repo", tempfile.mkdtemp(), "r", "rid", 1, "base", "head", "head")
         self.assertEqual(len(rf.calls), 1)  # BaselineUnavailableError also triggers the full re-run
+
+
+class TestValidateBase(_Base):
+    def test_validate_base_accepts_matching_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(json.dumps({"metadata": {"commit_hash": "abc123"}}), encoding="utf-8")
+
+            ok, message = cb_engine.validate_base_analysis(path, "abc123")
+
+            self.assertTrue(ok)
+            self.assertIn("matches", message)
+
+    def test_validate_base_rejects_mismatched_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(json.dumps({"metadata": {"commit_hash": "old"}}), encoding="utf-8")
+
+            ok, message = cb_engine.validate_base_analysis(path, "new")
+
+            self.assertFalse(ok)
+            self.assertIn("old", message)
+            self.assertIn("new", message)
+
+    def test_validate_base_rejects_missing_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(json.dumps({"metadata": {}}), encoding="utf-8")
+
+            ok, message = cb_engine.validate_base_analysis(path, "abc123")
+
+            self.assertFalse(ok)
+            self.assertIn("commit_hash", message)
+
+    def test_main_validate_base_exit_codes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(json.dumps({"metadata": {"commit_hash": "abc123"}}), encoding="utf-8")
+
+            self.assertEqual(
+                cb_engine.main(["validate-base", "--analysis", str(path), "--expected-sha", "abc123"]),
+                0,
+            )
+            self.assertEqual(
+                cb_engine.main(["validate-base", "--analysis", str(path), "--expected-sha", "def456"]),
+                1,
+            )
 
 
 class TestSeed(_Base):

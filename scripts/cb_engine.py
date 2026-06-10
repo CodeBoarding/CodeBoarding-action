@@ -42,6 +42,40 @@ def _clear_dir(path: Path) -> None:
             child.unlink()
 
 
+def validate_base_analysis(analysis_path: Path, expected_sha: str) -> tuple[bool, str]:
+    """Return whether ``analysis.json`` was generated for ``expected_sha``.
+
+    The PR action can only reuse a committed baseline when the diagram's own
+    source commit matches the PR base commit. Otherwise the diff would be
+    computed from the PR base while mutating an older diagram snapshot.
+    """
+    try:
+        data = json.loads(analysis_path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return False, f"Baseline analysis is missing: {analysis_path}"
+    except (OSError, json.JSONDecodeError) as exc:
+        return False, f"Baseline analysis is unreadable: {exc}"
+
+    if not isinstance(data, dict):
+        return False, "Baseline analysis root is not a JSON object."
+
+    metadata = data.get("metadata")
+    if not isinstance(metadata, dict):
+        return False, "Baseline analysis metadata is missing."
+
+    actual_sha = metadata.get("commit_hash")
+    if not isinstance(actual_sha, str) or not actual_sha:
+        return False, "Baseline analysis metadata.commit_hash is missing."
+
+    if actual_sha != expected_sha:
+        return (
+            False,
+            f"Baseline analysis was generated for {actual_sha}, expected PR base {expected_sha}.",
+        )
+
+    return True, f"Baseline analysis commit matches PR base {expected_sha}."
+
+
 def run_base(repo: str, out: str, name: str, run_id: str, depth: int, source_sha: str) -> None:
     from codeboarding_workflows.analysis import run_full
 
@@ -199,6 +233,10 @@ def main(argv=None) -> int:
     for a in ("--artifact-dir", "--repo", "--name", "--issues-out"):
         hc.add_argument(a, required=True)
 
+    vb = sub.add_parser("validate-base")
+    vb.add_argument("--analysis", required=True)
+    vb.add_argument("--expected-sha", required=True)
+
     args = p.parse_args(argv)
     if args.cmd == "base":
         run_base(args.repo, args.out, args.name, args.run_id, args.depth, args.source_sha)
@@ -208,6 +246,10 @@ def main(argv=None) -> int:
         run_head(args.repo, args.out, args.name, args.run_id, args.depth, args.base_ref, args.target_ref, args.source_sha)
     elif args.cmd == "health":
         Path(args.issues_out).write_text(str(run_health(args.artifact_dir, args.repo, args.name)))
+    elif args.cmd == "validate-base":
+        ok, message = validate_base_analysis(Path(args.analysis), args.expected_sha)
+        print(message)
+        return 0 if ok else 1
     return 0
 
 

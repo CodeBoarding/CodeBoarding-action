@@ -352,6 +352,7 @@ runs:
       working-directory: target-repo
       env:
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         BASE_DIR="${RUNNER_TEMP}/cb-base"
         HEAD_DIR="${RUNNER_TEMP}/cb-head"
@@ -359,8 +360,16 @@ runs:
         echo "base_dir=$BASE_DIR" >> $GITHUB_OUTPUT
         echo "head_dir=$HEAD_DIR" >> $GITHUB_OUTPUT
         if git show "${BASE_SHA}:.codeboarding/analysis.json" > "${BASE_DIR}/analysis.json" 2>/dev/null; then
-          echo "committed=true" >> $GITHUB_OUTPUT
-          echo "Using committed .codeboarding/analysis.json at ${BASE_SHA}."
+          if python3 "$ACTION_PATH/scripts/cb_engine.py" validate-base \
+              --analysis "${BASE_DIR}/analysis.json" \
+              --expected-sha "$BASE_SHA"; then
+            echo "committed=true" >> $GITHUB_OUTPUT
+            echo "Using committed .codeboarding/analysis.json at ${BASE_SHA}."
+          else
+            rm -f "${BASE_DIR}/analysis.json"
+            echo "committed=false" >> $GITHUB_OUTPUT
+            echo "Committed baseline at ${BASE_SHA} is stale; will generate a fresh base analysis."
+          fi
         else
           rm -f "${BASE_DIR}/analysis.json"
           echo "committed=false" >> $GITHUB_OUTPUT
@@ -373,7 +382,7 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ runner.temp }}/cb-base
-        key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+        key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     # A committed analysis.json gives the head analysis stable component ids,
     # but the engine's incremental path ALSO needs the base static_analysis.pkl
@@ -478,7 +487,7 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.temp }}/cb-base
-        key: cb-base-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+        key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     - name: Analyze PR head (incremental from base)
       if: steps.guard.outputs.skip != 'true'
