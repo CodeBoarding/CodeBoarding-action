@@ -43,7 +43,8 @@ class TestBuildCta(unittest.TestCase):
     def test_no_proxy_vscode_marketplace_https_no_banner_at_zero(self):
         out = bc.build_cta("", "o", "r", "1", repo_with())  # neither dir, no issues
         self.assertIn(
-            "[**Open in VS Code →**](https://marketplace.visualstudio.com/items?itemName=Codeboarding.codeboarding)", out
+            "[**Open in VS Code →**](https://marketplace.visualstudio.com/items?itemName=Codeboarding.codeboarding)",
+            out,
         )
         self.assertNotIn("vscode:extension", out)  # custom scheme stripped by GitHub
         self.assertNotIn("Get the extension", out)

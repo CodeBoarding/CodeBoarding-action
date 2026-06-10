@@ -30,8 +30,8 @@ from pathlib import Path
 # GitHub's mermaid config caps (config.schema.yaml defaults; NOT raisable on
 # GitHub). Exceeding either renders a red error box with no diagram, so we stay
 # comfortably under and degrade to a changed-only / text fallback instead.
-MAX_EDGES = 480          # hard cap 500
-MAX_TEXT = 45_000        # hard cap 50000 chars
+MAX_EDGES = 480  # hard cap 500
+MAX_TEXT = 45_000  # hard cap 50000 chars
 
 # Primer-ish fills that read on both light and dark GitHub backgrounds. White
 # label text is set explicitly so it survives dark mode.
@@ -89,8 +89,7 @@ def _has_method_changes(base: dict, current: dict) -> bool:
     base_by_file = _methods_by_file(base)
     current_by_file = _methods_by_file(current)
     return any(
-        base_by_file.get(fp, set()) != current_by_file.get(fp, set())
-        for fp in set(base_by_file) | set(current_by_file)
+        base_by_file.get(fp, set()) != current_by_file.get(fp, set()) for fp in set(base_by_file) | set(current_by_file)
     )
 
 
@@ -122,7 +121,11 @@ def _diff_relations(base_rels: list, current_rels: list) -> list:
             continue
 
         if len(base_group) == 1 and len(current_group) == 1:
-            status = "unchanged" if (base_group[0].get("relation") or "") == (current_group[0].get("relation") or "") else "modified"
+            status = (
+                "unchanged"
+                if (base_group[0].get("relation") or "") == (current_group[0].get("relation") or "")
+                else "modified"
+            )
             result.append({**current_group[0], "diff_status": status})
             continue
 
@@ -227,9 +230,17 @@ def _sanitize(name: str) -> str:
 # node label and breaks the whole diagram, so escape the shape chars too — not
 # just ``#`` and ``"``.
 _ESC_MAP = {
-    "&": "#amp;", '"': "#quot;", "<": "#lt;", ">": "#gt;",
-    "[": "#91;", "]": "#93;", "(": "#40;", ")": "#41;",
-    "{": "#123;", "}": "#125;", "|": "#124;",
+    "&": "#amp;",
+    '"': "#quot;",
+    "<": "#lt;",
+    ">": "#gt;",
+    "[": "#91;",
+    "]": "#93;",
+    "(": "#40;",
+    ")": "#41;",
+    "{": "#123;",
+    "}": "#125;",
+    "|": "#124;",
 }
 
 
@@ -338,8 +349,7 @@ def _filter_changed(components: list, relations: list) -> tuple:
     rels = [
         r
         for r in relations
-        if r.get("diff_status") in CHANGED
-        or (touches(r, "src_id", "src_name") and touches(r, "dst_id", "dst_name"))
+        if r.get("diff_status") in CHANGED or (touches(r, "src_id", "src_name") and touches(r, "dst_id", "dst_name"))
     ]
     return kept, rels
 
@@ -379,8 +389,7 @@ def _count_changed_components(components: list) -> int:
 def _has_changed_relations(components: list, relations: list) -> bool:
     """Recursively: is any relation (at any nesting level) added/modified/deleted?"""
     return _has_changes([], relations) or any(
-        _has_changed_relations(c.get("components") or [], c.get("components_relations") or [])
-        for c in components or []
+        _has_changed_relations(c.get("components") or [], c.get("components_relations") or []) for c in components or []
     )
 
 
@@ -522,9 +531,18 @@ def main() -> int:
     p.add_argument("--out", required=True, type=Path, help="Where to write the ```mermaid block")
     p.add_argument("--direction", default="LR", choices=["LR", "TD", "TB", "RL", "BT"])
     p.add_argument("--changed-only", action="store_true", help="Render only changed components + incident edges")
-    p.add_argument("--no-edge-labels", dest="edge_labels", action="store_false", help="Draw arrows without relation labels")
-    p.add_argument("--render-depth", type=int, default=1, help="Component levels to draw: 1=top-level flat, 2=+one nesting level, ...")
-    p.add_argument("--font-size", type=int, default=None, help="Node label font size in px (bigger label ⇒ bigger node)")
+    p.add_argument(
+        "--no-edge-labels", dest="edge_labels", action="store_false", help="Draw arrows without relation labels"
+    )
+    p.add_argument(
+        "--render-depth",
+        type=int,
+        default=1,
+        help="Component levels to draw: 1=top-level flat, 2=+one nesting level, ...",
+    )
+    p.add_argument(
+        "--font-size", type=int, default=None, help="Node label font size in px (bigger label ⇒ bigger node)"
+    )
     p.add_argument("--node-padding", type=int, default=None, help="Interior padding around each node label")
     p.add_argument("--node-spacing", type=int, default=None, help="Space between nodes in the same rank")
     p.add_argument("--rank-spacing", type=int, default=None, help="Space between ranks")
