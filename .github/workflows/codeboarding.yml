@@ -36,6 +36,25 @@ jobs:
       # The action reads its scripts via github.action_path and checks the engine
       # and target repo into subdirectories, so this local checkout is untouched.
       - uses: actions/checkout@v4
+      - name: Detect CodeBoarding GitHub App credentials
+        id: codeboarding-app-config
+        shell: bash
+        env:
+          APP_ID: ${{ vars.CODEBOARDING_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.CODEBOARDING_APP_PRIVATE_KEY }}
+        run: |
+          if [ -n "$APP_ID" ] && [ -n "$PRIVATE_KEY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/create-github-app-token@v3
+        id: codeboarding-app-token
+        if: steps.codeboarding-app-config.outputs.enabled == 'true'
+        with:
+          app-id: ${{ vars.CODEBOARDING_APP_ID }}
+          private-key: ${{ secrets.CODEBOARDING_APP_PRIVATE_KEY }}
       - uses: ./
         with:
+          github_token: ${{ steps.codeboarding-app-token.outputs.token || github.token }}
           llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
