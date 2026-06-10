@@ -155,7 +155,7 @@ The command needs the `issue_comment` trigger and runs from your default branch 
 |---|---|---|
 | `llm_api_key` | required | Your LLM provider API key (see `llm_provider`). |
 | `llm_provider` | `openrouter` | Provider for the key, mapped to `<NAME>_API_KEY` (e.g. `anthropic`, `openai`, `google`). |
-| `github_token` | `${{ github.token }}` | Token used to post or update the PR comment. |
+| `github_token` | `${{ github.token }}` | Token used to post or update the PR comment. With the default workflow token the comment is authored by `github-actions[bot]`; pass a GitHub App installation token (with `pull_requests: write`) to post under that app's bot identity instead. |
 | `engine_ref` | `v0.12.0` | CodeBoarding engine ref. Pin for reproducibility. |
 | `depth_level` | `1` | Analysis depth, 1 to 3. Higher is slower and richer. |
 | `render_depth` | `1` | Display depth for the PR diagram. Keep `1` for a clean top-level view. |
