@@ -40,21 +40,41 @@ jobs:
         id: codeboarding-app-config
         shell: bash
         env:
+          CLIENT_ID: ${{ vars.CODEBOARDING_APP_CLIENT_ID }}
           APP_ID: ${{ vars.CODEBOARDING_APP_ID }}
           PRIVATE_KEY: ${{ secrets.CODEBOARDING_APP_PRIVATE_KEY }}
         run: |
-          if [ -n "$APP_ID" ] && [ -n "$PRIVATE_KEY" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-          fi
+          [ -n "$CLIENT_ID" ] && echo "has_client_id=true" >> "$GITHUB_OUTPUT" || echo "has_client_id=false" >> "$GITHUB_OUTPUT"
+          [ -n "$APP_ID" ] && echo "has_app_id=true" >> "$GITHUB_OUTPUT" || echo "has_app_id=false" >> "$GITHUB_OUTPUT"
+          [ -n "$PRIVATE_KEY" ] && echo "has_private_key=true" >> "$GITHUB_OUTPUT" || echo "has_private_key=false" >> "$GITHUB_OUTPUT"
       - uses: actions/create-github-app-token@v3
-        id: codeboarding-app-token
-        if: steps.codeboarding-app-config.outputs.enabled == 'true'
+        id: codeboarding-app-token-client
+        if: steps.codeboarding-app-config.outputs.has_client_id == 'true' && steps.codeboarding-app-config.outputs.has_private_key == 'true'
+        continue-on-error: true
+        with:
+          client-id: ${{ vars.CODEBOARDING_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CODEBOARDING_APP_PRIVATE_KEY }}
+      - uses: actions/create-github-app-token@v3
+        id: codeboarding-app-token-app
+        if: steps.codeboarding-app-config.outputs.has_client_id != 'true' && steps.codeboarding-app-config.outputs.has_app_id == 'true' && steps.codeboarding-app-config.outputs.has_private_key == 'true'
+        continue-on-error: true
         with:
           app-id: ${{ vars.CODEBOARDING_APP_ID }}
           private-key: ${{ secrets.CODEBOARDING_APP_PRIVATE_KEY }}
+      - name: Select CodeBoarding comment token
+        id: codeboarding-comment-token
+        shell: bash
+        env:
+          APP_TOKEN: ${{ steps.codeboarding-app-token-client.outputs.token || steps.codeboarding-app-token-app.outputs.token }}
+        run: |
+          if [ -n "$APP_TOKEN" ]; then
+            echo "token=$APP_TOKEN" >> "$GITHUB_OUTPUT"
+            echo "Using CodeBoarding GitHub App token for PR comments."
+          else
+            echo "token=${{ github.token }}" >> "$GITHUB_OUTPUT"
+            echo "::warning::CodeBoarding GitHub App token is unavailable; falling back to github-actions[bot]. Check CODEBOARDING_APP_PRIVATE_KEY formatting if app credentials are configured."
+          fi
       - uses: ./
         with:
-          github_token: ${{ steps.codeboarding-app-token.outputs.token || github.token }}
+          github_token: ${{ steps.codeboarding-comment-token.outputs.token }}
           llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
