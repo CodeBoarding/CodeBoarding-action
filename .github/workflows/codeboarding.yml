@@ -44,8 +44,8 @@ jobs:
           APP_ID: ${{ vars.CODEBOARDING_APP_ID }}
           PRIVATE_KEY: ${{ secrets.CODEBOARDING_APP_PRIVATE_KEY }}
         run: |
-          client_id="$CLIENT_ID"
-          app_id="$APP_ID"
+          client_id="${CLIENT_ID:-}"
+          app_id="${APP_ID:-}"
 
           # GitHub App client IDs start with "Iv". If that value was stored in
           # CODEBOARDING_APP_ID, use it as a client ID to avoid the deprecated
@@ -64,16 +64,18 @@ jobs:
             else
               echo "::warning::CODEBOARDING_APP_PRIVATE_KEY is not a valid PEM private key, so CodeBoarding will fall back to github-actions[bot]."
               if printf '%b' "$PRIVATE_KEY" | openssl pkey -noout >/dev/null 2>&1; then
-                echo "::warning::CODEBOARDING_APP_PRIVATE_KEY looks like it contains literal \\n escapes. Store the downloaded PEM as multi-line secret text instead."
+                printf '%s\n' "::warning::CODEBOARDING_APP_PRIVATE_KEY looks like it contains literal \\n escapes. Store the downloaded PEM as multi-line secret text instead."
               fi
             fi
           fi
 
-          [ -n "$client_id" ] && echo "has_client_id=true" >> "$GITHUB_OUTPUT" || echo "has_client_id=false" >> "$GITHUB_OUTPUT"
-          [ -n "$app_id" ] && echo "has_app_id=true" >> "$GITHUB_OUTPUT" || echo "has_app_id=false" >> "$GITHUB_OUTPUT"
-          echo "client_id=$client_id" >> "$GITHUB_OUTPUT"
-          echo "has_private_key=$has_private_key" >> "$GITHUB_OUTPUT"
-          echo "private_key_valid=$private_key_valid" >> "$GITHUB_OUTPUT"
+          {
+            [ -n "$client_id" ] && echo "has_client_id=true" || echo "has_client_id=false"
+            [ -n "$app_id" ] && echo "has_app_id=true" || echo "has_app_id=false"
+            echo "client_id=$client_id"
+            echo "has_private_key=$has_private_key"
+            echo "private_key_valid=$private_key_valid"
+          } >> "$GITHUB_OUTPUT"
       - uses: actions/create-github-app-token@v3
         id: codeboarding-app-token-client
         if: steps.codeboarding-app-config.outputs.has_client_id == 'true' && steps.codeboarding-app-config.outputs.private_key_valid == 'true'
