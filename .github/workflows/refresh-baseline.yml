@@ -128,22 +128,31 @@ jobs:
           RAW_AGENT_MODEL: ${{ secrets.AGENT_MODEL }}
           RAW_PARSING_MODEL: ${{ secrets.PARSING_MODEL }}
         run: |
-          # Normalize like the review action's key prep: strip surrounding whitespace
-          # (a trailing newline in the stored secret otherwise lands in the
-          # Authorization header, which OpenRouter rejects as "Missing Authentication
-          # header" — a 401 that looks like a bad key but is really a malformed header).
-          _strip() { printf '%s' "$1" | tr -d '[:space:]'; }
-          OPENROUTER_API_KEY="$(_strip "$RAW_OPENROUTER_API_KEY")"
-          [ -n "$OPENROUTER_API_KEY" ] || { echo "::error::OPENROUTER_API_KEY secret is not set."; exit 1; }
-          echo "::add-mask::$OPENROUTER_API_KEY"
-          export OPENROUTER_API_KEY
-          # Models may carry whitespace too; default to the OpenRouter cheap models
-          # when unset (the engine also has its own defaults).
+          # Normalize EXACTLY like the review action's key prep (action.yml). A raw
+          # secret can carry surrounding whitespace/newlines, wrapping quotes, or a
+          # leading "OPENROUTER_API_KEY=" prefix; any of those land in the
+          # Authorization header and OpenRouter rejects it as "Missing Authentication
+          # header" (a 401 that looks like a bad key but is a malformed header).
+          # The previous fix stripped only whitespace, leaving quotes/prefix → still 401.
+          _strip() { printf '%s' "$1" | tr -d '[:space:]' | sed -e 's/^"//;s/"$//' -e "s/^'//;s/'\$//"; }
+          KEY="$(_strip "$RAW_OPENROUTER_API_KEY")"
+          # Drop a leading "OPENROUTER_API_KEY=" if the secret was stored with it.
+          case "$KEY" in OPENROUTER_API_KEY=*) KEY="${KEY#OPENROUTER_API_KEY=}";; esac
+          KEY="$(_strip "$KEY")"
+          [ -n "$KEY" ] || { echo "::error::OPENROUTER_API_KEY secret is not set."; exit 1; }
+          echo "::add-mask::$KEY"
+          export OPENROUTER_API_KEY="$KEY"
           AGENT_MODEL="$(_strip "$RAW_AGENT_MODEL")"
           PARSING_MODEL="$(_strip "$RAW_PARSING_MODEL")"
           export AGENT_MODEL="${AGENT_MODEL:-google/gemini-3-flash-preview}"
           export PARSING_MODEL="${PARSING_MODEL:-google/gemini-3.1-flash-lite-preview}"
-          echo "Provider: openrouter; key length: ${#OPENROUTER_API_KEY}; agent_model: $AGENT_MODEL"
+          echo "Provider: openrouter; key length: ${#OPENROUTER_API_KEY}"
+          # Preflight the key against OpenRouter so a malformed/expired key fails here
+          # with a clear message instead of deep inside the engine's retry loop.
+          PRE=$(curl -sS -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+            --max-time 10 https://openrouter.ai/api/v1/auth/key || echo "curl-fail")
+          echo "OpenRouter /auth/key preflight: HTTP $PRE"
+          [ "$PRE" = "200" ] || { echo "::error::OpenRouter rejected the key (HTTP $PRE). Check the OPENROUTER_API_KEY secret value (no quotes/prefix/newline)."; exit 1; }
           mkdir -p "$OUT_DIR"
           # Run the same full-analysis path the review action uses for a base.
           uv run python "$ACTION_PATH/scripts/cb_engine.py" base \
