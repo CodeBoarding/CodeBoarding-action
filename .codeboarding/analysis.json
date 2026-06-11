@@ -1,92 +1,564 @@
 {
   "metadata": {
-    "generated_at": "2026-05-25T20:11:22.655182+00:00",
-    "commit_hash": "189e8f32abca4ac64d2449da313fc3e553e66b2e",
+    "generated_at": "2026-06-11T16:36:04.958976+00:00",
+    "commit_hash": "e9aa6435ce9f0ffe6726d5c1a3758980f79f1c3b",
     "repo_name": "CodeBoarding-action",
     "depth_level": 1,
     "file_coverage_summary": {
-      "total_files": 3,
-      "analyzed": 0,
-      "not_analyzed": 3,
+      "total_files": 15,
+      "analyzed": 3,
+      "not_analyzed": 12,
       "not_analyzed_by_reason": {
-        "other": 3
+        "other": 9,
+        "codeboardingignore": 3
       }
     }
   },
-  "description": "This architecture represents the lifecycle of a remote documentation analysis job within a GitHub Action environment. The flow begins with environment normalization, proceeds through an asynchronous polling-based job orchestration with a remote API, and concludes with the extraction and mapping of results to the GitHub runner's output context.",
-  "files": {},
-  "methods_index": {},
+  "description": "The CodeBoarding system orchestrates the analysis of git repositories, performs structural diffing between analysis states, and generates actionable visual feedback for pull requests by integrating with developer environments.",
+  "files": {
+    "scripts/cb_engine.py": {
+      "method_keys": [
+        "scripts/cb_engine.py|scripts.cb_engine._log_path",
+        "scripts/cb_engine.py|scripts.cb_engine._clear_dir",
+        "scripts/cb_engine.py|scripts.cb_engine.validate_base_analysis",
+        "scripts/cb_engine.py|scripts.cb_engine.run_base",
+        "scripts/cb_engine.py|scripts.cb_engine.run_seed",
+        "scripts/cb_engine.py|scripts.cb_engine.run_head",
+        "scripts/cb_engine.py|scripts.cb_engine._count_report_issues",
+        "scripts/cb_engine.py|scripts.cb_engine._count_health_report",
+        "scripts/cb_engine.py|scripts.cb_engine.run_health",
+        "scripts/cb_engine.py|scripts.cb_engine.main"
+      ]
+    },
+    "scripts/diff_to_mermaid.py": {
+      "method_keys": [
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.load_analysis",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_id",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_name",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._file_methods",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._methods_by_file",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_structural_changes",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_method_changes",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._rel_key",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_relations",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changes",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_components",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.build_diff",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._sanitize",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._esc",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._truncate",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._display_status",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope.__init__",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope.resolve",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed.touches",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._init_directive",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._count_changed_components",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changed_relations",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_level",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main"
+      ]
+    },
+    "scripts/build_cta.py": {
+      "method_keys": [
+        "scripts/build_cta.py|scripts.build_cta.detect_editors",
+        "scripts/build_cta.py|scripts.build_cta.build_cta",
+        "scripts/build_cta.py|scripts.build_cta.build_cta.link",
+        "scripts/build_cta.py|scripts.build_cta.main"
+      ]
+    }
+  },
+  "methods_index": {
+    "scripts/cb_engine.py|scripts.cb_engine._log_path": {
+      "file_path": "scripts/cb_engine.py",
+      "qualified_name": "scripts.cb_engine._log_path",
+      "start_line": 32,
+      "end_line": 33,
+      "type": "FUNCTION"
+    },
+    "scripts/cb_engine.py|scripts.cb_engine._clear_dir": {
+      "file_path": "scripts/cb_engine.py",
+      "qualified_name": "scripts.cb_engine._clear_dir",
+      "start_line": 36,
+      "end_line": 42,
+      "type": "FUNCTION"
+    },
+    "scripts/cb_engine.py|scripts.cb_engine.validate_base_analysis": {
+      "file_path": "scripts/cb_engine.py",
+      "qualified_name": "scripts.cb_engine.validate_base_analysis",
+      "start_line": 45,
+      "end_line": 76,
+      "type": "FUNCTION"
+    },
+    "scripts/cb_engine.py|scripts.cb_engine.run_base": {
+      "file_path": "scripts/cb_engine.py",
+      "qualified_name": "scripts.cb_engine.run_base",
+      "start_line": 79,
+      "end_line": 91,
+      "type": "FUNCTION"
+    },
+    "scripts/cb_engine.py|scripts.cb_engine.run_seed": {
+      "file_path": "scripts/cb_engine.py",
+      "qualified_name": "scripts.cb_engine.run_seed",
+      "start_line": 94,
+      "end_line": 121,
+      "type": "FUNCTION"
+    },
+    "scripts/cb_engine.py|scripts.cb_engine.run_head": {
+      "file_path": "scripts/cb_engine.py",
+      "qualified_name": "scripts.cb_engine.run_head",
+      "start_line": 124,
+      "end_line": 153,
+      "type": "FUNCTION"
+    },
+    "scripts/cb_engine.py|scripts.cb_engine._count_report_issues": {
+      "file_path": "scripts/cb_engine.py",
+      "qualified_name": "scripts.cb_engine._count_report_issues",
+      "start_line": 156,
+      "end_line": 169,
+      "type": "FUNCTION"
+    },
+    "scripts/cb_engine.py|scripts.cb_engine._count_health_report": {
+      "file_path": "scripts/cb_engine.py",
+      "qualified_name": "scripts.cb_engine._count_health_report",
+      "start_line": 172,
+      "end_line": 180,
+      "type": "FUNCTION"
+    },
+    "scripts/cb_engine.py|scripts.cb_engine.run_health": {
+      "file_path": "scripts/cb_engine.py",
+      "qualified_name": "scripts.cb_engine.run_health",
+      "start_line": 183,
+      "end_line": 212,
+      "type": "FUNCTION"
+    },
+    "scripts/cb_engine.py|scripts.cb_engine.main": {
+      "file_path": "scripts/cb_engine.py",
+      "qualified_name": "scripts.cb_engine.main",
+      "start_line": 215,
+      "end_line": 257,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.load_analysis": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid.load_analysis",
+      "start_line": 50,
+      "end_line": 54,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_id": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._comp_id",
+      "start_line": 60,
+      "end_line": 61,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_name": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._comp_name",
+      "start_line": 64,
+      "end_line": 65,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._file_methods": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._file_methods",
+      "start_line": 68,
+      "end_line": 69,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._methods_by_file": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._methods_by_file",
+      "start_line": 72,
+      "end_line": 79,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_structural_changes": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._has_structural_changes",
+      "start_line": 82,
+      "end_line": 85,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_method_changes": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._has_method_changes",
+      "start_line": 88,
+      "end_line": 93,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._rel_key": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._rel_key",
+      "start_line": 96,
+      "end_line": 99,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_relations": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._diff_relations",
+      "start_line": 102,
+      "end_line": 148,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changes": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._has_changes",
+      "start_line": 151,
+      "end_line": 159,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_components": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._diff_components",
+      "start_line": 162,
+      "end_line": 207,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.build_diff": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid.build_diff",
+      "start_line": 210,
+      "end_line": 217,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._sanitize": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._sanitize",
+      "start_line": 223,
+      "end_line": 225,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._esc": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._esc",
+      "start_line": 247,
+      "end_line": 253,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._truncate": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._truncate",
+      "start_line": 256,
+      "end_line": 258,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._display_status": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._display_status",
+      "start_line": 261,
+      "end_line": 262,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._Scope",
+      "start_line": 265,
+      "end_line": 309,
+      "type": "CLASS"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope.__init__": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._Scope.__init__",
+      "start_line": 276,
+      "end_line": 298,
+      "type": "METHOD"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope.resolve": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._Scope.resolve",
+      "start_line": 300,
+      "end_line": 309,
+      "type": "METHOD"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._filter_changed",
+      "start_line": 312,
+      "end_line": 354,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed.touches": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._filter_changed.touches",
+      "start_line": 345,
+      "end_line": 347,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._init_directive": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._init_directive",
+      "start_line": 357,
+      "end_line": 376,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._count_changed_components": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._count_changed_components",
+      "start_line": 379,
+      "end_line": 386,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changed_relations": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._has_changed_relations",
+      "start_line": 389,
+      "end_line": 393,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid.render_mermaid",
+      "start_line": 396,
+      "end_line": 521,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build",
+      "start_line": 424,
+      "end_line": 497,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_edges": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
+      "start_line": 435,
+      "end_line": 447,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_level": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build.emit_level",
+      "start_line": 449,
+      "end_line": 466,
+      "type": "FUNCTION"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid.main",
+      "start_line": 527,
+      "end_line": 568,
+      "type": "FUNCTION"
+    },
+    "scripts/build_cta.py|scripts.build_cta.detect_editors": {
+      "file_path": "scripts/build_cta.py",
+      "qualified_name": "scripts.build_cta.detect_editors",
+      "start_line": 35,
+      "end_line": 47,
+      "type": "FUNCTION"
+    },
+    "scripts/build_cta.py|scripts.build_cta.build_cta": {
+      "file_path": "scripts/build_cta.py",
+      "qualified_name": "scripts.build_cta.build_cta",
+      "start_line": 61,
+      "end_line": 96,
+      "type": "FUNCTION"
+    },
+    "scripts/build_cta.py|scripts.build_cta.build_cta.link": {
+      "file_path": "scripts/build_cta.py",
+      "qualified_name": "scripts.build_cta.build_cta.link",
+      "start_line": 79,
+      "end_line": 80,
+      "type": "FUNCTION"
+    },
+    "scripts/build_cta.py|scripts.build_cta.main": {
+      "file_path": "scripts/build_cta.py",
+      "qualified_name": "scripts.build_cta.main",
+      "start_line": 99,
+      "end_line": 114,
+      "type": "FUNCTION"
+    }
+  },
   "components": [
     {
-      "name": "Environment & Context Resolver",
-      "description": "Normalizes GitHub environment variables and user inputs into a canonical format. Handles conversion of SSH repository URLs to HTTPS for remote backend compatibility and validates the presence of required secrets like CODEBOARDING_API_KEY.",
-      "key_entities": [],
+      "name": "Engine Orchestrator",
+      "description": "Manages the execution environment and lifecycle of the CodeBoarding analysis engine. It handles the checkout of different git references, executes the analysis, and validates the integrity of the generated data before downstream processing.",
+      "key_entities": [
+        {
+          "qualified_name": "scripts.cb_engine.main",
+          "reference_file": "scripts/cb_engine.py",
+          "reference_start_line": 215,
+          "reference_end_line": 257
+        },
+        {
+          "qualified_name": "scripts.cb_engine.run_base",
+          "reference_file": "scripts/cb_engine.py",
+          "reference_start_line": 79,
+          "reference_end_line": 91
+        },
+        {
+          "qualified_name": "scripts.cb_engine.run_head",
+          "reference_file": "scripts/cb_engine.py",
+          "reference_start_line": 124,
+          "reference_end_line": 153
+        },
+        {
+          "qualified_name": "scripts.cb_engine.validate_base_analysis",
+          "reference_file": "scripts/cb_engine.py",
+          "reference_start_line": 45,
+          "reference_end_line": 76
+        }
+      ],
       "source_cluster_ids": [
         1
       ],
-      "file_methods": [],
+      "file_methods": [
+        {
+          "file_path": "scripts/cb_engine.py",
+          "methods": [
+            "scripts.cb_engine._log_path",
+            "scripts.cb_engine._clear_dir",
+            "scripts.cb_engine.validate_base_analysis",
+            "scripts.cb_engine.run_base",
+            "scripts.cb_engine.run_seed",
+            "scripts.cb_engine.run_head",
+            "scripts.cb_engine._count_report_issues",
+            "scripts.cb_engine._count_health_report",
+            "scripts.cb_engine.run_health",
+            "scripts.cb_engine.main"
+          ]
+        }
+      ],
       "component_id": "1",
-      "can_expand": false
+      "can_expand": true
     },
     {
-      "name": "Remote Job Orchestrator",
-      "description": "Core engine managing the lifecycle of remote analysis jobs, including initial registration and a persistent polling loop. Encapsulates HTTP communication logic, exponential backoff via 60-second intervals, and timeout enforcement with a 90-minute limit.",
-      "key_entities": [],
+      "name": "Visual Diff Engine",
+      "description": "The core analytical component that compares two sets of analysis data. It identifies structural modifications (additions, removals, or changes in relationships), filters for relevance to reduce diagram noise, and renders the final architectural diff using Mermaid.js syntax.",
+      "key_entities": [
+        {
+          "qualified_name": "scripts.diff_to_mermaid.main",
+          "reference_file": "scripts/diff_to_mermaid.py",
+          "reference_start_line": 527,
+          "reference_end_line": 568
+        },
+        {
+          "qualified_name": "scripts.diff_to_mermaid.build_diff",
+          "reference_file": "scripts/diff_to_mermaid.py",
+          "reference_start_line": 210,
+          "reference_end_line": 217
+        },
+        {
+          "qualified_name": "scripts.diff_to_mermaid.render_mermaid",
+          "reference_file": "scripts/diff_to_mermaid.py",
+          "reference_start_line": 396,
+          "reference_end_line": 521
+        },
+        {
+          "qualified_name": "scripts.diff_to_mermaid._filter_changed",
+          "reference_file": "scripts/diff_to_mermaid.py",
+          "reference_start_line": 312,
+          "reference_end_line": 354
+        }
+      ],
       "source_cluster_ids": [
         2,
-        3
-      ],
-      "file_methods": [],
-      "component_id": "2",
-      "can_expand": false
-    },
-    {
-      "name": "Artifact & Result Processor",
-      "description": "Parses the final JSON payload from the remote server once job status reaches COMPLETED. Extracts generated documentation content and maps it to GitHub Action output parameters for availability in subsequent workflow steps.",
-      "key_entities": [],
-      "source_cluster_ids": [
+        3,
         4,
         5
       ],
-      "file_methods": [],
+      "file_methods": [
+        {
+          "file_path": "scripts/diff_to_mermaid.py",
+          "methods": [
+            "scripts.diff_to_mermaid.load_analysis",
+            "scripts.diff_to_mermaid._comp_id",
+            "scripts.diff_to_mermaid._comp_name",
+            "scripts.diff_to_mermaid._file_methods",
+            "scripts.diff_to_mermaid._methods_by_file",
+            "scripts.diff_to_mermaid._has_structural_changes",
+            "scripts.diff_to_mermaid._has_method_changes",
+            "scripts.diff_to_mermaid._rel_key",
+            "scripts.diff_to_mermaid._diff_relations",
+            "scripts.diff_to_mermaid._has_changes",
+            "scripts.diff_to_mermaid._diff_components",
+            "scripts.diff_to_mermaid.build_diff",
+            "scripts.diff_to_mermaid._sanitize",
+            "scripts.diff_to_mermaid._esc",
+            "scripts.diff_to_mermaid._truncate",
+            "scripts.diff_to_mermaid._display_status",
+            "scripts.diff_to_mermaid._Scope",
+            "scripts.diff_to_mermaid._Scope.__init__",
+            "scripts.diff_to_mermaid._Scope.resolve",
+            "scripts.diff_to_mermaid._filter_changed",
+            "scripts.diff_to_mermaid._filter_changed.touches",
+            "scripts.diff_to_mermaid._init_directive",
+            "scripts.diff_to_mermaid._count_changed_components",
+            "scripts.diff_to_mermaid._has_changed_relations",
+            "scripts.diff_to_mermaid.render_mermaid",
+            "scripts.diff_to_mermaid.render_mermaid.build",
+            "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
+            "scripts.diff_to_mermaid.render_mermaid.build.emit_level",
+            "scripts.diff_to_mermaid.main"
+          ]
+        }
+      ],
+      "component_id": "2",
+      "can_expand": true
+    },
+    {
+      "name": "Engagement & Feedback Manager",
+      "description": "Enhances the PR comment with interactive elements. It detects the developer's environment and generates deep-links to local IDEs or the CodeBoarding dashboard, transforming a static diagram into an actionable entry point for code review.",
+      "key_entities": [
+        {
+          "qualified_name": "scripts.build_cta.main",
+          "reference_file": "scripts/build_cta.py",
+          "reference_start_line": 99,
+          "reference_end_line": 114
+        },
+        {
+          "qualified_name": "scripts.build_cta.build_cta",
+          "reference_file": "scripts/build_cta.py",
+          "reference_start_line": 61,
+          "reference_end_line": 96
+        },
+        {
+          "qualified_name": "scripts.build_cta.detect_editors",
+          "reference_file": "scripts/build_cta.py",
+          "reference_start_line": 35,
+          "reference_end_line": 47
+        }
+      ],
+      "source_cluster_ids": [
+        6
+      ],
+      "file_methods": [
+        {
+          "file_path": "scripts/build_cta.py",
+          "methods": [
+            "scripts.build_cta.detect_editors",
+            "scripts.build_cta.build_cta",
+            "scripts.build_cta.build_cta.link",
+            "scripts.build_cta.main"
+          ]
+        }
+      ],
       "component_id": "3",
-      "can_expand": false
+      "can_expand": true
     }
   ],
   "components_relations": [
     {
-      "relation": "passes resolved repository URL and branch to initiate remote job request",
-      "src_name": "Environment & Context Resolver",
-      "dst_name": "Remote Job Orchestrator",
+      "relation": "Supplies validated JSON analysis files to",
+      "src_name": "Engine Orchestrator",
+      "dst_name": "Visual Diff Engine",
       "src_id": "1",
       "dst_id": "2",
       "edge_count": 0,
       "is_static": false
     },
     {
-      "relation": "hands off JSON response containing full job results after COMPLETED status detection",
-      "src_name": "Remote Job Orchestrator",
-      "dst_name": "Artifact & Result Processor",
+      "relation": "Provides structural context and identified changes to",
+      "src_name": "Visual Diff Engine",
+      "dst_name": "Engagement & Feedback Manager",
       "src_id": "2",
       "dst_id": "3",
-      "edge_count": 0,
-      "is_static": false
-    },
-    {
-      "relation": "writes extracted documentation data to runner filesystem and sets action output variables",
-      "src_name": "Artifact & Result Processor",
-      "dst_name": "Artifact & Result Processor",
-      "src_id": "3",
-      "dst_id": "3",
-      "edge_count": 0,
-      "is_static": false
-    },
-    {
-      "relation": "manages job configuration and polls for status updates via REST/HTTPS",
-      "src_name": "Remote Job Orchestrator",
-      "dst_name": "Remote Job Orchestrator",
-      "src_id": "2",
-      "dst_id": "2",
       "edge_count": 0,
       "is_static": false
     }
