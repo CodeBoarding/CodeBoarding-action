@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-06-11T16:36:04.958976+00:00",
-    "commit_hash": "e9aa6435ce9f0ffe6726d5c1a3758980f79f1c3b",
+    "generated_at": "2026-06-11T16:41:16.710439+00:00",
+    "commit_hash": "ba5d7787eaecfa38964dd4663606927d98e501ba",
     "repo_name": "CodeBoarding-action",
     "depth_level": 1,
     "file_coverage_summary": {
@@ -14,7 +14,7 @@
       }
     }
   },
-  "description": "The CodeBoarding system orchestrates the analysis of git repositories, performs structural diffing between analysis states, and generates actionable visual feedback for pull requests by integrating with developer environments.",
+  "description": "The CodeBoarding-action architecture is a CI/CD pipeline that automates architectural observability by comparing codebase versions, generating visual Mermaid.js diffs, and providing actionable IDE deep-links within GitHub Pull Requests.",
   "files": {
     "scripts/cb_engine.py": {
       "method_keys": [
@@ -377,8 +377,8 @@
   },
   "components": [
     {
-      "name": "Engine Orchestrator",
-      "description": "Manages the execution environment and lifecycle of the CodeBoarding analysis engine. It handles the checkout of different git references, executes the analysis, and validates the integrity of the generated data before downstream processing.",
+      "name": "Analysis Orchestrator",
+      "description": "Manages the execution lifecycle of the GitHub Action, including environment setup, triggering analysis, and data validation.",
       "key_entities": [
         {
           "qualified_name": "scripts.cb_engine.main",
@@ -429,8 +429,8 @@
       "can_expand": true
     },
     {
-      "name": "Visual Diff Engine",
-      "description": "The core analytical component that compares two sets of analysis data. It identifies structural modifications (additions, removals, or changes in relationships), filters for relevance to reduce diagram noise, and renders the final architectural diff using Mermaid.js syntax.",
+      "name": "Visual Diff Generator",
+      "description": "The core logic engine that compares structural metadata between codebase versions and renders differences into Mermaid.js graph syntax.",
       "key_entities": [
         {
           "qualified_name": "scripts.diff_to_mermaid.main",
@@ -451,10 +451,10 @@
           "reference_end_line": 521
         },
         {
-          "qualified_name": "scripts.diff_to_mermaid._filter_changed",
+          "qualified_name": "scripts.diff_to_mermaid._diff_components",
           "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 312,
-          "reference_end_line": 354
+          "reference_start_line": 162,
+          "reference_end_line": 207
         }
       ],
       "source_cluster_ids": [
@@ -503,8 +503,8 @@
       "can_expand": true
     },
     {
-      "name": "Engagement & Feedback Manager",
-      "description": "Enhances the PR comment with interactive elements. It detects the developer's environment and generates deep-links to local IDEs or the CodeBoarding dashboard, transforming a static diagram into an actionable entry point for code review.",
+      "name": "UX & Integration Helper",
+      "description": "Manages the generation of user-facing outputs, including GitHub comments, status checks, and interactive links (CTAs) for external viewing. This component integrates the new 'build_cta.py' logic to generate interactive webview links and editor-specific deep links, expanding its role from simple reporting to providing actionable CI/CD report navigation. It receives processed data from the Visual Diff Generator to finalize the GitHub Action output.",
       "key_entities": [
         {
           "qualified_name": "scripts.build_cta.main",
@@ -545,20 +545,29 @@
   ],
   "components_relations": [
     {
-      "relation": "Supplies validated JSON analysis files to",
-      "src_name": "Engine Orchestrator",
-      "dst_name": "Visual Diff Engine",
+      "relation": "Passes validated analysis artifacts to initiate structural comparison",
+      "src_name": "Analysis Orchestrator",
+      "dst_name": "Visual Diff Generator",
       "src_id": "1",
       "dst_id": "2",
       "edge_count": 0,
       "is_static": false
     },
     {
-      "relation": "Provides structural context and identified changes to",
-      "src_name": "Visual Diff Engine",
-      "dst_name": "Engagement & Feedback Manager",
+      "relation": "Provides context of changed files and components for deep-link generation",
+      "src_name": "Visual Diff Generator",
+      "dst_name": "UX & Integration Helper",
       "src_id": "2",
       "dst_id": "3",
+      "edge_count": 0,
+      "is_static": false
+    },
+    {
+      "relation": "Returns formatted markdown snippets and CTA links for final output",
+      "src_name": "UX & Integration Helper",
+      "dst_name": "Analysis Orchestrator",
+      "src_id": "3",
+      "dst_id": "1",
       "edge_count": 0,
       "is_static": false
     }

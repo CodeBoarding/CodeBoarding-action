@@ -11,7 +11,9 @@ on:
     types: [created]
 
 permissions:
-  contents: read
+  # write: the action commits the generated .codeboarding/analysis.json back to the
+  # PR branch so the webview can open this PR's diff at the head SHA (same-repo PRs).
+  contents: write
   pull-requests: write
   issues: write
 
