@@ -1,0 +1,192 @@
+# One-off / on-demand baseline refresh for THIS repo's own committed analysis.
+#
+# Why this exists: the webview "explore in browser" link compares a PR's head
+# against the analysis.json committed at the PR base (a commit on main). That base
+# is only meaningful if main's committed analysis.json is current. The PR review
+# workflow never writes to main, so without this, main's baseline goes stale and
+# every PR diffs against an outdated snapshot.
+#
+# Run it manually (Actions -> "Refresh CodeBoarding baseline" -> Run workflow) to
+# regenerate .codeboarding/analysis.json against main's current tree and commit it.
+# It generates a FRESH full analysis (LLM) for main's HEAD, so commit_hash matches
+# the commit it lands on. This is the manually-triggered form of the "baseline
+# keeper" described in docs/COMMIT_STRATEGY.md.
+
+name: Refresh CodeBoarding baseline
+
+on:
+  workflow_dispatch:
+    inputs:
+      depth_level:
+        description: 'Analysis depth (1-3). Match the review workflow for a comparable baseline.'
+        required: false
+        default: '1'
+
+permissions:
+  contents: write   # commit the regenerated analysis.json to main
+
+concurrency:
+  group: codeboarding-refresh-baseline
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # Root checkout: provides the action's own scripts (cb_engine.py) AND is where
+      # the regenerated analysis.json is committed back. The engine and the analyzed
+      # tree go into SEPARATE subdirectories so the engine never analyzes itself.
+      - name: Checkout this repo (main)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Second checkout of this same repo as the analysis TARGET, isolated from the
+      # action scripts + engine at the workspace root (mirrors the review action's
+      # target-repo/ layout so the engine analyzes only the repo's own tree).
+      - name: Checkout analysis target
+        uses: actions/checkout@v4
+        with:
+          path: target-repo
+          fetch-depth: 0
+
+      - name: Read engine ref from action.yml
+        id: engine
+        shell: bash
+        run: |
+          # Default the engine ref to the action.yml input default, so the baseline
+          # is generated with the same engine the review workflow pins.
+          REF="$(grep -A3 "engine_ref:" action.yml | grep "default:" | head -1 | sed -E "s/.*default: *'?([^'\"]+)'?.*/\1/")"
+          echo "ref=${REF:-v0.12.0}" >> "$GITHUB_OUTPUT"
+          echo "Engine ref: ${REF:-v0.12.0}"
+
+      - name: Checkout CodeBoarding engine
+        uses: actions/checkout@v4
+        with:
+          repository: CodeBoarding/CodeBoarding
+          ref: ${{ steps.engine.outputs.ref }}
+          path: codeboarding-engine
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Cache uv venv (engine)
+        uses: actions/cache@v4
+        with:
+          path: codeboarding-engine/.venv
+          key: cb-uv-${{ runner.os }}-${{ hashFiles('codeboarding-engine/pyproject.toml', 'codeboarding-engine/uv.lock') }}
+
+      - name: Cache LSP servers
+        uses: actions/cache@v4
+        with:
+          path: |
+            codeboarding-engine/static_analyzer/servers/node_modules
+            codeboarding-engine/static_analyzer/servers/bin
+          key: cb-lsp-${{ runner.os }}-v1
+          restore-keys: cb-lsp-${{ runner.os }}-
+
+      - name: Install Python dependencies
+        working-directory: codeboarding-engine
+        shell: bash
+        run: |
+          test -d .venv || uv venv
+          uv pip install -e .
+
+      - name: Install LSP servers
+        working-directory: codeboarding-engine
+        shell: bash
+        run: uv run python install.py --auto-install-npm
+
+      - name: Generate baseline analysis for main
+        id: gen
+        working-directory: codeboarding-engine
+        shell: bash
+        env:
+          STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
+          PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
+          DIAGRAM_DEPTH_LEVEL: ${{ inputs.depth_level }}
+          CACHING_DOCUMENTATION: 'false'
+          ENABLE_MONITORING: 'false'
+          ACTION_PATH: ${{ github.workspace }}
+          TARGET: ${{ github.workspace }}/target-repo
+          OUT_DIR: ${{ runner.temp }}/cb-baseline
+          REPO_NAME: ${{ github.event.repository.name }}
+          DEPTH: ${{ inputs.depth_level }}
+          MAIN_SHA: ${{ github.sha }}
+          # Key + model pins live in SECRETS (not vars) in this repo, same as the
+          # review workflow consumes them. Read raw here; normalize in the script.
+          RAW_OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          RAW_AGENT_MODEL: ${{ secrets.AGENT_MODEL }}
+          RAW_PARSING_MODEL: ${{ secrets.PARSING_MODEL }}
+        run: |
+          # Normalize EXACTLY like the review action's key prep (action.yml). A raw
+          # secret can carry surrounding whitespace/newlines, wrapping quotes, or a
+          # leading "OPENROUTER_API_KEY=" prefix; any of those land in the
+          # Authorization header and OpenRouter rejects it as "Missing Authentication
+          # header" (a 401 that looks like a bad key but is a malformed header).
+          # The previous fix stripped only whitespace, leaving quotes/prefix → still 401.
+          _strip() { printf '%s' "$1" | tr -d '[:space:]' | sed -e 's/^"//;s/"$//' -e "s/^'//;s/'\$//"; }
+          KEY="$(_strip "$RAW_OPENROUTER_API_KEY")"
+          # Drop a leading "OPENROUTER_API_KEY=" if the secret was stored with it.
+          case "$KEY" in OPENROUTER_API_KEY=*) KEY="${KEY#OPENROUTER_API_KEY=}";; esac
+          KEY="$(_strip "$KEY")"
+          [ -n "$KEY" ] || { echo "::error::OPENROUTER_API_KEY secret is not set."; exit 1; }
+          echo "::add-mask::$KEY"
+          export OPENROUTER_API_KEY="$KEY"
+          AGENT_MODEL="$(_strip "$RAW_AGENT_MODEL")"
+          PARSING_MODEL="$(_strip "$RAW_PARSING_MODEL")"
+          export AGENT_MODEL="${AGENT_MODEL:-google/gemini-3-flash-preview}"
+          export PARSING_MODEL="${PARSING_MODEL:-google/gemini-3.1-flash-lite-preview}"
+          echo "Provider: openrouter; key length: ${#OPENROUTER_API_KEY}"
+          # Preflight the key against OpenRouter so a malformed/expired key fails here
+          # with a clear message instead of deep inside the engine's retry loop.
+          PRE=$(curl -sS -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+            --max-time 10 https://openrouter.ai/api/v1/auth/key || echo "curl-fail")
+          echo "OpenRouter /auth/key preflight: HTTP $PRE"
+          [ "$PRE" = "200" ] || { echo "::error::OpenRouter rejected the key (HTTP $PRE). Check the OPENROUTER_API_KEY secret value (no quotes/prefix/newline)."; exit 1; }
+          mkdir -p "$OUT_DIR"
+          # Run the same full-analysis path the review action uses for a base.
+          uv run python "$ACTION_PATH/scripts/cb_engine.py" base \
+            --repo "$TARGET" \
+            --out "$OUT_DIR" \
+            --name "$REPO_NAME" \
+            --run-id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-baseline" \
+            --depth "$DEPTH" \
+            --source-sha "$MAIN_SHA"
+          [ -f "$OUT_DIR/analysis.json" ] || { echo "::error::Baseline analysis ran but analysis.json is missing."; exit 1; }
+          # Optional health report, if the engine produced one.
+          uv run python "$ACTION_PATH/scripts/cb_engine.py" health \
+            --artifact-dir "$OUT_DIR" \
+            --repo "$TARGET" \
+            --name "$REPO_NAME" \
+            --issues-out "${RUNNER_TEMP}/cb-issues.txt" || true
+
+      - name: Commit baseline to main
+        shell: bash
+        env:
+          OUT_DIR: ${{ runner.temp }}/cb-baseline
+        run: |
+          mkdir -p .codeboarding/health
+          cp "$OUT_DIR/analysis.json" .codeboarding/analysis.json
+          if [ -f "$OUT_DIR/health/health_report.json" ]; then
+            cp "$OUT_DIR/health/health_report.json" .codeboarding/health/health_report.json
+          fi
+          git add .codeboarding/analysis.json .codeboarding/health/health_report.json 2>/dev/null || git add .codeboarding/analysis.json
+          if git diff --cached --quiet; then
+            echo "::notice::Baseline already current; nothing to commit."
+            exit 0
+          fi
+          git config user.name "codeboarding[bot]"
+          git config user.email "codeboarding[bot]@users.noreply.github.com"
+          git commit -m "chore(codeboarding): refresh architecture baseline [skip ci]"
+          git push
+          echo "Committed refreshed baseline to ${GITHUB_REF_NAME} ($(git rev-parse --short HEAD))."
