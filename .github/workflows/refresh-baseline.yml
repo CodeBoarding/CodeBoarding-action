@@ -122,15 +122,28 @@ jobs:
           REPO_NAME: ${{ github.event.repository.name }}
           DEPTH: ${{ inputs.depth_level }}
           MAIN_SHA: ${{ github.sha }}
-          # OpenRouter key + optional model pins, same secrets the review workflow uses.
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          AGENT_MODEL: ${{ vars.AGENT_MODEL }}
-          PARSING_MODEL: ${{ vars.PARSING_MODEL }}
+          # Key + model pins live in SECRETS (not vars) in this repo, same as the
+          # review workflow consumes them. Read raw here; normalize in the script.
+          RAW_OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          RAW_AGENT_MODEL: ${{ secrets.AGENT_MODEL }}
+          RAW_PARSING_MODEL: ${{ secrets.PARSING_MODEL }}
         run: |
+          # Normalize like the review action's key prep: strip surrounding whitespace
+          # (a trailing newline in the stored secret otherwise lands in the
+          # Authorization header, which OpenRouter rejects as "Missing Authentication
+          # header" — a 401 that looks like a bad key but is really a malformed header).
+          _strip() { printf '%s' "$1" | tr -d '[:space:]'; }
+          OPENROUTER_API_KEY="$(_strip "$RAW_OPENROUTER_API_KEY")"
           [ -n "$OPENROUTER_API_KEY" ] || { echo "::error::OPENROUTER_API_KEY secret is not set."; exit 1; }
-          # The engine reads the OpenRouter default models when these are empty.
+          echo "::add-mask::$OPENROUTER_API_KEY"
+          export OPENROUTER_API_KEY
+          # Models may carry whitespace too; default to the OpenRouter cheap models
+          # when unset (the engine also has its own defaults).
+          AGENT_MODEL="$(_strip "$RAW_AGENT_MODEL")"
+          PARSING_MODEL="$(_strip "$RAW_PARSING_MODEL")"
           export AGENT_MODEL="${AGENT_MODEL:-google/gemini-3-flash-preview}"
           export PARSING_MODEL="${PARSING_MODEL:-google/gemini-3.1-flash-lite-preview}"
+          echo "Provider: openrouter; key length: ${#OPENROUTER_API_KEY}; agent_model: $AGENT_MODEL"
           mkdir -p "$OUT_DIR"
           # Run the same full-analysis path the review action uses for a base.
           uv run python "$ACTION_PATH/scripts/cb_engine.py" base \
