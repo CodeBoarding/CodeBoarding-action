@@ -98,8 +98,16 @@ class TestWebviewLink(unittest.TestCase):
 
     def test_cta_emits_webview_line_when_ready(self):
         out = bc.build_cta(
-            "", "Org", "Repo", "9", repo_with(), issues=0,
-            webview_base=self.WV, head_sha="headsha", base_sha="basesha", webview_ready=True,
+            "",
+            "Org",
+            "Repo",
+            "9",
+            repo_with(),
+            issues=0,
+            webview_base=self.WV,
+            head_sha="headsha",
+            base_sha="basesha",
+            webview_ready=True,
         )
         self.assertIn("Explore this PR", out)
         self.assertIn("ref=headsha", out)
@@ -108,8 +116,16 @@ class TestWebviewLink(unittest.TestCase):
     def test_cta_omits_webview_line_when_not_ready(self):
         # Fork PR / head analysis not committed -> webview can't fetch at head SHA.
         out = bc.build_cta(
-            "", "Org", "Repo", "9", repo_with(), issues=0,
-            webview_base=self.WV, head_sha="headsha", base_sha="basesha", webview_ready=False,
+            "",
+            "Org",
+            "Repo",
+            "9",
+            repo_with(),
+            issues=0,
+            webview_base=self.WV,
+            head_sha="headsha",
+            base_sha="basesha",
+            webview_ready=False,
         )
         self.assertNotIn("Explore this PR", out)
         # Editor CTA is still present regardless.
@@ -117,8 +133,16 @@ class TestWebviewLink(unittest.TestCase):
 
     def test_cta_omits_webview_line_when_ready_but_no_base_url(self):
         out = bc.build_cta(
-            "", "Org", "Repo", "9", repo_with(), issues=0,
-            webview_base="", head_sha="headsha", base_sha="basesha", webview_ready=True,
+            "",
+            "Org",
+            "Repo",
+            "9",
+            repo_with(),
+            issues=0,
+            webview_base="",
+            head_sha="headsha",
+            base_sha="basesha",
+            webview_ready=True,
         )
         self.assertNotIn("Explore this PR", out)
 

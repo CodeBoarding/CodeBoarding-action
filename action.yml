@@ -18,6 +18,10 @@ inputs:
     description: 'GITHUB_TOKEN used to post the PR comment. Defaults to the workflow token.'
     required: false
     default: ${{ github.token }}
+  push_token:
+    description: 'Token used to push the generated .codeboarding/analysis.json to the PR branch (for the webview link). Defaults to the workflow github.token, which can push when the calling workflow grants "permissions: contents: write". Kept separate from github_token so commenting can use a GitHub App token while the push uses the workflow token (whose write access the consumer controls).'
+    required: false
+    default: ${{ github.token }}
   engine_ref:
     description: 'Git ref (tag/branch/SHA) of CodeBoarding/CodeBoarding used as the analysis engine. Pinned to a release for reproducibility; override to track a newer ref.'
     required: false
@@ -605,7 +609,10 @@ runs:
       shell: bash
       working-directory: target-repo
       env:
-        GH_TOKEN: ${{ inputs.github_token }}
+        # Push with push_token (defaults to the workflow github.token, gated by the
+        # consumer's `permissions: contents: write`) — NOT github_token, which may be
+        # a GitHub App token used only for commenting and need not have write access.
+        GH_TOKEN: ${{ inputs.push_token }}
         HEAD_DIR: ${{ steps.base.outputs.head_dir }}
         HEAD_REF: ${{ steps.guard.outputs.head_ref }}
         HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
@@ -636,14 +643,16 @@ runs:
 
         # Push to the PR head branch. The checkout used persist-credentials:false, so
         # authenticate the push explicitly with the workflow token (same-repo only).
+        # Requires `contents: write` on the job's token — a read-only token (the
+        # default) is rejected here; the push error below names the cause.
         AUTH_URL="https://x-access-token:${GH_TOKEN}@${SERVER_URL#https://}/${REPOSITORY}.git"
-        if git push "$AUTH_URL" "HEAD:refs/heads/${HEAD_REF}" 2>/dev/null; then
+        if git push "$AUTH_URL" "HEAD:refs/heads/${HEAD_REF}"; then
           NEW_SHA="$(git rev-parse HEAD)"
           echo "webview_sha=$NEW_SHA" >> "$GITHUB_OUTPUT"
           echo "ready=true" >> "$GITHUB_OUTPUT"
           echo "Committed head analysis to ${HEAD_REF} as ${NEW_SHA}."
         else
-          echo "::warning::Could not push head analysis to ${HEAD_REF}; the webview link will be omitted."
+          echo "::warning::Could not push head analysis to ${HEAD_REF}; the webview link will be omitted. Most likely the job's token lacks 'contents: write' (add 'permissions: contents: write' to the calling workflow), or the branch is protected against this pusher."
         fi
 
     - name: Diff analyses → Mermaid

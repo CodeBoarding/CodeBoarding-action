@@ -159,11 +159,20 @@ def main() -> int:
         issues = int(args.issues or 0)
     except ValueError:
         issues = 0
-    print(build_cta(
-        args.cta_base, args.owner, args.repo, args.pr, args.repo_path, issues,
-        webview_base=args.webview_base, head_sha=args.head_sha, base_sha=args.base_sha,
-        webview_ready=args.webview_ready,
-    ))
+    print(
+        build_cta(
+            args.cta_base,
+            args.owner,
+            args.repo,
+            args.pr,
+            args.repo_path,
+            issues,
+            webview_base=args.webview_base,
+            head_sha=args.head_sha,
+            base_sha=args.base_sha,
+            webview_ready=args.webview_ready,
+        )
+    )
     return 0
 
 

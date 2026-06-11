@@ -69,7 +69,9 @@ on:
     types: [created]
 
 permissions:
-  contents: read
+  # write lets the action commit analysis.json to the PR branch so the comment can
+  # link to the webview diff. Drop to `read` to keep the comment without that link.
+  contents: write
   pull-requests: write
   issues: write
 
@@ -156,6 +158,7 @@ The command needs the `issue_comment` trigger and runs from your default branch 
 | `llm_api_key` | required | Your LLM provider API key (see `llm_provider`). |
 | `llm_provider` | `openrouter` | Provider for the key, mapped to `<NAME>_API_KEY` (e.g. `anthropic`, `openai`, `google`). |
 | `github_token` | `${{ github.token }}` | Token used to post or update the PR comment. |
+| `push_token` | `${{ github.token }}` | Token used to push the generated `analysis.json` to the PR branch (for the webview link). The workflow token can push when the workflow grants `permissions: contents: write`. Separate from `github_token` so commenting can use a GitHub App token while the push uses the workflow token. |
 | `engine_ref` | `v0.12.0` | CodeBoarding engine ref. Pin for reproducibility. |
 | `depth_level` | `1` | Analysis depth, 1 to 3. Higher is slower and richer. |
 | `render_depth` | `1` | Display depth for the PR diagram. Keep `1` for a clean top-level view. |
