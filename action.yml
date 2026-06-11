@@ -54,6 +54,14 @@ inputs:
     description: 'Base URL of the click proxy (e.g. https://go.codeboarding.org). When set, the editor link deep-links into VS Code/Cursor via the proxy and a "get the extension" link is added (owner/repo/pr tracked). Empty (default) links to the extension listing instead, since GitHub strips vscode:/cursor: schemes from comment links.'
     required: false
     default: ''
+  webview_base_url:
+    description: 'Base URL of the hosted webview (default https://app.codeboarding.org). The PR comment adds an "explore in browser" link deep-linking to this PR''s head-vs-base architecture diff. Requires the head analysis.json to be committed to the PR branch (commit_head_analysis), so it is omitted on fork PRs. Set empty to disable the webview link.'
+    required: false
+    default: 'https://app.codeboarding.org'
+  commit_head_analysis:
+    description: 'Commit the generated head .codeboarding/analysis.json (+ health report) back to the PR branch so the webview can fetch it at the head SHA. Same-repo PRs only (the token is read-only on forks). Required for the webview "explore in browser" link.'
+    required: false
+    default: 'true'
   trigger_command:
     description: 'Slash-command that triggers the action from a PR comment (issue_comment event). A comment whose first word is this runs the diagram on-demand.'
     required: false
@@ -88,6 +96,7 @@ runs:
         PR_NUMBER_PULL: ${{ github.event.pull_request.number }}
         PULL_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         PULL_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PULL_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         PULL_BASE_REF: ${{ github.event.pull_request.base.ref }}
         PULL_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
         PULL_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
@@ -115,6 +124,7 @@ runs:
           PR_NUMBER="$PR_NUMBER_PULL"
           BASE_SHA="$PULL_BASE_SHA"
           HEAD_SHA="$PULL_HEAD_SHA"
+          HEAD_REF="$PULL_HEAD_REF"
           BASE_REF="$PULL_BASE_REF"
           BASE_REPO="$PULL_BASE_REPO"
           HEAD_REPO="$PULL_HEAD_REPO"
@@ -137,6 +147,7 @@ runs:
           PR_JSON="$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" 2>/dev/null)" || skip "Could not fetch PR #$PR_NUMBER from the API."
           BASE_SHA="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["base"]["sha"])' 2>/dev/null)" || skip "Could not parse base SHA from the PR API."
           HEAD_SHA="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["head"]["sha"])' 2>/dev/null)" || skip "Could not parse head SHA from the PR API."
+          HEAD_REF="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["head"]["ref"])' 2>/dev/null)" || HEAD_REF=""
           BASE_REF="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["base"]["ref"])' 2>/dev/null)" || BASE_REF=""
           BASE_REPO="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["base"]["repo"]["full_name"])' 2>/dev/null)" || skip "Could not parse base repo from the PR API."
           HEAD_REPO="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["head"]["repo"]["full_name"])' 2>/dev/null)" || skip "Could not parse head repo from the PR API."
@@ -151,9 +162,12 @@ runs:
           echo "pr_number=$PR_NUMBER"
           echo "base_sha=$BASE_SHA"
           echo "head_sha=$HEAD_SHA"
+          echo "head_ref=$HEAD_REF"
           echo "base_ref=$BASE_REF"
           echo "base_repo=$BASE_REPO"
           echo "head_repo=$HEAD_REPO"
+          # same_repo gates pushing the head analysis: forks give a read-only token.
+          if [ "$HEAD_REPO" = "$REPOSITORY" ]; then echo "same_repo=true"; else echo "same_repo=false"; fi
         } >> "$GITHUB_OUTPUT"
         echo "Resolved PR #$PR_NUMBER (base=$BASE_REPO@$BASE_SHA head=$HEAD_REPO@$HEAD_SHA) via $EVENT"
 
@@ -576,6 +590,62 @@ runs:
               "${RUNNER_TEMP}/cb-agent-model" \
               "${RUNNER_TEMP}/cb-parsing-model"
 
+    # Commit the generated head analysis (+ health report) to the PR branch so the
+    # hosted webview can fetch .codeboarding/analysis.json at the head SHA and open
+    # this PR's head-vs-base diff. Same-repo PRs only — the token is read-only on
+    # forks (the step is skipped there and the webview link is omitted). The push
+    # creates a NEW head commit; its SHA (webview_sha) is what the comment links to.
+    - name: Commit head analysis to PR branch
+      id: commit_head
+      if: >-
+        steps.guard.outputs.skip != 'true'
+        && inputs.commit_head_analysis == 'true'
+        && steps.guard.outputs.same_repo == 'true'
+        && inputs.webview_base_url != ''
+      shell: bash
+      working-directory: target-repo
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        HEAD_DIR: ${{ steps.base.outputs.head_dir }}
+        HEAD_REF: ${{ steps.guard.outputs.head_ref }}
+        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
+        REPOSITORY: ${{ github.repository }}
+        SERVER_URL: ${{ github.server_url }}
+      run: |
+        echo "ready=false" >> "$GITHUB_OUTPUT"
+        echo "webview_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+        [ -n "$HEAD_REF" ] || { echo "::notice::No head branch ref resolved; skipping head-analysis commit."; exit 0; }
+        [ -f "$HEAD_DIR/analysis.json" ] || { echo "::notice::No head analysis.json to commit."; exit 0; }
+
+        mkdir -p .codeboarding/health
+        cp "$HEAD_DIR/analysis.json" .codeboarding/analysis.json
+        if [ -f "$HEAD_DIR/health/health_report.json" ]; then
+          cp "$HEAD_DIR/health/health_report.json" .codeboarding/health/health_report.json
+        fi
+
+        git add .codeboarding/analysis.json .codeboarding/health/health_report.json 2>/dev/null || git add .codeboarding/analysis.json
+        if git diff --cached --quiet; then
+          echo "::notice::Head analysis unchanged; nothing to commit."
+          echo "ready=true" >> "$GITHUB_OUTPUT"   # already committed at this SHA → webview can read it
+          exit 0
+        fi
+
+        git config user.name "codeboarding[bot]"
+        git config user.email "codeboarding[bot]@users.noreply.github.com"
+        git commit -m "chore(codeboarding): update architecture analysis [skip ci]" >/dev/null
+
+        # Push to the PR head branch. The checkout used persist-credentials:false, so
+        # authenticate the push explicitly with the workflow token (same-repo only).
+        AUTH_URL="https://x-access-token:${GH_TOKEN}@${SERVER_URL#https://}/${REPOSITORY}.git"
+        if git push "$AUTH_URL" "HEAD:refs/heads/${HEAD_REF}" 2>/dev/null; then
+          NEW_SHA="$(git rev-parse HEAD)"
+          echo "webview_sha=$NEW_SHA" >> "$GITHUB_OUTPUT"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "Committed head analysis to ${HEAD_REF} as ${NEW_SHA}."
+        else
+          echo "::warning::Could not push head analysis to ${HEAD_REF}; the webview link will be omitted."
+        fi
+
     - name: Diff analyses → Mermaid
       if: steps.guard.outputs.skip != 'true'
       id: diagram
@@ -634,6 +704,12 @@ runs:
         TRUNC: ${{ steps.diagram.outputs.truncated }}
         PR: ${{ steps.guard.outputs.pr_number }}
         ISSUES: ${{ steps.health.outputs.issues }}
+        WEBVIEW_BASE: ${{ inputs.webview_base_url }}
+        # SHA the head analysis.json was committed at (post-push), and whether that
+        # commit succeeded — gates the webview "explore in browser" link.
+        WEBVIEW_SHA: ${{ steps.commit_head.outputs.webview_sha }}
+        WEBVIEW_READY: ${{ steps.commit_head.outputs.ready }}
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
       run: |
         BODY_FILE=$(mktemp)
         OWNER="${OWNER_REPO%%/*}"; REPO="${OWNER_REPO##*/}"
@@ -646,11 +722,17 @@ runs:
         }
 
         # CTA footer: an editor link (proxy deep-link when CTA_BASE is set, else the
-        # extension's https listing — GitHub strips vscode:/cursor:) plus the ⚠️ banner.
+        # extension's https listing — GitHub strips vscode:/cursor:), the ⚠️ banner,
+        # and — when the head analysis was committed (WEBVIEW_READY) — a webview
+        # "explore in browser" link to this PR's head-vs-base diff.
         cta() {
+          local extra=()
+          if [ "$WEBVIEW_READY" = "true" ]; then
+            extra+=(--webview-ready --webview-base "$WEBVIEW_BASE" --head-sha "$WEBVIEW_SHA" --base-sha "$BASE_SHA")
+          fi
           python3 "$ACTION_PATH/scripts/build_cta.py" \
             --cta-base "$CTA_BASE" --owner "$OWNER" --repo "$REPO" --pr "$PR" \
-            --repo-path "$TARGET_REPO" --issues "${ISSUES:-0}"
+            --repo-path "$TARGET_REPO" --issues "${ISSUES:-0}" "${extra[@]}"
         }
 
         {

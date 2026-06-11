@@ -77,5 +77,51 @@ class TestBuildCta(unittest.TestCase):
         self.assertEqual(a, b)
 
 
+class TestWebviewLink(unittest.TestCase):
+    WV = "https://app.codeboarding.org"
+
+    def test_link_built_with_head_ref_and_compare_base(self):
+        link = bc.build_webview_link(self.WV, "Org", "Repo", "headsha", "basesha")
+        self.assertIn("https://app.codeboarding.org/?", link)
+        self.assertIn("repo=Org%2FRepo", link)
+        self.assertIn("ref=headsha", link)
+        self.assertIn("compare=basesha", link)
+
+    def test_link_omits_compare_when_no_base(self):
+        link = bc.build_webview_link(self.WV, "o", "r", "headsha", "")
+        self.assertIn("ref=headsha", link)
+        self.assertNotIn("compare=", link)
+
+    def test_link_none_without_head_sha_or_base(self):
+        self.assertIsNone(bc.build_webview_link(self.WV, "o", "r", "", "basesha"))
+        self.assertIsNone(bc.build_webview_link("", "o", "r", "headsha", "basesha"))
+
+    def test_cta_emits_webview_line_when_ready(self):
+        out = bc.build_cta(
+            "", "Org", "Repo", "9", repo_with(), issues=0,
+            webview_base=self.WV, head_sha="headsha", base_sha="basesha", webview_ready=True,
+        )
+        self.assertIn("Explore this PR", out)
+        self.assertIn("ref=headsha", out)
+        self.assertIn("compare=basesha", out)
+
+    def test_cta_omits_webview_line_when_not_ready(self):
+        # Fork PR / head analysis not committed -> webview can't fetch at head SHA.
+        out = bc.build_cta(
+            "", "Org", "Repo", "9", repo_with(), issues=0,
+            webview_base=self.WV, head_sha="headsha", base_sha="basesha", webview_ready=False,
+        )
+        self.assertNotIn("Explore this PR", out)
+        # Editor CTA is still present regardless.
+        self.assertIn("Open in VS Code", out)
+
+    def test_cta_omits_webview_line_when_ready_but_no_base_url(self):
+        out = bc.build_cta(
+            "", "Org", "Repo", "9", repo_with(), issues=0,
+            webview_base="", head_sha="headsha", base_sha="basesha", webview_ready=True,
+        )
+        self.assertNotIn("Explore this PR", out)
+
+
 if __name__ == "__main__":
     unittest.main()

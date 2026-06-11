@@ -166,6 +166,8 @@ The command needs the `issue_comment` trigger and runs from your default branch 
 | `comment_header` | `Architecture review` | Heading for the PR comment. |
 | `trigger_command` | `/codeboarding` | Slash command for trusted on-demand runs. |
 | `cta_base_url` | empty | Click-proxy base URL: deep-links the editor link into VS Code/Cursor and adds a "get the extension" link (tracks owner/repo/pr). Empty links to the extension listing instead (GitHub strips `vscode:`/`cursor:` from comments). |
+| `webview_base_url` | `https://app.codeboarding.org` | Hosted webview base URL. The PR comment adds an "explore in browser" link to this PR's head-vs-base diff. Needs `commit_head_analysis` (same-repo PRs only); omitted on forks. Set empty to disable. |
+| `commit_head_analysis` | `true` | Commit the generated head `.codeboarding/analysis.json` (+ health report) to the PR branch so the webview can read it at the head SHA. Same-repo PRs only (the token is read-only on forks). |
 
 ## Outputs
 
