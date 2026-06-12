@@ -308,6 +308,140 @@ class TestValidateBase(_Base):
                 1,
             )
 
+    def test_validate_base_accepts_matching_depth(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(
+                json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 2}}),
+                encoding="utf-8",
+            )
+
+            ok, message = cb_engine.validate_base_analysis(path, "abc123", expected_depth=2)
+
+            self.assertTrue(ok)
+            self.assertIn("matches", message)
+
+    def test_validate_base_rejects_deeper_baseline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(
+                json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 3}}),
+                encoding="utf-8",
+            )
+
+            ok, message = cb_engine.validate_base_analysis(path, "abc123", expected_depth=1)
+
+            self.assertFalse(ok)
+            self.assertIn("3", message)  # baseline depth
+            self.assertIn("1", message)  # expected depth
+
+    def test_validate_base_accepts_shallower_baseline(self):
+        # The engine records the depth REACHED, not requested: a depth-2 run on
+        # a repo that never expands persists depth_level 1. Rejecting it would
+        # regenerate (computing 1 again) on every PR without converging.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(
+                json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 1}}),
+                encoding="utf-8",
+            )
+
+            ok, _ = cb_engine.validate_base_analysis(path, "abc123", expected_depth=3)
+
+            self.assertTrue(ok)
+
+    def test_validate_base_depth_checked_on_drift_path(self):
+        # The deeper-baseline rejection must also apply when the commit matched
+        # only via the docs-only-drift allowance, not just on exact SHA match.
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            self._git(repo, "init")
+            self._git(repo, "config", "user.name", "Test")
+            self._git(repo, "config", "user.email", "test@example.com")
+            (repo / "app.py").write_text("print('base')\n", encoding="utf-8")
+            self._git(repo, "add", "app.py")
+            self._git(repo, "commit", "-m", "base")
+            base_sha = self._git(repo, "rev-parse", "HEAD").stdout.strip()
+
+            (repo / ".codeboarding").mkdir()
+            analysis_path = repo / ".codeboarding" / "analysis.json"
+            analysis_path.write_text(
+                json.dumps({"metadata": {"commit_hash": base_sha, "depth_level": 3}}),
+                encoding="utf-8",
+            )
+            self._git(repo, "add", ".codeboarding")
+            self._git(repo, "commit", "-m", "docs bot")
+            docs_sha = self._git(repo, "rev-parse", "HEAD").stdout.strip()
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(repo)
+                ok_drift, _ = cb_engine.validate_base_analysis(analysis_path, docs_sha)
+                ok_depth, message = cb_engine.validate_base_analysis(analysis_path, docs_sha, expected_depth=1)
+            finally:
+                os.chdir(cwd)
+
+            self.assertTrue(ok_drift)  # drift alone is accepted...
+            self.assertFalse(ok_depth)  # ...but the depth check still applies
+            self.assertIn("deeper", message)
+
+    def test_validate_base_accepts_legacy_baseline_without_depth(self):
+        # Missing or unparseable depth_level -> accept (baselines predate the field).
+        for metadata in (
+            {"commit_hash": "abc123"},
+            {"commit_hash": "abc123", "depth_level": "not-a-number"},
+        ):
+            with self.subTest(metadata=metadata):
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "analysis.json"
+                    path.write_text(json.dumps({"metadata": metadata}), encoding="utf-8")
+
+                    ok, _ = cb_engine.validate_base_analysis(path, "abc123", expected_depth=2)
+
+                    self.assertTrue(ok)
+
+    def test_validate_base_without_expected_depth_ignores_depth(self):
+        # No --expected-depth -> behavior unchanged even when depth_level disagrees.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(
+                json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 3}}),
+                encoding="utf-8",
+            )
+
+            ok, message = cb_engine.validate_base_analysis(path, "abc123")
+
+            self.assertTrue(ok)
+            self.assertIn("matches", message)
+
+    def test_main_validate_base_expected_depth_exit_codes(self):
+        # patch.dict: main() setdefaults CODEBOARDING_SOURCE; don't leak it.
+        with patch.dict(os.environ), tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(
+                json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 2}}),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                cb_engine.main(
+                    ["validate-base", "--analysis", str(path), "--expected-sha", "abc123", "--expected-depth", "2"]
+                ),
+                0,
+            )
+            self.assertEqual(
+                cb_engine.main(
+                    ["validate-base", "--analysis", str(path), "--expected-sha", "abc123", "--expected-depth", "1"]
+                ),
+                1,
+            )
+            with redirect_stderr(StringIO()):
+                with self.assertRaises(SystemExit):  # depth outside 1-3 rejected by argparse
+                    cb_engine.main(
+                        ["validate-base", "--analysis", str(path), "--expected-sha", "abc123", "--expected-depth", "4"]
+                    )
+
 
 class TestSeed(_Base):
     """run_seed must analyze, cluster, then save — in that order, same results object.

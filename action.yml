@@ -1,5 +1,5 @@
 name: 'CodeBoarding Action'
-description: 'Visual system-design review on PRs: a Mermaid diagram of added, modified, and deleted components on every pull request.'
+description: 'Visual system-design review on PRs and always-current architecture docs: a Mermaid diff comment on every pull request, and generated docs committed to your branch on push.'
 author: 'CodeBoarding'
 
 branding:
@@ -19,15 +19,15 @@ inputs:
     required: false
     default: ${{ github.token }}
   push_token:
-    description: 'Token used to push the generated .codeboarding/analysis.json to the PR branch (for the webview link). Defaults to the workflow github.token, which can push when the calling workflow grants "permissions: contents: write". Kept separate from github_token so commenting can use a GitHub App token while the push uses the workflow token (whose write access the consumer controls).'
+    description: 'Token used for git pushes: in review mode the generated .codeboarding/analysis.json to the PR branch (for the webview link), in docs mode the generated docs to target_branch. Defaults to the workflow github.token, which can push when the calling workflow grants "permissions: contents: write". Kept separate from github_token so commenting can use a GitHub App token while the push uses the workflow token (whose write access the consumer controls).'
     required: false
     default: ${{ github.token }}
   engine_ref:
     description: 'Git ref (tag/branch/SHA) of CodeBoarding/CodeBoarding used as the analysis engine. Pinned to a release for reproducibility; override to track a newer ref.'
     required: false
-    default: 'v0.12.0'
+    default: 'v0.12.1'
   depth_level:
-    description: 'Diagram depth (1-3). Higher is slower and more detailed.'
+    description: 'Analysis depth (1-3). Higher is slower and more detailed. Use the SAME value in your review and docs workflows: review mode reuses the committed baseline only when its depth matches, regenerating it otherwise.'
     required: false
     default: '1'
   agent_model:
@@ -70,22 +70,55 @@ inputs:
     description: 'Slash-command that triggers the action from a PR comment (issue_comment event). A comment whose first word is this runs the diagram on-demand.'
     required: false
     default: '/codeboarding'
+  mode:
+    description: 'What the action does. "review" (default): post a Mermaid architecture-diff comment on the PR (pull_request / issue_comment events). "docs": generate architecture docs and commit them to target_branch (push / workflow_dispatch / schedule events). Run the two modes from separate workflow files with least-privilege permissions each.'
+    required: false
+    default: 'review'
+  output_dir:
+    description: 'Docs mode: directory where the rendered docs and analysis metadata are committed. The action OWNS this directory: pre-existing top-level markdown files in it are deleted on every run, so do not point it at a directory with hand-written docs.'
+    required: false
+    default: '.codeboarding'
+  output_format:
+    description: 'Docs mode: rendered docs format. Currently only .md is supported.'
+    required: false
+    default: '.md'
+  target_branch:
+    description: 'Docs mode: branch the generated docs are pushed to.'
+    required: false
+    default: ${{ github.ref_name }}
+  write_architecture_md:
+    description: 'Docs mode: also write docs/development/architecture.md (all rendered docs concatenated, overview first).'
+    required: false
+    default: 'true'
+  commit_message:
+    description: 'Docs mode: commit message for the generated docs.'
+    required: false
+    default: 'docs(codeboarding): update architecture docs [skip ci]'
 
 outputs:
   diagram_md:
-    description: 'Path to the rendered ```mermaid block (in the runner workspace).'
+    description: 'Review mode: path to the rendered ```mermaid block (in the runner workspace).'
     value: ${{ steps.diagram.outputs.diagram_md }}
   n_changed:
-    description: 'Number of components added/modified/deleted, counted recursively.'
+    description: 'Review mode: number of components added/modified/deleted, counted recursively.'
     value: ${{ steps.diagram.outputs.n_changed }}
   truncated:
-    description: 'True if the diagram was reduced to changed-only to fit GitHub''s Mermaid limit.'
+    description: 'Review mode: true if the diagram was reduced to changed-only to fit GitHub''s Mermaid limit.'
     value: ${{ steps.diagram.outputs.truncated }}
+  analysis_mode:
+    description: 'Docs mode: "full" or "incremental".'
+    value: ${{ steps.docs_analyze.outputs.analysis_mode }}
+  files_written:
+    description: 'Docs mode: number of rendered markdown files in output_dir.'
+    value: ${{ steps.docs_commit.outputs.files_written }}
+  committed:
+    description: 'Docs mode: true when a docs commit was created and pushed.'
+    value: ${{ steps.docs_commit.outputs.committed }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Guard — resolve the target PR
+    - name: Guard — resolve mode and target
       id: guard
       shell: bash
       env:
@@ -106,10 +139,67 @@ runs:
         PULL_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         ISSUE_NUMBER: ${{ github.event.issue.number }}
         ISSUE_PR_URL: ${{ github.event.issue.pull_request.url }}
+        MODE: ${{ inputs.mode }}
+        REF_TYPE: ${{ github.ref_type }}
+        TARGET_SHA: ${{ github.sha }}
+        TARGET_BRANCH: ${{ inputs.target_branch }}
+        OUTPUT_DIR: ${{ inputs.output_dir }}
+        OUTPUT_FORMAT: ${{ inputs.output_format }}
+        WRITE_ARCH: ${{ inputs.write_architecture_md }}
+        DEPTH: ${{ inputs.depth_level }}
       run: |
         set -uo pipefail
         skip() { echo "::notice::$1 Skipping."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
 
+        # Misconfigured inputs hard-fail; event mismatches soft-skip (a workflow
+        # may legitimately deliver events the selected mode doesn't handle).
+        case "$MODE" in
+          review|docs) ;;
+          *) echo "::error::mode must be 'review' or 'docs' (got '$MODE')."; exit 1 ;;
+        esac
+        case "$DEPTH" in
+          1|2|3) ;;
+          *) echo "::error::depth_level must be 1, 2, or 3."; exit 1 ;;
+        esac
+        echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+
+        if [ "$MODE" = "docs" ]; then
+          # Docs mode: analyze the pushed/selected commit and push generated docs
+          # to target_branch. Docs is an explicit opt-in (never inferred from the
+          # event) and accepts only non-PR triggers — a branch-pushing mode must
+          # not be reachable from a workflow run over PR-head code.
+          case "$EVENT" in
+            push|workflow_dispatch|schedule) ;;
+            *) skip "Unsupported event '$EVENT' in docs mode (use push, workflow_dispatch, or schedule; mode: review handles pull_request)." ;;
+          esac
+          if [ "$EVENT" = "push" ] && [ "$REF_TYPE" = "tag" ]; then
+            skip "Docs mode runs on branch pushes, not tag pushes."
+          fi
+          case "$OUTPUT_FORMAT" in
+            .md) ;;
+            *) echo "::error::output_format must be .md."; exit 1 ;;
+          esac
+          case "$OUTPUT_DIR" in
+            ""|/*|..|../*|*/../*|*/..) echo "::error::output_dir must be a relative path inside the repository."; exit 1 ;;
+          esac
+          case "$WRITE_ARCH" in
+            true|false) ;;
+            *) echo "::error::write_architecture_md must be true or false."; exit 1 ;;
+          esac
+          [ -n "$TARGET_BRANCH" ] || { echo "::error::target_branch is empty."; exit 1; }
+          {
+            echo "skip=false"
+            echo "target_sha=$TARGET_SHA"
+            echo "target_branch=$TARGET_BRANCH"
+            echo "start_ts=$(date +%s)"
+            echo "checkout_repo=$REPOSITORY"
+            echo "checkout_sha=$TARGET_SHA"
+          } >> "$GITHUB_OUTPUT"
+          echo "Docs mode: analyzing ${REPOSITORY}@${TARGET_SHA}, pushing docs to ${TARGET_BRANCH} (via $EVENT)"
+          exit 0
+        fi
+
+        # Review mode from here down.
         # Sticky-comment targeting. Written up front so the failure-comment step
         # always has a header even if PR resolution below fails. Automatic
         # pull_request runs reuse one stable header → the comment is updated in
@@ -157,7 +247,7 @@ runs:
           HEAD_REPO="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["head"]["repo"]["full_name"])' 2>/dev/null)" || skip "Could not parse head repo from the PR API."
           [ "$HEAD_REPO" = "$REPOSITORY" ] || skip "On-demand runs with secrets are disabled for fork PRs."
         else
-          skip "Unsupported event '$EVENT' (use pull_request or issue_comment)."
+          skip "Unsupported event '$EVENT' in review mode (use pull_request or issue_comment; set mode: docs to generate docs on push)."
         fi
 
         { [ -n "$PR_NUMBER" ] && [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ] && [ -n "$BASE_REPO" ] && [ -n "$HEAD_REPO" ]; } || skip "Could not resolve PR/base/head SHAs/repos."
@@ -170,6 +260,8 @@ runs:
           echo "base_ref=$BASE_REF"
           echo "base_repo=$BASE_REPO"
           echo "head_repo=$HEAD_REPO"
+          echo "checkout_repo=$HEAD_REPO"
+          echo "checkout_sha=$HEAD_SHA"
           # same_repo gates pushing the head analysis: forks give a read-only token.
           if [ "$HEAD_REPO" = "$REPOSITORY" ]; then echo "same_repo=true"; else echo "same_repo=false"; fi
         } >> "$GITHUB_OUTPUT"
@@ -188,7 +280,7 @@ runs:
           -f content=eyes >/dev/null 2>&1 || true
 
     - name: Post in-progress comment
-      if: steps.guard.outputs.skip != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:
@@ -211,18 +303,21 @@ runs:
         path: codeboarding-engine
         persist-credentials: false
 
-    - name: Checkout target repository (PR head)
+    # Review mode: the PR head repo at the head SHA. Docs mode: this repo at the
+    # pushed/selected SHA. Always credential-free — both pushes (head analysis to
+    # the PR branch, docs to target_branch) authenticate explicitly via push_token.
+    - name: Checkout target repository
       if: steps.guard.outputs.skip != 'true'
       uses: actions/checkout@v4
       with:
-        repository: ${{ steps.guard.outputs.head_repo }}
+        repository: ${{ steps.guard.outputs.checkout_repo }}
         path: target-repo
         fetch-depth: 0
-        ref: ${{ steps.guard.outputs.head_sha }}
+        ref: ${{ steps.guard.outputs.checkout_sha }}
         persist-credentials: false
 
     - name: Ensure PR base commit is fetched
-      if: steps.guard.outputs.skip != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       shell: bash
       working-directory: target-repo
       env:
@@ -293,6 +388,7 @@ runs:
 
     - name: Prepare & verify LLM key
       if: steps.guard.outputs.skip != 'true'
+      id: llm
       shell: bash
       env:
         RAW_KEY: ${{ inputs.llm_api_key }}
@@ -300,6 +396,7 @@ runs:
         RAW_AGENT_MODEL: ${{ inputs.agent_model }}
         RAW_PARSING_MODEL: ${{ inputs.parsing_model }}
       run: |
+        set -euo pipefail
         AUTH_FILE="${RUNNER_TEMP}/openrouter-auth.json"
         trap 'rm -f "$AUTH_FILE"' EXIT
         if [ -z "$RAW_KEY" ]; then
@@ -320,6 +417,8 @@ runs:
 
         # Normalize a pasted key: strip whitespace/quotes and a leading `<ENV>=`.
         _strip() { printf '%s' "$1" | tr -d '[:space:]' | sed -e 's/^"//;s/"$//' -e "s/^'//;s/'\$//"; }
+        # Cache keys reject some characters (model slugs carry '/'); sanitize for them.
+        _safe() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_'; }
         KEY="$(_strip "$RAW_KEY")"
         case "$KEY" in "${PROVIDER_ENV}="*) KEY="${KEY#${PROVIDER_ENV}=}";; esac
         KEY="$(_strip "$KEY")"
@@ -363,14 +462,22 @@ runs:
         printf '%s' "$AGENT_MODEL" > "${RUNNER_TEMP}/cb-agent-model"
         printf '%s' "$PARSING_MODEL" > "${RUNNER_TEMP}/cb-parsing-model"
 
+        # Sanitized copies for use inside actions/cache keys (docs mode).
+        {
+          echo "cache_provider=$(_safe "$PROVIDER")"
+          echo "cache_agent_model=$(_safe "${AGENT_MODEL:-default}")"
+          echo "cache_parsing_model=$(_safe "${PARSING_MODEL:-default}")"
+        } >> "$GITHUB_OUTPUT"
+
     - name: Resolve base analysis (committed baseline)
-      if: steps.guard.outputs.skip != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       id: base
       shell: bash
       working-directory: target-repo
       env:
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
         ACTION_PATH: ${{ github.action_path }}
+        DEPTH: ${{ inputs.depth_level }}
       run: |
         BASE_DIR="${RUNNER_TEMP}/cb-base"
         HEAD_DIR="${RUNNER_TEMP}/cb-head"
@@ -380,7 +487,8 @@ runs:
         if git show "${BASE_SHA}:.codeboarding/analysis.json" > "${BASE_DIR}/analysis.json" 2>/dev/null; then
           if python3 "$ACTION_PATH/scripts/cb_engine.py" validate-base \
               --analysis "${BASE_DIR}/analysis.json" \
-              --expected-sha "$BASE_SHA"; then
+              --expected-sha "$BASE_SHA" \
+              --expected-depth "$DEPTH"; then
             echo "committed=true" >> $GITHUB_OUTPUT
             echo "Using committed .codeboarding/analysis.json at ${BASE_SHA}."
           else
@@ -395,7 +503,7 @@ runs:
         fi
 
     - name: Restore base artifacts (keyed by base SHA)
-      if: steps.guard.outputs.skip != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       id: basecache
       uses: actions/cache/restore@v4
       with:
@@ -409,7 +517,7 @@ runs:
     # clustering, no LLM key read. Fail-open: a failed seed degrades to exactly
     # the previous behavior (the head run falls back to a full analysis).
     - name: Seed base static-analysis cache (committed baseline, no cached pkl)
-      if: steps.guard.outputs.skip != 'true' && steps.base.outputs.committed == 'true' && steps.basecache.outputs.cache-hit != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.base.outputs.committed == 'true' && steps.basecache.outputs.cache-hit != 'true'
       id: seedbase
       continue-on-error: true
       shell: bash
@@ -448,7 +556,7 @@ runs:
         git -C "$TARGET" worktree remove --force "$BASE_SRC" 2>/dev/null || true
 
     - name: Generate base analysis (no committed baseline)
-      if: steps.guard.outputs.skip != 'true' && steps.base.outputs.committed == 'false' && steps.basecache.outputs.cache-hit != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.base.outputs.committed == 'false' && steps.basecache.outputs.cache-hit != 'true'
       shell: bash
       working-directory: codeboarding-engine
       env:
@@ -501,14 +609,14 @@ runs:
     # load-bearing — caching a pkl-less dir under this base SHA's key would
     # permanently suppress seeding retries for it.
     - name: Save generated base artifacts
-      if: steps.guard.outputs.skip != 'true' && steps.basecache.outputs.cache-hit != 'true' && (steps.base.outputs.committed == 'false' || steps.seedbase.outputs.seed_ok == 'true')
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.basecache.outputs.cache-hit != 'true' && (steps.base.outputs.committed == 'false' || steps.seedbase.outputs.seed_ok == 'true')
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.temp }}/cb-base
         key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     - name: Analyze PR head (incremental from base)
-      if: steps.guard.outputs.skip != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       id: analyze
       shell: bash
       working-directory: codeboarding-engine
@@ -561,7 +669,7 @@ runs:
         echo "head_analysis=$HEAD_DIR/analysis.json" >> $GITHUB_OUTPUT
 
     - name: Architecture health check (best-effort)
-      if: steps.guard.outputs.skip != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       id: health
       continue-on-error: true
       shell: bash
@@ -585,6 +693,166 @@ runs:
         echo "issues=$N" >> $GITHUB_OUTPUT
         echo "Architecture issues: $N"
 
+    # ---- Docs mode: analyze the target commit (mirrors the review pipeline's
+    # baseline/seed/incremental strategy, but against the committed analysis.json
+    # in the working tree instead of the PR base). ----
+
+    - name: Seed docs workdir from committed baseline
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'docs'
+      id: docs_seed
+      shell: bash
+      working-directory: target-repo
+      env:
+        OUTPUT_DIR: ${{ inputs.output_dir }}
+      run: |
+        set -euo pipefail
+        CB_DIR="${RUNNER_TEMP}/cb-docs"
+        RENDER_DIR="${RUNNER_TEMP}/cb-docs-render"
+        ARCH_FILE="${RUNNER_TEMP}/cb-architecture.md"
+        rm -rf "$CB_DIR" "$RENDER_DIR"
+        mkdir -p "$CB_DIR" "$RENDER_DIR"
+        {
+          echo "cb_dir=$CB_DIR"
+          echo "render_dir=$RENDER_DIR"
+          echo "arch_file=$ARCH_FILE"
+        } >> "$GITHUB_OUTPUT"
+
+        if [ -f "$OUTPUT_DIR/analysis.json" ]; then
+          cp "$OUTPUT_DIR/analysis.json" "$CB_DIR/analysis.json"
+          BASELINE_SHA="$(python3 - "$CB_DIR/analysis.json" <<'PY'
+        import json
+        import sys
+        try:
+            with open(sys.argv[1], encoding="utf-8") as fh:
+                data = json.load(fh)
+            value = data.get("metadata", {}).get("commit_hash", "")
+            print(value if isinstance(value, str) else "")
+        except Exception:
+            print("")
+        PY
+        )"
+          # Trust the committed JSON only as far as a SHA shape: anything else
+          # must not reach GITHUB_OUTPUT (line injection), cache keys, or git.
+          if printf '%s' "$BASELINE_SHA" | grep -qE '^[0-9a-f]{7,40}$'; then
+            echo "baseline_present=true" >> "$GITHUB_OUTPUT"
+            echo "baseline_sha=$BASELINE_SHA" >> "$GITHUB_OUTPUT"
+            echo "Using committed baseline generated for $BASELINE_SHA."
+          else
+            rm -f "$CB_DIR/analysis.json"
+            echo "baseline_present=false" >> "$GITHUB_OUTPUT"
+            echo "baseline_sha=none" >> "$GITHUB_OUTPUT"
+            echo "::warning::Committed analysis.json has no usable metadata.commit_hash; a full analysis will run."
+          fi
+        else
+          echo "baseline_present=false" >> "$GITHUB_OUTPUT"
+          echo "baseline_sha=none" >> "$GITHUB_OUTPUT"
+          echo "No committed baseline found; a full analysis will run."
+        fi
+
+    - name: Restore docs static-analysis cache
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'docs' && steps.docs_seed.outputs.baseline_present == 'true'
+      id: docs_cache
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          ${{ runner.temp }}/cb-docs/static_analysis.pkl
+          ${{ runner.temp }}/cb-docs/static_analysis.sha
+        key: cb-docs-${{ runner.os }}-${{ inputs.engine_ref }}-d${{ inputs.depth_level }}-${{ steps.llm.outputs.cache_provider }}-${{ steps.llm.outputs.cache_agent_model }}-${{ steps.llm.outputs.cache_parsing_model }}-${{ steps.docs_seed.outputs.baseline_sha }}
+
+    # Same rationale as the review pipeline's seed step: the committed
+    # analysis.json supplies component ids, but the incremental path also needs
+    # the baseline static_analysis.pkl (LSP + clustering, no LLM). Fail-open.
+    - name: Seed docs static-analysis cache at baseline SHA
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'docs' && steps.docs_seed.outputs.baseline_present == 'true' && steps.docs_cache.outputs.cache-hit != 'true'
+      id: docs_seedcache
+      continue-on-error: true
+      shell: bash
+      working-directory: codeboarding-engine
+      env:
+        STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
+        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
+        # The seed subcommand defaults to github_action attribution; docs-mode
+        # telemetry must report as docs_action (setdefault never clobbers this).
+        CODEBOARDING_SOURCE: 'docs_action'
+        CACHING_DOCUMENTATION: 'false'
+        ENABLE_MONITORING: 'false'
+        ACTION_PATH: ${{ github.action_path }}
+        TARGET_REPO: ${{ github.workspace }}/target-repo
+        CB_DIR: ${{ steps.docs_seed.outputs.cb_dir }}
+        BASELINE_SHA: ${{ steps.docs_seed.outputs.baseline_sha }}
+      run: |
+        set -euo pipefail
+        echo "seed_ok=false" >> "$GITHUB_OUTPUT"
+        if ! git -C "$TARGET_REPO" cat-file -e "${BASELINE_SHA}^{commit}" 2>/dev/null; then
+          echo "::warning::Baseline commit $BASELINE_SHA is not reachable; analysis will fall back to full if needed."
+          exit 0
+        fi
+
+        # Clean up any stale registration before re-adding (rm -rf alone leaves a
+        # dangling worktree entry that makes a retry's `worktree add` fail).
+        BASE_SRC="${RUNNER_TEMP}/cb-docs-base-src"
+        git -C "$TARGET_REPO" worktree remove --force "$BASE_SRC" 2>/dev/null || true
+        git -C "$TARGET_REPO" worktree prune
+        rm -rf "$BASE_SRC"
+        git -C "$TARGET_REPO" worktree add --detach "$BASE_SRC" "$BASELINE_SHA"
+        if uv run python "$ACTION_PATH/scripts/cb_engine.py" seed \
+             --repo "$BASE_SRC" \
+             --out "$CB_DIR" \
+             --source-sha "$BASELINE_SHA" \
+           && [ -f "$CB_DIR/static_analysis.pkl" ] && [ -f "$CB_DIR/static_analysis.sha" ]; then
+          echo "seed_ok=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Seeded static-analysis cache for $BASELINE_SHA."
+        else
+          rm -f "$CB_DIR/static_analysis.pkl" "$CB_DIR/static_analysis.sha"
+          echo "::warning::Static-analysis seeding failed; analysis may fall back to full."
+        fi
+        git -C "$TARGET_REPO" worktree remove --force "$BASE_SRC" 2>/dev/null || true
+
+    - name: Analyze target repository (docs)
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'docs'
+      id: docs_analyze
+      shell: bash
+      working-directory: codeboarding-engine
+      env:
+        STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
+        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
+        DIAGRAM_DEPTH_LEVEL: ${{ inputs.depth_level }}
+        CACHING_DOCUMENTATION: 'false'
+        ENABLE_MONITORING: 'false'
+        ACTION_PATH: ${{ github.action_path }}
+        TARGET_REPO: ${{ github.workspace }}/target-repo
+        CB_DIR: ${{ steps.docs_seed.outputs.cb_dir }}
+        REPO_NAME: ${{ github.event.repository.name }}
+        RUN_ID_DOCS: ${{ github.run_id }}-${{ github.run_attempt }}-docs
+        TARGET_SHA: ${{ steps.guard.outputs.target_sha }}
+        DEPTH: ${{ inputs.depth_level }}
+      run: |
+        set -euo pipefail
+        # Export the key under the selected provider's env var (only this one),
+        # so the engine auto-selects that provider.
+        PROVIDER_ENV="$(cat "${RUNNER_TEMP}/cb-provider-env")"
+        export "$PROVIDER_ENV"="$(cat "${RUNNER_TEMP}/cb-llm-key")"
+        # Export the model env only when the user set it; empty -> the engine uses
+        # its own valid per-provider default (no stale hardcoded model id to rot).
+        AGENT_MODEL="$(cat "${RUNNER_TEMP}/cb-agent-model")"
+        PARSING_MODEL="$(cat "${RUNNER_TEMP}/cb-parsing-model")"
+        if [ -n "$AGENT_MODEL" ]; then export AGENT_MODEL; fi
+        if [ -n "$PARSING_MODEL" ]; then export PARSING_MODEL; fi
+
+        LOG="${RUNNER_TEMP}/cb-docs-analyze.log"
+        uv run python "$ACTION_PATH/scripts/cb_engine.py" analyze \
+          --repo "$TARGET_REPO" \
+          --out "$CB_DIR" \
+          --name "$REPO_NAME" \
+          --run-id "$RUN_ID_DOCS" \
+          --source-sha "$TARGET_SHA" \
+          --depth "$DEPTH" | tee "$LOG"
+        MODE="$(sed -n 's/^analysis_mode=//p' "$LOG" | tail -1)"
+        MODE="${MODE:-unknown}"
+        echo "analysis_mode=$MODE" >> "$GITHUB_OUTPUT"
+        echo "analysis_path=$CB_DIR/analysis.json" >> "$GITHUB_OUTPUT"
+        [ -f "$CB_DIR/analysis.json" ] || { echo "::error::Analysis ran but analysis.json is missing."; exit 1; }
+
     - name: Drop LLM key material
       if: always() && steps.guard.outputs.skip != 'true'
       shell: bash
@@ -603,6 +871,7 @@ runs:
       id: commit_head
       if: >-
         steps.guard.outputs.skip != 'true'
+        && steps.guard.outputs.mode == 'review'
         && inputs.commit_head_analysis == 'true'
         && steps.guard.outputs.same_repo == 'true'
         && inputs.webview_base_url != ''
@@ -656,7 +925,7 @@ runs:
         fi
 
     - name: Diff analyses → Mermaid
-      if: steps.guard.outputs.skip != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       id: diagram
       shell: bash
       env:
@@ -694,7 +963,7 @@ runs:
         echo "diagram_md=${RUNNER_TEMP}/diagram.md" >> $GITHUB_OUTPUT
 
     - name: Build PR comment body
-      if: steps.guard.outputs.skip != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       id: body
       shell: bash
       env:
@@ -769,7 +1038,7 @@ runs:
         echo "body_file=$BODY_FILE" >> "$GITHUB_OUTPUT"
 
     - name: Post sticky PR comment
-      if: steps.guard.outputs.skip != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         header: ${{ steps.guard.outputs.sticky_header }}
@@ -777,10 +1046,215 @@ runs:
         path: ${{ steps.body.outputs.body_file }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
 
+    # ---- Docs mode: render the analysis to markdown and commit it. ----
+
+    - name: Render docs
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'docs'
+      id: docs_render
+      shell: bash
+      working-directory: codeboarding-engine
+      env:
+        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
+        ACTION_PATH: ${{ github.action_path }}
+        CB_DIR: ${{ steps.docs_seed.outputs.cb_dir }}
+        RENDER_DIR: ${{ steps.docs_seed.outputs.render_dir }}
+        ARCH_FILE: ${{ steps.docs_seed.outputs.arch_file }}
+        REPO_NAME: ${{ github.event.repository.name }}
+        REPOSITORY: ${{ github.repository }}
+        TARGET_BRANCH: ${{ steps.guard.outputs.target_branch }}
+        OUTPUT_DIR: ${{ inputs.output_dir }}
+        OUTPUT_FORMAT: ${{ inputs.output_format }}
+        WRITE_ARCHITECTURE_MD: ${{ inputs.write_architecture_md }}
+      run: |
+        set -euo pipefail
+        REPO_REF="https://github.com/${REPOSITORY}/blob/${TARGET_BRANCH}/${OUTPUT_DIR}"
+        uv run python "$ACTION_PATH/scripts/cb_engine.py" render \
+          --analysis "$CB_DIR/analysis.json" \
+          --out "$RENDER_DIR" \
+          --repo-name "$REPO_NAME" \
+          --repo-ref "$REPO_REF" \
+          --format "$OUTPUT_FORMAT"
+        if [ "$WRITE_ARCHITECTURE_MD" = "true" ]; then
+          uv run python "$ACTION_PATH/scripts/cb_engine.py" concat \
+            --docs-dir "$RENDER_DIR" \
+            --out "$ARCH_FILE"
+        fi
+        echo "docs_dir=$RENDER_DIR" >> "$GITHUB_OUTPUT"
+        echo "architecture_file=$ARCH_FILE" >> "$GITHUB_OUTPUT"
+
+    - name: Check docs static-analysis cache files
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'docs'
+      id: docs_cachecheck
+      shell: bash
+      env:
+        CB_DIR: ${{ steps.docs_seed.outputs.cb_dir }}
+      run: |
+        set -euo pipefail
+        if [ -f "$CB_DIR/static_analysis.pkl" ] && [ -f "$CB_DIR/static_analysis.sha" ]; then
+          echo "has_cache=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "has_cache=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::No static-analysis pkl/sha pair to cache."
+        fi
+
+    - name: Save docs static-analysis cache
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'docs' && steps.docs_cachecheck.outputs.has_cache == 'true'
+      continue-on-error: true
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ${{ runner.temp }}/cb-docs/static_analysis.pkl
+          ${{ runner.temp }}/cb-docs/static_analysis.sha
+        key: cb-docs-${{ runner.os }}-${{ inputs.engine_ref }}-d${{ inputs.depth_level }}-${{ steps.llm.outputs.cache_provider }}-${{ steps.llm.outputs.cache_agent_model }}-${{ steps.llm.outputs.cache_parsing_model }}-${{ steps.guard.outputs.target_sha }}
+
+    - name: Commit and push docs
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'docs'
+      id: docs_commit
+      shell: bash
+      working-directory: target-repo
+      env:
+        CB_DIR: ${{ steps.docs_seed.outputs.cb_dir }}
+        DOCS_DIR: ${{ steps.docs_render.outputs.docs_dir }}
+        ARCH_FILE: ${{ steps.docs_render.outputs.architecture_file }}
+        OUTPUT_DIR: ${{ inputs.output_dir }}
+        OUTPUT_FORMAT: ${{ inputs.output_format }}
+        WRITE_ARCHITECTURE_MD: ${{ inputs.write_architecture_md }}
+        COMMIT_MESSAGE: ${{ inputs.commit_message }}
+        TARGET_BRANCH: ${{ steps.guard.outputs.target_branch }}
+        PUSH_TOKEN: ${{ inputs.push_token }}
+        REPOSITORY: ${{ github.repository }}
+        SERVER_URL: ${{ github.server_url }}
+      run: |
+        set -euo pipefail
+        echo "committed=false" >> "$GITHUB_OUTPUT"
+        echo "files_written=0" >> "$GITHUB_OUTPUT"
+        [ -n "$PUSH_TOKEN" ] && echo "::add-mask::$PUSH_TOKEN"
+
+        # Replace the previously committed rendered docs wholesale: stale files
+        # (components that no longer exist) must be deleted, not left behind.
+        shopt -s nullglob
+        old_md=()
+        if [ -d "$OUTPUT_DIR" ]; then
+          while IFS= read -r -d '' path; do
+            if git ls-files --error-unmatch "$path" >/dev/null 2>&1; then
+              old_md+=("$path")
+            fi
+          done < <(find "$OUTPUT_DIR" -maxdepth 1 -type f -name "*${OUTPUT_FORMAT}" -print0)
+          find "$OUTPUT_DIR" -maxdepth 1 -type f -name "*${OUTPUT_FORMAT}" -delete
+        fi
+
+        mkdir -p "$OUTPUT_DIR" "$OUTPUT_DIR/health"
+        rendered=("$DOCS_DIR"/*"$OUTPUT_FORMAT")
+        if [ "${#rendered[@]}" -eq 0 ]; then
+          echo "::error::No rendered docs found in $DOCS_DIR."
+          exit 1
+        fi
+        cp "${rendered[@]}" "$OUTPUT_DIR/"
+        cp "$CB_DIR/analysis.json" "$OUTPUT_DIR/analysis.json"
+        if [ -f "$CB_DIR/codeboarding_version.json" ]; then
+          cp "$CB_DIR/codeboarding_version.json" "$OUTPUT_DIR/codeboarding_version.json"
+        fi
+        if [ -f "$CB_DIR/health/health_report.json" ]; then
+          cp "$CB_DIR/health/health_report.json" "$OUTPUT_DIR/health/health_report.json"
+        fi
+        if [ "$WRITE_ARCHITECTURE_MD" = "true" ]; then
+          mkdir -p docs/development
+          cp "$ARCH_FILE" docs/development/architecture.md
+        fi
+
+        new_md=("$OUTPUT_DIR"/*"$OUTPUT_FORMAT")
+        stage_paths=("$OUTPUT_DIR/analysis.json")
+        [ -f "$OUTPUT_DIR/codeboarding_version.json" ] && stage_paths+=("$OUTPUT_DIR/codeboarding_version.json")
+        [ -f "$OUTPUT_DIR/health/health_report.json" ] && stage_paths+=("$OUTPUT_DIR/health/health_report.json")
+        if [ "$WRITE_ARCHITECTURE_MD" = "true" ]; then
+          stage_paths+=("docs/development/architecture.md")
+        fi
+        stage_paths+=("${old_md[@]}" "${new_md[@]}")
+        git add -A -- "${stage_paths[@]}"
+
+        if git diff --cached --quiet; then
+          echo "::notice::Generated docs are unchanged; nothing to commit."
+          echo "files_written=${#new_md[@]}" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if git diff --cached --quiet -I '"generated_at"' -I '"timestamp"'; then
+          git reset -q
+          echo "::notice::Only volatile timestamp fields changed; skipping commit."
+          echo "files_written=${#new_md[@]}" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        git config user.name "codeboarding[bot]"
+        git config user.email "codeboarding[bot]@users.noreply.github.com"
+        git commit -m "$COMMIT_MESSAGE" >/dev/null
+
+        # Push with fetch+rebase retries: another push may land on target_branch
+        # while the analysis runs. Fail-open on final rejection — the next
+        # repository change regenerates the docs.
+        AUTH_URL="https://x-access-token:${PUSH_TOKEN}@${SERVER_URL#https://}/${REPOSITORY}.git"
+        for attempt in 1 2 3; do
+          if git push "$AUTH_URL" "HEAD:refs/heads/${TARGET_BRANCH}"; then
+            NEW_SHA="$(git rev-parse HEAD)"
+            echo "committed=true" >> "$GITHUB_OUTPUT"
+            echo "pushed_sha=$NEW_SHA" >> "$GITHUB_OUTPUT"
+            echo "files_written=${#new_md[@]}" >> "$GITHUB_OUTPUT"
+            echo "Committed docs to ${TARGET_BRANCH} as ${NEW_SHA}."
+            exit 0
+          fi
+          if [ "$attempt" -eq 3 ]; then
+            echo "::warning::Could not push docs to ${TARGET_BRANCH}; likely missing contents: write permission or branch protection rejected the bot."
+            echo "files_written=${#new_md[@]}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "::warning::Push was rejected; fetching and rebasing before retry ${attempt}."
+          # The checkout is credential-free (persist-credentials: false), so the
+          # fetch must authenticate through the same URL as the push; on private
+          # repos a bare `git fetch origin` would 403 and hard-fail the step.
+          if ! git fetch "$AUTH_URL" "$TARGET_BRANCH"; then
+            echo "::warning::Could not fetch ${TARGET_BRANCH} to rebase; skipping this push. The next repository change can regenerate docs."
+            echo "files_written=${#new_md[@]}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! git rebase FETCH_HEAD; then
+            git rebase --abort || true
+            echo "::warning::Could not rebase generated docs onto ${TARGET_BRANCH}; skipping this push. The next repository change can regenerate docs."
+            echo "files_written=${#new_md[@]}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+        done
+
+    - name: Write docs summary
+      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'docs'
+      shell: bash
+      env:
+        START_TS: ${{ steps.guard.outputs.start_ts }}
+        MODE: ${{ steps.docs_analyze.outputs.analysis_mode }}
+        DEPTH: ${{ inputs.depth_level }}
+        FILES_WRITTEN: ${{ steps.docs_commit.outputs.files_written }}
+        COMMITTED: ${{ steps.docs_commit.outputs.committed }}
+        PUSHED_SHA: ${{ steps.docs_commit.outputs.pushed_sha }}
+      run: |
+        set -euo pipefail
+        NOW="$(date +%s)"
+        # start_ts is missing when the guard hard-failed on input validation.
+        if [ -n "${START_TS:-}" ]; then DURATION=$((NOW - START_TS)); else DURATION=0; fi
+        {
+          echo "### CodeBoarding Docs"
+          echo ""
+          echo "- Analysis mode: ${MODE:-unknown}"
+          echo "- Depth: $DEPTH"
+          echo "- Rendered markdown files: ${FILES_WRITTEN:-0}"
+          echo "- Commit pushed: ${COMMITTED:-false}"
+          if [ -n "${PUSHED_SHA:-}" ]; then
+            echo "- Pushed SHA: $PUSHED_SHA"
+          fi
+          echo "- Duration: ${DURATION}s"
+        } >> "$GITHUB_STEP_SUMMARY"
+
     # If any analysis step failed, replace the sticky comment with a short failure
     # note (same header) instead of leaving the PR with nothing / a stale diagram.
     - name: Post failure comment
-      if: failure() && steps.guard.outputs.skip != 'true'
+      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:

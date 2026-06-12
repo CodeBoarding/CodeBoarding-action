@@ -26,7 +26,9 @@ permissions:
   contents: write   # commit the regenerated analysis.json to main
 
 concurrency:
-  group: codeboarding-refresh-baseline
+  # Shared with docs.yml: both commit .codeboarding/analysis.json to main and
+  # must never run concurrently (this workflow's plain `git push` has no retry).
+  group: codeboarding-baseline-writers
   cancel-in-progress: false
 
 jobs:
@@ -58,8 +60,11 @@ jobs:
           # Default the engine ref to the action.yml input default, so the baseline
           # is generated with the same engine the review workflow pins.
           REF="$(grep -A3 "engine_ref:" action.yml | grep "default:" | head -1 | sed -E "s/.*default: *'?([^'\"]+)'?.*/\1/")"
-          echo "ref=${REF:-v0.12.0}" >> "$GITHUB_OUTPUT"
-          echo "Engine ref: ${REF:-v0.12.0}"
+          # Fail loud if the extraction breaks (e.g. action.yml reformatting)
+          # rather than silently regenerating with a stale hardcoded engine.
+          [ -n "$REF" ] || { echo "::error::Could not extract engine_ref default from action.yml."; exit 1; }
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+          echo "Engine ref: $REF"
 
       - name: Checkout CodeBoarding engine
         uses: actions/checkout@v4
