@@ -205,6 +205,10 @@ See this architecture in your editor: [**Open in VS Code →**](https://marketpl
 | J | One italic "dek" sentence above the diagram + single changelog dropdown | one sentence + one line |
 | K | Typographic ledger: one line per component, methods in small type | one line per component |
 | L | Narrative paragraph with GFM footnotes carrying the manifest | one paragraph |
+| M | One-liner: component names + file counts | one line |
+| N | Flat bullets: component + file basenames inline | one bullet per component |
+| O | Single dropdown → plain nested list (component → full paths) | one line |
+| P | Plain monospace block: name, status, files — no markup at all | one block |
 
 ## Implementation notes (if a variant is adopted)
 
