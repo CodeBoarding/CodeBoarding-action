@@ -6,10 +6,11 @@ The data is already there: every component in `analysis.json` carries
 `file_methods[]` (file paths + methods), which the diff logic uses internally but
 never renders.
 
-This doc mocks up two candidate formats, both using collapsed-by-default
-`<details>` blocks below the legend so the diagram stays the hero. The same two
-variants are posted as comments on the mockup PR so they can be compared exactly
-as reviewers would see them. All component/file/method names below are invented.
+This doc details two candidate formats (A and B below); ten further variants
+(C–L) live as comments on the mockup PR (#26) so they can be compared exactly as
+reviewers would see them — an index is at the end of this doc. All
+component/file/method names are invented, and every variant uses the same toy
+data so the formats are directly comparable.
 
 ---
 
@@ -188,7 +189,24 @@ See this architecture in your editor: [**Open in VS Code →**](https://marketpl
 
 ---
 
-## Implementation notes (if either variant is adopted)
+## Index of all variants (posted as comments on PR #26)
+
+| Variant | Format | Always-visible footprint |
+|:-:|:--|:--|
+| A | One dropdown per component → changed files | one summary line per component |
+| B | Component → file dropdowns → methods (nested) | one summary line per component |
+| C | Compact pipe table with `+3 ~2 −1` method deltas | one table row per component |
+| D | Single dropdown → native diff manifest with `@@` component hunks | one line |
+| E | Single dropdown → monospace file tree grouped by directory | one line |
+| F | Blast-radius-ordered review checklist (live checkboxes) | one line per step |
+| G | Question-grouped: `[!IMPORTANT]` alert for removals + two dropdowns | alert + two lines |
+| H | HTML cross-tab (`+/~/−` columns) with dropdowns inside cells | one table row per component |
+| I | Release-notes prose: Added / Changed / Removed sentences | one sentence per component |
+| J | One italic "dek" sentence above the diagram + single changelog dropdown | one sentence + one line |
+| K | Typographic ledger: one line per component, methods in small type | one line per component |
+| L | Narrative paragraph with GFM footnotes carrying the manifest | one paragraph |
+
+## Implementation notes (if a variant is adopted)
 
 - **List changed files only.** Intersect each component's `file_methods[]` paths
   with the PR's git diff. A component can own 40 files while the PR touched 2 —
