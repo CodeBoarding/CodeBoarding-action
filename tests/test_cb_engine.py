@@ -3,6 +3,7 @@ using stub modules so no real engine venv is needed."""
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import types
@@ -209,6 +210,79 @@ class TestValidateBase(_Base):
             self.assertFalse(ok)
             self.assertIn("old", message)
             self.assertIn("new", message)
+
+    def test_validate_base_accepts_docs_only_bot_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            self._git(repo, "init")
+            self._git(repo, "config", "user.name", "Test")
+            self._git(repo, "config", "user.email", "test@example.com")
+            (repo / "app.py").write_text("print('base')\n", encoding="utf-8")
+            self._git(repo, "add", "app.py")
+            self._git(repo, "commit", "-m", "base")
+            base_sha = self._git(repo, "rev-parse", "HEAD").stdout.strip()
+
+            (repo / ".codeboarding").mkdir()
+            (repo / ".codeboarding" / "analysis.json").write_text(
+                json.dumps({"metadata": {"commit_hash": base_sha}}),
+                encoding="utf-8",
+            )
+            (repo / ".codeboarding" / "overview.md").write_text("overview\n", encoding="utf-8")
+            (repo / "docs" / "development").mkdir(parents=True)
+            (repo / "docs" / "development" / "architecture.md").write_text("overview\n", encoding="utf-8")
+            self._git(repo, "add", ".codeboarding", "docs/development/architecture.md")
+            self._git(repo, "commit", "-m", "docs bot")
+            docs_sha = self._git(repo, "rev-parse", "HEAD").stdout.strip()
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(repo)
+                ok, message = cb_engine.validate_base_analysis(repo / ".codeboarding" / "analysis.json", docs_sha)
+            finally:
+                os.chdir(cwd)
+
+            self.assertTrue(ok)
+            self.assertIn("valid for PR base", message)
+
+    def test_validate_base_rejects_code_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            self._git(repo, "init")
+            self._git(repo, "config", "user.name", "Test")
+            self._git(repo, "config", "user.email", "test@example.com")
+            (repo / "app.py").write_text("print('base')\n", encoding="utf-8")
+            self._git(repo, "add", "app.py")
+            self._git(repo, "commit", "-m", "base")
+            base_sha = self._git(repo, "rev-parse", "HEAD").stdout.strip()
+            (repo / ".codeboarding").mkdir()
+            analysis_path = repo / ".codeboarding" / "analysis.json"
+            analysis_path.write_text(json.dumps({"metadata": {"commit_hash": base_sha}}), encoding="utf-8")
+            (repo / "app.py").write_text("print('changed')\n", encoding="utf-8")
+            self._git(repo, "add", "app.py", ".codeboarding/analysis.json")
+            self._git(repo, "commit", "-m", "code change")
+            code_sha = self._git(repo, "rev-parse", "HEAD").stdout.strip()
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(repo)
+                ok, message = cb_engine.validate_base_analysis(analysis_path, code_sha)
+            finally:
+                os.chdir(cwd)
+
+            self.assertFalse(ok)
+            self.assertIn("app.py", message)
+
+    def _git(self, repo, *args):
+        return subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
 
     def test_validate_base_rejects_missing_commit(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -26,6 +26,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 
@@ -42,12 +43,46 @@ def _clear_dir(path: Path) -> None:
             child.unlink()
 
 
+def _docs_only_baseline_drift(actual_sha: str, expected_sha: str) -> tuple[bool, str]:
+    allowed_prefixes = (".codeboarding/", "docs/development/")
+
+    def git(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["git", *args],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+    ancestor = git("merge-base", "--is-ancestor", actual_sha, expected_sha)
+    if ancestor.returncode != 0:
+        detail = ancestor.stderr.strip() or f"{actual_sha} is not an ancestor of {expected_sha}"
+        return False, detail
+
+    diff = git("diff", "--name-only", f"{actual_sha}..{expected_sha}")
+    if diff.returncode != 0:
+        return False, diff.stderr.strip() or f"Could not diff {actual_sha}..{expected_sha}"
+
+    paths = [line.strip() for line in diff.stdout.splitlines() if line.strip()]
+    disallowed = [
+        path
+        for path in paths
+        if not path.startswith(allowed_prefixes) and path not in (".codeboarding", "docs/development")
+    ]
+    if disallowed:
+        preview = ", ".join(disallowed[:5])
+        suffix = "" if len(disallowed) <= 5 else f", and {len(disallowed) - 5} more"
+        return False, f"non-doc paths changed: {preview}{suffix}"
+    return True, f"only generated docs changed between {actual_sha} and {expected_sha}"
+
+
 def validate_base_analysis(analysis_path: Path, expected_sha: str) -> tuple[bool, str]:
-    """Return whether ``analysis.json`` was generated for ``expected_sha``.
+    """Return whether ``analysis.json`` is valid for ``expected_sha``.
 
     The PR action can only reuse a committed baseline when the diagram's own
-    source commit matches the PR base commit. Otherwise the diff would be
-    computed from the PR base while mutating an older diagram snapshot.
+    source commit matches the PR base commit, or when the PR base is a docs-bot
+    commit whose only drift from that source commit is generated docs.
     """
     try:
         data = json.loads(analysis_path.read_text(encoding="utf-8"))
@@ -68,10 +103,13 @@ def validate_base_analysis(analysis_path: Path, expected_sha: str) -> tuple[bool
         return False, "Baseline analysis metadata.commit_hash is missing."
 
     if actual_sha != expected_sha:
-        return (
-            False,
-            f"Baseline analysis was generated for {actual_sha}, expected PR base {expected_sha}.",
-        )
+        ok, reason = _docs_only_baseline_drift(actual_sha, expected_sha)
+        if ok:
+            return (
+                True,
+                f"Baseline analysis was generated for {actual_sha}; valid for PR base {expected_sha} ({reason}).",
+            )
+        return False, f"Baseline analysis was generated for {actual_sha}, expected PR base {expected_sha} ({reason})."
 
     return True, f"Baseline analysis commit matches PR base {expected_sha}."
 
