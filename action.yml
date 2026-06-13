@@ -1009,7 +1009,7 @@ runs:
         # exact base commit the diff was computed against, linked to that commit.
         # A base branch tip moves (merges, the sync baseline refresh), so the ref
         # name alone is ambiguous about which snapshot "main" the diff is versus.
-        BASE_LABEL="\`${BASE_REF}\` ([\`${BASE_SHA:0:6}\`](${SERVER_URL}/${OWNER_REPO}/commit/${BASE_SHA}))"
+        BASE_LABEL="\`${BASE_REF}\` ([\`${BASE_SHA:0:7}\`](${SERVER_URL}/${OWNER_REPO}/commit/${BASE_SHA}))"
 
         headline() {
           if [ "$CHANGED" != "true" ]; then echo "no architectural changes";
