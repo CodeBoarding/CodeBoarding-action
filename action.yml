@@ -27,9 +27,9 @@ inputs:
     required: false
     default: 'v0.12.1'
   depth_level:
-    description: 'Analysis depth (1-3). Higher is slower and more detailed. Use the SAME value in your review and docs workflows: review mode reuses the committed baseline only when its depth matches, regenerating it otherwise.'
+    description: 'Analysis depth (1-3). Higher is slower, costlier, and more detailed. Use the SAME value in your review and docs workflows: review mode reuses the committed baseline only when it is no deeper than this, regenerating it otherwise. Lower to 1 for cheaper, faster runs.'
     required: false
-    default: '1'
+    default: '2'
   agent_model:
     description: 'Analysis model (AGENT_MODEL env var). A bare OpenRouter slug. Defaults to google/gemini-3-flash-preview on OpenRouter; for other providers, empty uses the engine''s per-provider default.'
     required: false

@@ -211,7 +211,7 @@ Behavior worth knowing:
 
 Docs mode keeps the committed `.codeboarding/analysis.json` baseline fresh on main. Review mode reuses that committed baseline for the PR base, so PR reviews diff against your *current* main architecture and run incrementally instead of rebuilding a base from scratch — faster and cheaper per PR.
 
-Use the **same `depth_level` in both workflows** (both default to `1`). Review mode regenerates its base when the committed baseline is *deeper* than the workflow's `depth_level`, so a lowered depth silently forfeits the reuse. (A baseline recording a *shallower* depth is accepted: the engine records the depth actually reached, which can be less than requested on repos where no component expands.) Want richer docs and reviews? Set `depth_level: 2` in *both* workflows.
+Use the **same `depth_level` in both workflows** (both default to `2`). Review mode regenerates its base when the committed baseline is *deeper* than the workflow's `depth_level`, so a lowered depth silently forfeits the reuse. (A baseline recording a *shallower* depth is accepted: the engine records the depth actually reached, which can be less than requested on repos where no component expands.) Want cheaper, faster runs? Set `depth_level: 1` in *both* workflows.
 
 One caveat for squash-merge repos: the `analysis.json` that review mode commits to PR branches carries the PR-head SHA, which a squash merge orphans — so that copy can't validate as a baseline on main. Docs mode running on main is what keeps the baseline valid there.
 
@@ -236,7 +236,7 @@ Be aware that `contents: write` is repo-wide — GitHub does not scope it to a b
 | `github_token` | both | `${{ github.token }}` | Token for GitHub API calls; in review mode it posts or updates the PR comment. |
 | `push_token` | both | `${{ github.token }}` | Token used for pushes: in review mode the generated `analysis.json` to the PR branch (for the webview link), in docs mode the generated docs to `target_branch`. The workflow token can push when the workflow grants `permissions: contents: write`. Separate from `github_token` so commenting can use a GitHub App token while the push uses the workflow token. |
 | `engine_ref` | both | `v0.12.1` | CodeBoarding engine ref. Pin for reproducibility. |
-| `depth_level` | both | `1` | Analysis depth, 1 to 3. Higher is slower and richer. Use the same value in your review and docs workflows ([why](#how-the-two-modes-work-together)). |
+| `depth_level` | both | `2` | Analysis depth, 1 to 3. Higher is slower, costlier, and richer; drop to `1` for cheaper runs. Use the same value in your review and docs workflows ([why](#how-the-two-modes-work-together)). |
 | `render_depth` | review | `1` | Display depth for the PR diagram. Keep `1` for a clean top-level view. |
 | `diagram_direction` | review | `LR` | Mermaid direction: `LR`, `TD`, `TB`, `RL`, or `BT`. |
 | `changed_only` | review | `false` | Render only changed components and incident edges. |

@@ -18,9 +18,9 @@ on:
   workflow_dispatch:
     inputs:
       depth_level:
-        description: 'Analysis depth (1-3). Match the review workflow for a comparable baseline.'
+        description: 'Analysis depth (1-3). Match the review workflow for a comparable baseline (the action defaults to 2).'
         required: false
-        default: '1'
+        default: '2'
 
 permissions:
   contents: write   # commit the regenerated analysis.json to main
