@@ -1,8 +1,9 @@
-"""Smoke tests for scripts/cb_engine.py — verify it calls the engine API correctly,
+"""Smoke tests for scripts/engine_adapter.py — verify it calls the engine API correctly,
 using stub modules so no real engine venv is needed."""
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import types
@@ -13,7 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-import cb_engine  # noqa: E402
+import engine_adapter  # noqa: E402
 
 _STUBBED = [
     "codeboarding_workflows",
@@ -79,7 +80,7 @@ class TestAnalysis(_Base):
     def test_base_calls_run_full(self):
         rf = _Rec()
         self._install(run_full=rf)
-        cb_engine.run_base("/repo", "/out", "myrepo", "rid-base", 2, "abc123")
+        engine_adapter.run_base("/repo", "/out", "myrepo", "rid-base", 2, "abc123")
         self.assertEqual(len(rf.calls), 1)
         k = rf.calls[0]
         self.assertEqual(k["repo_name"], "myrepo")
@@ -90,7 +91,7 @@ class TestAnalysis(_Base):
     def test_main_parses_depth_as_int(self):
         rf = _Rec()
         self._install(run_full=rf)
-        cb_engine.main(
+        engine_adapter.main(
             [
                 "base",
                 "--repo",
@@ -113,7 +114,7 @@ class TestAnalysis(_Base):
         rf = _Rec()
         self._install(run_full=rf)
         with patch.dict(os.environ, {}, clear=True):
-            cb_engine.main(
+            engine_adapter.main(
                 [
                     "base",
                     "--repo",
@@ -137,7 +138,7 @@ class TestAnalysis(_Base):
             with self.subTest(depth=depth):
                 with redirect_stderr(StringIO()):
                     with self.assertRaises(SystemExit):
-                        cb_engine.main(
+                        engine_adapter.main(
                             [
                                 "base",
                                 "--repo",
@@ -158,7 +159,7 @@ class TestAnalysis(_Base):
     def test_head_uses_incremental(self):
         ri, rf = _Rec(), _Rec()
         self._install(run_full=rf, run_incremental=ri)
-        cb_engine.run_head("/repo", "/out", "r", "rid", 1, "base", "head", "head")
+        engine_adapter.run_head("/repo", "/out", "r", "rid", 1, "base", "head", "head")
         self.assertEqual(len(ri.calls), 1)
         self.assertEqual(len(rf.calls), 0)  # no fallback
         self.assertEqual(ri.calls[0]["base_ref"], "base")
@@ -173,7 +174,7 @@ class TestAnalysis(_Base):
         (Path(out) / "stale.json").write_text("{}")  # must be wiped before the full run
         (Path(out) / "health").mkdir()
         (Path(out) / "health" / "stale.json").write_text("{}")
-        cb_engine.run_head("/repo", out, "r", "rid", 3, "base", "head", "head")
+        engine_adapter.run_head("/repo", out, "r", "rid", 3, "base", "head", "head")
         self.assertEqual(len(rf.calls), 1)  # fell back to full
         self.assertEqual(rf.calls[0]["depth_level"], 3)
         self.assertFalse((Path(out) / "stale.json").exists())  # head dir wiped before full
@@ -184,7 +185,7 @@ class TestAnalysis(_Base):
         rf = _Rec()
         analysis.run_full = rf
         analysis.run_incremental = _Rec(raises=BaseUnavail)
-        cb_engine.run_head("/repo", tempfile.mkdtemp(), "r", "rid", 1, "base", "head", "head")
+        engine_adapter.run_head("/repo", tempfile.mkdtemp(), "r", "rid", 1, "base", "head", "head")
         self.assertEqual(len(rf.calls), 1)  # BaselineUnavailableError also triggers the full re-run
 
 
@@ -194,7 +195,7 @@ class TestValidateBase(_Base):
             path = Path(tmp) / "analysis.json"
             path.write_text(json.dumps({"metadata": {"commit_hash": "abc123"}}), encoding="utf-8")
 
-            ok, message = cb_engine.validate_base_analysis(path, "abc123")
+            ok, message = engine_adapter.validate_base_analysis(path, "abc123")
 
             self.assertTrue(ok)
             self.assertIn("matches", message)
@@ -204,18 +205,91 @@ class TestValidateBase(_Base):
             path = Path(tmp) / "analysis.json"
             path.write_text(json.dumps({"metadata": {"commit_hash": "old"}}), encoding="utf-8")
 
-            ok, message = cb_engine.validate_base_analysis(path, "new")
+            ok, message = engine_adapter.validate_base_analysis(path, "new")
 
             self.assertFalse(ok)
             self.assertIn("old", message)
             self.assertIn("new", message)
+
+    def test_validate_base_accepts_docs_only_bot_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            self._git(repo, "init")
+            self._git(repo, "config", "user.name", "Test")
+            self._git(repo, "config", "user.email", "test@example.com")
+            (repo / "app.py").write_text("print('base')\n", encoding="utf-8")
+            self._git(repo, "add", "app.py")
+            self._git(repo, "commit", "-m", "base")
+            base_sha = self._git(repo, "rev-parse", "HEAD").stdout.strip()
+
+            (repo / ".codeboarding").mkdir()
+            (repo / ".codeboarding" / "analysis.json").write_text(
+                json.dumps({"metadata": {"commit_hash": base_sha}}),
+                encoding="utf-8",
+            )
+            (repo / ".codeboarding" / "overview.md").write_text("overview\n", encoding="utf-8")
+            (repo / "docs" / "development").mkdir(parents=True)
+            (repo / "docs" / "development" / "architecture.md").write_text("overview\n", encoding="utf-8")
+            self._git(repo, "add", ".codeboarding", "docs/development/architecture.md")
+            self._git(repo, "commit", "-m", "docs bot")
+            docs_sha = self._git(repo, "rev-parse", "HEAD").stdout.strip()
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(repo)
+                ok, message = engine_adapter.validate_base_analysis(repo / ".codeboarding" / "analysis.json", docs_sha)
+            finally:
+                os.chdir(cwd)
+
+            self.assertTrue(ok)
+            self.assertIn("valid for PR base", message)
+
+    def test_validate_base_rejects_code_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            self._git(repo, "init")
+            self._git(repo, "config", "user.name", "Test")
+            self._git(repo, "config", "user.email", "test@example.com")
+            (repo / "app.py").write_text("print('base')\n", encoding="utf-8")
+            self._git(repo, "add", "app.py")
+            self._git(repo, "commit", "-m", "base")
+            base_sha = self._git(repo, "rev-parse", "HEAD").stdout.strip()
+            (repo / ".codeboarding").mkdir()
+            analysis_path = repo / ".codeboarding" / "analysis.json"
+            analysis_path.write_text(json.dumps({"metadata": {"commit_hash": base_sha}}), encoding="utf-8")
+            (repo / "app.py").write_text("print('changed')\n", encoding="utf-8")
+            self._git(repo, "add", "app.py", ".codeboarding/analysis.json")
+            self._git(repo, "commit", "-m", "code change")
+            code_sha = self._git(repo, "rev-parse", "HEAD").stdout.strip()
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(repo)
+                ok, message = engine_adapter.validate_base_analysis(analysis_path, code_sha)
+            finally:
+                os.chdir(cwd)
+
+            self.assertFalse(ok)
+            self.assertIn("app.py", message)
+
+    def _git(self, repo, *args):
+        return subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            check=True,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
 
     def test_validate_base_rejects_missing_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "analysis.json"
             path.write_text(json.dumps({"metadata": {}}), encoding="utf-8")
 
-            ok, message = cb_engine.validate_base_analysis(path, "abc123")
+            ok, message = engine_adapter.validate_base_analysis(path, "abc123")
 
             self.assertFalse(ok)
             self.assertIn("commit_hash", message)
@@ -226,13 +300,147 @@ class TestValidateBase(_Base):
             path.write_text(json.dumps({"metadata": {"commit_hash": "abc123"}}), encoding="utf-8")
 
             self.assertEqual(
-                cb_engine.main(["validate-base", "--analysis", str(path), "--expected-sha", "abc123"]),
+                engine_adapter.main(["validate-base", "--analysis", str(path), "--expected-sha", "abc123"]),
                 0,
             )
             self.assertEqual(
-                cb_engine.main(["validate-base", "--analysis", str(path), "--expected-sha", "def456"]),
+                engine_adapter.main(["validate-base", "--analysis", str(path), "--expected-sha", "def456"]),
                 1,
             )
+
+    def test_validate_base_accepts_matching_depth(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(
+                json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 2}}),
+                encoding="utf-8",
+            )
+
+            ok, message = engine_adapter.validate_base_analysis(path, "abc123", expected_depth=2)
+
+            self.assertTrue(ok)
+            self.assertIn("matches", message)
+
+    def test_validate_base_rejects_deeper_baseline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(
+                json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 3}}),
+                encoding="utf-8",
+            )
+
+            ok, message = engine_adapter.validate_base_analysis(path, "abc123", expected_depth=1)
+
+            self.assertFalse(ok)
+            self.assertIn("3", message)  # baseline depth
+            self.assertIn("1", message)  # expected depth
+
+    def test_validate_base_accepts_shallower_baseline(self):
+        # The engine records the depth REACHED, not requested: a depth-2 run on
+        # a repo that never expands persists depth_level 1. Rejecting it would
+        # regenerate (computing 1 again) on every PR without converging.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(
+                json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 1}}),
+                encoding="utf-8",
+            )
+
+            ok, _ = engine_adapter.validate_base_analysis(path, "abc123", expected_depth=3)
+
+            self.assertTrue(ok)
+
+    def test_validate_base_depth_checked_on_drift_path(self):
+        # The deeper-baseline rejection must also apply when the commit matched
+        # only via the docs-only-drift allowance, not just on exact SHA match.
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            self._git(repo, "init")
+            self._git(repo, "config", "user.name", "Test")
+            self._git(repo, "config", "user.email", "test@example.com")
+            (repo / "app.py").write_text("print('base')\n", encoding="utf-8")
+            self._git(repo, "add", "app.py")
+            self._git(repo, "commit", "-m", "base")
+            base_sha = self._git(repo, "rev-parse", "HEAD").stdout.strip()
+
+            (repo / ".codeboarding").mkdir()
+            analysis_path = repo / ".codeboarding" / "analysis.json"
+            analysis_path.write_text(
+                json.dumps({"metadata": {"commit_hash": base_sha, "depth_level": 3}}),
+                encoding="utf-8",
+            )
+            self._git(repo, "add", ".codeboarding")
+            self._git(repo, "commit", "-m", "docs bot")
+            docs_sha = self._git(repo, "rev-parse", "HEAD").stdout.strip()
+
+            cwd = os.getcwd()
+            try:
+                os.chdir(repo)
+                ok_drift, _ = engine_adapter.validate_base_analysis(analysis_path, docs_sha)
+                ok_depth, message = engine_adapter.validate_base_analysis(analysis_path, docs_sha, expected_depth=1)
+            finally:
+                os.chdir(cwd)
+
+            self.assertTrue(ok_drift)  # drift alone is accepted...
+            self.assertFalse(ok_depth)  # ...but the depth check still applies
+            self.assertIn("deeper", message)
+
+    def test_validate_base_accepts_legacy_baseline_without_depth(self):
+        # Missing or unparseable depth_level -> accept (baselines predate the field).
+        for metadata in (
+            {"commit_hash": "abc123"},
+            {"commit_hash": "abc123", "depth_level": "not-a-number"},
+        ):
+            with self.subTest(metadata=metadata):
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "analysis.json"
+                    path.write_text(json.dumps({"metadata": metadata}), encoding="utf-8")
+
+                    ok, _ = engine_adapter.validate_base_analysis(path, "abc123", expected_depth=2)
+
+                    self.assertTrue(ok)
+
+    def test_validate_base_without_expected_depth_ignores_depth(self):
+        # No --expected-depth -> behavior unchanged even when depth_level disagrees.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(
+                json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 3}}),
+                encoding="utf-8",
+            )
+
+            ok, message = engine_adapter.validate_base_analysis(path, "abc123")
+
+            self.assertTrue(ok)
+            self.assertIn("matches", message)
+
+    def test_main_validate_base_expected_depth_exit_codes(self):
+        # patch.dict: main() setdefaults CODEBOARDING_SOURCE; don't leak it.
+        with patch.dict(os.environ), tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(
+                json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 2}}),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                engine_adapter.main(
+                    ["validate-base", "--analysis", str(path), "--expected-sha", "abc123", "--expected-depth", "2"]
+                ),
+                0,
+            )
+            self.assertEqual(
+                engine_adapter.main(
+                    ["validate-base", "--analysis", str(path), "--expected-sha", "abc123", "--expected-depth", "1"]
+                ),
+                1,
+            )
+            with redirect_stderr(StringIO()):
+                with self.assertRaises(SystemExit):  # depth outside 1-3 rejected by argparse
+                    engine_adapter.main(
+                        ["validate-base", "--analysis", str(path), "--expected-sha", "abc123", "--expected-depth", "4"]
+                    )
 
 
 class TestSeed(_Base):
@@ -276,7 +484,7 @@ class TestSeed(_Base):
 
     def test_seed_analyzes_clusters_then_saves(self):
         log, results = self._install()
-        cb_engine.run_seed("/repo", "/out", "abc123")
+        engine_adapter.run_seed("/repo", "/out", "abc123")
         self.assertEqual(
             log,
             [
@@ -293,13 +501,13 @@ class TestSeed(_Base):
             with self.subTest(stage=stage):
                 log, _ = self._install(fail_at=stage)
                 with self.assertRaises(RuntimeError):
-                    cb_engine.run_seed("/repo", "/out", "abc123")
+                    engine_adapter.run_seed("/repo", "/out", "abc123")
                 self.assertNotIn("save", [e[0] for e in log])
                 self.tearDown()
 
     def test_main_seed_wires_args(self):
         log, _ = self._install()
-        rc = cb_engine.main(["seed", "--repo", "/r", "--out", "/o", "--source-sha", "s1"])
+        rc = engine_adapter.main(["seed", "--repo", "/r", "--out", "/o", "--source-sha", "s1"])
         self.assertEqual(rc, 0)
         self.assertEqual(log[0], ("analyze", "/r", "/o", "s1"))
         self.assertEqual(log[-1][0], "save")
@@ -340,7 +548,7 @@ class TestHealth(_Base):
 
         report = types.SimpleNamespace(check_summaries=[CS()])
         self._install_health(report=report)
-        self.assertEqual(cb_engine.run_health("/art", "/repo", "r"), 3)  # 2 warnings + 1 critical, info ignored
+        self.assertEqual(engine_adapter.run_health("/art", "/repo", "r"), 3)  # 2 warnings + 1 critical, info ignored
 
     def test_prefers_written_health_report(self):
         artifact_dir = Path(tempfile.mkdtemp())
@@ -360,18 +568,18 @@ class TestHealth(_Base):
             """,
             encoding="utf-8",
         )
-        self.assertEqual(cb_engine.run_health(str(artifact_dir), "/repo", "r"), 3)
+        self.assertEqual(engine_adapter.run_health(str(artifact_dir), "/repo", "r"), 3)
 
     def test_malformed_health_report_falls_back(self):
         artifact_dir = Path(tempfile.mkdtemp())
         report_dir = artifact_dir / "health"
         report_dir.mkdir()
         (report_dir / "health_report.json").write_text("[]", encoding="utf-8")
-        self.assertEqual(cb_engine.run_health(str(artifact_dir), "/repo", "r"), 0)
+        self.assertEqual(engine_adapter.run_health(str(artifact_dir), "/repo", "r"), 0)
 
     def test_missing_module_yields_zero(self):
         # No health.* modules installed -> import fails -> 0, never raises.
-        self.assertEqual(cb_engine.run_health("/art", "/repo", "r"), 0)
+        self.assertEqual(engine_adapter.run_health("/art", "/repo", "r"), 0)
 
 
 if __name__ == "__main__":

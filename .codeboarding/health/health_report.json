@@ -59,7 +59,7 @@
           "entities": [
             {
               "entity_name": "[unreachable_code] Type analysis indicates code is unreachable",
-              "file_path": "scripts/cb_engine.py",
+              "file_path": "scripts/engine_adapter.py",
               "line_start": 159,
               "line_end": 159,
               "metric_value": 0.0
@@ -71,7 +71,7 @@
   ],
   "file_summaries": [
     {
-      "file_path": "scripts/cb_engine.py",
+      "file_path": "scripts/engine_adapter.py",
       "total_findings": 1,
       "warning_findings": 0,
       "composite_risk_score": 10.0

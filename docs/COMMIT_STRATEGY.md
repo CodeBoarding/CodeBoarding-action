@@ -44,7 +44,7 @@ The warm-start — and the engine's incremental path itself — needs the pkl **
 
 - **No committed baseline:** the generated base analysis writes the pkl as a side effect; the artifact dir is saved in `actions/cache` keyed by base SHA / depth / engine ref.
 - **Committed baseline:** the action first requires `analysis.json.metadata.commit_hash` to equal the PR base SHA. A stale committed diagram is treated like no baseline, so the base is regenerated at the PR base commit before diffing.
-- **Committed baseline, cache miss:** the action *seeds* the pkl deterministically (`cb_engine.py seed`: LSP indexing + the same clustering call a full run makes — **no LLM calls**), then saves it to the same cache. Seeding is fail-open: if it fails, the head run falls back to a full analysis.
+- **Committed baseline, cache miss:** the action *seeds* the pkl deterministically (`engine_adapter.py seed`: LSP indexing + the same clustering call a full run makes — **no LLM calls**), then saves it to the same cache. Seeding is fail-open: if it fails, the head run falls back to a full analysis.
 
 Either way the head analysis is seeded from that directory and runs incrementally. This keeps the repo clean — the pkl never enters git — while the cache + seeding make incremental work from the first PR run.
 

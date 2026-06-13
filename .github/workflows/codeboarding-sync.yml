@@ -1,0 +1,56 @@
+# Dogfood sync mode: keep THIS repo's committed architecture baseline
+# (.codeboarding/analysis.json + rendered docs) current on every push to main,
+# so the PR review workflow always diffs against an up-to-date baseline.
+#
+# This is the ONLY baseline writer for this repo. The manual "rebuild from
+# scratch" path (previously a separate refresh-baseline.yml) is now the
+# workflow_dispatch + force_full input below, which runs the same tested action
+# instead of a hand-rolled copy of its pipeline.
+
+name: CodeBoarding sync
+
+on:
+  push:
+    branches: [main]
+    # Don't re-trigger on the files this workflow itself commits. Deliberately
+    # NOT '.codeboarding/**': that would also swallow pushes that only edit the
+    # user-authored .codeboarding/.codeboardingignore, which changes analysis
+    # scope and should regenerate the baseline.
+    paths-ignore:
+      - '.codeboarding/*.md'
+      - '.codeboarding/analysis.json'
+      - '.codeboarding/codeboarding_version.json'
+      - '.codeboarding/health/**'
+      - 'docs/development/architecture.md'
+  workflow_dispatch:
+    inputs:
+      force_full:
+        description: 'Ignore the committed baseline and rebuild it from scratch (full analysis).'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write   # commit the generated baseline + docs to main
+
+concurrency:
+  # Serialize this workflow against itself: a push landing while a manual
+  # dispatch is mid-run must not produce two concurrent commits to main.
+  group: codeboarding-baseline-writers
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      # Dogfood: run the action from the checked-out repo (uses: ./) so pushes to
+      # main exercise the action code on main, not the last published release.
+      # The action reads its scripts via github.action_path and checks the engine
+      # and target repo into subdirectories, so this local checkout is untouched.
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          mode: sync
+          force_full: ${{ inputs.force_full || false }}
+          llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}

@@ -16,18 +16,18 @@
   },
   "description": "The CodeBoarding-action project implements a pipeline that orchestrates static analysis of code branches, performs structural diffing to generate visual Mermaid.js diagrams, and integrates these insights into GitHub Pull Requests via interactive deep links and editor-specific metadata.",
   "files": {
-    "scripts/cb_engine.py": {
+    "scripts/engine_adapter.py": {
       "method_keys": [
-        "scripts/cb_engine.py|scripts.cb_engine._log_path",
-        "scripts/cb_engine.py|scripts.cb_engine._clear_dir",
-        "scripts/cb_engine.py|scripts.cb_engine.validate_base_analysis",
-        "scripts/cb_engine.py|scripts.cb_engine.run_base",
-        "scripts/cb_engine.py|scripts.cb_engine.run_seed",
-        "scripts/cb_engine.py|scripts.cb_engine.run_head",
-        "scripts/cb_engine.py|scripts.cb_engine._count_report_issues",
-        "scripts/cb_engine.py|scripts.cb_engine._count_health_report",
-        "scripts/cb_engine.py|scripts.cb_engine.run_health",
-        "scripts/cb_engine.py|scripts.cb_engine.main"
+        "scripts/engine_adapter.py|scripts.engine_adapter._log_path",
+        "scripts/engine_adapter.py|scripts.engine_adapter._clear_dir",
+        "scripts/engine_adapter.py|scripts.engine_adapter.validate_base_analysis",
+        "scripts/engine_adapter.py|scripts.engine_adapter.run_base",
+        "scripts/engine_adapter.py|scripts.engine_adapter.run_seed",
+        "scripts/engine_adapter.py|scripts.engine_adapter.run_head",
+        "scripts/engine_adapter.py|scripts.engine_adapter._count_report_issues",
+        "scripts/engine_adapter.py|scripts.engine_adapter._count_health_report",
+        "scripts/engine_adapter.py|scripts.engine_adapter.run_health",
+        "scripts/engine_adapter.py|scripts.engine_adapter.main"
       ]
     },
     "scripts/build_component_files.py": {
@@ -84,72 +84,72 @@
     }
   },
   "methods_index": {
-    "scripts/cb_engine.py|scripts.cb_engine._log_path": {
-      "file_path": "scripts/cb_engine.py",
-      "qualified_name": "scripts.cb_engine._log_path",
+    "scripts/engine_adapter.py|scripts.engine_adapter._log_path": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter._log_path",
       "start_line": 32,
       "end_line": 33,
       "type": "FUNCTION"
     },
-    "scripts/cb_engine.py|scripts.cb_engine._clear_dir": {
-      "file_path": "scripts/cb_engine.py",
-      "qualified_name": "scripts.cb_engine._clear_dir",
+    "scripts/engine_adapter.py|scripts.engine_adapter._clear_dir": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter._clear_dir",
       "start_line": 36,
       "end_line": 42,
       "type": "FUNCTION"
     },
-    "scripts/cb_engine.py|scripts.cb_engine.validate_base_analysis": {
-      "file_path": "scripts/cb_engine.py",
-      "qualified_name": "scripts.cb_engine.validate_base_analysis",
+    "scripts/engine_adapter.py|scripts.engine_adapter.validate_base_analysis": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter.validate_base_analysis",
       "start_line": 45,
       "end_line": 76,
       "type": "FUNCTION"
     },
-    "scripts/cb_engine.py|scripts.cb_engine.run_base": {
-      "file_path": "scripts/cb_engine.py",
-      "qualified_name": "scripts.cb_engine.run_base",
+    "scripts/engine_adapter.py|scripts.engine_adapter.run_base": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter.run_base",
       "start_line": 79,
       "end_line": 91,
       "type": "FUNCTION"
     },
-    "scripts/cb_engine.py|scripts.cb_engine.run_seed": {
-      "file_path": "scripts/cb_engine.py",
-      "qualified_name": "scripts.cb_engine.run_seed",
+    "scripts/engine_adapter.py|scripts.engine_adapter.run_seed": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter.run_seed",
       "start_line": 94,
       "end_line": 121,
       "type": "FUNCTION"
     },
-    "scripts/cb_engine.py|scripts.cb_engine.run_head": {
-      "file_path": "scripts/cb_engine.py",
-      "qualified_name": "scripts.cb_engine.run_head",
+    "scripts/engine_adapter.py|scripts.engine_adapter.run_head": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter.run_head",
       "start_line": 124,
       "end_line": 153,
       "type": "FUNCTION"
     },
-    "scripts/cb_engine.py|scripts.cb_engine._count_report_issues": {
-      "file_path": "scripts/cb_engine.py",
-      "qualified_name": "scripts.cb_engine._count_report_issues",
+    "scripts/engine_adapter.py|scripts.engine_adapter._count_report_issues": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter._count_report_issues",
       "start_line": 156,
       "end_line": 169,
       "type": "FUNCTION"
     },
-    "scripts/cb_engine.py|scripts.cb_engine._count_health_report": {
-      "file_path": "scripts/cb_engine.py",
-      "qualified_name": "scripts.cb_engine._count_health_report",
+    "scripts/engine_adapter.py|scripts.engine_adapter._count_health_report": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter._count_health_report",
       "start_line": 172,
       "end_line": 180,
       "type": "FUNCTION"
     },
-    "scripts/cb_engine.py|scripts.cb_engine.run_health": {
-      "file_path": "scripts/cb_engine.py",
-      "qualified_name": "scripts.cb_engine.run_health",
+    "scripts/engine_adapter.py|scripts.engine_adapter.run_health": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter.run_health",
       "start_line": 183,
       "end_line": 212,
       "type": "FUNCTION"
     },
-    "scripts/cb_engine.py|scripts.cb_engine.main": {
-      "file_path": "scripts/cb_engine.py",
-      "qualified_name": "scripts.cb_engine.main",
+    "scripts/engine_adapter.py|scripts.engine_adapter.main": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter.main",
       "start_line": 215,
       "end_line": 257,
       "type": "FUNCTION"
@@ -441,26 +441,26 @@
       "description": "The central controller that manages the GitHub Action lifecycle, coordinating environment setup and triggering static analysis for base and head branches.",
       "key_entities": [
         {
-          "qualified_name": "scripts.cb_engine.main",
-          "reference_file": "scripts/cb_engine.py",
+          "qualified_name": "scripts.engine_adapter.main",
+          "reference_file": "scripts/engine_adapter.py",
           "reference_start_line": 215,
           "reference_end_line": 257
         },
         {
-          "qualified_name": "scripts.cb_engine.run_base",
-          "reference_file": "scripts/cb_engine.py",
+          "qualified_name": "scripts.engine_adapter.run_base",
+          "reference_file": "scripts/engine_adapter.py",
           "reference_start_line": 79,
           "reference_end_line": 91
         },
         {
-          "qualified_name": "scripts.cb_engine.run_head",
-          "reference_file": "scripts/cb_engine.py",
+          "qualified_name": "scripts.engine_adapter.run_head",
+          "reference_file": "scripts/engine_adapter.py",
           "reference_start_line": 124,
           "reference_end_line": 153
         },
         {
-          "qualified_name": "scripts.cb_engine.run_health",
-          "reference_file": "scripts/cb_engine.py",
+          "qualified_name": "scripts.engine_adapter.run_health",
+          "reference_file": "scripts/engine_adapter.py",
           "reference_start_line": 183,
           "reference_end_line": 212
         }
@@ -470,18 +470,18 @@
       ],
       "file_methods": [
         {
-          "file_path": "scripts/cb_engine.py",
+          "file_path": "scripts/engine_adapter.py",
           "methods": [
-            "scripts.cb_engine._log_path",
-            "scripts.cb_engine._clear_dir",
-            "scripts.cb_engine.validate_base_analysis",
-            "scripts.cb_engine.run_base",
-            "scripts.cb_engine.run_seed",
-            "scripts.cb_engine.run_head",
-            "scripts.cb_engine._count_report_issues",
-            "scripts.cb_engine._count_health_report",
-            "scripts.cb_engine.run_health",
-            "scripts.cb_engine.main"
+            "scripts.engine_adapter._log_path",
+            "scripts.engine_adapter._clear_dir",
+            "scripts.engine_adapter.validate_base_analysis",
+            "scripts.engine_adapter.run_base",
+            "scripts.engine_adapter.run_seed",
+            "scripts.engine_adapter.run_head",
+            "scripts.engine_adapter._count_report_issues",
+            "scripts.engine_adapter._count_health_report",
+            "scripts.engine_adapter.run_health",
+            "scripts.engine_adapter.main"
           ]
         }
       ],

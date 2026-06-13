@@ -1,11 +1,19 @@
 # AGENT.md — CodeBoarding-action
 
-This repo is a GitHub Action that gives pull requests a visual system-design
-review: it analyzes the PR with the CodeBoarding engine and posts a diagram of
-the added, modified, and removed components as a PR comment. The engine
-(`CodeBoarding/CodeBoarding`) is pinned to a release in `action.yml`; engine
-changes reach users only when that pin is bumped *and* a new action release
-ships.
+This repo is a GitHub Action with two modes, selected by the `mode` input:
+
+- **`mode: review`** (default): analyzes a PR with the CodeBoarding engine and
+  posts a Mermaid diagram of the added, modified, and removed components as a PR
+  comment (runs on `pull_request` / `issue_comment`).
+- **`mode: sync`**: on push to a branch, regenerates the architecture and commits
+  the versioned baseline (`.codeboarding/analysis.json` + rendered markdown) back
+  to the branch, so review mode always diffs against a current baseline.
+
+The action is a thin orchestration wrapper, not the analysis engine: the engine
+(`CodeBoarding/CodeBoarding`) is a separate repo checked out at runtime and
+pinned to a release in `action.yml`. `scripts/engine_adapter.py` is the CLI
+adapter into it (no analysis logic lives there). Engine changes reach users only
+when that pin is bumped *and* a new action release ships.
 
 ## Releases
 
