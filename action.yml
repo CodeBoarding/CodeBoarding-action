@@ -985,6 +985,8 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         TARGET_REPO: ${{ github.workspace }}/target-repo
         DIAGRAM_MD: ${{ steps.diagram.outputs.diagram_md }}
+        BASE_ANALYSIS: ${{ steps.analyze.outputs.base_analysis }}
+        HEAD_ANALYSIS: ${{ steps.analyze.outputs.head_analysis }}
         RUN_ID: ${{ github.run_id }}
         CHANGED_COUNT: ${{ steps.diagram.outputs.n_changed }}
         CHANGED: ${{ steps.diagram.outputs.changed }}
@@ -1023,6 +1025,26 @@ runs:
             --repo-path "$TARGET_REPO" --issues "${ISSUES:-0}" "${extra[@]}"
         }
 
+        # Per-component changed-file dropdowns: which files made each node change
+        # color. The git listing is the PR's own changes (three-dot merge-base..head,
+        # the same set as the Files-changed tab; --no-renames so a moved file's old
+        # path still appears for the donor component). Node colors compare against
+        # the base *tip*, so a node colored only by base-branch churn on a stale PR
+        # gets no dropdown. Best-effort: if the git diff fails (e.g. merge-base
+        # unreachable on a shallow fork fetch) the script falls back to
+        # analysis-derived changes, and if the script fails the section is omitted —
+        # the comment always posts.
+        FILES_MD="${RUNNER_TEMP}/component_files.md"
+        : > "$FILES_MD"
+        if [ -n "$BASE_ANALYSIS" ] && [ -n "$HEAD_ANALYSIS" ]; then
+          CHANGED_LIST="${RUNNER_TEMP}/changed_files.txt"
+          files_args=(--base "$BASE_ANALYSIS" --head "$HEAD_ANALYSIS" --out "$FILES_MD")
+          if git -C "$TARGET_REPO" -c core.quotepath=off diff --no-renames --name-only "$BASE_SHA...HEAD" > "$CHANGED_LIST" 2>/dev/null; then
+            files_args+=(--changed-files "$CHANGED_LIST")
+          fi
+          python3 "$ACTION_PATH/scripts/build_component_files.py" "${files_args[@]}" || : > "$FILES_MD"
+        fi
+
         {
           echo "### ${HEADER} · $(headline)"
           echo ""
@@ -1039,6 +1061,10 @@ runs:
             echo "Architecture changed versus \`${BASE_REF}\`, but the diagram is too large to render inline (GitHub caps inline Mermaid at ~500 edges)."
           else
             echo "No architectural changes detected versus \`${BASE_REF}\`."
+          fi
+          if [ -s "$FILES_MD" ]; then
+            echo ""
+            cat "$FILES_MD"
           fi
           cta
           echo ""
