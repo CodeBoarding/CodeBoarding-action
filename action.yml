@@ -1000,9 +1000,16 @@ runs:
         WEBVIEW_SHA: ${{ steps.commit_head.outputs.webview_sha }}
         WEBVIEW_READY: ${{ steps.commit_head.outputs.ready }}
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        SERVER_URL: ${{ github.server_url }}
       run: |
         BODY_FILE=$(mktemp)
         OWNER="${OWNER_REPO%%/*}"; REPO="${OWNER_REPO##*/}"
+
+        # How the comment names the base: the branch ref plus the short SHA of the
+        # exact base commit the diff was computed against, linked to that commit.
+        # A base branch tip moves (merges, the sync baseline refresh), so the ref
+        # name alone is ambiguous about which snapshot "main" the diff is versus.
+        BASE_LABEL="\`${BASE_REF}\` ([\`${BASE_SHA:0:6}\`](${SERVER_URL}/${OWNER_REPO}/commit/${BASE_SHA}))"
 
         headline() {
           if [ "$CHANGED" != "true" ]; then echo "no architectural changes";
@@ -1052,15 +1059,15 @@ runs:
             cat "$DIAGRAM_MD"
             echo ""
             echo ""
-            echo "Colors indicate component changes compared to \`${BASE_REF}\`: 🟩 Added · 🟨 Modified · 🟥 Removed"
+            echo "Colors indicate component changes compared to ${BASE_LABEL}: 🟩 Added · 🟨 Modified · 🟥 Removed"
             if [ "$TRUNCATED" = "true" ]; then
               echo ""
               echo "<sub>Showing changed components only — the full graph exceeds GitHub's inline Mermaid limit.</sub>"
             fi
           elif [ "$CHANGED" = "true" ]; then
-            echo "Architecture changed versus \`${BASE_REF}\`, but the diagram is too large to render inline (GitHub caps inline Mermaid at ~500 edges)."
+            echo "Architecture changed versus ${BASE_LABEL}, but the diagram is too large to render inline (GitHub caps inline Mermaid at ~500 edges)."
           else
-            echo "No architectural changes detected versus \`${BASE_REF}\`."
+            echo "No architectural changes detected versus ${BASE_LABEL}."
           fi
           if [ -s "$FILES_MD" ]; then
             echo ""
