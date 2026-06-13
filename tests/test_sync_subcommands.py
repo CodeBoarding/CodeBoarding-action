@@ -1,4 +1,4 @@
-"""Smoke tests for the docs-mode subcommands of scripts/cb_engine.py (analyze,
+"""Smoke tests for the sync-mode subcommands of scripts/cb_engine.py (analyze,
 render, concat) with stubbed engine modules — ported from the standalone
 docs-action's test_docs_engine.py. Seed tests are not ported: cb_engine's seed
 is byte-identical and already covered by tests/test_cb_engine.py."""
@@ -236,7 +236,7 @@ class TestAnalyze(_Base):
             cb_engine.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
         self.assertEqual(self._markers(buf), ["analysis_mode=full"])
 
-    def test_main_parses_depth_as_int_and_sets_docs_action_source(self):
+    def test_main_parses_depth_as_int_and_sets_sync_source(self):
         rf = _Rec()
         self._install(run_full=rf)
         with patch.dict(os.environ, {}, clear=True):
@@ -258,7 +258,7 @@ class TestAnalyze(_Base):
                 ]
             )
             self.assertEqual(rf.calls[0][1]["depth_level"], 2)
-            self.assertEqual(os.environ["CODEBOARDING_SOURCE"], "docs_action")
+            self.assertEqual(os.environ["CODEBOARDING_SOURCE"], "sync")
 
     def test_main_rejects_invalid_depth(self):
         for depth in ("0", "4", "x"):
@@ -319,11 +319,11 @@ class TestRenderAndConcat(_Base):
 
 
 class TestSourceDispatch(_Base):
-    """CODEBOARDING_SOURCE is setdefault'ed after argparse: docs_action for
+    """CODEBOARDING_SOURCE is setdefault'ed after argparse: sync for
     analyze/render/concat, github_action for everything else (base/seed/head/
     health/validate-base — base is asserted in test_cb_engine.py)."""
 
-    def test_main_render_sets_docs_action_source(self):
+    def test_main_render_sets_sync_source(self):
         rec = _Rec()
         rendering = _mod("codeboarding_workflows.rendering", render_docs=rec)
         pkg = _mod("codeboarding_workflows")
@@ -344,16 +344,16 @@ class TestSourceDispatch(_Base):
             )
             self.assertEqual(rc, 0)
             self.assertEqual(rec.calls[0][1]["format"], ".md")  # default --format
-            self.assertEqual(os.environ["CODEBOARDING_SOURCE"], "docs_action")
+            self.assertEqual(os.environ["CODEBOARDING_SOURCE"], "sync")
 
-    def test_main_concat_sets_docs_action_source(self):
+    def test_main_concat_sets_sync_source(self):
         docs_dir = Path(tempfile.mkdtemp())
         (docs_dir / "overview.md").write_text("overview", encoding="utf-8")
         out = Path(tempfile.mkdtemp()) / "architecture.md"
         with patch.dict(os.environ, {}, clear=True):
             rc = cb_engine.main(["concat", "--docs-dir", str(docs_dir), "--out", str(out)])
             self.assertEqual(rc, 0)
-            self.assertEqual(os.environ["CODEBOARDING_SOURCE"], "docs_action")
+            self.assertEqual(os.environ["CODEBOARDING_SOURCE"], "sync")
 
     def test_main_validate_base_keeps_github_action_source(self):
         with tempfile.TemporaryDirectory() as tmp:

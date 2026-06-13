@@ -1,11 +1,11 @@
 # CodeBoarding Action
 
-One action, two modes: architecture review on every pull request, and always-current architecture docs on your main branch.
+One action, two modes: architecture review on every pull request, and a versioned, always-current architecture baseline on your main branch.
 
 - **`mode: review`** (the default) — CodeBoarding analyzes your architecture before and after a change, then comments on the PR with an inline Mermaid diagram of what changed: added, modified, and deleted components and the relationships between them. Runs on `pull_request` and `issue_comment`.
-- **`mode: docs`** — CodeBoarding regenerates your architecture docs (`.codeboarding/*.md` plus the `analysis.json` baseline) and commits them to your branch, so the docs never go stale. Runs on `push`, `workflow_dispatch`, and `schedule`. See [docs mode](#architecture-docs-on-your-main-branch-docs-mode).
+- **`mode: sync`** — CodeBoarding keeps your architecture analysis versioned and current on your branch: on every push it commits the `analysis.json` baseline plus readable markdown (`.codeboarding/*.md`), so reviews diff against your current architecture and your architecture has real git history. Runs on `push`, `workflow_dispatch`, and `schedule`. See [sync mode](#keep-your-architecture-versioned-sync-mode).
 
-Both modes run the [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) engine in CI: static analysis combined with LLM reasoning. They are designed to be used together — [docs mode keeps the baseline fresh that review mode diffs against](#how-the-two-modes-work-together) — but each works on its own.
+Both modes run the [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) engine in CI: static analysis combined with LLM reasoning. They are designed to be used together — [sync mode keeps the baseline fresh that review mode diffs against](#how-the-two-modes-work-together) — but each works on its own.
 
 [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) · [Website](https://codeboarding.org) · [Explore examples](https://codeboarding.org/diagrams) · [VS Code extension](https://marketplace.visualstudio.com/items?itemName=Codeboarding.codeboarding) · [Discord](https://discord.gg/T5zHTJYFuy)
 
@@ -154,18 +154,18 @@ This table mirrors the engine and may lag it. The source of truth is the engine'
 
 The command needs the `issue_comment` trigger and runs from your default branch (a GitHub rule), so it only works once the workflow is merged there. On-demand runs on fork PRs are refused, so fork code is never analyzed with your secrets.
 
-## Architecture docs on your main branch (docs mode)
+## Keep your architecture versioned (sync mode)
 
-With `mode: docs`, the action analyzes the pushed commit and commits the results back to the branch (as `codeboarding[bot]`), so your architecture docs track the code instead of drifting from it:
+With `mode: sync`, the action analyzes the pushed commit and commits the results back to the branch (as `codeboarding[bot]`), so your architecture analysis stays versioned in git and tracks the code instead of drifting from it:
 
 - `.codeboarding/*.md` — rendered architecture docs: `overview.md` plus one page per component (directory configurable via `output_dir`).
 - `.codeboarding/analysis.json` — the machine-readable analysis, which doubles as the baseline that review mode and the webview diff against (alongside `codeboarding_version.json` and `health/health_report.json`).
 - `docs/development/architecture.md` (optional, on by default) — all pages concatenated into a single document, `overview.md` first. Disable with `write_architecture_md: false`.
 
-Create `.github/workflows/codeboarding-docs.yml` next to your review workflow:
+Create `.github/workflows/codeboarding-sync.yml` next to your review workflow:
 
 ```yaml
-name: CodeBoarding docs
+name: CodeBoarding sync
 
 on:
   push:
@@ -185,17 +185,17 @@ permissions:
   contents: write   # commit the generated docs to the branch
 
 concurrency:
-  group: codeboarding-docs
+  group: codeboarding-sync
   cancel-in-progress: false
 
 jobs:
-  docs:
+  sync:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: CodeBoarding/CodeBoarding-action@v1
         with:
-          mode: docs
+          mode: sync
           llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
 
@@ -203,26 +203,26 @@ Behavior worth knowing:
 
 - The first run on a branch is a full analysis; subsequent runs reuse the committed baseline and run incrementally when they can (the `analysis_mode` output tells you which happened).
 - The commit is skipped when nothing meaningful changed (an empty diff, or only `generated_at`/timestamp fields). The push retries a few times with fetch+rebase and fails open, so a race with another push never fails your CI.
-- Tag pushes are skipped. `pull_request` events soft-skip in docs mode, so a mistakenly shared workflow can never push docs from a PR run.
+- Tag pushes are skipped. `pull_request` events soft-skip in sync mode, so a mistakenly shared workflow can never push docs from a PR run.
 - The default `commit_message` ends in `[skip ci]`; keep the `paths-ignore` list above anyway, in case you customize the message or use a push token whose commits trigger workflows.
 - `output_dir` is owned by the action: pre-existing top-level markdown files in it are deleted on every run (stale component pages must not linger). Don't point it at a directory with hand-written docs.
 
 ### How the two modes work together
 
-Docs mode keeps the committed `.codeboarding/analysis.json` baseline fresh on main. Review mode reuses that committed baseline for the PR base, so PR reviews diff against your *current* main architecture and run incrementally instead of rebuilding a base from scratch — faster and cheaper per PR.
+Sync mode keeps the committed `.codeboarding/analysis.json` baseline fresh on main. Review mode reuses that committed baseline for the PR base, so PR reviews diff against your *current* main architecture and run incrementally instead of rebuilding a base from scratch — faster and cheaper per PR.
 
 Use the **same `depth_level` in both workflows** (both default to `2`). Review mode regenerates its base when the committed baseline is *deeper* than the workflow's `depth_level`, so a lowered depth silently forfeits the reuse. (A baseline recording a *shallower* depth is accepted: the engine records the depth actually reached, which can be less than requested on repos where no component expands.) Want cheaper, faster runs? Set `depth_level: 1` in *both* workflows.
 
-One caveat for squash-merge repos: the `analysis.json` that review mode commits to PR branches carries the PR-head SHA, which a squash merge orphans — so that copy can't validate as a baseline on main. Docs mode running on main is what keeps the baseline valid there.
+One caveat for squash-merge repos: the `analysis.json` that review mode commits to PR branches carries the PR-head SHA, which a squash merge orphans — so that copy can't validate as a baseline on main. Sync mode running on main is what keeps the baseline valid there.
 
 ### Security: keep the two modes in separate workflows
 
 Use two thin workflow files, each with least privilege, exactly as in the snippets above:
 
 - **review workflow** — `on: pull_request` (types `[opened, reopened, ready_for_review]`; the quick start adds `closed` purely to cancel in-flight runs) + `issue_comment` (types `[created]`); `permissions: pull-requests: write, issues: write, contents: write` (`contents` only needed for `commit_head_analysis`/the webview link).
-- **docs workflow** — `on: push` (branches `[main]`, with the `paths-ignore` list) + `workflow_dispatch`; `permissions: contents: write`.
+- **sync workflow** — `on: push` (branches `[main]`, with the `paths-ignore` list) + `workflow_dispatch`; `permissions: contents: write`.
 
-The anti-pattern to avoid: one workflow with `on: [push, pull_request]` and a single union permissions block — it forces every privilege either mode needs onto every trigger. Docs mode soft-skips on `pull_request` events as a backstop, but don't rely on it: keep the triggers and permissions split so each workflow grants only what its own mode uses.
+The anti-pattern to avoid: one workflow with `on: [push, pull_request]` and a single union permissions block — it forces every privilege either mode needs onto every trigger. Sync mode soft-skips on `pull_request` events as a backstop, but don't rely on it: keep the triggers and permissions split so each workflow grants only what its own mode uses.
 
 Be aware that `contents: write` is repo-wide — GitHub does not scope it to a branch — so the review workflow's webview push permission is itself a write-to-main-capable grant. If that doesn't sit well with your threat model, drop the review workflow to `contents: read` (you lose only the webview link, not the PR comment).
 
@@ -232,11 +232,11 @@ Be aware that `contents: write` is repo-wide — GitHub does not scope it to a b
 |---|---|---|---|
 | `llm_api_key` | both | required | Your LLM provider API key (see `llm_provider`). |
 | `llm_provider` | both | `openrouter` | Provider for the key, mapped to `<NAME>_API_KEY` (e.g. `anthropic`, `openai`, `google`). |
-| `mode` | both | `review` | `review` posts the PR architecture-diff comment; `docs` generates docs and commits them to `target_branch`. |
+| `mode` | both | `review` | `review` posts the PR architecture-diff comment; `sync` analyzes on push and commits the architecture (`analysis.json` + rendered docs) to `target_branch`, keeping it versioned and current. |
 | `github_token` | both | `${{ github.token }}` | Token for GitHub API calls; in review mode it posts or updates the PR comment. |
-| `push_token` | both | `${{ github.token }}` | Token used for pushes: in review mode the generated `analysis.json` to the PR branch (for the webview link), in docs mode the generated docs to `target_branch`. The workflow token can push when the workflow grants `permissions: contents: write`. Separate from `github_token` so commenting can use a GitHub App token while the push uses the workflow token. |
+| `push_token` | both | `${{ github.token }}` | Token used for pushes: in review mode the generated `analysis.json` to the PR branch (for the webview link), in sync mode the architecture to `target_branch`. The workflow token can push when the workflow grants `permissions: contents: write`. Separate from `github_token` so commenting can use a GitHub App token while the push uses the workflow token. |
 | `engine_ref` | both | `v0.12.1` | CodeBoarding engine ref. Pin for reproducibility. |
-| `depth_level` | both | `2` | Analysis depth, 1 to 3. Higher is slower, costlier, and richer; drop to `1` for cheaper runs. Use the same value in your review and docs workflows ([why](#how-the-two-modes-work-together)). |
+| `depth_level` | both | `2` | Analysis depth, 1 to 3. Higher is slower, costlier, and richer; drop to `1` for cheaper runs. Use the same value in your review and sync workflows ([why](#how-the-two-modes-work-together)). |
 | `render_depth` | review | `1` | Display depth for the PR diagram. Keep `1` for a clean top-level view. |
 | `diagram_direction` | review | `LR` | Mermaid direction: `LR`, `TD`, `TB`, `RL`, or `BT`. |
 | `changed_only` | review | `false` | Render only changed components and incident edges. |
@@ -247,11 +247,11 @@ Be aware that `contents: write` is repo-wide — GitHub does not scope it to a b
 | `cta_base_url` | review | empty | Click-proxy base URL: deep-links the editor link into VS Code/Cursor and adds a "get the extension" link (tracks owner/repo/pr). Empty links to the extension listing instead (GitHub strips `vscode:`/`cursor:` from comments). |
 | `webview_base_url` | review | `https://app.codeboarding.org` | Hosted webview base URL. The PR comment adds an "explore in browser" link to this PR's head-vs-base diff. Needs `commit_head_analysis` (same-repo PRs only); omitted on forks. Set empty to disable. |
 | `commit_head_analysis` | review | `true` | Commit the generated head `.codeboarding/analysis.json` (+ health report) to the PR branch so the webview can read it at the head SHA. Same-repo PRs only (the token is read-only on forks). |
-| `output_dir` | docs | `.codeboarding` | Directory the rendered docs and analysis metadata are committed to. Owned by the action: pre-existing top-level `.md` files in it are deleted on every run. |
-| `output_format` | docs | `.md` | Output format. Only `.md` is supported. |
-| `target_branch` | docs | `${{ github.ref_name }}` | Branch the generated docs are pushed to. |
-| `write_architecture_md` | docs | `true` | Also write `docs/development/architecture.md`: all rendered pages concatenated, `overview.md` first. |
-| `commit_message` | docs | `docs(codeboarding): update architecture docs [skip ci]` | Commit message for the generated docs. |
+| `output_dir` | sync | `.codeboarding` | Directory the rendered docs and analysis metadata are committed to. Owned by the action: pre-existing top-level `.md` files in it are deleted on every run. |
+| `output_format` | sync | `.md` | Output format. Only `.md` is supported. |
+| `target_branch` | sync | `${{ github.ref_name }}` | Branch the generated docs are pushed to. |
+| `write_architecture_md` | sync | `true` | Also write `docs/development/architecture.md`: all rendered pages concatenated, `overview.md` first. |
+| `commit_message` | sync | `chore(codeboarding): sync architecture baseline [skip ci]` | Commit message for the generated docs. |
 
 ## Outputs
 
@@ -260,15 +260,15 @@ Be aware that `contents: write` is repo-wide — GitHub does not scope it to a b
 | `diagram_md` | review | Path to the generated Mermaid markdown block on the runner. |
 | `n_changed` | review | Number of changed components, counted recursively. |
 | `truncated` | review | `true` when the graph was reduced to fit GitHub Mermaid limits. |
-| `analysis_mode` | docs | `full` or `incremental`: whether the run rebuilt the analysis from scratch or reused the committed baseline. |
-| `files_written` | docs | The generated files written for the docs commit. |
-| `committed` | docs | `true` when a docs commit was pushed to `target_branch`; `false` when docs mode ran but had nothing to commit (or the push failed open). Empty only if docs mode did not run. |
+| `analysis_mode` | sync | `full` or `incremental`: whether the run rebuilt the analysis from scratch or reused the committed baseline. |
+| `files_written` | sync | The generated files written for the docs commit. |
+| `committed` | sync | `true` when a docs commit was pushed to `target_branch`; `false` when sync mode ran but had nothing to commit (or the push failed open). Empty only if sync mode did not run. |
 
 Outputs of the mode that did not run are empty strings.
 
 ## Notes
 
-- No checkout step is required in your workflow. This action checks out the target (the PR in review mode, the pushed commit in docs mode) and the CodeBoarding engine internally.
+- No checkout step is required in your workflow. This action checks out the target (the PR in review mode, the pushed commit in sync mode) and the CodeBoarding engine internally.
 - GitHub withholds secrets from fork PRs on `pull_request`, so fork runs fail early if an LLM key is unavailable.
 - Do not use `pull_request_target` for this action. It can expose secrets to PR-head code.
 - GitHub renders Mermaid in strict mode, so node click-through links are not supported in the PR diagram.

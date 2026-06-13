@@ -22,7 +22,7 @@ baseline cannot be reused for the PR base (wrong commit, or — with
 ``--expected-depth`` — a depth_level DEEPER than requested; shallower is
 accepted because the engine records the depth reached, not the depth asked).
 
-``analyze``/``render``/``concat`` power docs mode. ``analyze`` is
+``analyze``/``render``/``concat`` power sync mode. ``analyze`` is
 baseline-aware: full when the committed analysis.json is missing, deeper
 than requested, or lacks a commit_hash; otherwise incremental with a fallback to
 full on the same cache-miss errors as ``head`` — it prints
@@ -32,7 +32,7 @@ action greps. ``render`` writes per-component markdown with root name
 (sorted) into one architecture file.
 
 Telemetry: ``CODEBOARDING_SOURCE`` is defaulted after argument parsing —
-``docs_action`` for analyze/render/concat, ``github_action`` for everything
+``sync`` for analyze/render/concat, ``github_action`` for everything
 else.
 
 The engine (``codeboarding_workflows`` etc.) is imported lazily inside each
@@ -50,8 +50,8 @@ import subprocess
 from pathlib import Path
 
 
-def _log_path(out: str, name: str) -> str:
-    return str(Path(out) / name)
+def _log_path(output_dir: str, filename: str) -> str:
+    return str(Path(output_dir) / filename)
 
 
 def _clear_dir(path: Path) -> None:
@@ -180,22 +180,22 @@ def validate_base_analysis(
     return True, message
 
 
-def run_base(repo: str, out: str, name: str, run_id: str, depth: int, source_sha: str) -> None:
+def run_base(repo_path: str, output_dir: str, repo_name: str, run_id: str, depth: int, source_sha: str) -> None:
     from codeboarding_workflows.analysis import run_full
 
     res = run_full(
-        repo_name=name,
-        repo_path=Path(repo),
-        output_dir=Path(out),
+        repo_name=repo_name,
+        repo_path=Path(repo_path),
+        output_dir=Path(output_dir),
         run_id=run_id,
-        log_path=_log_path(out, "cb-base.log"),
+        log_path=_log_path(output_dir, "cb-base.log"),
         depth_level=depth,
         source_sha=source_sha,
     )
     print(f"Base analysis written: {res}")
 
 
-def run_seed(repo: str, out: str, source_sha: str) -> None:
+def run_seed(repo_path: str, output_dir: str, source_sha: str) -> None:
     """Build the SHA-tagged static-analysis artifact for *repo* with no LLM calls.
 
     A committed analysis.json gives the head analysis its component ids, but
@@ -218,61 +218,68 @@ def run_seed(repo: str, out: str, source_sha: str) -> None:
     from static_analyzer.analysis_cache import StaticAnalysisCache
     from static_analyzer.cluster_helpers import build_all_cluster_results
 
-    results = get_static_analysis(Path(repo), cache_dir=Path(out), source_sha=source_sha)
+    results = get_static_analysis(Path(repo_path), cache_dir=Path(output_dir), source_sha=source_sha)
     cluster_results = build_all_cluster_results(results)
-    StaticAnalysisCache(Path(out), Path(repo)).save(results, source_sha=source_sha)
+    StaticAnalysisCache(Path(output_dir), Path(repo_path)).save(results, source_sha=source_sha)
     summary = ", ".join(f"{lang}={len(cr.clusters)}" for lang, cr in sorted(cluster_results.items()))
-    print(f"Seeded static-analysis baseline in {out} (clusters: {summary or 'none'})")
+    print(f"Seeded static-analysis baseline in {output_dir} (clusters: {summary or 'none'})")
 
 
 def run_head(
-    repo: str, out: str, name: str, run_id: str, depth: int, base_ref: str, target_ref: str, source_sha: str
+    repo_path: str,
+    output_dir: str,
+    repo_name: str,
+    run_id: str,
+    depth: int,
+    base_ref: str,
+    target_ref: str,
+    source_sha: str,
 ) -> None:
     from codeboarding_workflows.analysis import BaselineUnavailableError, run_full, run_incremental
     from diagram_analysis.exceptions import IncrementalCacheMissingError
 
     try:
         res = run_incremental(
-            repo_path=Path(repo),
-            output_dir=Path(out),
-            project_name=name,
+            repo_path=Path(repo_path),
+            output_dir=Path(output_dir),
+            project_name=repo_name,
             run_id=run_id,
-            log_path=_log_path(out, "cb-head.log"),
+            log_path=_log_path(output_dir, "cb-head.log"),
             base_ref=base_ref,
             target_ref=target_ref,
             source_sha=source_sha,
         )
     except (IncrementalCacheMissingError, BaselineUnavailableError) as exc:
         print(f"Incremental unavailable ({exc}); running full analysis on head.")
-        _clear_dir(Path(out))
+        _clear_dir(Path(output_dir))
         res = run_full(
-            repo_name=name,
-            repo_path=Path(repo),
-            output_dir=Path(out),
+            repo_name=repo_name,
+            repo_path=Path(repo_path),
+            output_dir=Path(output_dir),
             run_id=run_id,
-            log_path=_log_path(out, "cb-head.log"),
+            log_path=_log_path(output_dir, "cb-head.log"),
             depth_level=depth,
             source_sha=source_sha,
         )
     print(f"Head analysis written: {res}")
 
 
-def run_analyze(repo: str, out: str, name: str, run_id: str, source_sha: str, depth: int) -> str:
+def run_analyze(repo_path: str, output_dir: str, repo_name: str, run_id: str, source_sha: str, depth: int) -> str:
     from codeboarding_workflows.analysis import BaselineUnavailableError, run_full, run_incremental
     from diagram_analysis.exceptions import IncrementalCacheMissingError
 
-    out_path = Path(out)
+    out_path = Path(output_dir)
     analysis_path = out_path / "analysis.json"
 
     def full(reason: str) -> str:
         print(f"{reason}; running full analysis.")
         _clear_dir(out_path)
         res = run_full(
-            repo_name=name,
-            repo_path=Path(repo),
+            repo_name=repo_name,
+            repo_path=Path(repo_path),
             output_dir=out_path,
             run_id=run_id,
-            log_path=_log_path(out, "cb-docs.log"),
+            log_path=_log_path(output_dir, "cb-docs.log"),
             depth_level=depth,
             source_sha=source_sha,
         )
@@ -300,11 +307,11 @@ def run_analyze(repo: str, out: str, name: str, run_id: str, source_sha: str, de
 
     try:
         res = run_incremental(
-            repo_path=Path(repo),
+            repo_path=Path(repo_path),
             output_dir=out_path,
-            project_name=name,
+            project_name=repo_name,
             run_id=run_id,
-            log_path=_log_path(out, "cb-docs.log"),
+            log_path=_log_path(output_dir, "cb-docs.log"),
             base_ref=base_ref,
             target_ref=source_sha,
             source_sha=source_sha,
@@ -317,10 +324,10 @@ def run_analyze(repo: str, out: str, name: str, run_id: str, source_sha: str, de
     return "incremental"
 
 
-def run_render(analysis: str, out: str, repo_name: str, repo_ref: str, output_format: str) -> None:
+def run_render(analysis: str, output_dir: str, repo_name: str, repo_ref: str, output_format: str) -> None:
     from codeboarding_workflows.rendering import render_docs
 
-    out_path = Path(out)
+    out_path = Path(output_dir)
     _clear_dir(out_path)
     render_docs(
         Path(analysis),
@@ -376,7 +383,7 @@ def _count_health_report(artifact_dir: str) -> int | None:
         return None
 
 
-def run_health(artifact_dir: str, repo: str, name: str) -> int:
+def run_health(artifact_dir: str, repo_path: str, repo_name: str) -> int:
     """Return the WARNING/CRITICAL finding count; 0 on any failure (best-effort)."""
     report_count = _count_health_report(artifact_dir)
     if report_count is not None:
@@ -391,11 +398,11 @@ def run_health(artifact_dir: str, repo: str, name: str) -> int:
         print(f"Health check skipped ({exc}).")
         return 0
     try:
-        cache = StaticAnalysisCache(artifact_dir=Path(artifact_dir), repo_root=Path(repo))
+        cache = StaticAnalysisCache(artifact_dir=Path(artifact_dir), repo_root=Path(repo_path))
         sa = cache.get()
         issues = 0
         if sa is not None:
-            report = run_health_checks(sa, repo_name=name, repo_path=Path(repo))
+            report = run_health_checks(sa, repo_name=repo_name, repo_path=Path(repo_path))
             if report is not None:
                 for cs in report.check_summaries:
                     for fg in getattr(cs, "finding_groups", []):
@@ -450,7 +457,7 @@ def main(argv=None) -> int:
         cc.add_argument(a, required=True)
 
     args = p.parse_args(argv)
-    source = "docs_action" if args.cmd in ("analyze", "render", "concat") else "github_action"
+    source = "sync" if args.cmd in ("analyze", "render", "concat") else "github_action"
     os.environ.setdefault("CODEBOARDING_SOURCE", source)
     if args.cmd == "base":
         run_base(args.repo, args.out, args.name, args.run_id, args.depth, args.source_sha)

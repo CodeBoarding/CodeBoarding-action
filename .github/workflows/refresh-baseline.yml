@@ -26,7 +26,7 @@ permissions:
   contents: write   # commit the regenerated analysis.json to main
 
 concurrency:
-  # Shared with docs.yml: both commit .codeboarding/analysis.json to main and
+  # Shared with codeboarding-sync.yml: both commit .codeboarding/analysis.json to main and
   # must never run concurrently (this workflow's plain `git push` has no retry).
   group: codeboarding-baseline-writers
   cancel-in-progress: false
