@@ -1,16 +1,18 @@
 """Build the call-to-action footer appended to the architecture-diff PR comment.
 
-The footer drives to the VS Code/Cursor **extension** with an editor link, and a
-warning banner when real health findings exist. With a click proxy (``cta_base``)
-the links route through it (owner/repo/pr tracked) and can deep-link into the
-editor (the proxy redirects to a ``vscode:``/``cursor:`` URL) plus a separate
-"install the extension" link. Without a proxy GitHub's comment sanitizer strips
-custom ``vscode:``/``cursor:`` schemes — a deep link would render as dead text —
-so the editor link points at the extension's plain-https listing instead (VS Code
-Marketplace, Cursor via Open VSX), which is the only clickable option. A no-install
-hosted-webview ("explore in browser") line is added when ``webview_ready`` — i.e. the
-head ``analysis.json`` was committed to the PR branch and this isn't a fork PR — so
-the webview can fetch a committed analysis at the head SHA (see docs/COMMIT_STRATEGY.md).
+The body is a single line — "Explore this PR's architecture in your browser or
+VS Code" — that merges the hosted-webview link with the editor link(s), preceded by
+a warning banner when real health findings exist. The "browser" link (a no-install
+hosted webview) is included only when ``webview_ready`` — i.e. the head
+``analysis.json`` was committed to the PR branch and this isn't a fork PR — so the
+webview can fetch a committed analysis at the head SHA (see docs/COMMIT_STRATEGY.md);
+otherwise the line is just the editor link(s). With a click proxy (``cta_base``) the
+editor link routes through it (owner/repo/pr tracked) and deep-links into the editor
+(the proxy redirects to a ``vscode:``/``cursor:`` URL), and a separate "install the
+extension" link is appended. Without a proxy GitHub's comment sanitizer strips custom
+``vscode:``/``cursor:`` schemes — a deep link would render as dead text — so the editor
+link points at the extension's plain-https listing instead (VS Code Marketplace, Cursor
+via Open VSX), which is the only clickable option.
 
 Editor coverage is deliberately limited to **VS Code and Cursor**. Per the 2025
 Stack Overflow Developer Survey (https://survey.stackoverflow.co/2025/technology/),
@@ -59,14 +61,14 @@ _EDITOR_MARKETPLACE = {
 }
 
 
-def build_webview_link(webview_base: str, owner: str, repo: str, head_sha: str, base_sha: str) -> str | None:
-    """Return the markdown "explore in browser" line, or None if not buildable.
+def webview_url(webview_base: str, owner: str, repo: str, head_sha: str, base_sha: str) -> str | None:
+    """Return the hosted-webview deep-link URL for this PR's head-vs-base diff, or None.
 
-    Deep-links the hosted webview straight to this PR's head-vs-base architecture
-    diff: ``?repo=owner/repo&ref=<head_sha>&compare=<base_sha>``. Pinned to exact
-    SHAs so the committed ``analysis.json`` the webview fetches matches this run. For
-    a private repo the webview itself sends the viewer through GitHub sign-in and then
-    loads the same diff. Returns None when the base/head pieces aren't all present.
+    Deep-links straight to the diff: ``?repo=owner/repo&ref=<head_sha>&compare=<base_sha>``.
+    Pinned to exact SHAs so the committed ``analysis.json`` the webview fetches matches
+    this run. For a private repo the webview itself sends the viewer through GitHub
+    sign-in and then loads the same diff. Returns None when the base/head pieces aren't
+    all present.
     """
     if not (webview_base and owner and repo and head_sha):
         return None
@@ -74,7 +76,16 @@ def build_webview_link(webview_base: str, owner: str, repo: str, head_sha: str, 
     params = {"repo": f"{owner}/{repo}", "ref": head_sha}
     if base_sha:
         params["compare"] = base_sha
-    return f"🌐 [**Explore this PR’s architecture in your browser →**]({base}/?{urlencode(params)})"
+    return f"{base}/?{urlencode(params)}"
+
+
+def _join_or(items: list[str]) -> str:
+    """Join with commas and a trailing 'or': 'a' / 'a or b' / 'a, b, or c'."""
+    if len(items) <= 1:
+        return items[0] if items else ""
+    if len(items) == 2:
+        return f"{items[0]} or {items[1]}"
+    return ", ".join(items[:-1]) + f", or {items[-1]}"
 
 
 def build_cta(
@@ -108,11 +119,6 @@ def build_cta(
         noun = "issue" if issues == 1 else "issues"
         parts.append(f"⚠️ **{issues} architecture {noun} found** — open CodeBoarding to explore them.")
 
-    if webview_ready:
-        webview_line = build_webview_link(webview_base, owner, repo, head_sha, base_sha)
-        if webview_line:
-            parts.append(webview_line)
-
     editors = detect_editors(repo_path)
     if cta_base:
         base = cta_base.rstrip("/")
@@ -126,8 +132,18 @@ def build_cta(
         editor_href = {e: _EDITOR_MARKETPLACE[e] for e in editors}
         extension_href = None
 
-    editor_links = " · ".join(f"[**Open in {_EDITOR_LABEL[e]} →**]({editor_href[e]})" for e in editors)
-    parts.append(f"See this architecture in your editor: {editor_links}")
+    # One line that merges the hosted-webview "browser" link — only when
+    # ``webview_ready`` (the head analysis was committed and this isn't a fork PR) —
+    # with the editor link(s), which always render. "your" rides with the browser
+    # entry alone, so the sentence reads naturally with or without it:
+    # "in your browser or VS Code" / "in VS Code".
+    targets: list[str] = []
+    if webview_ready:
+        wv = webview_url(webview_base, owner, repo, head_sha, base_sha)
+        if wv:
+            targets.append(f"your [**browser**]({wv})")
+    targets += [f"[**{_EDITOR_LABEL[e]}**]({editor_href[e]})" for e in editors]
+    parts.append(f"Explore this PR’s architecture in {_join_or(targets)}.")
     if extension_href:
         parts.append(f"💡 New to CodeBoarding? [**Get the extension →**]({extension_href})")
 
