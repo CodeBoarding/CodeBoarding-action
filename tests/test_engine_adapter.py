@@ -1,4 +1,4 @@
-"""Smoke tests for scripts/cb_engine.py — verify it calls the engine API correctly,
+"""Smoke tests for scripts/engine_adapter.py — verify it calls the engine API correctly,
 using stub modules so no real engine venv is needed."""
 
 import json
@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-import cb_engine  # noqa: E402
+import engine_adapter  # noqa: E402
 
 _STUBBED = [
     "codeboarding_workflows",
@@ -80,7 +80,7 @@ class TestAnalysis(_Base):
     def test_base_calls_run_full(self):
         rf = _Rec()
         self._install(run_full=rf)
-        cb_engine.run_base("/repo", "/out", "myrepo", "rid-base", 2, "abc123")
+        engine_adapter.run_base("/repo", "/out", "myrepo", "rid-base", 2, "abc123")
         self.assertEqual(len(rf.calls), 1)
         k = rf.calls[0]
         self.assertEqual(k["repo_name"], "myrepo")
@@ -91,7 +91,7 @@ class TestAnalysis(_Base):
     def test_main_parses_depth_as_int(self):
         rf = _Rec()
         self._install(run_full=rf)
-        cb_engine.main(
+        engine_adapter.main(
             [
                 "base",
                 "--repo",
@@ -114,7 +114,7 @@ class TestAnalysis(_Base):
         rf = _Rec()
         self._install(run_full=rf)
         with patch.dict(os.environ, {}, clear=True):
-            cb_engine.main(
+            engine_adapter.main(
                 [
                     "base",
                     "--repo",
@@ -138,7 +138,7 @@ class TestAnalysis(_Base):
             with self.subTest(depth=depth):
                 with redirect_stderr(StringIO()):
                     with self.assertRaises(SystemExit):
-                        cb_engine.main(
+                        engine_adapter.main(
                             [
                                 "base",
                                 "--repo",
@@ -159,7 +159,7 @@ class TestAnalysis(_Base):
     def test_head_uses_incremental(self):
         ri, rf = _Rec(), _Rec()
         self._install(run_full=rf, run_incremental=ri)
-        cb_engine.run_head("/repo", "/out", "r", "rid", 1, "base", "head", "head")
+        engine_adapter.run_head("/repo", "/out", "r", "rid", 1, "base", "head", "head")
         self.assertEqual(len(ri.calls), 1)
         self.assertEqual(len(rf.calls), 0)  # no fallback
         self.assertEqual(ri.calls[0]["base_ref"], "base")
@@ -174,7 +174,7 @@ class TestAnalysis(_Base):
         (Path(out) / "stale.json").write_text("{}")  # must be wiped before the full run
         (Path(out) / "health").mkdir()
         (Path(out) / "health" / "stale.json").write_text("{}")
-        cb_engine.run_head("/repo", out, "r", "rid", 3, "base", "head", "head")
+        engine_adapter.run_head("/repo", out, "r", "rid", 3, "base", "head", "head")
         self.assertEqual(len(rf.calls), 1)  # fell back to full
         self.assertEqual(rf.calls[0]["depth_level"], 3)
         self.assertFalse((Path(out) / "stale.json").exists())  # head dir wiped before full
@@ -185,7 +185,7 @@ class TestAnalysis(_Base):
         rf = _Rec()
         analysis.run_full = rf
         analysis.run_incremental = _Rec(raises=BaseUnavail)
-        cb_engine.run_head("/repo", tempfile.mkdtemp(), "r", "rid", 1, "base", "head", "head")
+        engine_adapter.run_head("/repo", tempfile.mkdtemp(), "r", "rid", 1, "base", "head", "head")
         self.assertEqual(len(rf.calls), 1)  # BaselineUnavailableError also triggers the full re-run
 
 
@@ -195,7 +195,7 @@ class TestValidateBase(_Base):
             path = Path(tmp) / "analysis.json"
             path.write_text(json.dumps({"metadata": {"commit_hash": "abc123"}}), encoding="utf-8")
 
-            ok, message = cb_engine.validate_base_analysis(path, "abc123")
+            ok, message = engine_adapter.validate_base_analysis(path, "abc123")
 
             self.assertTrue(ok)
             self.assertIn("matches", message)
@@ -205,7 +205,7 @@ class TestValidateBase(_Base):
             path = Path(tmp) / "analysis.json"
             path.write_text(json.dumps({"metadata": {"commit_hash": "old"}}), encoding="utf-8")
 
-            ok, message = cb_engine.validate_base_analysis(path, "new")
+            ok, message = engine_adapter.validate_base_analysis(path, "new")
 
             self.assertFalse(ok)
             self.assertIn("old", message)
@@ -238,7 +238,7 @@ class TestValidateBase(_Base):
             cwd = os.getcwd()
             try:
                 os.chdir(repo)
-                ok, message = cb_engine.validate_base_analysis(repo / ".codeboarding" / "analysis.json", docs_sha)
+                ok, message = engine_adapter.validate_base_analysis(repo / ".codeboarding" / "analysis.json", docs_sha)
             finally:
                 os.chdir(cwd)
 
@@ -267,7 +267,7 @@ class TestValidateBase(_Base):
             cwd = os.getcwd()
             try:
                 os.chdir(repo)
-                ok, message = cb_engine.validate_base_analysis(analysis_path, code_sha)
+                ok, message = engine_adapter.validate_base_analysis(analysis_path, code_sha)
             finally:
                 os.chdir(cwd)
 
@@ -289,7 +289,7 @@ class TestValidateBase(_Base):
             path = Path(tmp) / "analysis.json"
             path.write_text(json.dumps({"metadata": {}}), encoding="utf-8")
 
-            ok, message = cb_engine.validate_base_analysis(path, "abc123")
+            ok, message = engine_adapter.validate_base_analysis(path, "abc123")
 
             self.assertFalse(ok)
             self.assertIn("commit_hash", message)
@@ -300,11 +300,11 @@ class TestValidateBase(_Base):
             path.write_text(json.dumps({"metadata": {"commit_hash": "abc123"}}), encoding="utf-8")
 
             self.assertEqual(
-                cb_engine.main(["validate-base", "--analysis", str(path), "--expected-sha", "abc123"]),
+                engine_adapter.main(["validate-base", "--analysis", str(path), "--expected-sha", "abc123"]),
                 0,
             )
             self.assertEqual(
-                cb_engine.main(["validate-base", "--analysis", str(path), "--expected-sha", "def456"]),
+                engine_adapter.main(["validate-base", "--analysis", str(path), "--expected-sha", "def456"]),
                 1,
             )
 
@@ -316,7 +316,7 @@ class TestValidateBase(_Base):
                 encoding="utf-8",
             )
 
-            ok, message = cb_engine.validate_base_analysis(path, "abc123", expected_depth=2)
+            ok, message = engine_adapter.validate_base_analysis(path, "abc123", expected_depth=2)
 
             self.assertTrue(ok)
             self.assertIn("matches", message)
@@ -329,7 +329,7 @@ class TestValidateBase(_Base):
                 encoding="utf-8",
             )
 
-            ok, message = cb_engine.validate_base_analysis(path, "abc123", expected_depth=1)
+            ok, message = engine_adapter.validate_base_analysis(path, "abc123", expected_depth=1)
 
             self.assertFalse(ok)
             self.assertIn("3", message)  # baseline depth
@@ -346,7 +346,7 @@ class TestValidateBase(_Base):
                 encoding="utf-8",
             )
 
-            ok, _ = cb_engine.validate_base_analysis(path, "abc123", expected_depth=3)
+            ok, _ = engine_adapter.validate_base_analysis(path, "abc123", expected_depth=3)
 
             self.assertTrue(ok)
 
@@ -377,8 +377,8 @@ class TestValidateBase(_Base):
             cwd = os.getcwd()
             try:
                 os.chdir(repo)
-                ok_drift, _ = cb_engine.validate_base_analysis(analysis_path, docs_sha)
-                ok_depth, message = cb_engine.validate_base_analysis(analysis_path, docs_sha, expected_depth=1)
+                ok_drift, _ = engine_adapter.validate_base_analysis(analysis_path, docs_sha)
+                ok_depth, message = engine_adapter.validate_base_analysis(analysis_path, docs_sha, expected_depth=1)
             finally:
                 os.chdir(cwd)
 
@@ -397,7 +397,7 @@ class TestValidateBase(_Base):
                     path = Path(tmp) / "analysis.json"
                     path.write_text(json.dumps({"metadata": metadata}), encoding="utf-8")
 
-                    ok, _ = cb_engine.validate_base_analysis(path, "abc123", expected_depth=2)
+                    ok, _ = engine_adapter.validate_base_analysis(path, "abc123", expected_depth=2)
 
                     self.assertTrue(ok)
 
@@ -410,7 +410,7 @@ class TestValidateBase(_Base):
                 encoding="utf-8",
             )
 
-            ok, message = cb_engine.validate_base_analysis(path, "abc123")
+            ok, message = engine_adapter.validate_base_analysis(path, "abc123")
 
             self.assertTrue(ok)
             self.assertIn("matches", message)
@@ -425,20 +425,20 @@ class TestValidateBase(_Base):
             )
 
             self.assertEqual(
-                cb_engine.main(
+                engine_adapter.main(
                     ["validate-base", "--analysis", str(path), "--expected-sha", "abc123", "--expected-depth", "2"]
                 ),
                 0,
             )
             self.assertEqual(
-                cb_engine.main(
+                engine_adapter.main(
                     ["validate-base", "--analysis", str(path), "--expected-sha", "abc123", "--expected-depth", "1"]
                 ),
                 1,
             )
             with redirect_stderr(StringIO()):
                 with self.assertRaises(SystemExit):  # depth outside 1-3 rejected by argparse
-                    cb_engine.main(
+                    engine_adapter.main(
                         ["validate-base", "--analysis", str(path), "--expected-sha", "abc123", "--expected-depth", "4"]
                     )
 
@@ -484,7 +484,7 @@ class TestSeed(_Base):
 
     def test_seed_analyzes_clusters_then_saves(self):
         log, results = self._install()
-        cb_engine.run_seed("/repo", "/out", "abc123")
+        engine_adapter.run_seed("/repo", "/out", "abc123")
         self.assertEqual(
             log,
             [
@@ -501,13 +501,13 @@ class TestSeed(_Base):
             with self.subTest(stage=stage):
                 log, _ = self._install(fail_at=stage)
                 with self.assertRaises(RuntimeError):
-                    cb_engine.run_seed("/repo", "/out", "abc123")
+                    engine_adapter.run_seed("/repo", "/out", "abc123")
                 self.assertNotIn("save", [e[0] for e in log])
                 self.tearDown()
 
     def test_main_seed_wires_args(self):
         log, _ = self._install()
-        rc = cb_engine.main(["seed", "--repo", "/r", "--out", "/o", "--source-sha", "s1"])
+        rc = engine_adapter.main(["seed", "--repo", "/r", "--out", "/o", "--source-sha", "s1"])
         self.assertEqual(rc, 0)
         self.assertEqual(log[0], ("analyze", "/r", "/o", "s1"))
         self.assertEqual(log[-1][0], "save")
@@ -548,7 +548,7 @@ class TestHealth(_Base):
 
         report = types.SimpleNamespace(check_summaries=[CS()])
         self._install_health(report=report)
-        self.assertEqual(cb_engine.run_health("/art", "/repo", "r"), 3)  # 2 warnings + 1 critical, info ignored
+        self.assertEqual(engine_adapter.run_health("/art", "/repo", "r"), 3)  # 2 warnings + 1 critical, info ignored
 
     def test_prefers_written_health_report(self):
         artifact_dir = Path(tempfile.mkdtemp())
@@ -568,18 +568,18 @@ class TestHealth(_Base):
             """,
             encoding="utf-8",
         )
-        self.assertEqual(cb_engine.run_health(str(artifact_dir), "/repo", "r"), 3)
+        self.assertEqual(engine_adapter.run_health(str(artifact_dir), "/repo", "r"), 3)
 
     def test_malformed_health_report_falls_back(self):
         artifact_dir = Path(tempfile.mkdtemp())
         report_dir = artifact_dir / "health"
         report_dir.mkdir()
         (report_dir / "health_report.json").write_text("[]", encoding="utf-8")
-        self.assertEqual(cb_engine.run_health(str(artifact_dir), "/repo", "r"), 0)
+        self.assertEqual(engine_adapter.run_health(str(artifact_dir), "/repo", "r"), 0)
 
     def test_missing_module_yields_zero(self):
         # No health.* modules installed -> import fails -> 0, never raises.
-        self.assertEqual(cb_engine.run_health("/art", "/repo", "r"), 0)
+        self.assertEqual(engine_adapter.run_health("/art", "/repo", "r"), 0)
 
 
 if __name__ == "__main__":

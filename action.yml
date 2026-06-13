@@ -39,35 +39,35 @@ inputs:
     required: false
     default: ''
   comment_header:
-    description: 'Header line used inside the sticky PR comment.'
+    description: 'Review mode: header line used inside the sticky PR comment.'
     required: false
     default: 'Architecture review'
   diagram_direction:
-    description: 'Mermaid layout direction: LR, TD, TB, RL, or BT.'
+    description: 'Review mode: Mermaid layout direction: LR, TD, TB, RL, or BT.'
     required: false
     default: 'LR'
   changed_only:
-    description: 'Render only changed components and their incident edges (also auto-applied when the full graph exceeds GitHub''s Mermaid limit).'
+    description: 'Review mode: render only changed components and their incident edges (also auto-applied when the full graph exceeds GitHub''s Mermaid limit).'
     required: false
     default: 'false'
   render_depth:
-    description: 'Component levels to DRAW in the PR Mermaid (independent of depth_level): 1 = top-level flat (default), 2 = +one nesting level as subgraphs, etc. Lets you analyze deep (depth_level=2) but display a clean level-1 diagram.'
+    description: 'Review mode: component levels to DRAW in the PR Mermaid (independent of depth_level): 1 = top-level flat (default), 2 = +one nesting level as subgraphs, etc. Lets you analyze deep (depth_level=2) but display a clean level-1 diagram.'
     required: false
     default: '1'
   cta_base_url:
-    description: 'Base URL of the click proxy (e.g. https://go.codeboarding.org). When set, the editor link deep-links into VS Code/Cursor via the proxy and a "get the extension" link is added (owner/repo/pr tracked). Empty (default) links to the extension listing instead, since GitHub strips vscode:/cursor: schemes from comment links.'
+    description: 'Review mode: base URL of the click proxy (e.g. https://go.codeboarding.org). When set, the editor link deep-links into VS Code/Cursor via the proxy and a "get the extension" link is added (owner/repo/pr tracked). Empty (default) links to the extension listing instead, since GitHub strips vscode:/cursor: schemes from comment links.'
     required: false
     default: ''
   webview_base_url:
-    description: 'Base URL of the hosted webview (default https://app.codeboarding.org). The PR comment adds an "explore in browser" link deep-linking to this PR''s head-vs-base architecture diff. Requires the head analysis.json to be committed to the PR branch (commit_head_analysis), so it is omitted on fork PRs. Set empty to disable the webview link.'
+    description: 'Review mode: base URL of the hosted webview (default https://app.codeboarding.org). The PR comment adds an "explore in browser" link deep-linking to this PR''s head-vs-base architecture diff. Requires the head analysis.json to be committed to the PR branch (commit_head_analysis), so it is omitted on fork PRs. Set empty to disable the webview link.'
     required: false
     default: 'https://app.codeboarding.org'
   commit_head_analysis:
-    description: 'Commit the generated head .codeboarding/analysis.json (+ health report) back to the PR branch so the webview can fetch it at the head SHA. Same-repo PRs only (the token is read-only on forks). Required for the webview "explore in browser" link.'
+    description: 'Review mode: commit the generated head .codeboarding/analysis.json (+ health report) back to the PR branch so the webview can fetch it at the head SHA. Same-repo PRs only (the token is read-only on forks). Required for the webview "explore in browser" link. Needs contents: write on the workflow.'
     required: false
     default: 'true'
   trigger_command:
-    description: 'Slash-command that triggers the action from a PR comment (issue_comment event). A comment whose first word is this runs the diagram on-demand.'
+    description: 'Review mode: slash-command that triggers the action from a PR comment (issue_comment event). A comment whose first word is this runs the diagram on-demand.'
     required: false
     default: '/codeboarding'
   mode:
@@ -94,6 +94,10 @@ inputs:
     description: 'Sync mode: commit message for the generated docs.'
     required: false
     default: 'chore(codeboarding): sync architecture baseline [skip ci]'
+  force_full:
+    description: 'Sync mode: ignore any committed baseline and run a full analysis from scratch. Use to rebuild a stale or corrupt baseline (the manual escape hatch that replaces the old refresh-baseline workflow).'
+    required: false
+    default: 'false'
 
 outputs:
   diagram_md:
@@ -117,6 +121,16 @@ outputs:
 
 runs:
   using: 'composite'
+  # One spine, two heads. Steps run in four phases; every mode-specific step is
+  # gated `if: steps.guard.outputs.mode == 'review' | 'sync'`, and the two modes
+  # interleave only because they share the LLM-key lifecycle, NOT because they
+  # are unrelated:
+  #   1. GUARD            — resolve mode + event eligibility + SHAs (one source of truth)
+  #   2. SHARED SETUP     — checkout engine + target, Python/Node/uv, caches, LLM-key prep
+  #   3. ANALYSIS (key live) — review: base/seed/head/health ; sync: seed/analyze
+  #   4. Drop LLM key, then OUTPUT (no key) — review: diff→comment ; sync: render→commit
+  # The binding between the modes is the committed .codeboarding/analysis.json
+  # baseline: sync (phase 3/4) writes it, review (phase 3) reads it as the PR base.
   steps:
     - name: Guard — resolve mode and target
       id: guard
@@ -485,7 +499,7 @@ runs:
         echo "base_dir=$BASE_DIR" >> $GITHUB_OUTPUT
         echo "head_dir=$HEAD_DIR" >> $GITHUB_OUTPUT
         if git show "${BASE_SHA}:.codeboarding/analysis.json" > "${BASE_DIR}/analysis.json" 2>/dev/null; then
-          if python3 "$ACTION_PATH/scripts/cb_engine.py" validate-base \
+          if python3 "$ACTION_PATH/scripts/engine_adapter.py" validate-base \
               --analysis "${BASE_DIR}/analysis.json" \
               --expected-sha "$BASE_SHA" \
               --expected-depth "$DEPTH"; then
@@ -539,7 +553,7 @@ runs:
         git -C "$TARGET" worktree prune
         rm -rf "$BASE_SRC"
         git -C "$TARGET" worktree add --detach "$BASE_SRC" "$BASE_SHA"
-        if uv run python "$ACTION_PATH/scripts/cb_engine.py" seed \
+        if uv run python "$ACTION_PATH/scripts/engine_adapter.py" seed \
              --repo "$BASE_SRC" \
              --out "$BASE_DIR" \
              --source-sha "$BASE_SHA" \
@@ -591,7 +605,7 @@ runs:
         git -C "$TARGET" worktree prune
         rm -rf "$BASE_SRC"
         git -C "$TARGET" worktree add --detach "$BASE_SRC" "$BASE_SHA"
-        uv run python "$ACTION_PATH/scripts/cb_engine.py" base \
+        uv run python "$ACTION_PATH/scripts/engine_adapter.py" base \
           --repo "$BASE_SRC" \
           --out "$BASE_DIR" \
           --name "$REPO_NAME" \
@@ -652,7 +666,7 @@ runs:
         # untouched as the "before" snapshot for the diff.
         cp -a "$BASE_DIR"/. "$HEAD_DIR"/ 2>/dev/null || true
         rm -rf "$HEAD_DIR/health"
-        uv run python "$ACTION_PATH/scripts/cb_engine.py" head \
+        uv run python "$ACTION_PATH/scripts/engine_adapter.py" head \
           --repo "$TARGET_REPO" \
           --out "$HEAD_DIR" \
           --name "$REPO_NAME" \
@@ -683,8 +697,8 @@ runs:
         REPO_NAME: ${{ github.event.repository.name }}
       run: |
         rm -f /tmp/cb-issues.txt
-        # cb_engine writes the WARNING/CRITICAL count (0 on any failure — best-effort).
-        uv run python "$ACTION_PATH/scripts/cb_engine.py" health \
+        # engine_adapter writes the WARNING/CRITICAL count (0 on any failure — best-effort).
+        uv run python "$ACTION_PATH/scripts/engine_adapter.py" health \
           --artifact-dir "$ARTIFACT_DIR" \
           --repo "$TARGET_REPO" \
           --name "$REPO_NAME" \
@@ -704,6 +718,7 @@ runs:
       working-directory: target-repo
       env:
         OUTPUT_DIR: ${{ inputs.output_dir }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
         ANALYSIS_DIR="${RUNNER_TEMP}/cb-sync"
@@ -719,21 +734,12 @@ runs:
 
         if [ -f "$OUTPUT_DIR/analysis.json" ]; then
           cp "$OUTPUT_DIR/analysis.json" "$ANALYSIS_DIR/analysis.json"
-          BASELINE_SHA="$(python3 - "$ANALYSIS_DIR/analysis.json" <<'PY'
-        import json
-        import sys
-        try:
-            with open(sys.argv[1], encoding="utf-8") as fh:
-                data = json.load(fh)
-            value = data.get("metadata", {}).get("commit_hash", "")
-            print(value if isinstance(value, str) else "")
-        except Exception:
-            print("")
-        PY
-        )"
-          # Trust the committed JSON only as far as a SHA shape: anything else
-          # must not reach GITHUB_OUTPUT (line injection), cache keys, or git.
-          if printf '%s' "$BASELINE_SHA" | grep -qE '^[0-9a-f]{7,40}$'; then
+          # baseline-info parses metadata.commit_hash and emits it ONLY when it is
+          # present and SHA-shaped, so an unusable/injected value never reaches
+          # GITHUB_OUTPUT, the cache key, or git. (Pure stdlib — no engine venv.)
+          BASELINE_SHA="$(python3 "$ACTION_PATH/scripts/engine_adapter.py" baseline-info \
+            --analysis "$ANALYSIS_DIR/analysis.json" | sed -n 's/^commit_hash=//p')"
+          if [ -n "$BASELINE_SHA" ]; then
             echo "baseline_present=true" >> "$GITHUB_OUTPUT"
             echo "baseline_sha=$BASELINE_SHA" >> "$GITHUB_OUTPUT"
             echo "Using committed baseline generated for $BASELINE_SHA."
@@ -795,7 +801,7 @@ runs:
         git -C "$TARGET_REPO" worktree prune
         rm -rf "$BASE_SRC"
         git -C "$TARGET_REPO" worktree add --detach "$BASE_SRC" "$BASELINE_SHA"
-        if uv run python "$ACTION_PATH/scripts/cb_engine.py" seed \
+        if uv run python "$ACTION_PATH/scripts/engine_adapter.py" seed \
              --repo "$BASE_SRC" \
              --out "$ANALYSIS_DIR" \
              --source-sha "$BASELINE_SHA" \
@@ -826,6 +832,7 @@ runs:
         RUN_ID_SYNC: ${{ github.run_id }}-${{ github.run_attempt }}-sync
         TARGET_SHA: ${{ steps.guard.outputs.target_sha }}
         DEPTH: ${{ inputs.depth_level }}
+        FORCE_FULL: ${{ inputs.force_full }}
       run: |
         set -euo pipefail
         # Export the key under the selected provider's env var (only this one),
@@ -839,14 +846,17 @@ runs:
         if [ -n "$AGENT_MODEL" ]; then export AGENT_MODEL; fi
         if [ -n "$PARSING_MODEL" ]; then export PARSING_MODEL; fi
 
+        args=(
+          --repo "$TARGET_REPO"
+          --out "$ANALYSIS_DIR"
+          --name "$REPO_NAME"
+          --run-id "$RUN_ID_SYNC"
+          --source-sha "$TARGET_SHA"
+          --depth "$DEPTH"
+        )
+        [ "$FORCE_FULL" = "true" ] && args+=(--force-full)
         LOG="${RUNNER_TEMP}/cb-sync-analyze.log"
-        uv run python "$ACTION_PATH/scripts/cb_engine.py" analyze \
-          --repo "$TARGET_REPO" \
-          --out "$ANALYSIS_DIR" \
-          --name "$REPO_NAME" \
-          --run-id "$RUN_ID_SYNC" \
-          --source-sha "$TARGET_SHA" \
-          --depth "$DEPTH" | tee "$LOG"
+        uv run python "$ACTION_PATH/scripts/engine_adapter.py" analyze "${args[@]}" | tee "$LOG"
         MODE="$(sed -n 's/^analysis_mode=//p' "$LOG" | tail -1)"
         MODE="${MODE:-unknown}"
         echo "analysis_mode=$MODE" >> "$GITHUB_OUTPUT"
@@ -1068,14 +1078,14 @@ runs:
       run: |
         set -euo pipefail
         REPO_REF="https://github.com/${REPOSITORY}/blob/${TARGET_BRANCH}/${OUTPUT_DIR}"
-        uv run python "$ACTION_PATH/scripts/cb_engine.py" render \
+        uv run python "$ACTION_PATH/scripts/engine_adapter.py" render \
           --analysis "$ANALYSIS_DIR/analysis.json" \
           --out "$RENDER_DIR" \
           --repo-name "$REPO_NAME" \
           --repo-ref "$REPO_REF" \
           --format "$OUTPUT_FORMAT"
         if [ "$WRITE_ARCHITECTURE_MD" = "true" ]; then
-          uv run python "$ACTION_PATH/scripts/cb_engine.py" concat \
+          uv run python "$ACTION_PATH/scripts/engine_adapter.py" concat \
             --docs-dir "$RENDER_DIR" \
             --out "$ARCHITECTURE_FILE"
         fi

@@ -70,7 +70,7 @@ run_engine() {
     # Pass the model only when set; empty -> engine's own valid per-provider default.
     if [ -n "$AGENT_MODEL" ]; then export AGENT_MODEL; fi
     if [ -n "$PARSING_MODEL" ]; then export PARSING_MODEL; fi
-    uv run python "$ACTION_DIR/scripts/cb_engine.py" "$@" )
+    uv run python "$ACTION_DIR/scripts/engine_adapter.py" "$@" )
 }
 
 if [ -n "$BASE_JSON" ] && [ -n "$HEAD_JSON" ]; then

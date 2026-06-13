@@ -1,5 +1,11 @@
-"""Engine orchestration for the action — extracted from inline ``python -c`` blocks
-in action.yml so it is checked in, reviewable, and unit-testable.
+"""CLI adapter between the action and the CodeBoarding analysis ENGINE.
+
+No analysis logic lives here. The engine is the separate ``CodeBoarding/
+CodeBoarding`` repo, checked out at runtime into ``codeboarding-engine/`` and
+imported lazily inside each function (``codeboarding_workflows`` etc.); this
+module just turns the action's shell steps into typed, tested calls into it.
+The lazy imports mean this file imports fine without the engine venv present —
+the tests stub those modules and assert we call the engine with the right args.
 
 Subcommands (all paths/refs come in as argv, never interpolated into source):
 
@@ -8,36 +14,35 @@ Subcommands (all paths/refs come in as argv, never interpolated into source):
   head           --repo P --out D --name N --run-id ID --depth K --base-ref B --target-ref T --source-sha SHA
   health         --artifact-dir D --repo P --name N --issues-out FILE
   validate-base  --analysis F --expected-sha SHA [--expected-depth K]
-  analyze        --repo P --out D --name N --run-id ID --source-sha SHA --depth K
+  baseline-info  --analysis F
+  analyze        --repo P --out D --name N --run-id ID --source-sha SHA --depth K [--force-full]
   render         --analysis F --out D --repo-name N --repo-ref R [--format .md]
   concat         --docs-dir D --out F
 
-``base`` runs a full analysis; ``seed`` builds the SHA-tagged static-analysis
-pkl for a baseline that came from a committed analysis.json (LSP + clustering,
-no LLM) so ``head`` can run incrementally; ``head`` runs incremental, falling
-back to full on ``IncrementalCacheMissingError``/``BaselineUnavailableError``;
-``health`` writes the WARNING/CRITICAL finding count to ``--issues-out`` (and
-never fails the run); ``validate-base`` exits non-zero when the committed
-baseline cannot be reused for the PR base (wrong commit, or — with
-``--expected-depth`` — a depth_level DEEPER than requested; shallower is
-accepted because the engine records the depth reached, not the depth asked).
+REVIEW mode uses base/seed/head/health/validate-base; SYNC mode uses
+baseline-info/analyze/render/concat. ``base`` runs a full analysis; ``seed``
+builds the SHA-tagged static-analysis pkl for a committed-analysis.json baseline
+(LSP + clustering, no LLM) so the incremental path can run; ``health`` writes
+the WARNING/CRITICAL finding count to ``--issues-out`` (never fails the run);
+``validate-base`` exits non-zero when the committed baseline cannot be reused
+for the PR base (wrong commit, or — with ``--expected-depth`` — a depth_level
+DEEPER than requested; shallower is accepted because the engine records the
+depth reached, not the depth asked); ``baseline-info`` prints the baseline's
+``commit_hash=`` (empty unless present and SHA-shaped).
 
-``analyze``/``render``/``concat`` power sync mode. ``analyze`` is
-baseline-aware: full when the committed analysis.json is missing, deeper
-than requested, or lacks a commit_hash; otherwise incremental with a fallback to
-full on the same cache-miss errors as ``head`` — it prints
-``analysis_mode=full`` or ``analysis_mode=incremental`` on stdout, which the
-action greps. ``render`` writes per-component markdown with root name
-``overview``; ``concat`` joins overview.md first plus the remaining *.md
-(sorted) into one architecture file.
+``head`` (review) and ``analyze`` (sync) are the SAME incremental-or-full
+operation via the shared ``_incremental_or_full`` helper; they differ only in
+where the base ref comes from (the PR base SHA vs the committed analysis.json)
+and in that ``analyze`` is baseline-aware (full when the baseline is missing,
+deeper than requested, lacks a commit_hash, or ``--force-full`` is set) and
+prints ``analysis_mode=full|incremental`` on stdout for the action to grep.
+``render`` writes per-component markdown with root name ``overview``; ``concat``
+joins overview.md first plus the remaining *.md (sorted) into one architecture
+file.
 
 Telemetry: ``CODEBOARDING_SOURCE`` is defaulted after argument parsing —
-``sync`` for analyze/render/concat, ``github_action`` for everything
-else.
-
-The engine (``codeboarding_workflows`` etc.) is imported lazily inside each
-function so this module imports without the engine venv present — the tests stub
-those modules and assert we call the engine with the right arguments.
+``sync`` for analyze/render/concat, ``github_action`` for everything else
+(the sync seed step overrides it to ``sync`` via env, since ``seed`` is shared).
 """
 
 from __future__ import annotations
@@ -45,9 +50,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
+
+# A committed analysis.json's commit_hash is trusted only as far as a SHA shape:
+# it flows into GITHUB_OUTPUT, cache keys, and git refs, so anything else must
+# be rejected before it reaches the action shell.
+_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 
 
 def _log_path(output_dir: str, filename: str) -> str:
@@ -86,6 +97,19 @@ def _metadata_depth(metadata: dict) -> int | None:
 def _metadata_commit(metadata: dict) -> str:
     value = metadata.get("commit_hash")
     return value if isinstance(value, str) else ""
+
+
+def baseline_info(analysis_path: Path) -> str:
+    """Return the committed baseline's commit_hash when present and SHA-shaped,
+    else "". Sync mode uses this (via the ``baseline-info`` subcommand) instead
+    of an inline shell heredoc, so baseline parsing + the SHA-shape guard live
+    in one tested place.
+    """
+    metadata = _load_metadata(analysis_path)
+    if not isinstance(metadata, dict):
+        return ""
+    commit = _metadata_commit(metadata)
+    return commit if _SHA_RE.match(commit) else ""
 
 
 def _docs_only_baseline_drift(actual_sha: str, expected_sha: str) -> tuple[bool, str]:
@@ -225,6 +249,57 @@ def run_seed(repo_path: str, output_dir: str, source_sha: str) -> None:
     print(f"Seeded static-analysis baseline in {output_dir} (clusters: {summary or 'none'})")
 
 
+def _incremental_or_full(
+    *,
+    repo_path: str,
+    output_dir: str,
+    repo_name: str,
+    run_id: str,
+    depth: int,
+    base_ref: str,
+    target_ref: str,
+    source_sha: str,
+    log_name: str,
+) -> str:
+    """Run incremental from *base_ref*; on a cache/baseline miss, clear the
+    output dir and run a full analysis. Returns "incremental" or "full".
+
+    Shared by the review head path and the sync analyze path so the fallback
+    rule (which exceptions degrade to full, and the clear-before-full) lives in
+    exactly one place — a bug fixed here is fixed for both modes.
+    """
+    from codeboarding_workflows.analysis import BaselineUnavailableError, run_full, run_incremental
+    from diagram_analysis.exceptions import IncrementalCacheMissingError
+
+    try:
+        res = run_incremental(
+            repo_path=Path(repo_path),
+            output_dir=Path(output_dir),
+            project_name=repo_name,
+            run_id=run_id,
+            log_path=_log_path(output_dir, log_name),
+            base_ref=base_ref,
+            target_ref=target_ref,
+            source_sha=source_sha,
+        )
+        print(f"Analysis written: {res}")
+        return "incremental"
+    except (IncrementalCacheMissingError, BaselineUnavailableError) as exc:
+        print(f"Incremental unavailable ({exc}); running full analysis.")
+        _clear_dir(Path(output_dir))
+        res = run_full(
+            repo_name=repo_name,
+            repo_path=Path(repo_path),
+            output_dir=Path(output_dir),
+            run_id=run_id,
+            log_path=_log_path(output_dir, log_name),
+            depth_level=depth,
+            source_sha=source_sha,
+        )
+        print(f"Analysis written: {res}")
+        return "full"
+
+
 def run_head(
     repo_path: str,
     output_dir: str,
@@ -235,43 +310,39 @@ def run_head(
     target_ref: str,
     source_sha: str,
 ) -> None:
-    from codeboarding_workflows.analysis import BaselineUnavailableError, run_full, run_incremental
-    from diagram_analysis.exceptions import IncrementalCacheMissingError
-
-    try:
-        res = run_incremental(
-            repo_path=Path(repo_path),
-            output_dir=Path(output_dir),
-            project_name=repo_name,
-            run_id=run_id,
-            log_path=_log_path(output_dir, "cb-head.log"),
-            base_ref=base_ref,
-            target_ref=target_ref,
-            source_sha=source_sha,
-        )
-    except (IncrementalCacheMissingError, BaselineUnavailableError) as exc:
-        print(f"Incremental unavailable ({exc}); running full analysis on head.")
-        _clear_dir(Path(output_dir))
-        res = run_full(
-            repo_name=repo_name,
-            repo_path=Path(repo_path),
-            output_dir=Path(output_dir),
-            run_id=run_id,
-            log_path=_log_path(output_dir, "cb-head.log"),
-            depth_level=depth,
-            source_sha=source_sha,
-        )
-    print(f"Head analysis written: {res}")
+    """Review PR head: incremental from the PR base, full on a cache miss."""
+    _incremental_or_full(
+        repo_path=repo_path,
+        output_dir=output_dir,
+        repo_name=repo_name,
+        run_id=run_id,
+        depth=depth,
+        base_ref=base_ref,
+        target_ref=target_ref,
+        source_sha=source_sha,
+        log_name="cb-head.log",
+    )
 
 
-def run_analyze(repo_path: str, output_dir: str, repo_name: str, run_id: str, source_sha: str, depth: int) -> str:
-    from codeboarding_workflows.analysis import BaselineUnavailableError, run_full, run_incremental
-    from diagram_analysis.exceptions import IncrementalCacheMissingError
-
+def run_analyze(
+    repo_path: str,
+    output_dir: str,
+    repo_name: str,
+    run_id: str,
+    source_sha: str,
+    depth: int,
+    force_full: bool = False,
+) -> str:
+    """Sync analysis: incremental from the committed baseline, full when the
+    baseline is missing/deeper-than-requested/unparseable or ``force_full`` is
+    set. Prints ``analysis_mode=full|incremental`` on stdout — the action greps
+    that line, so it must be printed exactly once per run.
+    """
     out_path = Path(output_dir)
-    analysis_path = out_path / "analysis.json"
 
     def full(reason: str) -> str:
+        from codeboarding_workflows.analysis import run_full
+
         print(f"{reason}; running full analysis.")
         _clear_dir(out_path)
         res = run_full(
@@ -279,7 +350,7 @@ def run_analyze(repo_path: str, output_dir: str, repo_name: str, run_id: str, so
             repo_path=Path(repo_path),
             output_dir=out_path,
             run_id=run_id,
-            log_path=_log_path(output_dir, "cb-docs.log"),
+            log_path=_log_path(output_dir, "cb-sync.log"),
             depth_level=depth,
             source_sha=source_sha,
         )
@@ -287,7 +358,10 @@ def run_analyze(repo_path: str, output_dir: str, repo_name: str, run_id: str, so
         print("analysis_mode=full")
         return "full"
 
-    metadata = _load_metadata(analysis_path)
+    if force_full:
+        return full("Full analysis forced (force_full)")
+
+    metadata = _load_metadata(out_path / "analysis.json")
     if metadata is None:
         return full("No baseline analysis.json found")
 
@@ -305,23 +379,19 @@ def run_analyze(repo_path: str, output_dir: str, repo_name: str, run_id: str, so
     if not base_ref:
         return full("Baseline metadata.commit_hash is missing")
 
-    try:
-        res = run_incremental(
-            repo_path=Path(repo_path),
-            output_dir=out_path,
-            project_name=repo_name,
-            run_id=run_id,
-            log_path=_log_path(output_dir, "cb-docs.log"),
-            base_ref=base_ref,
-            target_ref=source_sha,
-            source_sha=source_sha,
-        )
-    except (IncrementalCacheMissingError, BaselineUnavailableError) as exc:
-        return full(f"Incremental unavailable ({exc})")
-
-    print(f"Analysis written: {res}")
-    print("analysis_mode=incremental")
-    return "incremental"
+    mode = _incremental_or_full(
+        repo_path=repo_path,
+        output_dir=output_dir,
+        repo_name=repo_name,
+        run_id=run_id,
+        depth=depth,
+        base_ref=base_ref,
+        target_ref=source_sha,
+        source_sha=source_sha,
+        log_name="cb-sync.log",
+    )
+    print(f"analysis_mode={mode}")
+    return mode
 
 
 def run_render(analysis: str, output_dir: str, repo_name: str, repo_ref: str, output_format: str) -> None:
@@ -442,10 +512,14 @@ def main(argv=None) -> int:
     vb.add_argument("--expected-sha", required=True)
     vb.add_argument("--expected-depth", type=int, choices=range(1, 4))
 
+    bi = sub.add_parser("baseline-info")
+    bi.add_argument("--analysis", required=True)
+
     an = sub.add_parser("analyze")
     for a in ("--repo", "--out", "--name", "--run-id", "--source-sha"):
         an.add_argument(a, required=True)
     an.add_argument("--depth", required=True, type=int, choices=range(1, 4))
+    an.add_argument("--force-full", action="store_true", help="Ignore any committed baseline and run a full analysis.")
 
     rn = sub.add_parser("render")
     for a in ("--analysis", "--out", "--repo-name", "--repo-ref"):
@@ -473,8 +547,10 @@ def main(argv=None) -> int:
         ok, message = validate_base_analysis(Path(args.analysis), args.expected_sha, args.expected_depth)
         print(message)
         return 0 if ok else 1
+    elif args.cmd == "baseline-info":
+        print(f"commit_hash={baseline_info(Path(args.analysis))}")
     elif args.cmd == "analyze":
-        run_analyze(args.repo, args.out, args.name, args.run_id, args.source_sha, args.depth)
+        run_analyze(args.repo, args.out, args.name, args.run_id, args.source_sha, args.depth, args.force_full)
     elif args.cmd == "render":
         run_render(args.analysis, args.out, args.repo_name, args.repo_ref, args.format)
     elif args.cmd == "concat":

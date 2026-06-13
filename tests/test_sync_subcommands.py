@@ -1,7 +1,7 @@
-"""Smoke tests for the sync-mode subcommands of scripts/cb_engine.py (analyze,
+"""Smoke tests for the sync-mode subcommands of scripts/engine_adapter.py (analyze,
 render, concat) with stubbed engine modules — ported from the standalone
-docs-action's test_docs_engine.py. Seed tests are not ported: cb_engine's seed
-is byte-identical and already covered by tests/test_cb_engine.py."""
+docs-action's test_docs_engine.py. Seed tests are not ported: engine_adapter's seed
+is byte-identical and already covered by tests/test_engine_adapter.py."""
 
 import json
 import os
@@ -15,7 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-import cb_engine  # noqa: E402
+import engine_adapter  # noqa: E402
 
 _STUBBED = [
     "codeboarding_workflows",
@@ -91,7 +91,7 @@ class TestAnalyze(_Base):
         self._install(run_full=rf, run_incremental=ri)
         out = tempfile.mkdtemp()
 
-        mode = cb_engine.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
+        mode = engine_adapter.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
 
         self.assertEqual(mode, "full")
         self.assertEqual(len(rf.calls), 1)
@@ -108,7 +108,7 @@ class TestAnalyze(_Base):
         out = tempfile.mkdtemp()
         _write_analysis(out, commit="metadata-base", depth=2)
 
-        mode = cb_engine.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
+        mode = engine_adapter.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
 
         self.assertEqual(mode, "incremental")
         self.assertEqual(len(rf.calls), 0)
@@ -127,7 +127,7 @@ class TestAnalyze(_Base):
         (out / "health").mkdir()
         (out / "health" / "stale.json").write_text("{}", encoding="utf-8")
 
-        mode = cb_engine.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 2)
+        mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 2)
 
         self.assertEqual(mode, "full")
         self.assertEqual(len(rf.calls), 1)
@@ -144,7 +144,7 @@ class TestAnalyze(_Base):
         out = tempfile.mkdtemp()
         _write_analysis(out, commit="metadata-base", depth=1)
 
-        mode = cb_engine.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
+        mode = engine_adapter.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
 
         self.assertEqual(mode, "incremental")
         self.assertEqual(len(rf.calls), 0)
@@ -158,7 +158,7 @@ class TestAnalyze(_Base):
             json.dumps({"metadata": {"commit_hash": "metadata-base"}}), encoding="utf-8"
         )
 
-        mode = cb_engine.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 2)
+        mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 2)
 
         self.assertEqual(mode, "full")
         self.assertEqual(len(rf.calls), 1)
@@ -170,7 +170,7 @@ class TestAnalyze(_Base):
         out = Path(tempfile.mkdtemp())
         out.joinpath("analysis.json").write_text(json.dumps({"metadata": {"depth_level": 2}}), encoding="utf-8")
 
-        mode = cb_engine.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 2)
+        mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 2)
 
         self.assertEqual(mode, "full")
         self.assertEqual(len(rf.calls), 1)
@@ -185,7 +185,7 @@ class TestAnalyze(_Base):
         _write_analysis(out, commit="metadata-base", depth=3)
         (out / "stale.json").write_text("{}", encoding="utf-8")
 
-        mode = cb_engine.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 3)
+        mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 3)
 
         self.assertEqual(mode, "full")
         self.assertEqual(len(rf.calls), 1)
@@ -199,7 +199,7 @@ class TestAnalyze(_Base):
         out = tempfile.mkdtemp()
         _write_analysis(out, commit="metadata-base", depth=2)
 
-        mode = cb_engine.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
+        mode = engine_adapter.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
 
         self.assertEqual(mode, "full")
         self.assertEqual(len(rf.calls), 1)
@@ -213,7 +213,7 @@ class TestAnalyze(_Base):
         self._install()
         buf = StringIO()
         with redirect_stdout(buf):
-            cb_engine.run_analyze("/repo", tempfile.mkdtemp(), "myrepo", "rid", "head123", 2)
+            engine_adapter.run_analyze("/repo", tempfile.mkdtemp(), "myrepo", "rid", "head123", 2)
         self.assertEqual(self._markers(buf), ["analysis_mode=full"])
 
     def test_stdout_marker_incremental_printed_exactly_once(self):
@@ -222,7 +222,7 @@ class TestAnalyze(_Base):
         _write_analysis(out, commit="metadata-base", depth=2)
         buf = StringIO()
         with redirect_stdout(buf):
-            cb_engine.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
+            engine_adapter.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
         self.assertEqual(self._markers(buf), ["analysis_mode=incremental"])
 
     def test_stdout_marker_fallback_prints_full_exactly_once(self):
@@ -233,14 +233,56 @@ class TestAnalyze(_Base):
         _write_analysis(out, commit="metadata-base", depth=2)
         buf = StringIO()
         with redirect_stdout(buf):
-            cb_engine.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
+            engine_adapter.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
         self.assertEqual(self._markers(buf), ["analysis_mode=full"])
+
+    def test_force_full_ignores_valid_baseline(self):
+        # force_full must run a full analysis even when a reusable baseline is
+        # present (the escape hatch that replaces refresh-baseline.yml).
+        rf, ri = _Rec(), _Rec()
+        self._install(run_full=rf, run_incremental=ri)
+        out = tempfile.mkdtemp()
+        _write_analysis(out, commit="metadata-base", depth=2)  # a perfectly reusable baseline
+        buf = StringIO()
+        with redirect_stdout(buf):
+            mode = engine_adapter.run_analyze("/repo", out, "myrepo", "rid", "head123", 2, force_full=True)
+        self.assertEqual(mode, "full")
+        self.assertEqual(len(rf.calls), 1)
+        self.assertEqual(len(ri.calls), 0)  # baseline never consulted
+        self.assertEqual(self._markers(buf), ["analysis_mode=full"])
+
+    def test_main_force_full_flag_wires_through(self):
+        rf, ri = _Rec(), _Rec()
+        self._install(run_full=rf, run_incremental=ri)
+        out = tempfile.mkdtemp()
+        _write_analysis(out, commit="metadata-base", depth=2)
+        with patch.dict(os.environ, {}, clear=True):
+            engine_adapter.main(
+                [
+                    "analyze",
+                    "--repo",
+                    "/r",
+                    "--out",
+                    out,
+                    "--name",
+                    "n",
+                    "--run-id",
+                    "rid",
+                    "--source-sha",
+                    "head123",
+                    "--depth",
+                    "2",
+                    "--force-full",
+                ]
+            )
+        self.assertEqual(len(rf.calls), 1)
+        self.assertEqual(len(ri.calls), 0)
 
     def test_main_parses_depth_as_int_and_sets_sync_source(self):
         rf = _Rec()
         self._install(run_full=rf)
         with patch.dict(os.environ, {}, clear=True):
-            cb_engine.main(
+            engine_adapter.main(
                 [
                     "analyze",
                     "--repo",
@@ -265,7 +307,7 @@ class TestAnalyze(_Base):
             with self.subTest(depth=depth):
                 with redirect_stderr(StringIO()):
                     with self.assertRaises(SystemExit):
-                        cb_engine.main(
+                        engine_adapter.main(
                             [
                                 "analyze",
                                 "--repo",
@@ -295,7 +337,9 @@ class TestRenderAndConcat(_Base):
     def test_render_calls_engine_with_overview_root(self):
         rec = self._install_rendering()
 
-        cb_engine.run_render("/tmp/analysis.json", "/tmp/docs", "repo", "https://example/repo/.codeboarding", ".md")
+        engine_adapter.run_render(
+            "/tmp/analysis.json", "/tmp/docs", "repo", "https://example/repo/.codeboarding", ".md"
+        )
 
         args, kwargs = rec.calls[0]
         self.assertEqual(str(args[0]), "/tmp/analysis.json")
@@ -313,7 +357,7 @@ class TestRenderAndConcat(_Base):
         (docs_dir / "notes.txt").write_text("ignored", encoding="utf-8")
         out = Path(tempfile.mkdtemp()) / "docs" / "development" / "architecture.md"
 
-        cb_engine.run_concat(str(docs_dir), str(out))
+        engine_adapter.run_concat(str(docs_dir), str(out))
 
         self.assertEqual(out.read_text(encoding="utf-8"), "overview\n\na\n\nz\n")
 
@@ -321,7 +365,7 @@ class TestRenderAndConcat(_Base):
 class TestSourceDispatch(_Base):
     """CODEBOARDING_SOURCE is setdefault'ed after argparse: sync for
     analyze/render/concat, github_action for everything else (base/seed/head/
-    health/validate-base — base is asserted in test_cb_engine.py)."""
+    health/validate-base — base is asserted in test_engine_adapter.py)."""
 
     def test_main_render_sets_sync_source(self):
         rec = _Rec()
@@ -329,7 +373,7 @@ class TestSourceDispatch(_Base):
         pkg = _mod("codeboarding_workflows")
         pkg.rendering = rendering
         with patch.dict(os.environ, {}, clear=True):
-            rc = cb_engine.main(
+            rc = engine_adapter.main(
                 [
                     "render",
                     "--analysis",
@@ -351,7 +395,7 @@ class TestSourceDispatch(_Base):
         (docs_dir / "overview.md").write_text("overview", encoding="utf-8")
         out = Path(tempfile.mkdtemp()) / "architecture.md"
         with patch.dict(os.environ, {}, clear=True):
-            rc = cb_engine.main(["concat", "--docs-dir", str(docs_dir), "--out", str(out)])
+            rc = engine_adapter.main(["concat", "--docs-dir", str(docs_dir), "--out", str(out)])
             self.assertEqual(rc, 0)
             self.assertEqual(os.environ["CODEBOARDING_SOURCE"], "sync")
 
@@ -360,7 +404,7 @@ class TestSourceDispatch(_Base):
             path = Path(tmp) / "analysis.json"
             path.write_text(json.dumps({"metadata": {"commit_hash": "abc123"}}), encoding="utf-8")
             with patch.dict(os.environ, {}, clear=True):
-                cb_engine.main(["validate-base", "--analysis", str(path), "--expected-sha", "abc123"])
+                engine_adapter.main(["validate-base", "--analysis", str(path), "--expected-sha", "abc123"])
                 self.assertEqual(os.environ["CODEBOARDING_SOURCE"], "github_action")
 
     def test_main_does_not_override_existing_source(self):
@@ -368,8 +412,48 @@ class TestSourceDispatch(_Base):
         (docs_dir / "overview.md").write_text("overview", encoding="utf-8")
         out = Path(tempfile.mkdtemp()) / "architecture.md"
         with patch.dict(os.environ, {"CODEBOARDING_SOURCE": "custom"}, clear=True):
-            cb_engine.main(["concat", "--docs-dir", str(docs_dir), "--out", str(out)])
+            engine_adapter.main(["concat", "--docs-dir", str(docs_dir), "--out", str(out)])
             self.assertEqual(os.environ["CODEBOARDING_SOURCE"], "custom")
+
+
+class TestBaselineInfo(_Base):
+    """baseline-info replaces the sync_seed step's inline heredoc: it returns the
+    committed baseline's commit_hash only when present and SHA-shaped."""
+
+    def _write(self, metadata):
+        out = Path(tempfile.mkdtemp())
+        (out / "analysis.json").write_text(json.dumps({"metadata": metadata}), encoding="utf-8")
+        return out / "analysis.json"
+
+    def test_returns_sha_shaped_commit(self):
+        path = self._write({"commit_hash": "a1b2c3d4e5f6"})
+        self.assertEqual(engine_adapter.baseline_info(path), "a1b2c3d4e5f6")
+
+    def test_rejects_non_sha_commit(self):
+        # A non-SHA value must not flow into GITHUB_OUTPUT / cache keys / git.
+        for bad in ("not-a-sha", "abc\ncb_dir=/evil", "ABC123", "", "12345"):  # too short / wrong charset / injection
+            with self.subTest(commit=bad):
+                self.assertEqual(engine_adapter.baseline_info(self._write({"commit_hash": bad})), "")
+
+    def test_missing_metadata_or_file(self):
+        self.assertEqual(engine_adapter.baseline_info(self._write({})), "")
+        self.assertEqual(engine_adapter.baseline_info(Path(tempfile.mkdtemp()) / "absent.json"), "")
+
+    def test_main_prints_commit_hash_line(self):
+        path = self._write({"commit_hash": "deadbeef1234"})
+        buf = StringIO()
+        with patch.dict(os.environ, {}, clear=True), redirect_stdout(buf):
+            rc = engine_adapter.main(["baseline-info", "--analysis", str(path)])
+        self.assertEqual(rc, 0)
+        self.assertIn("commit_hash=deadbeef1234", buf.getvalue())
+
+    def test_main_prints_empty_for_bad_baseline(self):
+        path = self._write({"commit_hash": "nope"})
+        buf = StringIO()
+        with patch.dict(os.environ, {}, clear=True), redirect_stdout(buf):
+            engine_adapter.main(["baseline-info", "--analysis", str(path)])
+        self.assertIn("commit_hash=", buf.getvalue())
+        self.assertNotIn("nope", buf.getvalue())
 
 
 if __name__ == "__main__":

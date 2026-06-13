@@ -1,8 +1,11 @@
-# Dogfood sync mode: sync THIS repo's committed architecture baseline
-# (analysis.json + docs) on every push to main, keeping the
-# baseline the PR review workflow diffs against current. This supersedes the
-# manual refresh-baseline.yml for routine freshness; that workflow stays as a
-# manual escape hatch for an on-demand, from-scratch baseline rebuild.
+# Dogfood sync mode: keep THIS repo's committed architecture baseline
+# (.codeboarding/analysis.json + rendered docs) current on every push to main,
+# so the PR review workflow always diffs against an up-to-date baseline.
+#
+# This is the ONLY baseline writer for this repo. The manual "rebuild from
+# scratch" path (previously a separate refresh-baseline.yml) is now the
+# workflow_dispatch + force_full input below, which runs the same tested action
+# instead of a hand-rolled copy of its pipeline.
 
 name: CodeBoarding sync
 
@@ -12,7 +15,7 @@ on:
     # Don't re-trigger on the files this workflow itself commits. Deliberately
     # NOT '.codeboarding/**': that would also swallow pushes that only edit the
     # user-authored .codeboarding/.codeboardingignore, which changes analysis
-    # scope and should regenerate the docs.
+    # scope and should regenerate the baseline.
     paths-ignore:
       - '.codeboarding/*.md'
       - '.codeboarding/analysis.json'
@@ -20,14 +23,19 @@ on:
       - '.codeboarding/health/**'
       - 'docs/development/architecture.md'
   workflow_dispatch:
+    inputs:
+      force_full:
+        description: 'Ignore the committed baseline and rebuild it from scratch (full analysis).'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
-  contents: write   # commit the generated docs to the branch
+  contents: write   # commit the generated baseline + docs to main
 
 concurrency:
-  # Shared with refresh-baseline.yml: both commit .codeboarding/analysis.json
-  # to main and must never run concurrently (refresh-baseline's plain `git
-  # push` hard-fails on non-fast-forward).
+  # Serialize this workflow against itself: a push landing while a manual
+  # dispatch is mid-run must not produce two concurrent commits to main.
   group: codeboarding-baseline-writers
   cancel-in-progress: false
 
@@ -44,4 +52,5 @@ jobs:
       - uses: ./
         with:
           mode: sync
+          force_full: ${{ inputs.force_full || false }}
           llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}

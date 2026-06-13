@@ -252,6 +252,7 @@ Be aware that `contents: write` is repo-wide — GitHub does not scope it to a b
 | `target_branch` | sync | `${{ github.ref_name }}` | Branch the generated docs are pushed to. |
 | `write_architecture_md` | sync | `true` | Also write `docs/development/architecture.md`: all rendered pages concatenated, `overview.md` first. |
 | `commit_message` | sync | `chore(codeboarding): sync architecture baseline [skip ci]` | Commit message for the generated docs. |
+| `force_full` | sync | `false` | Ignore any committed baseline and run a full analysis from scratch. Use to rebuild a stale or corrupt baseline (e.g. from a `workflow_dispatch`). |
 
 ## Outputs
 
