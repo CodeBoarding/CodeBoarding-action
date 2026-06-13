@@ -1,13 +1,13 @@
 {
   "repository_name": "CodeBoarding-action",
-  "timestamp": "2026-06-12T12:22:22.416630+00:00",
-  "overall_score": 0.9996710526315788,
+  "timestamp": "2026-06-13T22:14:33.547619+00:00",
+  "overall_score": 0.9997297297297296,
   "check_summaries": [
     {
       "check_name": "function_size",
       "description": "Checks that functions/methods do not exceed line count thresholds",
       "check_type": "standard",
-      "total_entities_checked": 50,
+      "total_entities_checked": 61,
       "findings_count": 0,
       "warning_count": 0,
       "score": 1.0,
@@ -17,7 +17,7 @@
       "check_name": "fan_out",
       "description": "Checks efferent coupling: how many other functions each function calls",
       "check_type": "standard",
-      "total_entities_checked": 50,
+      "total_entities_checked": 61,
       "findings_count": 0,
       "warning_count": 0,
       "score": 1.0,
@@ -27,7 +27,7 @@
       "check_name": "fan_in",
       "description": "Checks afferent coupling: how many other functions call each function",
       "check_type": "standard",
-      "total_entities_checked": 50,
+      "total_entities_checked": 61,
       "findings_count": 0,
       "warning_count": 0,
       "score": 1.0,
@@ -60,8 +60,8 @@
             {
               "entity_name": "[unreachable_code] Type analysis indicates code is unreachable",
               "file_path": "scripts/engine_adapter.py",
-              "line_start": 159,
-              "line_end": 159,
+              "line_start": 432,
+              "line_end": 432,
               "metric_value": 0.0
             }
           ]
