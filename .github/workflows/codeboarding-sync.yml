@@ -12,10 +12,12 @@ name: CodeBoarding sync
 on:
   push:
     branches: [main]
-    # Don't re-trigger on the files this workflow itself commits. Deliberately
-    # NOT '.codeboarding/**': that would also swallow pushes that only edit the
-    # user-authored .codeboarding/.codeboardingignore, which changes analysis
-    # scope and should regenerate the baseline.
+    # Loop guard: don't re-trigger on the files this workflow itself commits.
+    # Deliberately NOT '.codeboarding/**': that would also swallow pushes that
+    # only edit the user-authored .codeboarding/.codeboardingignore, which
+    # changes analysis scope and should regenerate the baseline. The action also
+    # skips re-analyzing its own bot commit as a backstop; the bot commit uses no
+    # [skip ci] (that would leak through squash-merges and skip real merges).
     paths-ignore:
       - '.codeboarding/*.md'
       - '.codeboarding/analysis.json'
