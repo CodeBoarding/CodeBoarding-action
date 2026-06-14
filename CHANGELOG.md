@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.3.0...v1.4.0) (2026-06-14)
+
+
+### Features
+
+* add /codeboarding-feedback command to capture PR feedback via PostHog ([#32](https://github.com/CodeBoarding/CodeBoarding-action/issues/32)) ([2df93e2](https://github.com/CodeBoarding/CodeBoarding-action/commit/2df93e2a769be8f30dcb200682e3be26b16b6e82))
+* add sync mode — commit a versioned architecture baseline on push ([#28](https://github.com/CodeBoarding/CodeBoarding-action/issues/28)) ([290e36b](https://github.com/CodeBoarding/CodeBoarding-action/commit/290e36b6f828f10576da1477bcaf07c8f53160ec))
+* merge the PR-comment browser + editor CTAs into one line ([#30](https://github.com/CodeBoarding/CodeBoarding-action/issues/30)) ([3168018](https://github.com/CodeBoarding/CodeBoarding-action/commit/31680187d7cd65a2c3346d502814b6d759ca4fa6))
+
+
+### Bug Fixes
+
+* drop [skip ci] from bot commits so merges trigger sync; guard the loop without it ([#31](https://github.com/CodeBoarding/CodeBoarding-action/issues/31)) ([cf66577](https://github.com/CodeBoarding/CodeBoarding-action/commit/cf66577cf0658a2d91e0d395ad14b2fa5ee5a980))
+
 ## [1.3.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.2.0...v1.3.0) (2026-06-13)
 
 
