@@ -170,9 +170,11 @@ name: CodeBoarding sync
 on:
   push:
     branches: [main]
-    # Don't re-trigger on the files this workflow itself commits. Listed
-    # explicitly (not '.codeboarding/**') so that editing your own
-    # .codeboarding/.codeboardingignore still regenerates the docs.
+    # Loop guard: don't re-trigger on the files this workflow itself commits.
+    # Listed explicitly (not '.codeboarding/**') so that editing your own
+    # .codeboarding/.codeboardingignore still regenerates the docs. (The action
+    # also skips re-analyzing its own bot commit as a backstop, and deliberately
+    # does NOT use [skip ci] — that would leak through squash-merges.)
     paths-ignore:
       - '.codeboarding/*.md'
       - '.codeboarding/analysis.json'
@@ -204,7 +206,7 @@ Behavior worth knowing:
 - The first run on a branch is a full analysis; subsequent runs reuse the committed baseline and run incrementally when they can (the `analysis_mode` output tells you which happened).
 - The commit is skipped when nothing meaningful changed (an empty diff, or only `generated_at`/timestamp fields). The push retries a few times with fetch+rebase and fails open, so a race with another push never fails your CI.
 - Tag pushes are skipped. `pull_request` events soft-skip in sync mode, so a mistakenly shared workflow can never push docs from a PR run.
-- The default `commit_message` ends in `[skip ci]`; keep the `paths-ignore` list above anyway, in case you customize the message or use a push token whose commits trigger workflows.
+- The bot commit carries **no `[skip ci]`** — on a squash-merge that marker leaks into the merge commit and would skip the very sync run (and release tooling, CI) the merge should trigger. The regen loop is instead prevented by the `paths-ignore` list above **and** by the action skipping re-analysis of its own bot commit, so a merge to `main` reliably triggers a fresh incremental sync.
 - `output_dir` is owned by the action: pre-existing top-level markdown files in it are deleted on every run (stale component pages must not linger). Don't point it at a directory with hand-written docs.
 
 ### How the two modes work together
@@ -251,7 +253,7 @@ Be aware that `contents: write` is repo-wide — GitHub does not scope it to a b
 | `output_format` | sync | `.md` | Output format. Only `.md` is supported. |
 | `target_branch` | sync | `${{ github.ref_name }}` | Branch the generated docs are pushed to. |
 | `write_architecture_md` | sync | `true` | Also write `docs/development/architecture.md`: all rendered pages concatenated, `overview.md` first. |
-| `commit_message` | sync | `chore(codeboarding): sync architecture baseline [skip ci]` | Commit message for the generated docs. |
+| `commit_message` | sync | `chore(codeboarding): sync architecture baseline` | Commit message for the generated docs. No `[skip ci]` (it would leak through squash-merges); the regen loop is guarded by `paths-ignore` + the action's own bot-commit check. |
 | `force_full` | sync | `false` | Ignore any committed baseline and run a full analysis from scratch. Use to rebuild a stale or corrupt baseline (e.g. from a `workflow_dispatch`). |
 
 ## Outputs

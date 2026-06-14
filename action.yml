@@ -91,9 +91,9 @@ inputs:
     required: false
     default: 'true'
   commit_message:
-    description: 'Sync mode: commit message for the generated docs.'
+    description: 'Sync mode: commit message for the generated docs. Deliberately carries no "[skip ci]" — the regen loop is prevented by the workflow''s paths-ignore plus the action''s own bot-commit guard, so the marker is unneeded and (via squash-merge) would skip the workflows real merges should run.'
     required: false
-    default: 'chore(codeboarding): sync architecture baseline [skip ci]'
+    default: 'chore(codeboarding): sync architecture baseline'
   force_full:
     description: 'Sync mode: ignore any committed baseline and run a full analysis from scratch. Use to rebuild a stale or corrupt baseline (the manual escape hatch that replaces the old refresh-baseline workflow).'
     required: false
@@ -161,6 +161,7 @@ runs:
         OUTPUT_FORMAT: ${{ inputs.output_format }}
         WRITE_ARCH: ${{ inputs.write_architecture_md }}
         DEPTH: ${{ inputs.depth_level }}
+        HEAD_AUTHOR_EMAIL: ${{ github.event.head_commit.author.email }}
       run: |
         set -uo pipefail
         skip() { echo "::notice::$1 Skipping."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
@@ -188,6 +189,15 @@ runs:
           esac
           if [ "$EVENT" = "push" ] && [ "$REF_TYPE" = "tag" ]; then
             skip "Sync mode runs on branch pushes, not tag pushes."
+          fi
+          # Regen-loop guard: never re-analyze our OWN baseline commit. Sync
+          # commits as codeboarding[bot]; if a push's head commit is ours, skip.
+          # This holds even if a consumer omits the workflow's paths-ignore (the
+          # primary guard), and replaces the old "[skip ci]" marker — which
+          # leaked into squash-merge commit messages and wrongly skipped the
+          # workflows real merges should run (sync itself, release tooling, CI).
+          if [ "$EVENT" = "push" ] && [ "$HEAD_AUTHOR_EMAIL" = "codeboarding[bot]@users.noreply.github.com" ]; then
+            skip "Push head commit is CodeBoarding's own baseline commit; not re-analyzing (loop guard)."
           fi
           case "$OUTPUT_FORMAT" in
             .md) ;;
@@ -915,10 +925,21 @@ runs:
           echo "ready=true" >> "$GITHUB_OUTPUT"   # already committed at this SHA → webview can read it
           exit 0
         fi
+        # Same architecture, only volatile timestamps differ: don't commit. The
+        # bot commit carries no "[skip ci]" (it would leak through squash-merges
+        # and skip real merges' workflows), so a workflow that re-runs on every
+        # push (synchronize) would otherwise re-commit a new generated_at forever.
+        # ready=true: the analysis already committed at this SHA still serves the webview.
+        if git diff --cached --quiet -I '"generated_at"' -I '"timestamp"'; then
+          git reset -q
+          echo "::notice::Head analysis differs only in timestamps; nothing to commit."
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
 
         git config user.name "codeboarding[bot]"
         git config user.email "codeboarding[bot]@users.noreply.github.com"
-        git commit -m "chore(codeboarding): update architecture analysis [skip ci]" >/dev/null
+        git commit -m "chore(codeboarding): update architecture analysis" >/dev/null
 
         # Push to the PR head branch. The checkout used persist-credentials:false, so
         # authenticate the push explicitly with the workflow token (same-repo only).
