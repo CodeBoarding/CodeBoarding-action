@@ -925,14 +925,18 @@ runs:
           echo "ready=true" >> "$GITHUB_OUTPUT"   # already committed at this SHA → webview can read it
           exit 0
         fi
-        # Same architecture, only volatile timestamps differ: don't commit. The
-        # bot commit carries no "[skip ci]" (it would leak through squash-merges
-        # and skip real merges' workflows), so a workflow that re-runs on every
-        # push (synchronize) would otherwise re-commit a new generated_at forever.
-        # ready=true: the analysis already committed at this SHA still serves the webview.
-        if git diff --cached --quiet -I '"generated_at"' -I '"timestamp"'; then
+        # Same architecture, only volatile metadata differs: don't commit. The
+        # ignored fields must cover EVERY per-run field, or the loop below stays
+        # open: generated_at and the health timestamp, AND commit_hash — which
+        # tracks the analyzed head SHA, so on a synchronize re-run (whose head IS
+        # our previous bot commit) it changes even when the architecture didn't.
+        # The bot commit carries no "[skip ci]" (it would leak through squash-
+        # merges and skip real merges' workflows), so without ignoring all three
+        # a synchronize-triggered re-run would re-commit a fresh SHA/timestamp
+        # forever. ready=true: the analysis already committed serves the webview.
+        if git diff --cached --quiet -I '"generated_at"' -I '"timestamp"' -I '"commit_hash"'; then
           git reset -q
-          echo "::notice::Head analysis differs only in timestamps; nothing to commit."
+          echo "::notice::Head analysis differs only in volatile metadata (timestamps/commit_hash); nothing to commit."
           echo "ready=true" >> "$GITHUB_OUTPUT"
           exit 0
         fi
