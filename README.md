@@ -154,6 +154,14 @@ This table mirrors the engine and may lag it. The source of truth is the engine'
 
 The command needs the `issue_comment` trigger and runs from your default branch (a GitHub rule), so it only works once the workflow is merged there. On-demand runs on fork PRs are refused, so fork code is never analyzed with your secrets.
 
+### Feedback command
+
+In review workflows that include `issue_comment`, anyone whose comment reaches the action can send product feedback with:
+
+```text
+/codeboarding-feedback <message>
+```
+
 ## Keep your architecture versioned (sync mode)
 
 With `mode: sync`, the action analyzes the pushed commit and commits the results back to the branch (as `codeboarding[bot]`), so your architecture analysis stays versioned in git and tracks the code instead of drifting from it:
