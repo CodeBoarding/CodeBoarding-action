@@ -70,6 +70,14 @@ inputs:
     description: 'Review mode: slash-command that triggers the action from a PR comment (issue_comment event). A comment whose first word is this runs the diagram on-demand.'
     required: false
     default: '/codeboarding'
+  feedback_command:
+    description: 'Review mode: slash-command for submitting explicit feedback to CodeBoarding. The command and following text are sent to CodeBoarding via PostHog (not anonymous telemetry, and no analysis runs). Opt out with CODEBOARDING_TELEMETRY=false or DO_NOT_TRACK=1.'
+    required: false
+    default: '/codeboarding-feedback'
+  feedback_max_chars:
+    description: 'Review mode: maximum number of feedback characters sent from /codeboarding-feedback (the text is truncated past this).'
+    required: false
+    default: '4000'
   mode:
     description: 'What the action does. "review" (default): post a Mermaid architecture-diff comment on the PR (pull_request / issue_comment events). "sync": analyze on push and commit the architecture (analysis.json + rendered docs) to target_branch, keeping it versioned and current (the baseline review mode diffs against). Events: push / workflow_dispatch / schedule. Run the two modes from separate workflow files with least-privilege permissions each.'
     required: false
@@ -142,6 +150,26 @@ runs:
         COMMENT_BODY: ${{ github.event.comment.body }}
         AUTHOR_ASSOC: ${{ github.event.comment.author_association }}
         TRIGGER: ${{ inputs.trigger_command }}
+        # Feedback path (/codeboarding-feedback): a lightweight branch that sends
+        # the comment text to PostHog and exits before any checkout/engine setup.
+        # The script reads CODEBOARDING_POSTHOG_KEY/HOST and the opt-outs
+        # DO_NOT_TRACK / CODEBOARDING_TELEMETRY straight from the caller's env: a
+        # composite action inherits the calling workflow/job `env:` as real env
+        # vars, so those need no re-mapping here. POSTHOG_KEY/HOST below are a
+        # redundant alias the script only falls back to if the canonical vars are
+        # unset — kept as a hint that the destination is overridable.
+        FEEDBACK_COMMAND: ${{ inputs.feedback_command }}
+        FEEDBACK_MAX_CHARS: ${{ inputs.feedback_max_chars }}
+        POSTHOG_KEY: ${{ env.CODEBOARDING_POSTHOG_KEY }}
+        POSTHOG_HOST: ${{ env.CODEBOARDING_POSTHOG_HOST }}
+        SENDER_LOGIN: ${{ github.event.sender.login }}
+        SENDER_ID: ${{ github.event.sender.id }}
+        COMMENT_ID: ${{ github.event.comment.id }}
+        COMMENT_URL: ${{ github.event.comment.html_url }}
+        REPOSITORY_ID: ${{ github.event.repository.id }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+        ACTION_PATH: ${{ github.action_path }}
+        ACTION_REF: ${{ github.action_ref || github.sha }}
         EVENT: ${{ github.event_name }}
         REPOSITORY: ${{ github.repository }}
         PR_NUMBER_PULL: ${{ github.event.pull_request.number }}
@@ -243,6 +271,18 @@ runs:
           # word is the trigger; the payload lacks SHAs so we query the API.
           [ -n "$ISSUE_PR_URL" ] || skip "Comment is on a plain issue, not a PR."
           FIRST_WORD="$(printf '%s' "$COMMENT_BODY" | tr -d '\r' | awk 'NR==1{print $1; exit}')"
+          # Feedback command: forward the comment text to PostHog, then stop BEFORE
+          # the trusted-association check, checkout, engine setup, and LLM key.
+          # Sending user-written feedback runs no PR code, so it doesn't need the
+          # collaborator gate the analysis path does — the workflow's own `if:`
+          # decides who can reach this step. The script swallows its own failures
+          # and the guard has no `set -e`, so feedback can never block the action.
+          if [ "$FIRST_WORD" = "$FEEDBACK_COMMAND" ]; then
+            python3 "$ACTION_PATH/scripts/submit_feedback.py"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "feedback_received=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           [ "$FIRST_WORD" = "$TRIGGER" ] || skip "Comment does not start with '$TRIGGER'."
           # SECURITY (pwn-request guard): issue_comment runs in the base repo WITH
           # secrets for ANY commenter. Only a trusted collaborator may trigger an
@@ -280,6 +320,21 @@ runs:
           if [ "$HEAD_REPO" = "$REPOSITORY" ]; then echo "same_repo=true"; else echo "same_repo=false"; fi
         } >> "$GITHUB_OUTPUT"
         echo "Resolved PR #$PR_NUMBER (base=$BASE_REPO@$BASE_SHA head=$HEAD_REPO@$HEAD_SHA) via $EVENT"
+
+    # Feedback exits the guard with skip=true, so the analysis "Acknowledge
+    # command" step below (gated on skip != 'true') never fires for it; this one
+    # reacts instead, keyed on the feedback_received flag the guard set.
+    - name: Acknowledge feedback
+      if: steps.guard.outputs.feedback_received == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPOSITORY: ${{ github.repository }}
+        COMMENT_ID: ${{ github.event.comment.id }}
+      run: |
+        # 👍 react to the feedback comment so the user knows it was received.
+        gh api -X POST "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" \
+          -f content='+1' >/dev/null 2>&1 || true
 
     - name: Acknowledge command
       if: steps.guard.outputs.skip != 'true' && github.event_name == 'issue_comment'
