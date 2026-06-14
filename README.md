@@ -162,21 +162,6 @@ In review workflows that include `issue_comment`, anyone whose comment reaches t
 /codeboarding-feedback <message>
 ```
 
-The action sends the message text and PR context (repository, PR number, comment URL, commenter) to CodeBoarding via PostHog, then reacts 👍 to the comment. This is **explicit, user-submitted feedback, not anonymous telemetry** — unlike [Core's telemetry](https://github.com/CodeBoarding/CodeBoarding/blob/main/TELEMETRY.md), it intentionally includes the text you wrote and who wrote it. It runs no analysis, checks out no code, and sends no source. The branch exits before engine setup, so a feedback comment is cheap and never starts an LLM job. Change the keyword via `feedback_command`, or cap the text length with `feedback_max_chars` (default `4000`).
-
-Because the feedback path runs no PR-head code, it isn't restricted to trusted collaborators the way the `/codeboarding` analysis command is — your workflow's own `if:` condition decides who can reach it. The quick-start workflow already restricts comment triggers to `OWNER`/`MEMBER`/`COLLABORATOR`; keep that condition if you only want trusted feedback. The default `startsWith(github.event.comment.body, '/codeboarding')` filter already matches `/codeboarding-feedback`, so no workflow change is needed to enable it.
-
-Opt out by setting either in your workflow `env:` (workflow- or job-level):
-
-```yaml
-env:
-  CODEBOARDING_TELEMETRY: 'false'   # CodeBoarding-specific switch
-  # or the cross-tool standard:
-  DO_NOT_TRACK: '1'
-```
-
-When disabled, the feedback comment is acknowledged but nothing is sent. Override the destination with `CODEBOARDING_POSTHOG_KEY` / `CODEBOARDING_POSTHOG_HOST` (same names Core uses).
-
 ## Keep your architecture versioned (sync mode)
 
 With `mode: sync`, the action analyzes the pushed commit and commits the results back to the branch (as `codeboarding[bot]`), so your architecture analysis stays versioned in git and tracks the code instead of drifting from it:
@@ -267,8 +252,6 @@ Be aware that `contents: write` is repo-wide — GitHub does not scope it to a b
 | `parsing_model` | both | `google/gemini-3.1-flash-lite-preview` | Parsing model. OpenRouter default shown; other providers use their own engine default. |
 | `comment_header` | review | `Architecture review` | Heading for the PR comment. |
 | `trigger_command` | review | `/codeboarding` | Slash command for trusted on-demand runs. |
-| `feedback_command` | review | `/codeboarding-feedback` | Slash command that sends a PR comment's text as [explicit product feedback](#feedback-command) to CodeBoarding via PostHog. Runs no analysis; opt out with `CODEBOARDING_TELEMETRY=false` / `DO_NOT_TRACK=1`. |
-| `feedback_max_chars` | review | `4000` | Max feedback characters sent from `feedback_command`; longer text is truncated and flagged. |
 | `cta_base_url` | review | empty | Click-proxy base URL: deep-links the editor link into VS Code/Cursor and adds a "get the extension" link (tracks owner/repo/pr). Empty links to the extension listing instead (GitHub strips `vscode:`/`cursor:` from comments). |
 | `webview_base_url` | review | `https://app.codeboarding.org` | Hosted webview base URL. The PR comment adds an "explore in browser" link to this PR's head-vs-base diff. Needs `commit_head_analysis` (same-repo PRs only); omitted on forks. Set empty to disable. |
 | `commit_head_analysis` | review | `true` | Commit the generated head `.codeboarding/analysis.json` (+ health report) to the PR branch so the webview can read it at the head SHA. Same-repo PRs only (the token is read-only on forks). |
