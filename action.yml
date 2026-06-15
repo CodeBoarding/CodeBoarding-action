@@ -8,12 +8,21 @@ branding:
 
 inputs:
   llm_api_key:
-    description: 'Your LLM provider API key (see llm_provider). Required.'
-    required: true
+    description: 'Your LLM provider API key (see llm_provider). Optional: when empty, the action runs on the free hosted tier via a GitHub OIDC token (requires "permissions: id-token: write"). Set it (e.g. secrets.OPENROUTER_API_KEY) for unmetered usage or a non-OpenRouter provider.'
+    required: false
+    default: ''
   llm_provider:
-    description: 'Provider for llm_api_key. The key is handed to the engine as that provider''s env var (anthropic -> ANTHROPIC_API_KEY, openai -> OPENAI_API_KEY, ...; aws_bedrock -> AWS_BEARER_TOKEN_BEDROCK, ollama -> OLLAMA_BASE_URL) and the engine auto-selects it. Default openrouter.'
+    description: 'Provider for llm_api_key. The key is handed to the engine as that provider''s env var (anthropic -> ANTHROPIC_API_KEY, openai -> OPENAI_API_KEY, ...; aws_bedrock -> AWS_BEARER_TOKEN_BEDROCK, ollama -> OLLAMA_BASE_URL) and the engine auto-selects it. Default openrouter. Ignored on the free hosted tier (always OpenRouter via the proxy).'
     required: false
     default: 'openrouter'
+  proxy_url:
+    description: 'Base URL of the CodeBoarding hosted LLM proxy used for the free tier (no llm_api_key) and for license_key mode. The engine''s OPENROUTER_BASE_URL is pointed here; the proxy verifies the GitHub OIDC token, meters per repo owner, and swaps in the real key. Override only to point at a self-hosted/dev proxy.'
+    required: false
+    default: 'https://3nx4t5rjssktkdxj7ytze2bkqi0mfysy.lambda-url.us-east-1.on.aws'  # TODO: replace dev URL with the prod gha_proxy Function URL before merge
+  license_key:
+    description: 'A CodeBoarding license key (e.g. secrets.CODEBOARDING_LICENSE) for unmetered hosted usage via proxy_url. Takes precedence over the free OIDC tier; ignored when llm_api_key is set (BYO key talks to the provider directly).'
+    required: false
+    default: ''
   github_token:
     description: 'GITHUB_TOKEN used to post the PR comment. Defaults to the workflow token.'
     required: false
@@ -474,14 +483,85 @@ runs:
         RAW_PROVIDER: ${{ inputs.llm_provider }}
         RAW_AGENT_MODEL: ${{ inputs.agent_model }}
         RAW_PARSING_MODEL: ${{ inputs.parsing_model }}
+        RAW_LICENSE: ${{ inputs.license_key }}
+        RAW_PROXY_URL: ${{ inputs.proxy_url }}
       run: |
         set -euo pipefail
         AUTH_FILE="${RUNNER_TEMP}/openrouter-auth.json"
         trap 'rm -f "$AUTH_FILE"' EXIT
-        if [ -z "$RAW_KEY" ]; then
-          echo "::error::llm_api_key is empty. On fork PRs, repo secrets are withheld by GitHub."
-          exit 1
+
+        _strip() { printf '%s' "$1" | tr -d '[:space:]' | sed -e 's/^"//;s/"$//' -e "s/^'//;s/'\$//"; }
+        # Cache keys reject some characters (model slugs carry '/'); sanitize for them.
+        _safe() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_'; }
+
+        KEY="$(_strip "$RAW_KEY")"
+        LICENSE="$(_strip "$RAW_LICENSE")"
+        PROXY_URL="$(_strip "$RAW_PROXY_URL")"
+        PROXY_URL="${PROXY_URL%/}"   # no trailing slash; engine appends /chat/completions
+        AGENT_MODEL="$(_strip "$RAW_AGENT_MODEL")"
+        PARSING_MODEL="$(_strip "$RAW_PARSING_MODEL")"
+        umask 077
+
+        # Three credential modes, in precedence order:
+        #   1. BYO key set            -> talk to the provider directly (current behavior)
+        #   2. license_key set        -> hosted proxy, bearer = the license
+        #   3. neither (zero-config)  -> hosted proxy, bearer = a GitHub OIDC JWT
+        # Modes 2 & 3 force provider=openrouter and point the engine's
+        # OPENROUTER_BASE_URL at the proxy (written to cb-base-url). The proxy
+        # swaps in the real key, so no provider preflight here.
+        if [ -n "$KEY" ]; then
+          MODE="byokey"
+        elif [ -n "$LICENSE" ]; then
+          MODE="license"
+        else
+          MODE="oidc"
         fi
+        echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+        echo "Credential mode: $MODE"
+
+        # ── Hosted modes (license / oidc): provider is always OpenRouter via proxy ──
+        if [ "$MODE" != "byokey" ]; then
+          if [ -z "$PROXY_URL" ]; then
+            echo "::error::proxy_url is empty but no llm_api_key was provided. Set llm_api_key, or restore proxy_url."
+            exit 1
+          fi
+          PROVIDER_ENV="OPENROUTER_API_KEY"
+          AGENT_MODEL="${AGENT_MODEL:-google/gemini-3-flash-preview}"
+          PARSING_MODEL="${PARSING_MODEL:-google/gemini-3.1-flash-lite-preview}"
+
+          if [ "$MODE" = "license" ]; then
+            BEARER="$LICENSE"
+            echo "Using CodeBoarding license via hosted proxy."
+          else
+            # Mint a GitHub Actions OIDC JWT (audience must match the proxy's).
+            # ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN are injected into the runner
+            # process env (NOT the `env` context) only when the job grants
+            # `id-token: write`; read them directly from the shell env.
+            if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+              echo "::error::No GitHub OIDC token available. Add \`permissions: id-token: write\` to the job (or set an llm_api_key / license_key). The free hosted tier needs the OIDC token to identify your repository."
+              exit 1
+            fi
+            OIDC_RESP="$(curl -sS --max-time 15 \
+              -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=codeboarding-proxy" || true)"
+            BEARER="$(printf '%s' "$OIDC_RESP" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("value",""))' 2>/dev/null || true)"
+            if [ -z "$BEARER" ]; then
+              echo "::error::Failed to mint a GitHub OIDC token (is \`permissions: id-token: write\` granted?)."
+              exit 1
+            fi
+            echo "Using the free hosted tier via a GitHub OIDC token (metered per repository owner)."
+          fi
+
+          echo "::add-mask::$BEARER"
+          printf '%s' "$BEARER" > "${RUNNER_TEMP}/cb-llm-key"
+          printf '%s' "$PROVIDER_ENV" > "${RUNNER_TEMP}/cb-provider-env"
+          printf '%s' "$PROXY_URL" > "${RUNNER_TEMP}/cb-base-url"
+          printf '%s' "$AGENT_MODEL" > "${RUNNER_TEMP}/cb-agent-model"
+          printf '%s' "$PARSING_MODEL" > "${RUNNER_TEMP}/cb-parsing-model"
+          exit 0
+        fi
+
+        # ── BYO key mode: unchanged behavior (talk to the provider directly) ──
         # Resolve the provider -> the env var the engine reads. Convention is
         # <NAME>_API_KEY; two providers don't follow it. The engine is the source
         # of truth: an unknown provider just yields an env var it won't recognize,
@@ -494,15 +574,9 @@ runs:
           *)           PROVIDER_ENV="$(printf '%s' "$PROVIDER" | tr '[:lower:]' '[:upper:]')_API_KEY" ;;
         esac
 
-        # Normalize a pasted key: strip whitespace/quotes and a leading `<ENV>=`.
-        _strip() { printf '%s' "$1" | tr -d '[:space:]' | sed -e 's/^"//;s/"$//' -e "s/^'//;s/'\$//"; }
-        # Cache keys reject some characters (model slugs carry '/'); sanitize for them.
-        _safe() { printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_'; }
-        KEY="$(_strip "$RAW_KEY")"
+        # Normalize a pasted key: strip a leading `<ENV>=`.
         case "$KEY" in "${PROVIDER_ENV}="*) KEY="${KEY#${PROVIDER_ENV}=}";; esac
         KEY="$(_strip "$KEY")"
-        AGENT_MODEL="$(_strip "$RAW_AGENT_MODEL")"
-        PARSING_MODEL="$(_strip "$RAW_PARSING_MODEL")"
         echo "::add-mask::$KEY"
         echo "Provider: $PROVIDER -> $PROVIDER_ENV; key length: ${#KEY}"
 
@@ -535,7 +609,7 @@ runs:
 
         # Store key material in runner-temp files. Later shell steps read these
         # explicitly; third-party post-comment actions do not inherit the LLM key.
-        umask 077
+        # No cb-base-url in BYO mode -> the engine talks to the provider directly.
         printf '%s' "$KEY" > "${RUNNER_TEMP}/cb-llm-key"
         printf '%s' "$PROVIDER_ENV" > "${RUNNER_TEMP}/cb-provider-env"
         printf '%s' "$AGENT_MODEL" > "${RUNNER_TEMP}/cb-agent-model"
@@ -587,7 +661,11 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ runner.temp }}/cb-base
-        key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+        # Fold in the credential mode (byokey/license/oidc): the hosted modes pin
+        # OpenRouter + default models regardless of inputs.llm_provider, so a repo
+        # that switches between free-tier and a BYO key must not reuse the other
+        # mode's cached base analysis.
+        key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     # A committed analysis.json gives the head analysis stable component ids,
     # but the engine's incremental path ALSO needs the base static_analysis.pkl
@@ -656,6 +734,14 @@ runs:
         # so the engine auto-selects that provider.
         PROVIDER_ENV="$(cat "${RUNNER_TEMP}/cb-provider-env")"
         export "$PROVIDER_ENV"="$(cat "${RUNNER_TEMP}/cb-llm-key")"
+        # Hosted modes (license/oidc) point the engine at the CodeBoarding proxy;
+        # absent in BYO-key mode, where the engine talks to the provider directly.
+        if [ -f "${RUNNER_TEMP}/cb-base-url" ]; then
+          export OPENROUTER_BASE_URL="$(cat "${RUNNER_TEMP}/cb-base-url")"
+        fi
+        # The engine_adapter drops this sentinel on a 402 (free-tier cap reached)
+        # so the failure-comment step can post a tailored message.
+        export CB_QUOTA_SENTINEL="${RUNNER_TEMP}/cb-quota-exhausted"
         # Export the model env only when the user set it; empty -> the engine uses
         # its own valid per-provider default (no stale hardcoded model id to rot).
         AGENT_MODEL="$(cat "${RUNNER_TEMP}/cb-agent-model")"
@@ -692,7 +778,11 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.temp }}/cb-base
-        key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+        # Fold in the credential mode (byokey/license/oidc): the hosted modes pin
+        # OpenRouter + default models regardless of inputs.llm_provider, so a repo
+        # that switches between free-tier and a BYO key must not reuse the other
+        # mode's cached base analysis.
+        key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     - name: Analyze PR head (incremental from base)
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
@@ -719,6 +809,14 @@ runs:
         # so the engine auto-selects that provider.
         PROVIDER_ENV="$(cat "${RUNNER_TEMP}/cb-provider-env")"
         export "$PROVIDER_ENV"="$(cat "${RUNNER_TEMP}/cb-llm-key")"
+        # Hosted modes (license/oidc) point the engine at the CodeBoarding proxy;
+        # absent in BYO-key mode, where the engine talks to the provider directly.
+        if [ -f "${RUNNER_TEMP}/cb-base-url" ]; then
+          export OPENROUTER_BASE_URL="$(cat "${RUNNER_TEMP}/cb-base-url")"
+        fi
+        # The engine_adapter drops this sentinel on a 402 (free-tier cap reached)
+        # so the failure-comment step can post a tailored message.
+        export CB_QUOTA_SENTINEL="${RUNNER_TEMP}/cb-quota-exhausted"
         # Export the model env only when the user set it; empty -> the engine uses
         # its own valid per-provider default (no stale hardcoded model id to rot).
         AGENT_MODEL="$(cat "${RUNNER_TEMP}/cb-agent-model")"
@@ -904,6 +1002,14 @@ runs:
         # so the engine auto-selects that provider.
         PROVIDER_ENV="$(cat "${RUNNER_TEMP}/cb-provider-env")"
         export "$PROVIDER_ENV"="$(cat "${RUNNER_TEMP}/cb-llm-key")"
+        # Hosted modes (license/oidc) point the engine at the CodeBoarding proxy;
+        # absent in BYO-key mode, where the engine talks to the provider directly.
+        if [ -f "${RUNNER_TEMP}/cb-base-url" ]; then
+          export OPENROUTER_BASE_URL="$(cat "${RUNNER_TEMP}/cb-base-url")"
+        fi
+        # The engine_adapter drops this sentinel on a 402 (free-tier cap reached)
+        # so the failure-comment step can post a tailored message.
+        export CB_QUOTA_SENTINEL="${RUNNER_TEMP}/cb-quota-exhausted"
         # Export the model env only when the user set it; empty -> the engine uses
         # its own valid per-provider default (no stale hardcoded model id to rot).
         AGENT_MODEL="$(cat "${RUNNER_TEMP}/cb-agent-model")"
@@ -934,6 +1040,7 @@ runs:
       run: |
         rm -f "${RUNNER_TEMP}/cb-llm-key" \
               "${RUNNER_TEMP}/cb-provider-env" \
+              "${RUNNER_TEMP}/cb-base-url" \
               "${RUNNER_TEMP}/cb-agent-model" \
               "${RUNNER_TEMP}/cb-parsing-model"
 
@@ -1369,8 +1476,42 @@ runs:
 
     # If any analysis step failed, replace the sticky comment with a short failure
     # note (same header) instead of leaving the PR with nothing / a stale diagram.
-    - name: Post failure comment
+    # Distinguish a free-tier quota failure (engine_adapter dropped the sentinel)
+    # from a generic failure, so the comment can tell the user how to get more.
+    - name: Detect quota-exhausted failure
       if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      id: quota
+      shell: bash
+      run: |
+        if [ -f "${RUNNER_TEMP}/cb-quota-exhausted" ]; then
+          echo "exhausted=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "exhausted=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Post quota-exhausted comment
+      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.quota.outputs.exhausted == 'true'
+      continue-on-error: true
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: ${{ steps.guard.outputs.sticky_header }}
+        number: ${{ steps.guard.outputs.pr_number }}
+        message: |
+          ### ${{ inputs.comment_header }} · free tier limit reached
+
+          This repository owner's **free weekly CodeBoarding usage** is used up, so the architecture diff couldn't be generated. It resets at the start of next week.
+
+          For more (or unmetered) usage, add one of these repository secrets and pass it to the action:
+          - **`OPENROUTER_API_KEY`** — your own [OpenRouter](https://openrouter.ai) key, passed via the action's `llm_api_key` input, or
+          - **`CODEBOARDING_LICENSE`** — a [CodeBoarding license](https://codeboarding.org), passed via the action's `license_key` input.
+
+          See the [setup guide](https://github.com/CodeBoarding/CodeBoarding-action#more-usage) for the exact workflow snippet.
+
+          <sub>codeboarding-action · run ${{ github.run_id }}</sub>
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    - name: Post failure comment
+      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.quota.outputs.exhausted != 'true'
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:

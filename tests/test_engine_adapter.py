@@ -582,5 +582,81 @@ class TestHealth(_Base):
         self.assertEqual(engine_adapter.run_health("/art", "/repo", "r"), 0)
 
 
+class TestQuotaExhausted(_Base):
+    def test_detects_402_status_attr(self):
+        class APIErr(Exception):
+            status_code = 402
+
+        self.assertTrue(engine_adapter._is_quota_exhausted(APIErr("nope")))
+
+    def test_detects_status_attr(self):
+        class FunctionUrlErr(Exception):
+            status = 402
+
+        self.assertTrue(engine_adapter._is_quota_exhausted(FunctionUrlErr("nope")))
+
+    def test_detects_marker_string(self):
+        exc = RuntimeError("upstream said: Resource exhausted: token limit reached")
+        self.assertTrue(engine_adapter._is_quota_exhausted(exc))
+
+    def test_detects_in_cause_chain(self):
+        inner = RuntimeError("Resource exhausted: token limit reached")
+        try:
+            raise ValueError("wrapped") from inner
+        except ValueError as e:
+            self.assertTrue(engine_adapter._is_quota_exhausted(e))
+
+    def test_other_errors_not_flagged(self):
+        self.assertFalse(engine_adapter._is_quota_exhausted(RuntimeError("disk full")))
+
+        class OtherStatus(Exception):
+            status_code = 500
+
+        self.assertFalse(engine_adapter._is_quota_exhausted(OtherStatus("boom")))
+
+    def _install_raising(self, exc):
+        analysis = _mod(
+            "codeboarding_workflows.analysis",
+            run_full=_Rec(raises=exc),
+            run_incremental=_Rec(),
+            BaselineUnavailableError=type("BaselineUnavailableError", (Exception,), {}),
+        )
+        pkg = _mod("codeboarding_workflows")
+        pkg.analysis = analysis
+        excmod = _mod(
+            "diagram_analysis.exceptions",
+            IncrementalCacheMissingError=type("IncrementalCacheMissingError", (Exception,), {}),
+        )
+        da = _mod("diagram_analysis")
+        da.exceptions = excmod
+
+    def _run_base(self):
+        return engine_adapter.main(
+            ["base", "--repo", "/r", "--out", "/o", "--name", "n",
+             "--run-id", "rid", "--depth", "2", "--source-sha", "abc123"]
+        )
+
+    def test_main_drops_sentinel_on_quota_error(self):
+        class APIErr(Exception):
+            status_code = 402
+
+        self._install_raising(APIErr)
+        sentinel = Path(tempfile.mkdtemp()) / "cb-quota-exhausted"
+        with patch.dict(os.environ, {"CB_QUOTA_SENTINEL": str(sentinel)}):
+            with redirect_stderr(StringIO()):
+                with self.assertRaises(APIErr):  # re-raised so the step still fails
+                    self._run_base()
+        self.assertTrue(sentinel.exists(), "quota sentinel should be written")
+
+    def test_main_no_sentinel_on_other_error(self):
+        self._install_raising(RuntimeError)
+        sentinel = Path(tempfile.mkdtemp()) / "cb-quota-exhausted"
+        with patch.dict(os.environ, {"CB_QUOTA_SENTINEL": str(sentinel)}):
+            with redirect_stderr(StringIO()):
+                with self.assertRaises(RuntimeError):
+                    self._run_base()
+        self.assertFalse(sentinel.exists(), "non-quota errors must not write the sentinel")
+
+
 if __name__ == "__main__":
     unittest.main()
