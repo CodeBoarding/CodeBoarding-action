@@ -632,8 +632,21 @@ class TestQuotaExhausted(_Base):
 
     def _run_base(self):
         return engine_adapter.main(
-            ["base", "--repo", "/r", "--out", "/o", "--name", "n",
-             "--run-id", "rid", "--depth", "2", "--source-sha", "abc123"]
+            [
+                "base",
+                "--repo",
+                "/r",
+                "--out",
+                "/o",
+                "--name",
+                "n",
+                "--run-id",
+                "rid",
+                "--depth",
+                "2",
+                "--source-sha",
+                "abc123",
+            ]
         )
 
     def test_main_drops_sentinel_on_quota_error(self):
