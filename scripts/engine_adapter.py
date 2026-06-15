@@ -24,11 +24,14 @@ baseline-info/analyze/render/concat. ``base`` runs a full analysis; ``seed``
 builds the SHA-tagged static-analysis pkl for a committed-analysis.json baseline
 (LSP + clustering, no LLM) so the incremental path can run; ``health`` writes
 the WARNING/CRITICAL finding count to ``--issues-out`` (never fails the run);
-``validate-base`` exits non-zero when the committed baseline cannot be reused
-for the PR base (wrong commit, or — with ``--expected-depth`` — a depth_level
-DEEPER than requested; shallower is accepted because the engine records the
-depth reached, not the depth asked); ``baseline-info`` prints the baseline's
-``commit_hash=`` (empty unless present and SHA-shaped).
+``validate-base`` exits non-zero only when the committed baseline is unreadable
+or — with ``--expected-depth`` — its depth_level is DEEPER than requested;
+shallower is accepted because the engine records the depth reached, not the
+depth asked. The baseline's metadata.commit_hash is informational in review
+mode: sync commits generated artifacts on top of the analyzed source commit, so
+review trusts the analysis.json committed at the PR base rather than
+regenerating because the metadata SHA differs. ``baseline-info`` prints the
+baseline's ``commit_hash=`` (empty unless present and SHA-shaped).
 
 ``head`` (review) and ``analyze`` (sync) are the SAME incremental-or-full
 operation via the shared ``_incremental_or_full`` helper; they differ only in
@@ -55,7 +58,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 from pathlib import Path
 
 # A committed analysis.json's commit_hash is trusted only as far as a SHA shape:
@@ -164,63 +166,15 @@ def baseline_info(analysis_path: Path) -> str:
     return commit if _SHA_RE.match(commit) else ""
 
 
-def _docs_only_baseline_drift(actual_sha: str, expected_sha: str) -> tuple[bool, str]:
-    allowed_prefixes = (".codeboarding/", "docs/development/")
-
-    def generated_only(paths: list[str]) -> tuple[bool, str]:
-        disallowed = [
-            path
-            for path in paths
-            if not path.startswith(allowed_prefixes) and path not in (".codeboarding", "docs/development")
-        ]
-        if disallowed:
-            preview = ", ".join(disallowed[:5])
-            suffix = "" if len(disallowed) <= 5 else f", and {len(disallowed) - 5} more"
-            return False, f"non-doc paths changed: {preview}{suffix}"
-        return True, "generated files only"
-
-    def git(*args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", *args],
-            check=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-
-    ancestor = git("merge-base", "--is-ancestor", actual_sha, expected_sha)
-    if ancestor.returncode != 0:
-        parents = git("show", "-s", "--format=%P", expected_sha)
-        if parents.returncode == 0 and actual_sha in parents.stdout.split():
-            changed = git("diff-tree", "--no-commit-id", "--name-only", "-r", expected_sha)
-            if changed.returncode == 0:
-                paths = [line.strip() for line in changed.stdout.splitlines() if line.strip()]
-                ok, reason = generated_only(paths)
-                if ok:
-                    return True, f"PR base {expected_sha} is a generated baseline commit over {actual_sha}"
-                return False, reason
-        detail = ancestor.stderr.strip() or f"{actual_sha} is not an ancestor of {expected_sha}"
-        return False, detail
-
-    diff = git("diff", "--name-only", f"{actual_sha}..{expected_sha}")
-    if diff.returncode != 0:
-        return False, diff.stderr.strip() or f"Could not diff {actual_sha}..{expected_sha}"
-
-    paths = [line.strip() for line in diff.stdout.splitlines() if line.strip()]
-    ok, reason = generated_only(paths)
-    if not ok:
-        return False, reason
-    return True, f"only generated docs changed between {actual_sha} and {expected_sha}"
-
-
 def validate_base_analysis(
     analysis_path: Path, expected_sha: str, expected_depth: int | None = None
 ) -> tuple[bool, str]:
     """Return whether ``analysis.json`` is valid for ``expected_sha``.
 
-    The PR action can only reuse a committed baseline when the diagram's own
-    source commit matches the PR base commit, or when the PR base is a docs-bot
-    commit whose only drift from that source commit is generated docs.
+    Review mode reuses the analysis.json that is committed at the PR base. The
+    diagram's metadata.commit_hash records the source commit analyzed by sync,
+    but the sync commit itself necessarily has a newer SHA because it adds the
+    generated artifacts. Treat that metadata SHA as provenance, not freshness.
 
     When ``expected_depth`` is given, a baseline whose metadata.depth_level
     parses as an int and is DEEPER than expected is rejected (review mode
@@ -246,19 +200,13 @@ def validate_base_analysis(
         return False, "Baseline analysis metadata is missing."
 
     actual_sha = metadata.get("commit_hash")
-    if not isinstance(actual_sha, str) or not actual_sha:
-        return False, "Baseline analysis metadata.commit_hash is missing."
-
-    if actual_sha != expected_sha:
-        ok, reason = _docs_only_baseline_drift(actual_sha, expected_sha)
-        if not ok:
-            return (
-                False,
-                f"Baseline analysis was generated for {actual_sha}, expected PR base {expected_sha} ({reason}).",
-            )
-        message = f"Baseline analysis was generated for {actual_sha}; valid for PR base {expected_sha} ({reason})."
+    if isinstance(actual_sha, str) and actual_sha:
+        if actual_sha == expected_sha:
+            message = f"Baseline analysis commit matches PR base {expected_sha}."
+        else:
+            message = f"Using committed baseline at PR base {expected_sha}; analysis metadata source is {actual_sha}."
     else:
-        message = f"Baseline analysis commit matches PR base {expected_sha}."
+        message = f"Using committed baseline at PR base {expected_sha}; analysis metadata.commit_hash is missing."
 
     if expected_depth is not None:
         baseline_depth = _metadata_depth(metadata)

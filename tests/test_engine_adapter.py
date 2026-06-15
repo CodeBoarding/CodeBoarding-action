@@ -200,14 +200,14 @@ class TestValidateBase(_Base):
             self.assertTrue(ok)
             self.assertIn("matches", message)
 
-    def test_validate_base_rejects_mismatched_commit(self):
+    def test_validate_base_accepts_mismatched_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "analysis.json"
             path.write_text(json.dumps({"metadata": {"commit_hash": "old"}}), encoding="utf-8")
 
             ok, message = engine_adapter.validate_base_analysis(path, "new")
 
-            self.assertFalse(ok)
+            self.assertTrue(ok)
             self.assertIn("old", message)
             self.assertIn("new", message)
 
@@ -243,9 +243,9 @@ class TestValidateBase(_Base):
                 os.chdir(cwd)
 
             self.assertTrue(ok)
-            self.assertIn("valid for PR base", message)
+            self.assertIn("Using committed baseline", message)
 
-    def test_validate_base_rejects_code_drift(self):
+    def test_validate_base_accepts_committed_baseline_even_after_code_drift(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"
             repo.mkdir()
@@ -271,8 +271,8 @@ class TestValidateBase(_Base):
             finally:
                 os.chdir(cwd)
 
-            self.assertFalse(ok)
-            self.assertIn("app.py", message)
+            self.assertTrue(ok)
+            self.assertIn("Using committed baseline", message)
 
     def _git(self, repo, *args):
         return subprocess.run(
@@ -284,14 +284,14 @@ class TestValidateBase(_Base):
             stderr=subprocess.PIPE,
         )
 
-    def test_validate_base_rejects_missing_commit(self):
+    def test_validate_base_accepts_missing_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "analysis.json"
             path.write_text(json.dumps({"metadata": {}}), encoding="utf-8")
 
             ok, message = engine_adapter.validate_base_analysis(path, "abc123")
 
-            self.assertFalse(ok)
+            self.assertTrue(ok)
             self.assertIn("commit_hash", message)
 
     def test_main_validate_base_exit_codes(self):
@@ -305,7 +305,7 @@ class TestValidateBase(_Base):
             )
             self.assertEqual(
                 engine_adapter.main(["validate-base", "--analysis", str(path), "--expected-sha", "def456"]),
-                1,
+                0,
             )
 
     def test_validate_base_accepts_matching_depth(self):
