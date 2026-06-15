@@ -77,6 +77,10 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  # Lets the action mint a short-lived GitHub OIDC token so the free hosted tier
+  # can identify your repository. Required for the no-secret (free-tier) path;
+  # harmless to keep when you bring your own key.
+  id-token: write
 
 concurrency:
   group: codeboarding-${{ github.event.pull_request.number || github.event.issue.number }}
@@ -95,26 +99,32 @@ jobs:
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     steps:
       - uses: CodeBoarding/CodeBoarding-action@v1
-        with:
-          llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
 ```
 
-Add the API key as a [repository secret](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets) (Settings → Secrets and variables → Actions):
+That's it — **no extra setup**. With `id-token: write` granted, the action runs on the **free hosted tier**: it mints a GitHub OIDC token, and CodeBoarding's proxy supplies the LLM, metered per repository owner against a weekly cap. Merge the workflow and your next pull request gets an architecture diff.
 
-```text
-OPENROUTER_API_KEY = sk-or-...
-```
-
-That is the only required setup, passed via `llm_api_key` above. For local runs with `scripts/run_local.sh`, export `OPENROUTER_API_KEY` as an environment variable instead.
-
-Models are optional. Omit `agent_model` and `parsing_model` to use the engine's default for your provider, or pin them inline or from a repository variable (a model name is not a secret, so use `vars.`, not `secrets.`):
+Models are optional. Omit `agent_model` and `parsing_model` to use the defaults, or pin them inline or from a repository variable (a model name is not a secret, so use `vars.`, not `secrets.`):
 
 ```yaml
         with:
-          llm_api_key:   ${{ secrets.OPENROUTER_API_KEY }}  # secret
-          agent_model:   anthropic/claude-sonnet-4          # optional; or ${{ vars.AGENT_MODEL }}
-          parsing_model: google/gemini-3-flash-preview      # optional
+          agent_model:   anthropic/claude-sonnet-4      # optional; or ${{ vars.AGENT_MODEL }}
+          parsing_model: google/gemini-3-flash-preview  # optional
 ```
+
+<a id="more-usage"></a>
+## More usage (your own key or a license)
+
+The free tier is metered per repository owner against a weekly cap. For more — or unmetered — usage, supply a credential. Both paths skip the proxy/OIDC and need no `id-token: write`:
+
+```yaml
+        with:
+          # Option A — your own OpenRouter key (talks to OpenRouter directly):
+          llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          # Option B — a CodeBoarding license (unmetered hosted usage):
+          # license_key: ${{ secrets.CODEBOARDING_LICENSE }}
+```
+
+Add the secret under **Settings → Secrets and variables → Actions** (e.g. `OPENROUTER_API_KEY = sk-or-...`). For local runs with `scripts/run_local.sh`, export `OPENROUTER_API_KEY` as an environment variable instead. When `llm_api_key` is set it takes precedence; `license_key` is used only when no key is set; with neither, the free OIDC tier is used.
 
 ## Bring your own LLM provider
 
@@ -193,6 +203,7 @@ on:
 
 permissions:
   contents: write   # commit the generated docs to the branch
+  id-token: write   # free hosted tier (omit if you set llm_api_key/license_key)
 
 concurrency:
   group: codeboarding-sync
@@ -206,7 +217,8 @@ jobs:
       - uses: CodeBoarding/CodeBoarding-action@v1
         with:
           mode: sync
-          llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          # Runs on the free tier with no extra setup. For more/unmetered usage add
+          # `llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}` (and drop id-token: write).
 ```
 
 Behavior worth knowing:
@@ -240,8 +252,10 @@ Be aware that `contents: write` is repo-wide — GitHub does not scope it to a b
 
 | Input | Mode | Default | Description |
 |---|---|---|---|
-| `llm_api_key` | both | required | Your LLM provider API key (see `llm_provider`). |
-| `llm_provider` | both | `openrouter` | Provider for the key, mapped to `<NAME>_API_KEY` (e.g. `anthropic`, `openai`, `google`). |
+| `llm_api_key` | both | empty | Your LLM provider API key (see `llm_provider`). Leave empty to use the free hosted tier via a GitHub OIDC token (needs `permissions: id-token: write`). |
+| `llm_provider` | both | `openrouter` | Provider for the key, mapped to `<NAME>_API_KEY` (e.g. `anthropic`, `openai`, `google`). Ignored on the free/license hosted tier (always OpenRouter via the proxy). |
+| `license_key` | both | empty | A CodeBoarding license for unmetered hosted usage. Used when `llm_api_key` is empty; takes precedence over the free tier. |
+| `proxy_url` | both | CodeBoarding proxy | Hosted LLM proxy base URL for the free/license tiers (the engine's `OPENROUTER_BASE_URL`). Override only for a self-hosted/dev proxy. |
 | `mode` | both | `review` | `review` posts the PR architecture-diff comment; `sync` analyzes on push and commits the architecture (`analysis.json` + rendered docs) to `target_branch`, keeping it versioned and current. |
 | `github_token` | both | `${{ github.token }}` | Token for GitHub API calls; in review mode it posts or updates the PR comment. |
 | `push_token` | both | `${{ github.token }}` | Token used for pushes: in review mode the generated `analysis.json` to the PR branch (for the webview link), in sync mode the architecture to `target_branch`. The workflow token can push when the workflow grants `permissions: contents: write`. Separate from `github_token` so commenting can use a GitHub App token while the push uses the workflow token. |

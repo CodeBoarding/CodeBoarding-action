@@ -60,6 +60,41 @@ from pathlib import Path
 # be rejected before it reaches the action shell.
 _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 
+# On the free hosted tier the proxy returns HTTP 402 with this message when the
+# repo owner's weekly token budget is spent. We detect it so the action can post
+# a helpful "add a key/license" comment instead of a generic failure.
+_QUOTA_MARKER = "Resource exhausted: token limit reached"
+
+
+def _is_quota_exhausted(exc: BaseException) -> bool:
+    """True when *exc* (or its cause chain) looks like the proxy's 402 quota
+    error. Matches on the HTTP status 402 when the exception exposes one, and on
+    the marker string as a fallback (the engine wraps provider errors, so the
+    status may only survive as text)."""
+    seen = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        status = getattr(cur, "status_code", None) or getattr(cur, "status", None)
+        if status == 402:
+            return True
+        if _QUOTA_MARKER in str(cur):
+            return True
+        cur = cur.__cause__ or cur.__context__
+    return False
+
+
+def _flag_quota_exhausted() -> None:
+    """Drop the sentinel the action's failure-comment step branches on. Path comes
+    from the action via CB_QUOTA_SENTINEL; best-effort (never masks the real error)."""
+    sentinel = os.environ.get("CB_QUOTA_SENTINEL")
+    if not sentinel:
+        return
+    try:
+        Path(sentinel).write_text("1")
+    except OSError:
+        pass
+
 
 def _log_path(output_dir: str, filename: str) -> str:
     return str(Path(output_dir) / filename)
@@ -533,28 +568,36 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     source = "sync" if args.cmd in ("analyze", "render", "concat") else "github_action"
     os.environ.setdefault("CODEBOARDING_SOURCE", source)
-    if args.cmd == "base":
-        run_base(args.repo, args.out, args.name, args.run_id, args.depth, args.source_sha)
-    elif args.cmd == "seed":
-        run_seed(args.repo, args.out, args.source_sha)
-    elif args.cmd == "head":
-        run_head(
-            args.repo, args.out, args.name, args.run_id, args.depth, args.base_ref, args.target_ref, args.source_sha
-        )
-    elif args.cmd == "health":
-        Path(args.issues_out).write_text(str(run_health(args.artifact_dir, args.repo, args.name)))
-    elif args.cmd == "validate-base":
-        ok, message = validate_base_analysis(Path(args.analysis), args.expected_sha, args.expected_depth)
-        print(message)
-        return 0 if ok else 1
-    elif args.cmd == "baseline-info":
-        print(f"commit_hash={baseline_info(Path(args.analysis))}")
-    elif args.cmd == "analyze":
-        run_analyze(args.repo, args.out, args.name, args.run_id, args.source_sha, args.depth, args.force_full)
-    elif args.cmd == "render":
-        run_render(args.analysis, args.out, args.repo_name, args.repo_ref, args.format)
-    elif args.cmd == "concat":
-        run_concat(args.docs_dir, args.out)
+    try:
+        if args.cmd == "base":
+            run_base(args.repo, args.out, args.name, args.run_id, args.depth, args.source_sha)
+        elif args.cmd == "seed":
+            run_seed(args.repo, args.out, args.source_sha)
+        elif args.cmd == "head":
+            run_head(
+                args.repo, args.out, args.name, args.run_id, args.depth, args.base_ref, args.target_ref, args.source_sha
+            )
+        elif args.cmd == "health":
+            Path(args.issues_out).write_text(str(run_health(args.artifact_dir, args.repo, args.name)))
+        elif args.cmd == "validate-base":
+            ok, message = validate_base_analysis(Path(args.analysis), args.expected_sha, args.expected_depth)
+            print(message)
+            return 0 if ok else 1
+        elif args.cmd == "baseline-info":
+            print(f"commit_hash={baseline_info(Path(args.analysis))}")
+        elif args.cmd == "analyze":
+            run_analyze(args.repo, args.out, args.name, args.run_id, args.source_sha, args.depth, args.force_full)
+        elif args.cmd == "render":
+            run_render(args.analysis, args.out, args.repo_name, args.repo_ref, args.format)
+        elif args.cmd == "concat":
+            run_concat(args.docs_dir, args.out)
+    except BaseException as exc:
+        # Free-tier weekly cap hit: drop a sentinel so the action posts a
+        # "add a key/license" comment, then re-raise so the step still fails.
+        if _is_quota_exhausted(exc):
+            _flag_quota_exhausted()
+            print(f"::error::{_QUOTA_MARKER}", flush=True)
+        raise
     return 0
 
 
