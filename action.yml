@@ -18,7 +18,7 @@ inputs:
   proxy_url:
     description: 'Base URL of the CodeBoarding hosted LLM proxy used for the free tier (no llm_api_key) and for license_key mode. The engine''s OPENROUTER_BASE_URL is pointed here; the proxy verifies the GitHub OIDC token, meters per repo owner, and swaps in the real key. Override only to point at a self-hosted/dev proxy.'
     required: false
-    default: 'https://3nx4t5rjssktkdxj7ytze2bkqi0mfysy.lambda-url.us-east-1.on.aws'  # TODO: replace dev URL with the prod gha_proxy Function URL before merge
+    default: 'https://auduihjmm4b735zci7vyabuikq0hppqn.lambda-url.us-east-1.on.aws'  # prod gha_proxy Function URL (licensing-aws LicensingStack-Stateless-prod)
   license_key:
     description: 'A CodeBoarding license key (e.g. secrets.CODEBOARDING_LICENSE) for unmetered hosted usage via proxy_url. Takes precedence over the free OIDC tier; ignored when llm_api_key is set (BYO key talks to the provider directly).'
     required: false
