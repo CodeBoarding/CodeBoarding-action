@@ -1,15 +1,15 @@
 {
   "metadata": {
-    "generated_at": "2026-06-15T22:08:29.815255+00:00",
-    "commit_hash": "8874ebaaf6796fad9d56754bd7b93663d8c4bd96",
+    "generated_at": "2026-06-15T22:20:02.647620+00:00",
+    "commit_hash": "eb58256d9fb36beec54a0f9cbe5611276ac1a0b8",
     "repo_name": "CodeBoarding-action",
     "depth_level": 2,
     "file_coverage_summary": {
-      "total_files": 21,
+      "total_files": 20,
       "analyzed": 5,
-      "not_analyzed": 16,
+      "not_analyzed": 15,
       "not_analyzed_by_reason": {
-        "other": 10,
+        "other": 9,
         "codeboardingignore": 6
       }
     }
@@ -94,23 +94,6 @@
         "scripts/build_cta.py|scripts.build_cta.build_cta",
         "scripts/build_cta.py|scripts.build_cta.build_cta.link",
         "scripts/build_cta.py|scripts.build_cta.main"
-      ]
-    },
-    "scripts/submit_feedback.py": {
-      "method_keys": [
-        "scripts/submit_feedback.py|scripts.submit_feedback.telemetry_disabled",
-        "scripts/submit_feedback.py|scripts.submit_feedback.resolve_key",
-        "scripts/submit_feedback.py|scripts.submit_feedback.resolve_host",
-        "scripts/submit_feedback.py|scripts.submit_feedback.resolve_command",
-        "scripts/submit_feedback.py|scripts.submit_feedback.resolve_max_chars",
-        "scripts/submit_feedback.py|scripts.submit_feedback.extract_feedback",
-        "scripts/submit_feedback.py|scripts.submit_feedback.cap_feedback",
-        "scripts/submit_feedback.py|scripts.submit_feedback._first",
-        "scripts/submit_feedback.py|scripts.submit_feedback.distinct_id",
-        "scripts/submit_feedback.py|scripts.submit_feedback.build_properties",
-        "scripts/submit_feedback.py|scripts.submit_feedback.build_payload",
-        "scripts/submit_feedback.py|scripts.submit_feedback.post",
-        "scripts/submit_feedback.py|scripts.submit_feedback.main"
       ]
     }
   },
@@ -524,134 +507,43 @@
     "scripts/build_cta.py|scripts.build_cta.detect_editors": {
       "file_path": "scripts/build_cta.py",
       "qualified_name": "scripts.build_cta.detect_editors",
-      "start_line": 38,
-      "end_line": 50,
+      "start_line": 36,
+      "end_line": 48,
       "type": "FUNCTION"
     },
     "scripts/build_cta.py|scripts.build_cta.webview_url": {
       "file_path": "scripts/build_cta.py",
       "qualified_name": "scripts.build_cta.webview_url",
-      "start_line": 64,
-      "end_line": 79,
+      "start_line": 62,
+      "end_line": 94,
       "type": "FUNCTION"
     },
     "scripts/build_cta.py|scripts.build_cta._join_or": {
       "file_path": "scripts/build_cta.py",
       "qualified_name": "scripts.build_cta._join_or",
-      "start_line": 82,
-      "end_line": 88,
+      "start_line": 97,
+      "end_line": 103,
       "type": "FUNCTION"
     },
     "scripts/build_cta.py|scripts.build_cta.build_cta": {
       "file_path": "scripts/build_cta.py",
       "qualified_name": "scripts.build_cta.build_cta",
-      "start_line": 91,
-      "end_line": 153,
+      "start_line": 106,
+      "end_line": 178,
       "type": "FUNCTION"
     },
     "scripts/build_cta.py|scripts.build_cta.build_cta.link": {
       "file_path": "scripts/build_cta.py",
       "qualified_name": "scripts.build_cta.build_cta.link",
-      "start_line": 126,
-      "end_line": 127,
+      "start_line": 142,
+      "end_line": 143,
       "type": "FUNCTION"
     },
     "scripts/build_cta.py|scripts.build_cta.main": {
       "file_path": "scripts/build_cta.py",
       "qualified_name": "scripts.build_cta.main",
-      "start_line": 156,
-      "end_line": 192,
-      "type": "FUNCTION"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.telemetry_disabled": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.telemetry_disabled",
-      "start_line": 27,
-      "end_line": 31,
-      "type": "FUNCTION"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.resolve_key": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.resolve_key",
-      "start_line": 34,
-      "end_line": 35,
-      "type": "FUNCTION"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.resolve_host": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.resolve_host",
-      "start_line": 38,
-      "end_line": 40,
-      "type": "FUNCTION"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.resolve_command": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.resolve_command",
-      "start_line": 43,
-      "end_line": 44,
-      "type": "FUNCTION"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.resolve_max_chars": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.resolve_max_chars",
-      "start_line": 47,
-      "end_line": 52,
-      "type": "FUNCTION"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.extract_feedback": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.extract_feedback",
-      "start_line": 55,
-      "end_line": 69,
-      "type": "FUNCTION"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.cap_feedback": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.cap_feedback",
-      "start_line": 72,
-      "end_line": 76,
-      "type": "FUNCTION"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback._first": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback._first",
-      "start_line": 79,
-      "end_line": 84,
-      "type": "FUNCTION"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.distinct_id": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.distinct_id",
-      "start_line": 87,
-      "end_line": 91,
-      "type": "FUNCTION"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.build_properties": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.build_properties",
-      "start_line": 94,
-      "end_line": 116,
-      "type": "FUNCTION"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.build_payload": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.build_payload",
-      "start_line": 119,
-      "end_line": 132,
-      "type": "FUNCTION"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.post": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.post",
-      "start_line": 135,
-      "end_line": 144,
-      "type": "FUNCTION"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.main": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.main",
-      "start_line": 147,
-      "end_line": 172,
+      "start_line": 181,
+      "end_line": 223,
       "type": "FUNCTION"
     }
   },
@@ -719,7 +611,7 @@
       "components": [
         {
           "name": "Workflow Lifecycle Controller",
-          "description": "Acts as the primary entry point and high-level coordinator. It manages the sequential execution of the action, handles quota enforcement to prevent runaway CI costs, and dispatches tasks to the strategy and validation layers.",
+          "description": "Manages the high-level execution flow of the action, including initialization, environment setup, and the sequencing of analysis tasks. It incorporates run_seed, run_concat, and quota management logic to handle the full lifecycle of the analysis process.",
           "key_entities": [
             {
               "qualified_name": "scripts.engine_adapter.main",
@@ -741,7 +633,8 @@
             }
           ],
           "source_cluster_ids": [
-            1
+            1,
+            8
           ],
           "file_methods": [
             {
@@ -749,8 +642,22 @@
               "methods": [
                 "scripts.engine_adapter._is_quota_exhausted",
                 "scripts.engine_adapter._flag_quota_exhausted",
+                "scripts.engine_adapter._log_path",
+                "scripts.engine_adapter._clear_dir",
+                "scripts.engine_adapter._load_metadata",
+                "scripts.engine_adapter._metadata_depth",
+                "scripts.engine_adapter._supported_depth",
+                "scripts.engine_adapter._analysis_depth_or_default",
+                "scripts.engine_adapter._metadata_commit",
+                "scripts.engine_adapter.baseline_info",
+                "scripts.engine_adapter.validate_base_analysis",
+                "scripts.engine_adapter.run_base",
                 "scripts.engine_adapter.run_seed",
+                "scripts.engine_adapter._incremental_or_full",
                 "scripts.engine_adapter.run_head",
+                "scripts.engine_adapter.run_analyze",
+                "scripts.engine_adapter.run_analyze.full",
+                "scripts.engine_adapter.run_render",
                 "scripts.engine_adapter.run_concat",
                 "scripts.engine_adapter.main"
               ]
@@ -814,7 +721,7 @@
         },
         {
           "name": "Integrity & Health Guard",
-          "description": "Performs pre-flight validation of the environment and post-analysis quality checks. It specifically looks for \"baseline drift\"—where documentation becomes desynchronized from the code—and reports on the structural integrity of the generated Mermaid diagrams.",
+          "description": "Monitors the health of the analysis process, validates the integrity of the baseline data, and reports on issues or quota exhaustion. This component implements health reporting and issue counting logic to ensure system stability.",
           "key_entities": [
             {
               "qualified_name": "scripts.engine_adapter.validate_base_analysis",
@@ -837,16 +744,43 @@
           ],
           "source_cluster_ids": [
             4,
-            5
+            5,
+            9
           ],
           "file_methods": [
             {
+              "file_path": "scripts/build_component_files.py",
+              "methods": [
+                "scripts.build_component_files._block",
+                "scripts.build_component_files.render_component_files"
+              ]
+            },
+            {
+              "file_path": "scripts/diff_to_mermaid.py",
+              "methods": [
+                "scripts.diff_to_mermaid._comp_id",
+                "scripts.diff_to_mermaid._comp_name",
+                "scripts.diff_to_mermaid._has_changes",
+                "scripts.diff_to_mermaid._sanitize",
+                "scripts.diff_to_mermaid._esc",
+                "scripts.diff_to_mermaid._truncate",
+                "scripts.diff_to_mermaid._display_status",
+                "scripts.diff_to_mermaid._Scope",
+                "scripts.diff_to_mermaid._Scope.__init__",
+                "scripts.diff_to_mermaid._filter_changed",
+                "scripts.diff_to_mermaid._filter_changed.touches",
+                "scripts.diff_to_mermaid._init_directive",
+                "scripts.diff_to_mermaid._count_changed_components",
+                "scripts.diff_to_mermaid._has_changed_relations",
+                "scripts.diff_to_mermaid.render_mermaid",
+                "scripts.diff_to_mermaid.render_mermaid.build",
+                "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
+                "scripts.diff_to_mermaid.render_mermaid.build.emit_level"
+              ]
+            },
+            {
               "file_path": "scripts/engine_adapter.py",
               "methods": [
-                "scripts.engine_adapter._metadata_depth",
-                "scripts.engine_adapter._docs_only_baseline_drift",
-                "scripts.engine_adapter._docs_only_baseline_drift.git",
-                "scripts.engine_adapter.validate_base_analysis",
                 "scripts.engine_adapter._count_report_issues",
                 "scripts.engine_adapter._count_health_report",
                 "scripts.engine_adapter.run_health"
@@ -864,26 +798,35 @@
           "dst_name": "Strategy & State Manager",
           "src_id": "1.1",
           "dst_id": "1.2",
-          "edge_count": 5,
+          "edge_count": 6,
           "is_static": true
         },
         {
-          "relation": "triggers environment and baseline validation",
+          "relation": "triggers system health and baseline validation",
           "src_name": "Workflow Lifecycle Controller",
           "dst_name": "Integrity & Health Guard",
           "src_id": "1.1",
           "dst_id": "1.3",
+          "edge_count": 1,
+          "is_static": true
+        },
+        {
+          "relation": "provides configuration parameters for depth and scope",
+          "src_name": "Strategy & State Manager",
+          "dst_name": "Workflow Lifecycle Controller",
+          "src_id": "1.2",
+          "dst_id": "1.1",
           "edge_count": 2,
           "is_static": true
         },
         {
-          "relation": "provides metadata for depth and drift checks",
+          "relation": "validates baseline integrity during state transitions",
           "src_name": "Strategy & State Manager",
           "dst_name": "Integrity & Health Guard",
           "src_id": "1.2",
           "dst_id": "1.3",
-          "edge_count": 1,
-          "is_static": true
+          "edge_count": 0,
+          "is_static": false
         }
       ]
     },
@@ -1302,6 +1245,7 @@
       "source_cluster_ids": [
         4,
         9,
+        10,
         11
       ],
       "file_methods": [
@@ -1317,21 +1261,27 @@
           ]
         },
         {
-          "file_path": "scripts/submit_feedback.py",
+          "file_path": "scripts/diff_to_mermaid.py",
           "methods": [
-            "scripts.submit_feedback.telemetry_disabled",
-            "scripts.submit_feedback.resolve_key",
-            "scripts.submit_feedback.resolve_host",
-            "scripts.submit_feedback.resolve_command",
-            "scripts.submit_feedback.resolve_max_chars",
-            "scripts.submit_feedback.extract_feedback",
-            "scripts.submit_feedback.cap_feedback",
-            "scripts.submit_feedback._first",
-            "scripts.submit_feedback.distinct_id",
-            "scripts.submit_feedback.build_properties",
-            "scripts.submit_feedback.build_payload",
-            "scripts.submit_feedback.post",
-            "scripts.submit_feedback.main"
+            "scripts.diff_to_mermaid._has_changes",
+            "scripts.diff_to_mermaid._esc",
+            "scripts.diff_to_mermaid._truncate",
+            "scripts.diff_to_mermaid._Scope",
+            "scripts.diff_to_mermaid._init_directive",
+            "scripts.diff_to_mermaid._count_changed_components",
+            "scripts.diff_to_mermaid._has_changed_relations",
+            "scripts.diff_to_mermaid.render_mermaid",
+            "scripts.diff_to_mermaid.render_mermaid.build",
+            "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
+            "scripts.diff_to_mermaid.render_mermaid.build.emit_level"
+          ]
+        },
+        {
+          "file_path": "scripts/engine_adapter.py",
+          "methods": [
+            "scripts.engine_adapter._count_report_issues",
+            "scripts.engine_adapter._count_health_report",
+            "scripts.engine_adapter.run_health"
           ]
         }
       ],
@@ -1339,20 +1289,18 @@
       "can_expand": true,
       "components": [
         {
-          "name": "Visual Report Engine",
-          "description": "Translates structural analysis and diff data into human-readable formats, primarily Mermaid.js diagrams and component-level documentation.",
+          "name": "Architectural Visualization Engine",
+          "description": "Responsible for converting complex structural diffs and component analysis into human-readable formats, primarily generating Mermaid.js diagrams and Markdown summaries.",
           "key_entities": [],
           "source_cluster_ids": [
-            0,
-            1,
-            2,
             3,
             4,
             5,
             6,
             7,
             8,
-            9
+            9,
+            10
           ],
           "file_methods": [
             {
@@ -1360,19 +1308,18 @@
               "methods": [
                 "scripts.build_cta.detect_editors",
                 "scripts.build_cta.webview_url",
-                "scripts.build_cta._join_or",
-                "scripts.build_cta.build_cta",
-                "scripts.build_cta.build_cta.link",
                 "scripts.build_cta.main"
               ]
             },
             {
-              "file_path": "scripts/submit_feedback.py",
+              "file_path": "scripts/diff_to_mermaid.py",
               "methods": [
-                "scripts.submit_feedback.cap_feedback",
-                "scripts.submit_feedback._first",
-                "scripts.submit_feedback.build_properties",
-                "scripts.submit_feedback.build_payload"
+                "scripts.diff_to_mermaid._has_changes",
+                "scripts.diff_to_mermaid._esc",
+                "scripts.diff_to_mermaid._Scope",
+                "scripts.diff_to_mermaid._init_directive",
+                "scripts.diff_to_mermaid._count_changed_components",
+                "scripts.diff_to_mermaid._has_changed_relations"
               ]
             }
           ],
@@ -1380,62 +1327,18 @@
           "can_expand": true
         },
         {
-          "name": "IDE & Environment Bridge",
-          "description": "Enhances generated reports with interactive Call-to-Action elements and generates deep links for local editor navigation.",
+          "name": "Data Adapter & Pre-processor",
+          "description": "Acts as the ingestion layer for the UX subsystem, loading state persistence files and performing transformations and metrics calculations.",
           "key_entities": [
             {
-              "qualified_name": "scripts.build_cta.main",
-              "reference_file": "scripts/build_cta.py",
-              "reference_start_line": 156,
-              "reference_end_line": 192
-            },
-            {
-              "qualified_name": "scripts.build_cta.detect_editors",
-              "reference_file": "scripts/build_cta.py",
-              "reference_start_line": 38,
-              "reference_end_line": 50
-            },
-            {
-              "qualified_name": "scripts.build_cta.webview_url",
-              "reference_file": "scripts/build_cta.py",
-              "reference_start_line": 64,
-              "reference_end_line": 79
+              "qualified_name": "scripts.diff_to_mermaid._count_changed_components",
+              "reference_file": "scripts/diff_to_mermaid.py",
+              "reference_start_line": 379,
+              "reference_end_line": 386
             }
           ],
           "source_cluster_ids": [
-            10,
-            11,
-            12,
-            13,
-            14
-          ],
-          "file_methods": [
-            {
-              "file_path": "scripts/submit_feedback.py",
-              "methods": [
-                "scripts.submit_feedback.resolve_command",
-                "scripts.submit_feedback.extract_feedback",
-                "scripts.submit_feedback.distinct_id",
-                "scripts.submit_feedback.post",
-                "scripts.submit_feedback.main"
-              ]
-            }
-          ],
-          "component_id": "4.2",
-          "can_expand": true
-        },
-        {
-          "name": "Engagement & Telemetry Handler",
-          "description": "Manages the outbound feedback loop by collecting user interactions and submitting telemetry data to PostHog.",
-          "key_entities": [
-            {
-              "qualified_name": "scripts.submit_feedback.main",
-              "reference_file": "scripts/submit_feedback.py",
-              "reference_start_line": 147,
-              "reference_end_line": 172
-            }
-          ],
-          "source_cluster_ids": [
+            14,
             15,
             16,
             17,
@@ -1443,54 +1346,150 @@
           ],
           "file_methods": [
             {
-              "file_path": "scripts/submit_feedback.py",
+              "file_path": "scripts/diff_to_mermaid.py",
               "methods": [
-                "scripts.submit_feedback.telemetry_disabled",
-                "scripts.submit_feedback.resolve_key",
-                "scripts.submit_feedback.resolve_host",
-                "scripts.submit_feedback.resolve_max_chars"
+                "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
+                "scripts.diff_to_mermaid.render_mermaid.build.emit_level"
+              ]
+            },
+            {
+              "file_path": "scripts/engine_adapter.py",
+              "methods": [
+                "scripts.engine_adapter._count_report_issues",
+                "scripts.engine_adapter._count_health_report",
+                "scripts.engine_adapter.run_health"
+              ]
+            }
+          ],
+          "component_id": "4.2",
+          "can_expand": true
+        },
+        {
+          "name": "Interactive Workflow Integrator",
+          "description": "Enhances the GitHub PR experience by detecting development environments and providing deep links to IDEs.",
+          "key_entities": [
+            {
+              "qualified_name": "scripts.build_cta.main",
+              "reference_file": "scripts/build_cta.py",
+              "reference_start_line": 181,
+              "reference_end_line": 223
+            },
+            {
+              "qualified_name": "scripts.build_cta.detect_editors",
+              "reference_file": "scripts/build_cta.py",
+              "reference_start_line": 36,
+              "reference_end_line": 48
+            },
+            {
+              "qualified_name": "scripts.build_cta.webview_url",
+              "reference_file": "scripts/build_cta.py",
+              "reference_start_line": 62,
+              "reference_end_line": 94
+            }
+          ],
+          "source_cluster_ids": [
+            0,
+            1,
+            2
+          ],
+          "file_methods": [
+            {
+              "file_path": "scripts/build_cta.py",
+              "methods": [
+                "scripts.build_cta._join_or",
+                "scripts.build_cta.build_cta",
+                "scripts.build_cta.build_cta.link"
               ]
             }
           ],
           "component_id": "4.3",
           "can_expand": true
+        },
+        {
+          "name": "Telemetry & Feedback Handler",
+          "description": "Manages outbound communication of user sentiment and tool performance, capturing feedback and transmitting telemetry data.",
+          "key_entities": [],
+          "source_cluster_ids": [
+            11,
+            12,
+            13
+          ],
+          "file_methods": [
+            {
+              "file_path": "scripts/diff_to_mermaid.py",
+              "methods": [
+                "scripts.diff_to_mermaid._truncate",
+                "scripts.diff_to_mermaid.render_mermaid",
+                "scripts.diff_to_mermaid.render_mermaid.build"
+              ]
+            }
+          ],
+          "component_id": "4.4",
+          "can_expand": true
         }
       ],
       "components_relations": [
         {
-          "relation": "provides payload for interactive CTAs",
-          "src_name": "Visual Report Engine",
-          "dst_name": "IDE & Environment Bridge",
-          "src_id": "4.1",
-          "dst_id": "4.2",
+          "relation": "Supplies sanitized component data and change counts to drive the generation of Mermaid diagrams",
+          "src_name": "Data Adapter & Pre-processor",
+          "dst_name": "Architectural Visualization Engine",
+          "src_id": "4.2",
+          "dst_id": "4.1",
           "edge_count": 3,
           "is_static": true
         },
         {
-          "relation": "supplies context for feedback collection",
-          "src_name": "Visual Report Engine",
-          "dst_name": "Engagement & Telemetry Handler",
+          "relation": "Provides the architectural context and component identifiers needed to construct specific IDE deep links",
+          "src_name": "Architectural Visualization Engine",
+          "dst_name": "Interactive Workflow Integrator",
           "src_id": "4.1",
           "dst_id": "4.3",
-          "edge_count": 2,
+          "edge_count": 1,
           "is_static": true
         },
         {
-          "relation": "triggers report payload construction",
-          "src_name": "IDE & Environment Bridge",
-          "dst_name": "Visual Report Engine",
+          "relation": "Triggers telemetry events when users interact with CTA links or editor integrations",
+          "src_name": "Interactive Workflow Integrator",
+          "dst_name": "Telemetry & Feedback Handler",
+          "src_id": "4.3",
+          "dst_id": "4.4",
+          "edge_count": 0,
+          "is_static": false
+        },
+        {
+          "relation": "Passes metadata about the analysis to be included in telemetry payloads",
+          "src_name": "Data Adapter & Pre-processor",
+          "dst_name": "Telemetry & Feedback Handler",
           "src_id": "4.2",
+          "dst_id": "4.4",
+          "edge_count": 1,
+          "is_static": true
+        },
+        {
+          "relation": "calls",
+          "src_name": "Interactive Workflow Integrator",
+          "dst_name": "Architectural Visualization Engine",
+          "src_id": "4.3",
           "dst_id": "4.1",
           "edge_count": 2,
           "is_static": true
         },
         {
-          "relation": "configures telemetry settings and host routing",
-          "src_name": "IDE & Environment Bridge",
-          "dst_name": "Engagement & Telemetry Handler",
-          "src_id": "4.2",
-          "dst_id": "4.3",
-          "edge_count": 2,
+          "relation": "calls",
+          "src_name": "Telemetry & Feedback Handler",
+          "dst_name": "Architectural Visualization Engine",
+          "src_id": "4.4",
+          "dst_id": "4.1",
+          "edge_count": 3,
+          "is_static": true
+        },
+        {
+          "relation": "calls",
+          "src_name": "Telemetry & Feedback Handler",
+          "dst_name": "Data Adapter & Pre-processor",
+          "src_id": "4.4",
+          "dst_id": "4.2",
+          "edge_count": 1,
           "is_static": true
         }
       ]
@@ -1498,34 +1497,34 @@
   ],
   "components_relations": [
     {
-      "relation": "triggers codebase analysis and diffing",
-      "src_name": "Analysis Orchestrator",
-      "dst_name": "Structural Diffing Engine",
-      "src_id": "1",
-      "dst_id": "2",
-      "edge_count": 0,
-      "is_static": false
-    },
-    {
-      "relation": "provides metadata for final reporting",
+      "relation": "triggers health checks and status reporting",
       "src_name": "Analysis Orchestrator",
       "dst_name": "UX & Integration Layer",
       "src_id": "1",
       "dst_id": "4",
-      "edge_count": 0,
-      "is_static": false
+      "edge_count": 1,
+      "is_static": true
     },
     {
-      "relation": "provides structural diff data for rendering",
+      "relation": "provides structural change data for diagram generation",
       "src_name": "Structural Diffing Engine",
       "dst_name": "Mermaid Visualization Engine",
       "src_id": "2",
       "dst_id": "3",
-      "edge_count": 4,
+      "edge_count": 2,
       "is_static": true
     },
     {
-      "relation": "queries file-level changes for component mapping",
+      "relation": "supplies change metrics and rendered diffs for PR comments",
+      "src_name": "Structural Diffing Engine",
+      "dst_name": "UX & Integration Layer",
+      "src_id": "2",
+      "dst_id": "4",
+      "edge_count": 2,
+      "is_static": true
+    },
+    {
+      "relation": "queries specific file changes to resolve component scope",
       "src_name": "Mermaid Visualization Engine",
       "dst_name": "Structural Diffing Engine",
       "src_id": "3",
@@ -1534,22 +1533,22 @@
       "is_static": true
     },
     {
-      "relation": "provides rendered diagrams for GitHub comments",
+      "relation": "provides component change counts for summary reporting",
       "src_name": "Mermaid Visualization Engine",
       "dst_name": "UX & Integration Layer",
       "src_id": "3",
       "dst_id": "4",
-      "edge_count": 0,
-      "is_static": false
+      "edge_count": 1,
+      "is_static": true
     },
     {
-      "relation": "reports telemetry and user feedback status",
+      "relation": "applies visibility filters to diagram rendering",
       "src_name": "UX & Integration Layer",
-      "dst_name": "Analysis Orchestrator",
+      "dst_name": "Mermaid Visualization Engine",
       "src_id": "4",
-      "dst_id": "1",
-      "edge_count": 0,
-      "is_static": false
+      "dst_id": "3",
+      "edge_count": 1,
+      "is_static": true
     }
   ]
 }
