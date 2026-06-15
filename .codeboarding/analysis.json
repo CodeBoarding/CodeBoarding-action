@@ -1,15 +1,15 @@
 {
   "metadata": {
-    "generated_at": "2026-06-14T00:28:29.623425+00:00",
-    "commit_hash": "2df93e2a769be8f30dcb200682e3be26b16b6e82",
+    "generated_at": "2026-06-15T09:15:48.531752+00:00",
+    "commit_hash": "44b2ac573db401bf86204a07494b6bd772e983fe",
     "repo_name": "CodeBoarding-action",
     "depth_level": 2,
     "file_coverage_summary": {
-      "total_files": 20,
+      "total_files": 21,
       "analyzed": 5,
-      "not_analyzed": 15,
+      "not_analyzed": 16,
       "not_analyzed_by_reason": {
-        "other": 9,
+        "other": 10,
         "codeboardingignore": 6
       }
     }
