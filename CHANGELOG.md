@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.4.0...v1.5.0) (2026-06-15)
+
+
+### Features
+
+* auto-detect depth_level from committed baseline ([#34](https://github.com/CodeBoarding/CodeBoarding-action/issues/34)) ([eb58256](https://github.com/CodeBoarding/CodeBoarding-action/commit/eb58256d9fb36beec54a0f9cbe5611276ac1a0b8))
+
 ## [1.4.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.3.0...v1.4.0) (2026-06-14)
 
 
