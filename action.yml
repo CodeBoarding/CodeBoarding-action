@@ -520,10 +520,20 @@ runs:
         echo "Credential mode: $MODE"
 
         # ── Hosted modes (license / oidc): provider is always OpenRouter via proxy ──
+        # The hosted tiers run on CodeBoarding's OpenRouter account, so the engine
+        # always talks OpenRouter here (the bearer is the license/OIDC token, which
+        # the proxy swaps for the real key). To use a DIFFERENT provider, set
+        # llm_api_key for that provider (that's BYO-key mode, below).
         if [ "$MODE" != "byokey" ]; then
           if [ -z "$PROXY_URL" ]; then
             echo "::error::proxy_url is empty but no llm_api_key was provided. Set llm_api_key, or restore proxy_url."
             exit 1
+          fi
+          # Warn if the user asked for a non-OpenRouter provider but gave no key:
+          # the hosted tier can only use OpenRouter, so llm_provider is ignored here.
+          PROVIDER_NORM="$(printf '%s' "$RAW_PROVIDER" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_')"
+          if [ -n "$PROVIDER_NORM" ] && [ "$PROVIDER_NORM" != "openrouter" ]; then
+            echo "::warning::llm_provider='$PROVIDER_NORM' is ignored on the free/license hosted tier (OpenRouter only). To use $PROVIDER_NORM, pass its key via llm_api_key."
           fi
           PROVIDER_ENV="OPENROUTER_API_KEY"
           AGENT_MODEL="${AGENT_MODEL:-google/gemini-3-flash-preview}"
@@ -661,10 +671,12 @@ runs:
       uses: actions/cache/restore@v4
       with:
         path: ${{ runner.temp }}/cb-base
-        # Fold in the credential mode (byokey/license/oidc): the hosted modes pin
-        # OpenRouter + default models regardless of inputs.llm_provider, so a repo
-        # that switches between free-tier and a BYO key must not reuse the other
-        # mode's cached base analysis.
+        # Fold in the credential mode (byokey/license/oidc). The cache key is
+        # otherwise (provider, agent_model, parsing_model) from the raw INPUTS, but
+        # the hosted tiers force OpenRouter + Gemini defaults regardless of those
+        # inputs. So a free-tier run (oidc, forced Gemini) and a BYO OpenRouter-key
+        # run with no model pinned would share a key yet produce different base
+        # analyses; the mode discriminator keeps them from reusing each other's cache.
         key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     # A committed analysis.json gives the head analysis stable component ids,
@@ -778,10 +790,12 @@ runs:
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.temp }}/cb-base
-        # Fold in the credential mode (byokey/license/oidc): the hosted modes pin
-        # OpenRouter + default models regardless of inputs.llm_provider, so a repo
-        # that switches between free-tier and a BYO key must not reuse the other
-        # mode's cached base analysis.
+        # Fold in the credential mode (byokey/license/oidc). The cache key is
+        # otherwise (provider, agent_model, parsing_model) from the raw INPUTS, but
+        # the hosted tiers force OpenRouter + Gemini defaults regardless of those
+        # inputs. So a free-tier run (oidc, forced Gemini) and a BYO OpenRouter-key
+        # run with no model pinned would share a key yet produce different base
+        # analyses; the mode discriminator keeps them from reusing each other's cache.
         key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     - name: Analyze PR head (incremental from base)
