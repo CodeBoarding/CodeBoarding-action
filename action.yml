@@ -381,6 +381,22 @@ runs:
           <sub>codeboarding-action · run ${{ github.run_id }}</sub>
         GITHUB_TOKEN: ${{ inputs.github_token }}
 
+    - name: Setup Java for JDTLS
+      if: steps.guard.outputs.skip != 'true'
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: '21'
+
+    - name: Setup .NET SDKs for C# LSP
+      if: steps.guard.outputs.skip != 'true'
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: |
+          8.0.x
+          9.0.x
+          10.0.x
+
     - name: Checkout CodeBoarding engine
       if: steps.guard.outputs.skip != 'true'
       uses: actions/checkout@v4
