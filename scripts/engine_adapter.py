@@ -140,12 +140,12 @@ def _supported_depth(metadata: dict) -> int | None:
     return depth if depth in range(1, 4) else None
 
 
-def _analysis_depth_or_default(output_dir: Path, default: int = _DEFAULT_DEPTH) -> int:
+def _analysis_depth_or_default(output_dir: Path, default_depth: int = _DEFAULT_DEPTH) -> int:
     metadata = _load_metadata(output_dir / "analysis.json")
     if not isinstance(metadata, dict):
-        return default
+        return default_depth
     depth = _supported_depth(metadata)
-    return depth if depth is not None else default
+    return depth if depth is not None else default_depth
 
 
 def _metadata_commit(metadata: dict) -> str:
