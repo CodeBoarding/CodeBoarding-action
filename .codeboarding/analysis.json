@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-06-15T09:15:48.531752+00:00",
-    "commit_hash": "44b2ac573db401bf86204a07494b6bd772e983fe",
+    "generated_at": "2026-06-15T22:08:29.815255+00:00",
+    "commit_hash": "8874ebaaf6796fad9d56754bd7b93663d8c4bd96",
     "repo_name": "CodeBoarding-action",
     "depth_level": 2,
     "file_coverage_summary": {
@@ -18,6 +18,8 @@
   "files": {
     "scripts/engine_adapter.py": {
       "method_keys": [
+        "scripts/engine_adapter.py|scripts.engine_adapter._is_quota_exhausted",
+        "scripts/engine_adapter.py|scripts.engine_adapter._flag_quota_exhausted",
         "scripts/engine_adapter.py|scripts.engine_adapter._log_path",
         "scripts/engine_adapter.py|scripts.engine_adapter._clear_dir",
         "scripts/engine_adapter.py|scripts.engine_adapter._load_metadata",
@@ -113,151 +115,165 @@
     }
   },
   "methods_index": {
+    "scripts/engine_adapter.py|scripts.engine_adapter._is_quota_exhausted": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter._is_quota_exhausted",
+      "start_line": 69,
+      "end_line": 84,
+      "type": "FUNCTION"
+    },
+    "scripts/engine_adapter.py|scripts.engine_adapter._flag_quota_exhausted": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter._flag_quota_exhausted",
+      "start_line": 87,
+      "end_line": 96,
+      "type": "FUNCTION"
+    },
     "scripts/engine_adapter.py|scripts.engine_adapter._log_path": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._log_path",
-      "start_line": 64,
-      "end_line": 65,
+      "start_line": 99,
+      "end_line": 100,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._clear_dir": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._clear_dir",
-      "start_line": 68,
-      "end_line": 74,
+      "start_line": 103,
+      "end_line": 109,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._load_metadata": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._load_metadata",
-      "start_line": 77,
-      "end_line": 87,
+      "start_line": 112,
+      "end_line": 122,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._metadata_depth": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._metadata_depth",
-      "start_line": 90,
-      "end_line": 94,
+      "start_line": 125,
+      "end_line": 129,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._metadata_commit": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._metadata_commit",
-      "start_line": 97,
-      "end_line": 99,
+      "start_line": 132,
+      "end_line": 134,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.baseline_info": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.baseline_info",
-      "start_line": 102,
-      "end_line": 112,
+      "start_line": 137,
+      "end_line": 147,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._docs_only_baseline_drift": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._docs_only_baseline_drift",
-      "start_line": 115,
-      "end_line": 146,
+      "start_line": 150,
+      "end_line": 181,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._docs_only_baseline_drift.git": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._docs_only_baseline_drift.git",
-      "start_line": 118,
-      "end_line": 125,
+      "start_line": 153,
+      "end_line": 160,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.validate_base_analysis": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.validate_base_analysis",
-      "start_line": 149,
-      "end_line": 204,
+      "start_line": 184,
+      "end_line": 239,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_base": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_base",
-      "start_line": 207,
-      "end_line": 219,
+      "start_line": 242,
+      "end_line": 254,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_seed": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_seed",
-      "start_line": 222,
-      "end_line": 249,
+      "start_line": 257,
+      "end_line": 284,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._incremental_or_full": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._incremental_or_full",
-      "start_line": 252,
-      "end_line": 300,
+      "start_line": 287,
+      "end_line": 335,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_head": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_head",
-      "start_line": 303,
-      "end_line": 324,
+      "start_line": 338,
+      "end_line": 359,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_analyze": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_analyze",
-      "start_line": 327,
-      "end_line": 394,
+      "start_line": 362,
+      "end_line": 429,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_analyze.full": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_analyze.full",
-      "start_line": 343,
-      "end_line": 359,
+      "start_line": 378,
+      "end_line": 394,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_render": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_render",
-      "start_line": 397,
-      "end_line": 410,
+      "start_line": 432,
+      "end_line": 445,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_concat": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_concat",
-      "start_line": 413,
-      "end_line": 426,
+      "start_line": 448,
+      "end_line": 461,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._count_report_issues": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._count_report_issues",
-      "start_line": 429,
-      "end_line": 442,
+      "start_line": 464,
+      "end_line": 477,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._count_health_report": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._count_health_report",
-      "start_line": 445,
-      "end_line": 453,
+      "start_line": 480,
+      "end_line": 488,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_health": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_health",
-      "start_line": 456,
-      "end_line": 485,
+      "start_line": 491,
+      "end_line": 520,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.main": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.main",
-      "start_line": 488,
-      "end_line": 558,
+      "start_line": 523,
+      "end_line": 601,
       "type": "FUNCTION"
     },
     "scripts/build_component_files.py|scripts.build_component_files._walk": {
@@ -665,12 +681,15 @@
       ],
       "source_cluster_ids": [
         1,
-        8
+        8,
+        9
       ],
       "file_methods": [
         {
           "file_path": "scripts/engine_adapter.py",
           "methods": [
+            "scripts.engine_adapter._is_quota_exhausted",
+            "scripts.engine_adapter._flag_quota_exhausted",
             "scripts.engine_adapter._log_path",
             "scripts.engine_adapter._clear_dir",
             "scripts.engine_adapter._load_metadata",
@@ -699,38 +718,39 @@
       "can_expand": true,
       "components": [
         {
-          "name": "Execution Dispatcher",
-          "description": "Acts as the primary entry point and high-level coordinator. It sequences the execution phases (seed, analyze, render, health) and manages the global execution context for the GitHub Action.",
+          "name": "Workflow Lifecycle Controller",
+          "description": "Acts as the primary entry point and high-level coordinator. It manages the sequential execution of the action, handles quota enforcement to prevent runaway CI costs, and dispatches tasks to the strategy and validation layers.",
           "key_entities": [
             {
               "qualified_name": "scripts.engine_adapter.main",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 488,
-              "reference_end_line": 558
+              "reference_start_line": 523,
+              "reference_end_line": 601
             },
             {
               "qualified_name": "scripts.engine_adapter.run_head",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 303,
-              "reference_end_line": 324
+              "reference_start_line": 338,
+              "reference_end_line": 359
             },
             {
-              "qualified_name": "scripts.engine_adapter.run_render",
+              "qualified_name": "scripts.engine_adapter._is_quota_exhausted",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 397,
-              "reference_end_line": 410
+              "reference_start_line": 69,
+              "reference_end_line": 84
             }
           ],
           "source_cluster_ids": [
-            2
+            1
           ],
           "file_methods": [
             {
               "file_path": "scripts/engine_adapter.py",
               "methods": [
+                "scripts.engine_adapter._is_quota_exhausted",
+                "scripts.engine_adapter._flag_quota_exhausted",
                 "scripts.engine_adapter.run_seed",
                 "scripts.engine_adapter.run_head",
-                "scripts.engine_adapter.run_render",
                 "scripts.engine_adapter.run_concat",
                 "scripts.engine_adapter.main"
               ]
@@ -740,36 +760,36 @@
           "can_expand": true
         },
         {
-          "name": "Analysis Strategy Manager",
-          "description": "Determines the optimal analysis mode (Full vs. Incremental) based on the Git context and manages the persistence of analysis metadata to ensure continuity between PR updates.",
+          "name": "Strategy & State Manager",
+          "description": "The decision-making engine that determines the analysis mode (Full vs. Incremental). It tracks commit hashes and metadata to ensure that PR analysis only processes changed files, maintaining consistency with the established baseline.",
           "key_entities": [
             {
               "qualified_name": "scripts.engine_adapter.run_analyze",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 327,
-              "reference_end_line": 394
+              "reference_start_line": 362,
+              "reference_end_line": 429
             },
             {
               "qualified_name": "scripts.engine_adapter._incremental_or_full",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 252,
-              "reference_end_line": 300
+              "reference_start_line": 287,
+              "reference_end_line": 335
             },
             {
               "qualified_name": "scripts.engine_adapter._load_metadata",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 77,
-              "reference_end_line": 87
+              "reference_start_line": 112,
+              "reference_end_line": 122
             },
             {
-              "qualified_name": "scripts.engine_adapter._metadata_commit",
+              "qualified_name": "scripts.engine_adapter.run_analyze.full",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 97,
-              "reference_end_line": 99
+              "reference_start_line": 378,
+              "reference_end_line": 394
             }
           ],
           "source_cluster_ids": [
-            1,
+            2,
             3
           ],
           "file_methods": [
@@ -784,7 +804,8 @@
                 "scripts.engine_adapter.run_base",
                 "scripts.engine_adapter._incremental_or_full",
                 "scripts.engine_adapter.run_analyze",
-                "scripts.engine_adapter.run_analyze.full"
+                "scripts.engine_adapter.run_analyze.full",
+                "scripts.engine_adapter.run_render"
               ]
             }
           ],
@@ -792,26 +813,26 @@
           "can_expand": true
         },
         {
-          "name": "Quality & Environment Guard",
-          "description": "Validates the integrity of the analysis environment before execution and performs post-analysis health checks to report on the quality and coverage of the generated insights.",
+          "name": "Integrity & Health Guard",
+          "description": "Performs pre-flight validation of the environment and post-analysis quality checks. It specifically looks for \"baseline drift\"—where documentation becomes desynchronized from the code—and reports on the structural integrity of the generated Mermaid diagrams.",
           "key_entities": [
             {
               "qualified_name": "scripts.engine_adapter.validate_base_analysis",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 149,
-              "reference_end_line": 204
-            },
-            {
-              "qualified_name": "scripts.engine_adapter.run_health",
-              "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 456,
-              "reference_end_line": 485
+              "reference_start_line": 184,
+              "reference_end_line": 239
             },
             {
               "qualified_name": "scripts.engine_adapter._docs_only_baseline_drift",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 115,
-              "reference_end_line": 146
+              "reference_start_line": 150,
+              "reference_end_line": 181
+            },
+            {
+              "qualified_name": "scripts.engine_adapter.run_health",
+              "reference_file": "scripts/engine_adapter.py",
+              "reference_start_line": 491,
+              "reference_end_line": 520
             }
           ],
           "source_cluster_ids": [
@@ -838,40 +859,31 @@
       ],
       "components_relations": [
         {
-          "relation": "invokes to execute analysis phase",
-          "src_name": "Execution Dispatcher",
-          "dst_name": "Analysis Strategy Manager",
+          "relation": "orchestrates analysis mode and execution",
+          "src_name": "Workflow Lifecycle Controller",
+          "dst_name": "Strategy & State Manager",
           "src_id": "1.1",
           "dst_id": "1.2",
           "edge_count": 5,
           "is_static": true
         },
         {
-          "relation": "triggers validation and health reporting",
-          "src_name": "Execution Dispatcher",
-          "dst_name": "Quality & Environment Guard",
+          "relation": "triggers environment and baseline validation",
+          "src_name": "Workflow Lifecycle Controller",
+          "dst_name": "Integrity & Health Guard",
           "src_id": "1.1",
           "dst_id": "1.3",
           "edge_count": 2,
           "is_static": true
         },
         {
-          "relation": "utilizes drift detection for baseline validation",
-          "src_name": "Analysis Strategy Manager",
-          "dst_name": "Quality & Environment Guard",
+          "relation": "provides metadata for depth and drift checks",
+          "src_name": "Strategy & State Manager",
+          "dst_name": "Integrity & Health Guard",
           "src_id": "1.2",
           "dst_id": "1.3",
           "edge_count": 1,
           "is_static": true
-        },
-        {
-          "relation": "provides health metrics for metadata finalization",
-          "src_name": "Quality & Environment Guard",
-          "dst_name": "Analysis Strategy Manager",
-          "src_id": "1.3",
-          "dst_id": "1.2",
-          "edge_count": 0,
-          "is_static": false
         }
       ]
     },
@@ -1486,7 +1498,7 @@
   ],
   "components_relations": [
     {
-      "relation": "orchestrates codebase scanning and diff extraction",
+      "relation": "triggers codebase analysis and diffing",
       "src_name": "Analysis Orchestrator",
       "dst_name": "Structural Diffing Engine",
       "src_id": "1",
@@ -1495,7 +1507,7 @@
       "is_static": false
     },
     {
-      "relation": "provides analysis metadata for final reporting",
+      "relation": "provides metadata for final reporting",
       "src_name": "Analysis Orchestrator",
       "dst_name": "UX & Integration Layer",
       "src_id": "1",
@@ -1504,7 +1516,7 @@
       "is_static": false
     },
     {
-      "relation": "provides structural change data for diagram generation",
+      "relation": "provides structural diff data for rendering",
       "src_name": "Structural Diffing Engine",
       "dst_name": "Mermaid Visualization Engine",
       "src_id": "2",
@@ -1513,7 +1525,7 @@
       "is_static": true
     },
     {
-      "relation": "queries specific file changes for component rendering",
+      "relation": "queries file-level changes for component mapping",
       "src_name": "Mermaid Visualization Engine",
       "dst_name": "Structural Diffing Engine",
       "src_id": "3",
@@ -1531,7 +1543,7 @@
       "is_static": false
     },
     {
-      "relation": "triggers feedback loops and telemetry based on run results",
+      "relation": "reports telemetry and user feedback status",
       "src_name": "UX & Integration Layer",
       "dst_name": "Analysis Orchestrator",
       "src_id": "4",
