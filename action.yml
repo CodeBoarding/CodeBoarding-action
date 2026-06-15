@@ -28,7 +28,7 @@ inputs:
     required: false
     default: ${{ github.token }}
   push_token:
-    description: 'Token used for git pushes: in review mode the generated .codeboarding/analysis.json to the PR branch (for the webview link), in sync mode the architecture to target_branch. Defaults to the workflow github.token, which can push when the calling workflow grants "permissions: contents: write". Kept separate from github_token so commenting can use a GitHub App token while the push uses the workflow token (whose write access the consumer controls).'
+    description: 'Token used for sync-mode git pushes to target_branch. Defaults to the workflow github.token, which can push when the calling workflow grants "permissions: contents: write". Kept separate from github_token so commenting can use a GitHub App token while the push uses the workflow token (whose write access the consumer controls).'
     required: false
     default: ${{ github.token }}
   engine_ref:
@@ -36,7 +36,7 @@ inputs:
     required: false
     default: 'v0.12.1'
   depth_level:
-    description: 'Analysis depth (1-3). Higher is slower, costlier, and more detailed. Use the SAME value in your review and sync workflows: review mode reuses the committed baseline only when it is no deeper than this, regenerating it otherwise. Lower to 1 for cheaper, faster runs. Empty (default): auto-detect from the committed .codeboarding/analysis.json metadata, falling back to 2.'
+    description: 'Analysis depth (1-3) for cold-start or force_full rebuilds. Once .codeboarding/analysis.json exists, its metadata.depth_level is the source of truth for incremental analysis and fallback-full recovery. Empty (default): 2 for cold starts.'
     required: false
     default: ''
   agent_model:
@@ -68,13 +68,9 @@ inputs:
     required: false
     default: ''
   webview_base_url:
-    description: 'Review mode: base URL of the hosted webview (default https://app.codeboarding.org). The PR comment adds an "explore in browser" link deep-linking to this PR''s head-vs-base architecture diff. Requires the head analysis.json to be committed to the PR branch (commit_head_analysis), so it is omitted on fork PRs. Set empty to disable the webview link.'
+    description: 'Review mode: hosted webview base URL. The PR comment links to an artifact-backed head-vs-base architecture diff; review mode does not commit generated files to PR branches. Set empty to disable the browser link.'
     required: false
     default: 'https://app.codeboarding.org'
-  commit_head_analysis:
-    description: 'Review mode: commit the generated head .codeboarding/analysis.json (+ health report) back to the PR branch so the webview can fetch it at the head SHA. Same-repo PRs only (the token is read-only on forks). Required for the webview "explore in browser" link. Needs contents: write on the workflow.'
-    required: false
-    default: 'true'
   trigger_command:
     description: 'Review mode: slash-command that triggers the action from a PR comment (issue_comment event). A comment whose first word is this runs the diagram on-demand.'
     required: false
@@ -135,6 +131,9 @@ outputs:
   committed:
     description: 'Sync mode: true when a docs commit was created and pushed.'
     value: ${{ steps.sync_commit.outputs.committed }}
+  review_artifact_url:
+    description: 'Review mode: GitHub Actions artifact URL containing PR analysis outputs.'
+    value: ${{ steps.upload_review_artifact.outputs.artifact-url }}
 
 runs:
   using: 'composite'
@@ -145,7 +144,7 @@ runs:
   #   1. GUARD            — resolve mode + event eligibility + SHAs (one source of truth)
   #   2. SHARED SETUP     — checkout engine + target, Python/Node/uv, caches, LLM-key prep
   #   3. ANALYSIS (key live) — review: base/seed/head/health ; sync: seed/analyze
-  #   4. Drop LLM key, then OUTPUT (no key) — review: diff→comment ; sync: render→commit
+  #   4. Drop LLM key, then OUTPUT (no key) — review: diff→artifact→comment ; sync: render→commit
   # The binding between the modes is the committed .codeboarding/analysis.json
   # baseline: sync (phase 3/4) writes it, review (phase 3) reads it as the PR base.
   steps:
@@ -211,7 +210,7 @@ runs:
         esac
         case "$DEPTH" in
           ''|1|2|3) ;;
-          *) echo "::error::depth_level must be 1, 2, or 3 (empty = auto-detect from committed baseline)."; exit 1 ;;
+          *) echo "::error::depth_level must be 1, 2, or 3 (empty = default cold-start depth 2)."; exit 1 ;;
         esac
         echo "mode=$MODE" >> "$GITHUB_OUTPUT"
 
@@ -392,8 +391,8 @@ runs:
         persist-credentials: false
 
     # Review mode: the PR head repo at the head SHA. Sync mode: this repo at the
-    # pushed/selected SHA. Always credential-free — both pushes (head analysis to
-    # the PR branch, docs to target_branch) authenticate explicitly via push_token.
+    # pushed/selected SHA. Always credential-free — sync pushes authenticate
+    # explicitly via push_token.
     - name: Checkout target repository
       if: steps.guard.outputs.skip != 'true'
       uses: actions/checkout@v4
@@ -412,10 +411,10 @@ runs:
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
         BASE_REPO: ${{ steps.guard.outputs.base_repo }}
       run: |
-        git fetch origin "$BASE_SHA" --depth=1 || true
+        git fetch origin "$BASE_SHA" --depth=2 || true
         if ! git cat-file -e "$BASE_SHA" 2>/dev/null; then
           git remote add base "https://github.com/${BASE_REPO}.git" 2>/dev/null || git remote set-url base "https://github.com/${BASE_REPO}.git"
-          git fetch base "$BASE_SHA" --depth=1 || true
+          git fetch base "$BASE_SHA" --depth=2 || true
         fi
         git cat-file -e "$BASE_SHA" && echo "Base commit reachable." || \
           (echo "::error::Base commit $BASE_SHA is not reachable." && exit 1)
@@ -426,32 +425,18 @@ runs:
       shell: bash
       env:
         INPUT_DEPTH: ${{ inputs.depth_level }}
-        TARGET_REPO: ${{ github.workspace }}/target-repo
-        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
-        MODE: ${{ steps.guard.outputs.mode }}
       run: |
         set -euo pipefail
-        # Explicit input always wins.
+        # Explicit input controls cold-start/force_full rebuilds. Existing
+        # analysis.json metadata is the source of truth for incremental runs.
         if [ -n "$INPUT_DEPTH" ]; then
           echo "depth=$INPUT_DEPTH" >> "$GITHUB_OUTPUT"
           echo "Using explicit depth_level=$INPUT_DEPTH."
           exit 0
         fi
-        # Auto: read from committed analysis.json.
         DEPTH=2
-        if [ "$MODE" = "sync" ]; then
-          if [ -f "$TARGET_REPO/.codeboarding/analysis.json" ]; then
-            DEPTH=$(python3 -c "import json; print(json.load(open('$TARGET_REPO/.codeboarding/analysis.json')).get('metadata',{}).get('depth_level',2))" 2>/dev/null || echo 2)
-          fi
-        else
-          BASE_JSON="$(git -C "$TARGET_REPO" show "${BASE_SHA}:.codeboarding/analysis.json" 2>/dev/null || true)"
-          if [ -n "$BASE_JSON" ]; then
-            DEPTH="$(printf '%s' "$BASE_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("metadata",{}).get("depth_level",2))' 2>/dev/null || echo 2)"
-          fi
-        fi
-        case "$DEPTH" in 1|2|3) ;; *) DEPTH=2 ;; esac
         echo "depth=$DEPTH" >> "$GITHUB_OUTPUT"
-        echo "Auto-resolved depth_level=$DEPTH."
+        echo "Using default cold-start depth_level=$DEPTH."
 
     - name: Set up Python 3.13
       if: steps.guard.outputs.skip != 'true'
@@ -673,7 +658,6 @@ runs:
       env:
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
         ACTION_PATH: ${{ github.action_path }}
-        DEPTH: ${{ steps.resolve_depth.outputs.depth }}
       run: |
         BASE_DIR="${RUNNER_TEMP}/cb-base"
         HEAD_DIR="${RUNNER_TEMP}/cb-head"
@@ -683,8 +667,7 @@ runs:
         if git show "${BASE_SHA}:.codeboarding/analysis.json" > "${BASE_DIR}/analysis.json" 2>/dev/null; then
           if python3 "$ACTION_PATH/scripts/engine_adapter.py" validate-base \
               --analysis "${BASE_DIR}/analysis.json" \
-              --expected-sha "$BASE_SHA" \
-              --expected-depth "$DEPTH"; then
+              --expected-sha "$BASE_SHA"; then
             echo "committed=true" >> $GITHUB_OUTPUT
             echo "Using committed .codeboarding/analysis.json at ${BASE_SHA}."
           else
@@ -944,6 +927,13 @@ runs:
 
         if [ -f "$OUTPUT_DIR/analysis.json" ]; then
           cp "$OUTPUT_DIR/analysis.json" "$ANALYSIS_DIR/analysis.json"
+          if [ -f "$OUTPUT_DIR/static_analysis.pkl" ] && [ -f "$OUTPUT_DIR/static_analysis.sha" ]; then
+            cp "$OUTPUT_DIR/static_analysis.pkl" "$ANALYSIS_DIR/static_analysis.pkl"
+            cp "$OUTPUT_DIR/static_analysis.sha" "$ANALYSIS_DIR/static_analysis.sha"
+            echo "committed_cache=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "committed_cache=false" >> "$GITHUB_OUTPUT"
+          fi
           # baseline-info parses metadata.commit_hash and emits it ONLY when it is
           # present and SHA-shaped, so an unusable/injected value never reaches
           # GITHUB_OUTPUT, the cache key, or git. (Pure stdlib — no engine venv.)
@@ -954,19 +944,21 @@ runs:
             echo "baseline_sha=$BASELINE_SHA" >> "$GITHUB_OUTPUT"
             echo "Using committed baseline generated for $BASELINE_SHA."
           else
-            rm -f "$ANALYSIS_DIR/analysis.json"
+            rm -f "$ANALYSIS_DIR/analysis.json" "$ANALYSIS_DIR/static_analysis.pkl" "$ANALYSIS_DIR/static_analysis.sha"
             echo "baseline_present=false" >> "$GITHUB_OUTPUT"
             echo "baseline_sha=none" >> "$GITHUB_OUTPUT"
+            echo "committed_cache=false" >> "$GITHUB_OUTPUT"
             echo "::warning::Committed analysis.json has no usable metadata.commit_hash; a full analysis will run."
           fi
         else
           echo "baseline_present=false" >> "$GITHUB_OUTPUT"
           echo "baseline_sha=none" >> "$GITHUB_OUTPUT"
+          echo "committed_cache=false" >> "$GITHUB_OUTPUT"
           echo "No committed baseline found; a full analysis will run."
         fi
 
     - name: Restore sync static-analysis cache
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.sync_seed.outputs.baseline_present == 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.sync_seed.outputs.baseline_present == 'true' && steps.sync_seed.outputs.committed_cache != 'true'
       id: sync_cache
       uses: actions/cache/restore@v4
       with:
@@ -979,7 +971,7 @@ runs:
     # analysis.json supplies component ids, but the incremental path also needs
     # the baseline static_analysis.pkl (LSP + clustering, no LLM). Fail-open.
     - name: Seed sync static-analysis cache at baseline SHA
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.sync_seed.outputs.baseline_present == 'true' && steps.sync_cache.outputs.cache-hit != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.sync_seed.outputs.baseline_present == 'true' && steps.sync_seed.outputs.committed_cache != 'true' && steps.sync_cache.outputs.cache-hit != 'true'
       id: sync_seedcache
       continue-on-error: true
       shell: bash
@@ -1091,83 +1083,6 @@ runs:
               "${RUNNER_TEMP}/cb-agent-model" \
               "${RUNNER_TEMP}/cb-parsing-model"
 
-    # Commit the generated head analysis (+ health report) to the PR branch so the
-    # hosted webview can fetch .codeboarding/analysis.json at the head SHA and open
-    # this PR's head-vs-base diff. Same-repo PRs only — the token is read-only on
-    # forks (the step is skipped there and the webview link is omitted). The push
-    # creates a NEW head commit; its SHA (webview_sha) is what the comment links to.
-    - name: Commit head analysis to PR branch
-      id: commit_head
-      if: >-
-        steps.guard.outputs.skip != 'true'
-        && steps.guard.outputs.mode == 'review'
-        && inputs.commit_head_analysis == 'true'
-        && steps.guard.outputs.same_repo == 'true'
-        && inputs.webview_base_url != ''
-      shell: bash
-      working-directory: target-repo
-      env:
-        # Push with push_token (defaults to the workflow github.token, gated by the
-        # consumer's `permissions: contents: write`) — NOT github_token, which may be
-        # a GitHub App token used only for commenting and need not have write access.
-        GH_TOKEN: ${{ inputs.push_token }}
-        HEAD_DIR: ${{ steps.base.outputs.head_dir }}
-        HEAD_REF: ${{ steps.guard.outputs.head_ref }}
-        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
-        REPOSITORY: ${{ github.repository }}
-        SERVER_URL: ${{ github.server_url }}
-      run: |
-        echo "ready=false" >> "$GITHUB_OUTPUT"
-        echo "webview_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-        [ -n "$HEAD_REF" ] || { echo "::notice::No head branch ref resolved; skipping head-analysis commit."; exit 0; }
-        [ -f "$HEAD_DIR/analysis.json" ] || { echo "::notice::No head analysis.json to commit."; exit 0; }
-
-        mkdir -p .codeboarding/health
-        cp "$HEAD_DIR/analysis.json" .codeboarding/analysis.json
-        if [ -f "$HEAD_DIR/health/health_report.json" ]; then
-          cp "$HEAD_DIR/health/health_report.json" .codeboarding/health/health_report.json
-        fi
-
-        git add .codeboarding/analysis.json .codeboarding/health/health_report.json 2>/dev/null || git add .codeboarding/analysis.json
-        if git diff --cached --quiet; then
-          echo "::notice::Head analysis unchanged; nothing to commit."
-          echo "ready=true" >> "$GITHUB_OUTPUT"   # already committed at this SHA → webview can read it
-          exit 0
-        fi
-        # Same architecture, only volatile metadata differs: don't commit. The
-        # ignored fields must cover EVERY per-run field, or the loop below stays
-        # open: generated_at and the health timestamp, AND commit_hash — which
-        # tracks the analyzed head SHA, so on a synchronize re-run (whose head IS
-        # our previous bot commit) it changes even when the architecture didn't.
-        # The bot commit carries no "[skip ci]" (it would leak through squash-
-        # merges and skip real merges' workflows), so without ignoring all three
-        # a synchronize-triggered re-run would re-commit a fresh SHA/timestamp
-        # forever. ready=true: the analysis already committed serves the webview.
-        if git diff --cached --quiet -I '"generated_at"' -I '"timestamp"' -I '"commit_hash"'; then
-          git reset -q
-          echo "::notice::Head analysis differs only in volatile metadata (timestamps/commit_hash); nothing to commit."
-          echo "ready=true" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-
-        git config user.name "codeboarding[bot]"
-        git config user.email "codeboarding[bot]@users.noreply.github.com"
-        git commit -m "chore(codeboarding): update architecture analysis" >/dev/null
-
-        # Push to the PR head branch. The checkout used persist-credentials:false, so
-        # authenticate the push explicitly with the workflow token (same-repo only).
-        # Requires `contents: write` on the job's token — a read-only token (the
-        # default) is rejected here; the push error below names the cause.
-        AUTH_URL="https://x-access-token:${GH_TOKEN}@${SERVER_URL#https://}/${REPOSITORY}.git"
-        if git push "$AUTH_URL" "HEAD:refs/heads/${HEAD_REF}"; then
-          NEW_SHA="$(git rev-parse HEAD)"
-          echo "webview_sha=$NEW_SHA" >> "$GITHUB_OUTPUT"
-          echo "ready=true" >> "$GITHUB_OUTPUT"
-          echo "Committed head analysis to ${HEAD_REF} as ${NEW_SHA}."
-        else
-          echo "::warning::Could not push head analysis to ${HEAD_REF}; the webview link will be omitted. Most likely the job's token lacks 'contents: write' (add 'permissions: contents: write' to the calling workflow), or the branch is protected against this pusher."
-        fi
-
     - name: Diff analyses → Mermaid
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       id: diagram
@@ -1206,6 +1121,58 @@ runs:
         echo "truncated=$TRUNCATED" >> $GITHUB_OUTPUT
         echo "diagram_md=${RUNNER_TEMP}/diagram.md" >> $GITHUB_OUTPUT
 
+    - name: Prepare PR analysis artifact
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      id: review_artifact
+      shell: bash
+      env:
+        BASE_ANALYSIS: ${{ steps.analyze.outputs.base_analysis }}
+        HEAD_ANALYSIS: ${{ steps.analyze.outputs.head_analysis }}
+        HEAD_DIR: ${{ steps.base.outputs.head_dir }}
+        DIAGRAM_MD: ${{ steps.diagram.outputs.diagram_md }}
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
+        PR: ${{ steps.guard.outputs.pr_number }}
+        OWNER_REPO: ${{ github.repository }}
+        RUN_ID: ${{ github.run_id }}
+        RUN_ATTEMPT: ${{ github.run_attempt }}
+      run: |
+        set -euo pipefail
+        ARTIFACT_DIR="${RUNNER_TEMP}/codeboarding-pr-artifact"
+        ARTIFACT_NAME="codeboarding-pr-${PR}-${HEAD_SHA}"
+        export ARTIFACT_NAME
+        rm -rf "$ARTIFACT_DIR"
+        mkdir -p "$ARTIFACT_DIR/base" "$ARTIFACT_DIR/head/health"
+        cp "$BASE_ANALYSIS" "$ARTIFACT_DIR/base/analysis.json"
+        cp "$HEAD_ANALYSIS" "$ARTIFACT_DIR/head/analysis.json"
+        [ -f "$HEAD_DIR/health/health_report.json" ] && cp "$HEAD_DIR/health/health_report.json" "$ARTIFACT_DIR/head/health/health_report.json"
+        [ -f "$DIAGRAM_MD" ] && cp "$DIAGRAM_MD" "$ARTIFACT_DIR/diagram.md"
+        [ -f "${RUNNER_TEMP}/diagram_meta.json" ] && cp "${RUNNER_TEMP}/diagram_meta.json" "$ARTIFACT_DIR/diagram_meta.json"
+        python3 - <<'PY' > "$ARTIFACT_DIR/metadata.json"
+        import json, os
+
+        print(json.dumps({
+            "repository": os.environ["OWNER_REPO"],
+            "pr": os.environ["PR"],
+            "base_sha": os.environ["BASE_SHA"],
+            "head_sha": os.environ["HEAD_SHA"],
+            "run_id": os.environ["RUN_ID"],
+            "run_attempt": os.environ["RUN_ATTEMPT"],
+            "artifact_name": os.environ["ARTIFACT_NAME"],
+        }, indent=2))
+        PY
+        echo "path=$ARTIFACT_DIR" >> "$GITHUB_OUTPUT"
+        echo "name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
+
+    - name: Upload PR analysis artifact
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      id: upload_review_artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.review_artifact.outputs.name }}
+        path: ${{ steps.review_artifact.outputs.path }}
+        retention-days: 14
+
     - name: Build PR comment body
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       id: body
@@ -1229,10 +1196,9 @@ runs:
         PR: ${{ steps.guard.outputs.pr_number }}
         ISSUES: ${{ steps.health.outputs.issues }}
         WEBVIEW_BASE: ${{ inputs.webview_base_url }}
-        # SHA the head analysis.json was committed at (post-push), and whether that
-        # commit succeeded — gates the webview "explore in browser" link.
-        WEBVIEW_SHA: ${{ steps.commit_head.outputs.webview_sha }}
-        WEBVIEW_READY: ${{ steps.commit_head.outputs.ready }}
+        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
+        ARTIFACT_NAME: ${{ steps.review_artifact.outputs.name }}
+        ARTIFACT_URL: ${{ steps.upload_review_artifact.outputs.artifact-url }}
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
       run: |
         BODY_FILE=$(mktemp)
@@ -1245,14 +1211,21 @@ runs:
           else echo "$CHANGED_COUNT components changed"; fi
         }
 
-        # CTA footer: an editor link (proxy deep-link when CTA_BASE is set, else the
-        # extension's https listing — GitHub strips vscode:/cursor:), the ⚠️ banner,
-        # and — when the head analysis was committed (WEBVIEW_READY) — a webview
-        # "explore in browser" link to this PR's head-vs-base diff.
+        # CTA footer: a hosted webview browser link backed by the uploaded PR
+        # artifact, editor link(s), and the ⚠️ banner. PR analysis data is not
+        # committed to the PR branch.
         cta() {
           local extra=()
-          if [ "$WEBVIEW_READY" = "true" ]; then
-            extra+=(--webview-ready --webview-base "$WEBVIEW_BASE" --head-sha "$WEBVIEW_SHA" --base-sha "$BASE_SHA")
+          if [ -n "$WEBVIEW_BASE" ] && [ -n "$ARTIFACT_NAME" ]; then
+            extra+=(
+              --webview-ready
+              --webview-base "$WEBVIEW_BASE"
+              --head-sha "$HEAD_SHA"
+              --base-sha "$BASE_SHA"
+              --run-id "$RUN_ID"
+              --artifact-name "$ARTIFACT_NAME"
+              --artifact-url "$ARTIFACT_URL"
+            )
           fi
           python3 "$ACTION_PATH/scripts/build_cta.py" \
             --cta-base "$CTA_BASE" --owner "$OWNER" --repo "$REPO" --pr "$PR" \
@@ -1295,6 +1268,10 @@ runs:
             echo "Architecture changed versus \`${BASE_REF}\`, but the diagram is too large to render inline (GitHub caps inline Mermaid at ~500 edges)."
           else
             echo "No architectural changes detected versus \`${BASE_REF}\`."
+          fi
+          if [ -n "$ARTIFACT_URL" ]; then
+            echo ""
+            echo "Download the PR analysis artifacts from this workflow [artifact](${ARTIFACT_URL})."
           fi
           if [ -s "$FILES_MD" ]; then
             echo ""
@@ -1421,6 +1398,12 @@ runs:
         fi
         cp "${rendered[@]}" "$OUTPUT_DIR/"
         cp "$ANALYSIS_DIR/analysis.json" "$OUTPUT_DIR/analysis.json"
+        if [ -f "$ANALYSIS_DIR/static_analysis.pkl" ] && [ -f "$ANALYSIS_DIR/static_analysis.sha" ]; then
+          cp "$ANALYSIS_DIR/static_analysis.pkl" "$OUTPUT_DIR/static_analysis.pkl"
+          cp "$ANALYSIS_DIR/static_analysis.sha" "$OUTPUT_DIR/static_analysis.sha"
+        else
+          rm -f "$OUTPUT_DIR/static_analysis.pkl" "$OUTPUT_DIR/static_analysis.sha"
+        fi
         if [ -f "$ANALYSIS_DIR/codeboarding_version.json" ]; then
           cp "$ANALYSIS_DIR/codeboarding_version.json" "$OUTPUT_DIR/codeboarding_version.json"
         fi
@@ -1434,6 +1417,13 @@ runs:
 
         new_md=("$OUTPUT_DIR"/*"$OUTPUT_FORMAT")
         stage_paths=("$OUTPUT_DIR/analysis.json")
+        add_if_present_or_tracked() {
+          if [ -e "$1" ] || git ls-files --error-unmatch "$1" >/dev/null 2>&1; then
+            stage_paths+=("$1")
+          fi
+        }
+        add_if_present_or_tracked "$OUTPUT_DIR/static_analysis.pkl"
+        add_if_present_or_tracked "$OUTPUT_DIR/static_analysis.sha"
         [ -f "$OUTPUT_DIR/codeboarding_version.json" ] && stage_paths+=("$OUTPUT_DIR/codeboarding_version.json")
         [ -f "$OUTPUT_DIR/health/health_report.json" ] && stage_paths+=("$OUTPUT_DIR/health/health_report.json")
         if [ "$WRITE_ARCHITECTURE_MD" = "true" ]; then

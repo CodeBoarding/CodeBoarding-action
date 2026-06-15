@@ -3,10 +3,8 @@
 The body is a single line — "Explore this PR's architecture in your browser or
 VS Code" — that merges the hosted-webview link with the editor link(s), preceded by
 a warning banner when real health findings exist. The "browser" link (a no-install
-hosted webview) is included only when ``webview_ready`` — i.e. the head
-``analysis.json`` was committed to the PR branch and this isn't a fork PR — so the
-webview can fetch a committed analysis at the head SHA (see docs/COMMIT_STRATEGY.md);
-otherwise the line is just the editor link(s). With a click proxy (``cta_base``) the
+hosted webview) is included only when ``webview_ready`` and points at the uploaded
+GitHub Actions artifact for this PR analysis. With a click proxy (``cta_base``) the
 editor link routes through it (owner/repo/pr tracked) and deep-links into the editor
 (the proxy redirects to a ``vscode:``/``cursor:`` URL), and a separate "install the
 extension" link is appended. Without a proxy GitHub's comment sanitizer strips custom
@@ -61,14 +59,23 @@ _EDITOR_MARKETPLACE = {
 }
 
 
-def webview_url(webview_base: str, owner: str, repo: str, head_sha: str, base_sha: str) -> str | None:
+def webview_url(
+    webview_base: str,
+    owner: str,
+    repo: str,
+    head_sha: str,
+    base_sha: str,
+    *,
+    pr: str = "",
+    run_id: str = "",
+    artifact_name: str = "",
+    artifact_url: str = "",
+) -> str | None:
     """Return the hosted-webview deep-link URL for this PR's head-vs-base diff, or None.
 
-    Deep-links straight to the diff: ``?repo=owner/repo&ref=<head_sha>&compare=<base_sha>``.
-    Pinned to exact SHAs so the committed ``analysis.json`` the webview fetches matches
-    this run. For a private repo the webview itself sends the viewer through GitHub
-    sign-in and then loads the same diff. Returns None when the base/head pieces aren't
-    all present.
+    Deep-links straight to the diff. The base/head SHAs pin the code comparison;
+    the optional run/artifact fields let the webview load PR-specific analysis
+    data from the workflow artifact instead of from the PR branch.
     """
     if not (webview_base and owner and repo and head_sha):
         return None
@@ -76,6 +83,14 @@ def webview_url(webview_base: str, owner: str, repo: str, head_sha: str, base_sh
     params = {"repo": f"{owner}/{repo}", "ref": head_sha}
     if base_sha:
         params["compare"] = base_sha
+    if pr:
+        params["pr"] = pr
+    if run_id:
+        params["run_id"] = run_id
+    if artifact_name:
+        params["artifact"] = artifact_name
+    if artifact_url:
+        params["artifact_url"] = artifact_url
     return f"{base}/?{urlencode(params)}"
 
 
@@ -100,6 +115,9 @@ def build_cta(
     head_sha: str = "",
     base_sha: str = "",
     webview_ready: bool = False,
+    run_id: str = "",
+    artifact_name: str = "",
+    artifact_url: str = "",
 ) -> str:
     """Return the markdown CTA footer: a health-warning banner plus an editor link.
 
@@ -109,10 +127,8 @@ def build_cta(
     ``vscode:``/``cursor:`` schemes), and the redundant install link is dropped.
     The ⚠️ banner shows whenever ``issues > 0``.
 
-    When ``webview_ready`` (the head ``analysis.json`` was committed and this isn't a
-    fork PR) a "explore in browser" line deep-links the hosted webview to this PR's
-    head-vs-base diff. Otherwise that line is omitted (the webview couldn't fetch a
-    committed analysis at the head SHA).
+    When ``webview_ready`` a "explore in browser" line deep-links the hosted
+    webview to this PR's artifact-backed head-vs-base diff.
     """
     parts: list[str] = []
     if issues > 0:
@@ -132,14 +148,23 @@ def build_cta(
         editor_href = {e: _EDITOR_MARKETPLACE[e] for e in editors}
         extension_href = None
 
-    # One line that merges the hosted-webview "browser" link — only when
-    # ``webview_ready`` (the head analysis was committed and this isn't a fork PR) —
-    # with the editor link(s), which always render. "your" rides with the browser
-    # entry alone, so the sentence reads naturally with or without it:
+    # One line that merges the hosted-webview "browser" link with the editor
+    # link(s), which always render. "your" rides with the browser entry alone,
+    # so the sentence reads naturally with or without it:
     # "in your browser or VS Code" / "in VS Code".
     targets: list[str] = []
     if webview_ready:
-        wv = webview_url(webview_base, owner, repo, head_sha, base_sha)
+        wv = webview_url(
+            webview_base,
+            owner,
+            repo,
+            head_sha,
+            base_sha,
+            pr=pr,
+            run_id=run_id,
+            artifact_name=artifact_name,
+            artifact_url=artifact_url,
+        )
         if wv:
             targets.append(f"your [**browser**]({wv})")
     targets += [f"[**{_EDITOR_LABEL[e]}**]({editor_href[e]})" for e in editors]
@@ -164,10 +189,13 @@ def main() -> int:
     p.add_argument("--webview-base", default="", help="Hosted webview base URL (e.g. https://app.codeboarding.org)")
     p.add_argument("--head-sha", default="", help="PR head SHA the webview link pins to")
     p.add_argument("--base-sha", default="", help="PR base SHA the webview link compares against")
+    p.add_argument("--run-id", default="", help="GitHub Actions run id containing the PR analysis artifact")
+    p.add_argument("--artifact-name", default="", help="GitHub Actions artifact name containing PR analysis data")
+    p.add_argument("--artifact-url", default="", help="GitHub Actions artifact URL containing PR analysis data")
     p.add_argument(
         "--webview-ready",
         action="store_true",
-        help="Emit the webview link (head analysis.json was committed; not a fork PR)",
+        help="Emit the artifact-backed hosted webview link",
     )
     args = p.parse_args()
 
@@ -187,6 +215,9 @@ def main() -> int:
             head_sha=args.head_sha,
             base_sha=args.base_sha,
             webview_ready=args.webview_ready,
+            run_id=args.run_id,
+            artifact_name=args.artifact_name,
+            artifact_url=args.artifact_url,
         )
     )
     return 0

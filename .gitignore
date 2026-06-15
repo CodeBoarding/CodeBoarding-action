@@ -13,8 +13,6 @@ __pycache__/
 *.py[cod]
 
 # CodeBoarding generated cache/log artifacts
-.codeboarding/static_analysis.pkl
-.codeboarding/static_analysis.sha
 .codeboarding/logs/
 .codeboarding/health/*
 !.codeboarding/health/

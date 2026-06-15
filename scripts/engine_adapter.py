@@ -34,8 +34,11 @@ depth reached, not the depth asked); ``baseline-info`` prints the baseline's
 operation via the shared ``_incremental_or_full`` helper; they differ only in
 where the base ref comes from (the PR base SHA vs the committed analysis.json)
 and in that ``analyze`` is baseline-aware (full when the baseline is missing,
-deeper than requested, lacks a commit_hash, or ``--force-full`` is set) and
-prints ``analysis_mode=full|incremental`` on stdout for the action to grep.
+lacks a commit_hash, or ``--force-full`` is set) and prints
+``analysis_mode=full|incremental`` on stdout for the action to grep. Once an
+analysis.json exists, its metadata.depth_level is the source of truth for
+incremental and fallback-full depth; ``--depth`` is the cold-start/force-full
+depth.
 ``render`` writes per-component markdown with root name ``overview``; ``concat``
 joins overview.md first plus the remaining *.md (sorted) into one architecture
 file.
@@ -59,6 +62,7 @@ from pathlib import Path
 # it flows into GITHUB_OUTPUT, cache keys, and git refs, so anything else must
 # be rejected before it reaches the action shell.
 _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+_DEFAULT_DEPTH = 2
 
 # On the free hosted tier the proxy returns HTTP 402 with this message when the
 # repo owner's weekly token budget is spent. We detect it so the action can post
@@ -129,6 +133,19 @@ def _metadata_depth(metadata: dict) -> int | None:
         return None
 
 
+def _supported_depth(metadata: dict) -> int | None:
+    depth = _metadata_depth(metadata)
+    return depth if depth in range(1, 4) else None
+
+
+def _analysis_depth_or_default(output_dir: Path, default: int = _DEFAULT_DEPTH) -> int:
+    metadata = _load_metadata(output_dir / "analysis.json")
+    if not isinstance(metadata, dict):
+        return default
+    depth = _supported_depth(metadata)
+    return depth if depth is not None else default
+
+
 def _metadata_commit(metadata: dict) -> str:
     value = metadata.get("commit_hash")
     return value if isinstance(value, str) else ""
@@ -150,6 +167,18 @@ def baseline_info(analysis_path: Path) -> str:
 def _docs_only_baseline_drift(actual_sha: str, expected_sha: str) -> tuple[bool, str]:
     allowed_prefixes = (".codeboarding/", "docs/development/")
 
+    def generated_only(paths: list[str]) -> tuple[bool, str]:
+        disallowed = [
+            path
+            for path in paths
+            if not path.startswith(allowed_prefixes) and path not in (".codeboarding", "docs/development")
+        ]
+        if disallowed:
+            preview = ", ".join(disallowed[:5])
+            suffix = "" if len(disallowed) <= 5 else f", and {len(disallowed) - 5} more"
+            return False, f"non-doc paths changed: {preview}{suffix}"
+        return True, "generated files only"
+
     def git(*args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["git", *args],
@@ -161,6 +190,15 @@ def _docs_only_baseline_drift(actual_sha: str, expected_sha: str) -> tuple[bool,
 
     ancestor = git("merge-base", "--is-ancestor", actual_sha, expected_sha)
     if ancestor.returncode != 0:
+        parents = git("show", "-s", "--format=%P", expected_sha)
+        if parents.returncode == 0 and actual_sha in parents.stdout.split():
+            changed = git("diff-tree", "--no-commit-id", "--name-only", "-r", expected_sha)
+            if changed.returncode == 0:
+                paths = [line.strip() for line in changed.stdout.splitlines() if line.strip()]
+                ok, reason = generated_only(paths)
+                if ok:
+                    return True, f"PR base {expected_sha} is a generated baseline commit over {actual_sha}"
+                return False, reason
         detail = ancestor.stderr.strip() or f"{actual_sha} is not an ancestor of {expected_sha}"
         return False, detail
 
@@ -169,15 +207,9 @@ def _docs_only_baseline_drift(actual_sha: str, expected_sha: str) -> tuple[bool,
         return False, diff.stderr.strip() or f"Could not diff {actual_sha}..{expected_sha}"
 
     paths = [line.strip() for line in diff.stdout.splitlines() if line.strip()]
-    disallowed = [
-        path
-        for path in paths
-        if not path.startswith(allowed_prefixes) and path not in (".codeboarding", "docs/development")
-    ]
-    if disallowed:
-        preview = ", ".join(disallowed[:5])
-        suffix = "" if len(disallowed) <= 5 else f", and {len(disallowed) - 5} more"
-        return False, f"non-doc paths changed: {preview}{suffix}"
+    ok, reason = generated_only(paths)
+    if not ok:
+        return False, reason
     return True, f"only generated docs changed between {actual_sha} and {expected_sha}"
 
 
@@ -321,14 +353,16 @@ def _incremental_or_full(
         return "incremental"
     except (IncrementalCacheMissingError, BaselineUnavailableError) as exc:
         print(f"Incremental unavailable ({exc}); running full analysis.")
-        _clear_dir(Path(output_dir))
+        out_path = Path(output_dir)
+        fallback_depth = _analysis_depth_or_default(out_path, depth)
+        _clear_dir(out_path)
         res = run_full(
             repo_name=repo_name,
             repo_path=Path(repo_path),
-            output_dir=Path(output_dir),
+            output_dir=out_path,
             run_id=run_id,
             log_path=_log_path(output_dir, log_name),
-            depth_level=depth,
+            depth_level=fallback_depth,
             source_sha=source_sha,
         )
         print(f"Analysis written: {res}")
@@ -369,13 +403,13 @@ def run_analyze(
     force_full: bool = False,
 ) -> str:
     """Sync analysis: incremental from the committed baseline, full when the
-    baseline is missing/deeper-than-requested/unparseable or ``force_full`` is
-    set. Prints ``analysis_mode=full|incremental`` on stdout — the action greps
-    that line, so it must be printed exactly once per run.
+    baseline is missing/unparseable or ``force_full`` is set. Prints
+    ``analysis_mode=full|incremental`` on stdout — the action greps that line,
+    so it must be printed exactly once per run.
     """
     out_path = Path(output_dir)
 
-    def full(reason: str) -> str:
+    def full(reason: str, analysis_depth: int) -> str:
         from codeboarding_workflows.analysis import run_full
 
         print(f"{reason}; running full analysis.")
@@ -386,7 +420,7 @@ def run_analyze(
             output_dir=out_path,
             run_id=run_id,
             log_path=_log_path(output_dir, "cb-sync.log"),
-            depth_level=depth,
+            depth_level=analysis_depth,
             source_sha=source_sha,
         )
         print(f"Analysis written: {res}")
@@ -394,32 +428,26 @@ def run_analyze(
         return "full"
 
     if force_full:
-        return full("Full analysis forced (force_full)")
+        return full("Full analysis forced (force_full)", depth)
 
     metadata = _load_metadata(out_path / "analysis.json")
     if metadata is None:
-        return full("No baseline analysis.json found")
+        return full("No baseline analysis.json found", depth)
 
-    # The engine records the depth REACHED, not the depth requested, so a
-    # shallower baseline is normal for repos that never expand (a strict !=
-    # would force a full run on every push, never converging). Only a deeper
-    # baseline proves the requested depth was lowered; honor it with a full run.
-    baseline_depth = _metadata_depth(metadata)
+    baseline_depth = _supported_depth(metadata)
     if baseline_depth is None:
-        return full("Baseline metadata.depth_level is missing")
-    if baseline_depth > depth:
-        return full(f"Baseline depth {baseline_depth} is deeper than requested depth {depth}")
+        return full("Baseline metadata.depth_level is missing", _DEFAULT_DEPTH)
 
     base_ref = _metadata_commit(metadata)
     if not base_ref:
-        return full("Baseline metadata.commit_hash is missing")
+        return full("Baseline metadata.commit_hash is missing", baseline_depth)
 
     mode = _incremental_or_full(
         repo_path=repo_path,
         output_dir=output_dir,
         repo_name=repo_name,
         run_id=run_id,
-        depth=depth,
+        depth=baseline_depth,
         base_ref=base_ref,
         target_ref=source_sha,
         source_sha=source_sha,
