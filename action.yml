@@ -1455,7 +1455,7 @@ runs:
           stage_paths+=("docs/development/architecture.md")
         fi
         stage_paths+=("${old_md[@]}" "${new_md[@]}")
-        git add -A -- "${stage_paths[@]}"
+        git add -f -A -- "${stage_paths[@]}"
 
         if git diff --cached --quiet; then
           echo "::notice::Generated architecture is unchanged; nothing to commit."
