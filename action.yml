@@ -403,14 +403,22 @@ runs:
         ref: ${{ steps.guard.outputs.checkout_sha }}
         persist-credentials: false
 
-    - name: Ensure PR base commit is fetched
+    - name: Ensure PR comparison commits are fetched
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       shell: bash
       working-directory: target-repo
       env:
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
         BASE_REPO: ${{ steps.guard.outputs.base_repo }}
+        BASE_REF: ${{ steps.guard.outputs.base_ref }}
       run: |
+        git remote add base "https://github.com/${BASE_REPO}.git" 2>/dev/null || git remote set-url base "https://github.com/${BASE_REPO}.git"
+        # The baseline search walks the PR head ancestry, which checkout fetched
+        # with fetch-depth: 0. We still fetch the PR base commit for GitHub-style
+        # changed-file diffs and for the no-baseline fallback full base analysis.
+        if [ -n "$BASE_REF" ]; then
+          git fetch --no-tags base "+refs/heads/${BASE_REF}:refs/remotes/codeboarding-base/${BASE_REF}" || true
+        fi
         git fetch origin "$BASE_SHA" --depth=2 || true
         if ! git cat-file -e "$BASE_SHA" 2>/dev/null; then
           git remote add base "https://github.com/${BASE_REPO}.git" 2>/dev/null || git remote set-url base "https://github.com/${BASE_REPO}.git"
@@ -657,6 +665,7 @@ runs:
       working-directory: target-repo
       env:
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
         BASE_DIR="${RUNNER_TEMP}/cb-base"
@@ -664,24 +673,42 @@ runs:
         mkdir -p "$BASE_DIR" "$HEAD_DIR"
         echo "base_dir=$BASE_DIR" >> $GITHUB_OUTPUT
         echo "head_dir=$HEAD_DIR" >> $GITHUB_OUTPUT
-        if git show "${BASE_SHA}:.codeboarding/analysis.json" > "${BASE_DIR}/analysis.json" 2>/dev/null; then
+        BASELINE_SHA=""
+        # Use the newest analysis.json reachable by walking backwards through
+        # the PR head branch ancestry. If the PR branch is a->b->c->d and master
+        # is a->b->m1->m2, this deliberately searches d,c,b,a — not m2,m1,b,a.
+        while IFS= read -r candidate; do
+          if git cat-file -e "${candidate}:.codeboarding/analysis.json" 2>/dev/null; then
+            BASELINE_SHA="$candidate"
+            break
+          fi
+        done < <(git rev-list "$HEAD_SHA" -- .codeboarding/analysis.json 2>/dev/null || true)
+
+        if [ -n "$BASELINE_SHA" ] && git show "${BASELINE_SHA}:.codeboarding/analysis.json" > "${BASE_DIR}/analysis.json" 2>/dev/null; then
           if python3 "$ACTION_PATH/scripts/engine_adapter.py" validate-base \
               --analysis "${BASE_DIR}/analysis.json" \
-              --expected-sha "$BASE_SHA"; then
+              --expected-sha "$BASELINE_SHA"; then
             echo "committed=true" >> $GITHUB_OUTPUT
-            echo "Using committed .codeboarding/analysis.json at ${BASE_SHA}."
+            echo "baseline_sha=$BASELINE_SHA" >> $GITHUB_OUTPUT
+            if [ "$BASELINE_SHA" = "$HEAD_SHA" ]; then
+              echo "Using committed .codeboarding/analysis.json at PR head ${HEAD_SHA}."
+            else
+              echo "Using nearest committed .codeboarding/analysis.json at ${BASELINE_SHA} from PR head history ${HEAD_SHA}."
+            fi
           else
             rm -f "${BASE_DIR}/analysis.json"
             echo "committed=false" >> $GITHUB_OUTPUT
-            echo "Committed baseline at ${BASE_SHA} is stale; will generate a fresh base analysis."
+            echo "baseline_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+            echo "Committed baseline at ${BASELINE_SHA} is unusable; will generate a fresh base analysis at ${BASE_SHA}."
           fi
         else
           rm -f "${BASE_DIR}/analysis.json"
           echo "committed=false" >> $GITHUB_OUTPUT
-          echo "No committed baseline at ${BASE_SHA}; will generate one via a full analysis on the base commit."
+          echo "baseline_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+          echo "No committed baseline found in PR head history; will generate one via a full analysis on the base commit ${BASE_SHA}."
         fi
 
-    - name: Restore base artifacts (keyed by base SHA)
+    - name: Restore base artifacts (keyed by baseline SHA)
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       id: basecache
       uses: actions/cache/restore@v4
@@ -693,7 +720,7 @@ runs:
         # inputs. So a free-tier run (oidc, forced Gemini) and a BYO OpenRouter-key
         # run with no model pinned would share a key yet produce different base
         # analyses; the mode discriminator keeps them from reusing each other's cache.
-        key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+        key: cb-base-v2-${{ runner.os }}-${{ steps.base.outputs.baseline_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     # A committed analysis.json gives the head analysis stable component ids,
     # but the engine's incremental path ALSO needs the base static_analysis.pkl
@@ -715,7 +742,7 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         TARGET: ${{ github.workspace }}/target-repo
         BASE_DIR: ${{ steps.base.outputs.base_dir }}
-        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        BASELINE_SHA: ${{ steps.base.outputs.baseline_sha }}
       run: |
         # Clean up any stale registration before re-adding (rm -rf alone leaves a
         # dangling worktree entry that makes a retry's `worktree add` fail).
@@ -723,14 +750,14 @@ runs:
         git -C "$TARGET" worktree remove --force "$BASE_SRC" 2>/dev/null || true
         git -C "$TARGET" worktree prune
         rm -rf "$BASE_SRC"
-        git -C "$TARGET" worktree add --detach "$BASE_SRC" "$BASE_SHA"
+        git -C "$TARGET" worktree add --detach "$BASE_SRC" "$BASELINE_SHA"
         if uv run python "$ACTION_PATH/scripts/engine_adapter.py" seed \
              --repo "$BASE_SRC" \
              --out "$BASE_DIR" \
-             --source-sha "$BASE_SHA" \
+             --source-sha "$BASELINE_SHA" \
            && [ -f "$BASE_DIR/static_analysis.pkl" ] && [ -f "$BASE_DIR/static_analysis.sha" ]; then
           echo "seed_ok=true" >> "$GITHUB_OUTPUT"
-          echo "::notice::Seeded base static-analysis cache for ${BASE_SHA}; head analysis can run incrementally."
+          echo "::notice::Seeded base static-analysis cache for ${BASELINE_SHA}; head analysis can run incrementally."
         else
           # Never leave a partial pkl/sha pair behind: the save step below would
           # cache it under this base SHA's key and suppress every retry.
@@ -812,7 +839,7 @@ runs:
         # inputs. So a free-tier run (oidc, forced Gemini) and a BYO OpenRouter-key
         # run with no model pinned would share a key yet produce different base
         # analyses; the mode discriminator keeps them from reusing each other's cache.
-        key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+        key: cb-base-v2-${{ runner.os }}-${{ steps.base.outputs.baseline_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     - name: Analyze PR head (incremental from base)
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
@@ -832,7 +859,7 @@ runs:
         REPO_NAME: ${{ github.event.repository.name }}
         RUN_ID_HEAD: ${{ github.run_id }}-${{ github.run_attempt }}-head
         DEPTH: ${{ steps.resolve_depth.outputs.depth }}
-        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        BASELINE_SHA: ${{ steps.base.outputs.baseline_sha }}
         HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
       run: |
         # Export the key under the selected provider's env var (only this one),
@@ -865,7 +892,7 @@ runs:
           --name "$REPO_NAME" \
           --run-id "$RUN_ID_HEAD" \
           --depth "$DEPTH" \
-          --base-ref "$BASE_SHA" \
+          --base-ref "$BASELINE_SHA" \
           --target-ref "$HEAD_SHA" \
           --source-sha "$HEAD_SHA"
         if [ ! -f "$HEAD_DIR/analysis.json" ]; then

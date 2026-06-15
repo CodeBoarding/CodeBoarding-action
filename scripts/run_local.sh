@@ -89,10 +89,23 @@ else
   BASE_DIR="$OUT/base"; HEAD_DIR="$OUT/head"
   rm -rf "$BASE_DIR" "$HEAD_DIR"; mkdir -p "$BASE_DIR" "$HEAD_DIR"
 
-  echo "== Resolving base analysis at $BASE_SHA =="
-  if git -C "$REPO" show "$BASE_SHA:.codeboarding/analysis.json" > "$BASE_DIR/analysis.json" 2>/dev/null \
-     && run_engine validate-base --analysis "$BASE_DIR/analysis.json" --expected-sha "$BASE_SHA"; then
-    echo "  using committed baseline"
+  echo "== Resolving base analysis from head history at or before $HEAD_SHA =="
+  BASELINE_SHA=""
+  while IFS= read -r candidate; do
+    if git -C "$REPO" cat-file -e "${candidate}:.codeboarding/analysis.json" 2>/dev/null; then
+      BASELINE_SHA="$candidate"
+      break
+    fi
+  done < <(git -C "$REPO" rev-list "$HEAD_SHA" -- .codeboarding/analysis.json 2>/dev/null || true)
+
+  if [ -n "$BASELINE_SHA" ] \
+     && git -C "$REPO" show "$BASELINE_SHA:.codeboarding/analysis.json" > "$BASE_DIR/analysis.json" 2>/dev/null \
+     && run_engine validate-base --analysis "$BASE_DIR/analysis.json" --expected-sha "$BASELINE_SHA"; then
+    if [ "$BASELINE_SHA" = "$HEAD_SHA" ]; then
+      echo "  using committed baseline at head"
+    else
+      echo "  using nearest committed baseline at $BASELINE_SHA from head history"
+    fi
     # Mirror action.yml: a committed analysis.json alone can't drive incremental —
     # the engine needs the base static_analysis.pkl with its cluster baseline.
     # Seed it deterministically (LSP + clustering, no LLM); fail-open on error.
@@ -100,8 +113,8 @@ else
     git -C "$REPO" worktree remove --force "$BASE_SRC" 2>/dev/null || true
     git -C "$REPO" worktree prune
     rm -rf "$BASE_SRC"
-    git -C "$REPO" worktree add --detach "$BASE_SRC" "$BASE_SHA" >/dev/null
-    if run_engine seed --repo "$BASE_SRC" --out "$BASE_DIR" --source-sha "$BASE_SHA"; then
+    git -C "$REPO" worktree add --detach "$BASE_SRC" "$BASELINE_SHA" >/dev/null
+    if run_engine seed --repo "$BASE_SRC" --out "$BASE_DIR" --source-sha "$BASELINE_SHA"; then
       echo "  seeded static-analysis baseline (no LLM)"
     else
       rm -f "$BASE_DIR/static_analysis.pkl" "$BASE_DIR/static_analysis.sha"
@@ -135,7 +148,7 @@ else
     --name "$(basename "$REPO")" \
     --run-id local-head \
     --depth "$DEPTH" \
-    --base-ref "$BASE_SHA" \
+    --base-ref "${BASELINE_SHA:-$BASE_SHA}" \
     --target-ref "$HEAD_SHA" \
     --source-sha "$HEAD_SHA"
   [ -f "$HEAD_DIR/analysis.json" ] || { echo "Head analysis ran but analysis.json is missing." >&2; exit 1; }
