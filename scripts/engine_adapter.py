@@ -24,18 +24,24 @@ baseline-info/analyze/render/concat. ``base`` runs a full analysis; ``seed``
 builds the SHA-tagged static-analysis pkl for a committed-analysis.json baseline
 (LSP + clustering, no LLM) so the incremental path can run; ``health`` writes
 the WARNING/CRITICAL finding count to ``--issues-out`` (never fails the run);
-``validate-base`` exits non-zero when the committed baseline cannot be reused
-for the PR base (wrong commit, or — with ``--expected-depth`` — a depth_level
-DEEPER than requested; shallower is accepted because the engine records the
-depth reached, not the depth asked); ``baseline-info`` prints the baseline's
-``commit_hash=`` (empty unless present and SHA-shaped).
+``validate-base`` exits non-zero only when the committed baseline is unreadable
+or — with ``--expected-depth`` — its depth_level is DEEPER than requested;
+shallower is accepted because the engine records the depth reached, not the
+depth asked. The baseline's metadata.commit_hash is informational in review
+mode: sync commits generated artifacts on top of the analyzed source commit, so
+review trusts the analysis.json committed at the PR base rather than
+regenerating because the metadata SHA differs. ``baseline-info`` prints the
+baseline's ``commit_hash=`` (empty unless present and SHA-shaped).
 
 ``head`` (review) and ``analyze`` (sync) are the SAME incremental-or-full
 operation via the shared ``_incremental_or_full`` helper; they differ only in
 where the base ref comes from (the PR base SHA vs the committed analysis.json)
 and in that ``analyze`` is baseline-aware (full when the baseline is missing,
-deeper than requested, lacks a commit_hash, or ``--force-full`` is set) and
-prints ``analysis_mode=full|incremental`` on stdout for the action to grep.
+lacks a commit_hash, or ``--force-full`` is set) and prints
+``analysis_mode=full|incremental`` on stdout for the action to grep. Once an
+analysis.json exists, its metadata.depth_level is the source of truth for
+incremental and fallback-full depth; ``--depth`` is the cold-start/force-full
+depth.
 ``render`` writes per-component markdown with root name ``overview``; ``concat``
 joins overview.md first plus the remaining *.md (sorted) into one architecture
 file.
@@ -52,13 +58,13 @@ import json
 import os
 import re
 import shutil
-import subprocess
 from pathlib import Path
 
 # A committed analysis.json's commit_hash is trusted only as far as a SHA shape:
 # it flows into GITHUB_OUTPUT, cache keys, and git refs, so anything else must
 # be rejected before it reaches the action shell.
 _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+_DEFAULT_DEPTH = 2
 
 # On the free hosted tier the proxy returns HTTP 402 with this message when the
 # repo owner's weekly token budget is spent. We detect it so the action can post
@@ -129,6 +135,19 @@ def _metadata_depth(metadata: dict) -> int | None:
         return None
 
 
+def _supported_depth(metadata: dict) -> int | None:
+    depth = _metadata_depth(metadata)
+    return depth if depth in range(1, 4) else None
+
+
+def _analysis_depth_or_default(output_dir: Path, default_depth: int = _DEFAULT_DEPTH) -> int:
+    metadata = _load_metadata(output_dir / "analysis.json")
+    if not isinstance(metadata, dict):
+        return default_depth
+    depth = _supported_depth(metadata)
+    return depth if depth is not None else default_depth
+
+
 def _metadata_commit(metadata: dict) -> str:
     value = metadata.get("commit_hash")
     return value if isinstance(value, str) else ""
@@ -147,48 +166,15 @@ def baseline_info(analysis_path: Path) -> str:
     return commit if _SHA_RE.match(commit) else ""
 
 
-def _docs_only_baseline_drift(actual_sha: str, expected_sha: str) -> tuple[bool, str]:
-    allowed_prefixes = (".codeboarding/", "docs/development/")
-
-    def git(*args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            ["git", *args],
-            check=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-
-    ancestor = git("merge-base", "--is-ancestor", actual_sha, expected_sha)
-    if ancestor.returncode != 0:
-        detail = ancestor.stderr.strip() or f"{actual_sha} is not an ancestor of {expected_sha}"
-        return False, detail
-
-    diff = git("diff", "--name-only", f"{actual_sha}..{expected_sha}")
-    if diff.returncode != 0:
-        return False, diff.stderr.strip() or f"Could not diff {actual_sha}..{expected_sha}"
-
-    paths = [line.strip() for line in diff.stdout.splitlines() if line.strip()]
-    disallowed = [
-        path
-        for path in paths
-        if not path.startswith(allowed_prefixes) and path not in (".codeboarding", "docs/development")
-    ]
-    if disallowed:
-        preview = ", ".join(disallowed[:5])
-        suffix = "" if len(disallowed) <= 5 else f", and {len(disallowed) - 5} more"
-        return False, f"non-doc paths changed: {preview}{suffix}"
-    return True, f"only generated docs changed between {actual_sha} and {expected_sha}"
-
-
 def validate_base_analysis(
     analysis_path: Path, expected_sha: str, expected_depth: int | None = None
 ) -> tuple[bool, str]:
     """Return whether ``analysis.json`` is valid for ``expected_sha``.
 
-    The PR action can only reuse a committed baseline when the diagram's own
-    source commit matches the PR base commit, or when the PR base is a docs-bot
-    commit whose only drift from that source commit is generated docs.
+    Review mode reuses the analysis.json that is committed at the PR base. The
+    diagram's metadata.commit_hash records the source commit analyzed by sync,
+    but the sync commit itself necessarily has a newer SHA because it adds the
+    generated artifacts. Treat that metadata SHA as provenance, not freshness.
 
     When ``expected_depth`` is given, a baseline whose metadata.depth_level
     parses as an int and is DEEPER than expected is rejected (review mode
@@ -214,19 +200,13 @@ def validate_base_analysis(
         return False, "Baseline analysis metadata is missing."
 
     actual_sha = metadata.get("commit_hash")
-    if not isinstance(actual_sha, str) or not actual_sha:
-        return False, "Baseline analysis metadata.commit_hash is missing."
-
-    if actual_sha != expected_sha:
-        ok, reason = _docs_only_baseline_drift(actual_sha, expected_sha)
-        if not ok:
-            return (
-                False,
-                f"Baseline analysis was generated for {actual_sha}, expected PR base {expected_sha} ({reason}).",
-            )
-        message = f"Baseline analysis was generated for {actual_sha}; valid for PR base {expected_sha} ({reason})."
+    if isinstance(actual_sha, str) and actual_sha:
+        if actual_sha == expected_sha:
+            message = f"Baseline analysis commit matches PR base {expected_sha}."
+        else:
+            message = f"Using committed baseline at PR base {expected_sha}; analysis metadata source is {actual_sha}."
     else:
-        message = f"Baseline analysis commit matches PR base {expected_sha}."
+        message = f"Using committed baseline at PR base {expected_sha}; analysis metadata.commit_hash is missing."
 
     if expected_depth is not None:
         baseline_depth = _metadata_depth(metadata)
@@ -321,14 +301,16 @@ def _incremental_or_full(
         return "incremental"
     except (IncrementalCacheMissingError, BaselineUnavailableError) as exc:
         print(f"Incremental unavailable ({exc}); running full analysis.")
-        _clear_dir(Path(output_dir))
+        out_path = Path(output_dir)
+        fallback_depth = _analysis_depth_or_default(out_path, depth)
+        _clear_dir(out_path)
         res = run_full(
             repo_name=repo_name,
             repo_path=Path(repo_path),
-            output_dir=Path(output_dir),
+            output_dir=out_path,
             run_id=run_id,
             log_path=_log_path(output_dir, log_name),
-            depth_level=depth,
+            depth_level=fallback_depth,
             source_sha=source_sha,
         )
         print(f"Analysis written: {res}")
@@ -345,8 +327,12 @@ def run_head(
     target_ref: str,
     source_sha: str,
 ) -> None:
-    """Review PR head: incremental from the PR base, full on a cache miss."""
-    _incremental_or_full(
+    """Review PR head: incremental from the PR base, full on a cache miss.
+
+    Print the selected mode explicitly so GitHub Action logs make it obvious
+    whether review used the incremental path or fell back to a full analysis.
+    """
+    mode = _incremental_or_full(
         repo_path=repo_path,
         output_dir=output_dir,
         repo_name=repo_name,
@@ -357,6 +343,7 @@ def run_head(
         source_sha=source_sha,
         log_name="cb-head.log",
     )
+    print(f"head_analysis_mode={mode}")
 
 
 def run_analyze(
@@ -369,13 +356,13 @@ def run_analyze(
     force_full: bool = False,
 ) -> str:
     """Sync analysis: incremental from the committed baseline, full when the
-    baseline is missing/deeper-than-requested/unparseable or ``force_full`` is
-    set. Prints ``analysis_mode=full|incremental`` on stdout — the action greps
-    that line, so it must be printed exactly once per run.
+    baseline is missing/unparseable or ``force_full`` is set. Prints
+    ``analysis_mode=full|incremental`` on stdout — the action greps that line,
+    so it must be printed exactly once per run.
     """
     out_path = Path(output_dir)
 
-    def full(reason: str) -> str:
+    def full(reason: str, analysis_depth: int) -> str:
         from codeboarding_workflows.analysis import run_full
 
         print(f"{reason}; running full analysis.")
@@ -386,7 +373,7 @@ def run_analyze(
             output_dir=out_path,
             run_id=run_id,
             log_path=_log_path(output_dir, "cb-sync.log"),
-            depth_level=depth,
+            depth_level=analysis_depth,
             source_sha=source_sha,
         )
         print(f"Analysis written: {res}")
@@ -394,32 +381,26 @@ def run_analyze(
         return "full"
 
     if force_full:
-        return full("Full analysis forced (force_full)")
+        return full("Full analysis forced (force_full)", depth)
 
     metadata = _load_metadata(out_path / "analysis.json")
     if metadata is None:
-        return full("No baseline analysis.json found")
+        return full("No baseline analysis.json found", depth)
 
-    # The engine records the depth REACHED, not the depth requested, so a
-    # shallower baseline is normal for repos that never expand (a strict !=
-    # would force a full run on every push, never converging). Only a deeper
-    # baseline proves the requested depth was lowered; honor it with a full run.
-    baseline_depth = _metadata_depth(metadata)
+    baseline_depth = _supported_depth(metadata)
     if baseline_depth is None:
-        return full("Baseline metadata.depth_level is missing")
-    if baseline_depth > depth:
-        return full(f"Baseline depth {baseline_depth} is deeper than requested depth {depth}")
+        return full("Baseline metadata.depth_level is missing", _DEFAULT_DEPTH)
 
     base_ref = _metadata_commit(metadata)
     if not base_ref:
-        return full("Baseline metadata.commit_hash is missing")
+        return full("Baseline metadata.commit_hash is missing", baseline_depth)
 
     mode = _incremental_or_full(
         repo_path=repo_path,
         output_dir=output_dir,
         repo_name=repo_name,
         run_id=run_id,
-        depth=depth,
+        depth=baseline_depth,
         base_ref=base_ref,
         target_ref=source_sha,
         source_sha=source_sha,

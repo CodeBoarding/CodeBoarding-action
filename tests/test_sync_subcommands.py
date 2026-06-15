@@ -118,7 +118,7 @@ class TestAnalyze(_Base):
         self.assertEqual(kwargs["target_ref"], "head123")
         self.assertEqual(kwargs["source_sha"], "head123")
 
-    def test_deeper_baseline_clears_out_dir_and_runs_full(self):
+    def test_deeper_baseline_still_runs_incremental(self):
         rf, ri = _Rec(), _Rec()
         self._install(run_full=rf, run_incremental=ri)
         out = Path(tempfile.mkdtemp())
@@ -129,11 +129,11 @@ class TestAnalyze(_Base):
 
         mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 2)
 
-        self.assertEqual(mode, "full")
-        self.assertEqual(len(rf.calls), 1)
-        self.assertEqual(len(ri.calls), 0)
-        self.assertFalse((out / "stale.json").exists())
-        self.assertFalse((out / "health").exists())
+        self.assertEqual(mode, "incremental")
+        self.assertEqual(len(rf.calls), 0)
+        self.assertEqual(len(ri.calls), 1)
+        self.assertTrue((out / "stale.json").exists())
+        self.assertTrue((out / "health").exists())
 
     def test_shallower_baseline_runs_incremental(self):
         # The engine records the depth REACHED, not requested: a depth-2 push on
@@ -150,7 +150,7 @@ class TestAnalyze(_Base):
         self.assertEqual(len(rf.calls), 0)
         self.assertEqual(len(ri.calls), 1)
 
-    def test_missing_depth_in_baseline_runs_full(self):
+    def test_missing_depth_in_baseline_runs_full_at_default_depth(self):
         rf, ri = _Rec(), _Rec()
         self._install(run_full=rf, run_incremental=ri)
         out = Path(tempfile.mkdtemp())
@@ -158,23 +158,25 @@ class TestAnalyze(_Base):
             json.dumps({"metadata": {"commit_hash": "metadata-base"}}), encoding="utf-8"
         )
 
-        mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 2)
+        mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 3)
 
         self.assertEqual(mode, "full")
         self.assertEqual(len(rf.calls), 1)
         self.assertEqual(len(ri.calls), 0)
+        self.assertEqual(rf.calls[0][1]["depth_level"], 2)
 
-    def test_missing_commit_in_baseline_runs_full(self):
+    def test_missing_commit_in_baseline_runs_full_at_baseline_depth(self):
         rf, ri = _Rec(), _Rec()
         self._install(run_full=rf, run_incremental=ri)
         out = Path(tempfile.mkdtemp())
-        out.joinpath("analysis.json").write_text(json.dumps({"metadata": {"depth_level": 2}}), encoding="utf-8")
+        out.joinpath("analysis.json").write_text(json.dumps({"metadata": {"depth_level": 3}}), encoding="utf-8")
 
-        mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 2)
+        mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 1)
 
         self.assertEqual(mode, "full")
         self.assertEqual(len(rf.calls), 1)
         self.assertEqual(len(ri.calls), 0)
+        self.assertEqual(rf.calls[0][1]["depth_level"], 3)
 
     def test_falls_back_to_full_on_cache_miss(self):
         analysis, IncMiss, _ = self._install()
@@ -185,10 +187,11 @@ class TestAnalyze(_Base):
         _write_analysis(out, commit="metadata-base", depth=3)
         (out / "stale.json").write_text("{}", encoding="utf-8")
 
-        mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 3)
+        mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 1)
 
         self.assertEqual(mode, "full")
         self.assertEqual(len(rf.calls), 1)
+        self.assertEqual(rf.calls[0][1]["depth_level"], 3)
         self.assertFalse((out / "stale.json").exists())
 
     def test_falls_back_to_full_on_baseline_unavailable(self):
@@ -199,10 +202,11 @@ class TestAnalyze(_Base):
         out = tempfile.mkdtemp()
         _write_analysis(out, commit="metadata-base", depth=2)
 
-        mode = engine_adapter.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
+        mode = engine_adapter.run_analyze("/repo", out, "myrepo", "rid", "head123", 1)
 
         self.assertEqual(mode, "full")
         self.assertEqual(len(rf.calls), 1)
+        self.assertEqual(rf.calls[0][1]["depth_level"], 2)
 
     def _markers(self, buf):
         return [line for line in buf.getvalue().splitlines() if line.startswith("analysis_mode=")]

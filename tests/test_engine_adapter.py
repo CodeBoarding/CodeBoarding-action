@@ -8,7 +8,7 @@ import sys
 import tempfile
 import types
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -159,11 +159,14 @@ class TestAnalysis(_Base):
     def test_head_uses_incremental(self):
         ri, rf = _Rec(), _Rec()
         self._install(run_full=rf, run_incremental=ri)
-        engine_adapter.run_head("/repo", "/out", "r", "rid", 1, "base", "head", "head")
+        buf = StringIO()
+        with redirect_stdout(buf):
+            engine_adapter.run_head("/repo", "/out", "r", "rid", 1, "base", "head", "head")
         self.assertEqual(len(ri.calls), 1)
         self.assertEqual(len(rf.calls), 0)  # no fallback
         self.assertEqual(ri.calls[0]["base_ref"], "base")
         self.assertEqual(ri.calls[0]["target_ref"], "head")
+        self.assertIn("head_analysis_mode=incremental", buf.getvalue())
 
     def test_head_falls_back_to_full_on_cache_miss(self):
         analysis, IncMiss, _ = self._install()  # install once so the exception class identity matches
@@ -174,11 +177,14 @@ class TestAnalysis(_Base):
         (Path(out) / "stale.json").write_text("{}")  # must be wiped before the full run
         (Path(out) / "health").mkdir()
         (Path(out) / "health" / "stale.json").write_text("{}")
-        engine_adapter.run_head("/repo", out, "r", "rid", 3, "base", "head", "head")
+        buf = StringIO()
+        with redirect_stdout(buf):
+            engine_adapter.run_head("/repo", out, "r", "rid", 3, "base", "head", "head")
         self.assertEqual(len(rf.calls), 1)  # fell back to full
         self.assertEqual(rf.calls[0]["depth_level"], 3)
         self.assertFalse((Path(out) / "stale.json").exists())  # head dir wiped before full
         self.assertFalse((Path(out) / "health").exists())  # nested stale artifacts wiped too
+        self.assertIn("head_analysis_mode=full", buf.getvalue())
 
     def test_head_falls_back_to_full_on_baseline_unavailable(self):
         analysis, _, BaseUnavail = self._install()  # the other warm-start failure must also fall back
@@ -200,14 +206,14 @@ class TestValidateBase(_Base):
             self.assertTrue(ok)
             self.assertIn("matches", message)
 
-    def test_validate_base_rejects_mismatched_commit(self):
+    def test_validate_base_accepts_mismatched_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "analysis.json"
             path.write_text(json.dumps({"metadata": {"commit_hash": "old"}}), encoding="utf-8")
 
             ok, message = engine_adapter.validate_base_analysis(path, "new")
 
-            self.assertFalse(ok)
+            self.assertTrue(ok)
             self.assertIn("old", message)
             self.assertIn("new", message)
 
@@ -243,9 +249,9 @@ class TestValidateBase(_Base):
                 os.chdir(cwd)
 
             self.assertTrue(ok)
-            self.assertIn("valid for PR base", message)
+            self.assertIn("Using committed baseline", message)
 
-    def test_validate_base_rejects_code_drift(self):
+    def test_validate_base_accepts_committed_baseline_even_after_code_drift(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"
             repo.mkdir()
@@ -271,8 +277,8 @@ class TestValidateBase(_Base):
             finally:
                 os.chdir(cwd)
 
-            self.assertFalse(ok)
-            self.assertIn("app.py", message)
+            self.assertTrue(ok)
+            self.assertIn("Using committed baseline", message)
 
     def _git(self, repo, *args):
         return subprocess.run(
@@ -284,14 +290,14 @@ class TestValidateBase(_Base):
             stderr=subprocess.PIPE,
         )
 
-    def test_validate_base_rejects_missing_commit(self):
+    def test_validate_base_accepts_missing_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "analysis.json"
             path.write_text(json.dumps({"metadata": {}}), encoding="utf-8")
 
             ok, message = engine_adapter.validate_base_analysis(path, "abc123")
 
-            self.assertFalse(ok)
+            self.assertTrue(ok)
             self.assertIn("commit_hash", message)
 
     def test_main_validate_base_exit_codes(self):
@@ -305,7 +311,7 @@ class TestValidateBase(_Base):
             )
             self.assertEqual(
                 engine_adapter.main(["validate-base", "--analysis", str(path), "--expected-sha", "def456"]),
-                1,
+                0,
             )
 
     def test_validate_base_accepts_matching_depth(self):

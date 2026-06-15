@@ -92,6 +92,23 @@ class TestWebviewUrl(unittest.TestCase):
         self.assertIn("ref=headsha", url)
         self.assertNotIn("compare=", url)
 
+    def test_url_includes_artifact_lookup_params(self):
+        url = bc.webview_url(
+            self.WV,
+            "o",
+            "r",
+            "headsha",
+            "basesha",
+            pr="9",
+            run_id="123",
+            artifact_name="codeboarding-pr-9-headsha",
+            artifact_url="https://github.com/o/r/actions/runs/123/artifacts/456",
+        )
+        self.assertIn("pr=9", url)
+        self.assertIn("run_id=123", url)
+        self.assertIn("artifact=codeboarding-pr-9-headsha", url)
+        self.assertIn("artifact_url=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Factions%2Fruns%2F123%2Fartifacts%2F456", url)
+
     def test_url_none_without_head_sha_or_base(self):
         self.assertIsNone(bc.webview_url(self.WV, "o", "r", "", "basesha"))
         self.assertIsNone(bc.webview_url("", "o", "r", "headsha", "basesha"))
@@ -116,7 +133,7 @@ class TestWebviewUrl(unittest.TestCase):
         self.assertIn("VS Code", out)  # editor merged into the same line
 
     def test_cta_omits_browser_link_when_not_ready(self):
-        # Fork PR / head analysis not committed -> webview can't fetch at head SHA.
+        # No uploaded analysis artifact -> webview can't fetch PR-specific data.
         out = bc.build_cta(
             "",
             "Org",

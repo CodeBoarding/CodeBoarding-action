@@ -12,13 +12,10 @@ node_modules/
 __pycache__/
 *.py[cod]
 
-# CodeBoarding generated cache/log artifacts
-.codeboarding/static_analysis.pkl
-.codeboarding/static_analysis.sha
-.codeboarding/logs/
-.codeboarding/health/*
-!.codeboarding/health/
-!.codeboarding/health/health_report.json
+# CodeBoarding generated artifacts are managed by sync mode.
+# Keep them ignored for humans; the action force-adds the files it owns.
+.codeboarding/
+docs/development/architecture.md
 
 # Environment files
 .env
