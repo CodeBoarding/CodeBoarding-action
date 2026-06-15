@@ -101,7 +101,7 @@ jobs:
       - uses: CodeBoarding/CodeBoarding-action@v1
 ```
 
-That's it — **no API key needed**. With `id-token: write` granted, the action runs on the **free hosted tier**: it mints a GitHub OIDC token, and CodeBoarding's proxy supplies the LLM, metered per repository owner against a weekly cap. Merge the workflow and your next pull request gets an architecture diff.
+That's it — **no extra setup**. With `id-token: write` granted, the action runs on the **free hosted tier**: it mints a GitHub OIDC token, and CodeBoarding's proxy supplies the LLM, metered per repository owner against a weekly cap. Merge the workflow and your next pull request gets an architecture diff.
 
 Models are optional. Omit `agent_model` and `parsing_model` to use the defaults, or pin them inline or from a repository variable (a model name is not a secret, so use `vars.`, not `secrets.`):
 
@@ -217,7 +217,7 @@ jobs:
       - uses: CodeBoarding/CodeBoarding-action@v1
         with:
           mode: sync
-          # No key needed on the free tier. For more/unmetered usage add
+          # Runs on the free tier with no extra setup. For more/unmetered usage add
           # `llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}` (and drop id-token: write).
 ```
 
