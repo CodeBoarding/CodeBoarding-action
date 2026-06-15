@@ -8,7 +8,7 @@ import sys
 import tempfile
 import types
 import unittest
-from contextlib import redirect_stderr
+from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -159,11 +159,14 @@ class TestAnalysis(_Base):
     def test_head_uses_incremental(self):
         ri, rf = _Rec(), _Rec()
         self._install(run_full=rf, run_incremental=ri)
-        engine_adapter.run_head("/repo", "/out", "r", "rid", 1, "base", "head", "head")
+        buf = StringIO()
+        with redirect_stdout(buf):
+            engine_adapter.run_head("/repo", "/out", "r", "rid", 1, "base", "head", "head")
         self.assertEqual(len(ri.calls), 1)
         self.assertEqual(len(rf.calls), 0)  # no fallback
         self.assertEqual(ri.calls[0]["base_ref"], "base")
         self.assertEqual(ri.calls[0]["target_ref"], "head")
+        self.assertIn("head_analysis_mode=incremental", buf.getvalue())
 
     def test_head_falls_back_to_full_on_cache_miss(self):
         analysis, IncMiss, _ = self._install()  # install once so the exception class identity matches
@@ -174,11 +177,14 @@ class TestAnalysis(_Base):
         (Path(out) / "stale.json").write_text("{}")  # must be wiped before the full run
         (Path(out) / "health").mkdir()
         (Path(out) / "health" / "stale.json").write_text("{}")
-        engine_adapter.run_head("/repo", out, "r", "rid", 3, "base", "head", "head")
+        buf = StringIO()
+        with redirect_stdout(buf):
+            engine_adapter.run_head("/repo", out, "r", "rid", 3, "base", "head", "head")
         self.assertEqual(len(rf.calls), 1)  # fell back to full
         self.assertEqual(rf.calls[0]["depth_level"], 3)
         self.assertFalse((Path(out) / "stale.json").exists())  # head dir wiped before full
         self.assertFalse((Path(out) / "health").exists())  # nested stale artifacts wiped too
+        self.assertIn("head_analysis_mode=full", buf.getvalue())
 
     def test_head_falls_back_to_full_on_baseline_unavailable(self):
         analysis, _, BaseUnavail = self._install()  # the other warm-start failure must also fall back

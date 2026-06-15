@@ -327,8 +327,12 @@ def run_head(
     target_ref: str,
     source_sha: str,
 ) -> None:
-    """Review PR head: incremental from the PR base, full on a cache miss."""
-    _incremental_or_full(
+    """Review PR head: incremental from the PR base, full on a cache miss.
+
+    Print the selected mode explicitly so GitHub Action logs make it obvious
+    whether review used the incremental path or fell back to a full analysis.
+    """
+    mode = _incremental_or_full(
         repo_path=repo_path,
         output_dir=output_dir,
         repo_name=repo_name,
@@ -339,6 +343,7 @@ def run_head(
         source_sha=source_sha,
         log_name="cb-head.log",
     )
+    print(f"head_analysis_mode={mode}")
 
 
 def run_analyze(
