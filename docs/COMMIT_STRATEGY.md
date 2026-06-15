@@ -22,7 +22,7 @@ The engine writes these under `.codeboarding/`:
 - ✅ `static_analysis.pkl` + `static_analysis.sha` — required for reliable warm-start incremental sync from the committed baseline.
 
 **Upload in review mode:**
-- ✅ PR base/head `analysis.json`, head health report, rendered diagram, and metadata — stored as a GitHub Actions artifact.
+- ✅ PR-head `analysis.json` and metadata containing the PR base SHA plus the committed baseline SHA when one was found — stored as a GitHub Actions artifact.
 
 > **Principle:** sync mode is the only git writer. Review mode never commits generated files to PR branches, so generated artifacts cannot conflict with `main` during merge.
 
@@ -51,6 +51,6 @@ Either way the head analysis is seeded from that directory and runs incrementall
 | Artifact | Commit? | Where | Why |
 |---|---|---|---|
 | `analysis.json` | ✅ | sync commit on `main`; review artifact for PRs | diagram source |
-| `health_report.json` | ✅ | sync commit on `main`; review artifact for PRs | warnings |
+| `health_report.json` | ✅ | sync commit on `main`; computed in review for comments, not uploaded | warnings |
 | `static_analysis.pkl` | ✅ | sync commit on `main` only | warm-start incremental baseline |
 | `static_analysis.sha` | ✅ | with `static_analysis.pkl` | warm-start gate |

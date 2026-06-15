@@ -2,7 +2,7 @@
 
 One action, two modes: architecture review on every pull request, and a versioned, always-current architecture baseline on your main branch.
 
-- **`mode: review`** (the default) — CodeBoarding analyzes your architecture before and after a change, comments on the PR with an inline Mermaid diagram and hosted webview link, and uploads the PR-specific analysis JSON/health outputs as a GitHub Actions artifact. It never commits generated files to the PR branch. Runs on `pull_request` and `issue_comment`.
+- **`mode: review`** (the default) — CodeBoarding analyzes your architecture before and after a change, comments on the PR with an inline Mermaid diagram and hosted webview link, and uploads the PR-head `analysis.json` plus base-commit metadata as a GitHub Actions artifact. It never commits generated files to the PR branch. Runs on `pull_request` and `issue_comment`.
 - **`mode: sync`** — CodeBoarding keeps your architecture analysis versioned and current on your branch: on every push it commits the `analysis.json` baseline, `static_analysis.pkl` cache pair, health report, and readable markdown (`.codeboarding/*.md`), so reviews diff against your current architecture and your architecture has real git history. Runs on `push`, `workflow_dispatch`, and `schedule`. See [sync mode](#keep-your-architecture-versioned-sync-mode).
 
 Both modes run the [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) engine in CI: static analysis combined with LLM reasoning. They are designed to be used together — [sync mode keeps the baseline fresh that review mode diffs against](#how-the-two-modes-work-together) — but each works on its own.
@@ -23,7 +23,7 @@ Both modes run the [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) 
 - Builds or reuses a baseline architecture analysis for the PR base.
 - Runs incremental analysis on the PR head, then diffs components and relationships.
 - Posts a sticky PR comment with an inline Mermaid map. Green is added, yellow is modified, red (dashed) is deleted, for both nodes and edges.
-- Uploads the PR analysis outputs as a GitHub Actions artifact and links the hosted webview to that artifact instead of committing generated files to the PR branch.
+- Uploads the PR-head `analysis.json` plus base-commit metadata as a GitHub Actions artifact and links the hosted webview to that artifact instead of committing generated files to the PR branch.
 
 A PR comment looks like this:
 
@@ -287,7 +287,7 @@ Review mode does not need `contents: write`: PR-specific generated files are sto
 | `diagram_md` | review | Path to the generated Mermaid markdown block on the runner. |
 | `n_changed` | review | Number of changed components, counted recursively. |
 | `truncated` | review | `true` when the graph was reduced to fit GitHub Mermaid limits. |
-| `review_artifact_url` | review | GitHub Actions artifact URL containing the PR base/head analysis outputs. |
+| `review_artifact_url` | review | GitHub Actions artifact URL containing the PR-head `analysis.json` and base-commit metadata. |
 | `analysis_mode` | sync | `full` or `incremental`: whether the run rebuilt the analysis from scratch or reused the committed baseline. |
 | `files_written` | sync | The generated files written for the docs commit. |
 | `committed` | sync | `true` when a docs commit was pushed to `target_branch`; `false` when sync mode ran but had nothing to commit (or the push failed open). Empty only if sync mode did not run. |
