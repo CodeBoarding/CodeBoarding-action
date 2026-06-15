@@ -36,9 +36,9 @@ inputs:
     required: false
     default: 'v0.12.1'
   depth_level:
-    description: 'Analysis depth (1-3). Higher is slower, costlier, and more detailed. Use the SAME value in your review and sync workflows: review mode reuses the committed baseline only when it is no deeper than this, regenerating it otherwise. Lower to 1 for cheaper, faster runs.'
+    description: 'Analysis depth (1-3). Higher is slower, costlier, and more detailed. Use the SAME value in your review and sync workflows: review mode reuses the committed baseline only when it is no deeper than this, regenerating it otherwise. Lower to 1 for cheaper, faster runs. Empty (default): auto-detect from the committed .codeboarding/analysis.json metadata, falling back to 2.'
     required: false
-    default: '2'
+    default: ''
   agent_model:
     description: 'Analysis model (AGENT_MODEL env var). A bare OpenRouter slug. Defaults to google/gemini-3-flash-preview on OpenRouter; for other providers, empty uses the engine''s per-provider default.'
     required: false
@@ -210,8 +210,8 @@ runs:
           *) echo "::error::mode must be 'review' or 'sync' (got '$MODE')."; exit 1 ;;
         esac
         case "$DEPTH" in
-          1|2|3) ;;
-          *) echo "::error::depth_level must be 1, 2, or 3."; exit 1 ;;
+          ''|1|2|3) ;;
+          *) echo "::error::depth_level must be 1, 2, or 3 (empty = auto-detect from committed baseline)."; exit 1 ;;
         esac
         echo "mode=$MODE" >> "$GITHUB_OUTPUT"
 
@@ -419,6 +419,39 @@ runs:
         fi
         git cat-file -e "$BASE_SHA" && echo "Base commit reachable." || \
           (echo "::error::Base commit $BASE_SHA is not reachable." && exit 1)
+
+    - name: Resolve analysis depth
+      id: resolve_depth
+      if: steps.guard.outputs.skip != 'true'
+      shell: bash
+      env:
+        INPUT_DEPTH: ${{ inputs.depth_level }}
+        TARGET_REPO: ${{ github.workspace }}/target-repo
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        MODE: ${{ steps.guard.outputs.mode }}
+      run: |
+        set -euo pipefail
+        # Explicit input always wins.
+        if [ -n "$INPUT_DEPTH" ]; then
+          echo "depth=$INPUT_DEPTH" >> "$GITHUB_OUTPUT"
+          echo "Using explicit depth_level=$INPUT_DEPTH."
+          exit 0
+        fi
+        # Auto: read from committed analysis.json.
+        DEPTH=2
+        if [ "$MODE" = "sync" ]; then
+          if [ -f "$TARGET_REPO/.codeboarding/analysis.json" ]; then
+            DEPTH=$(python3 -c "import json; print(json.load(open('$TARGET_REPO/.codeboarding/analysis.json')).get('metadata',{}).get('depth_level',2))" 2>/dev/null || echo 2)
+          fi
+        else
+          BASE_JSON="$(git -C "$TARGET_REPO" show "${BASE_SHA}:.codeboarding/analysis.json" 2>/dev/null || true)"
+          if [ -n "$BASE_JSON" ]; then
+            DEPTH="$(printf '%s' "$BASE_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("metadata",{}).get("depth_level",2))' 2>/dev/null || echo 2)"
+          fi
+        fi
+        case "$DEPTH" in 1|2|3) ;; *) DEPTH=2 ;; esac
+        echo "depth=$DEPTH" >> "$GITHUB_OUTPUT"
+        echo "Auto-resolved depth_level=$DEPTH."
 
     - name: Set up Python 3.13
       if: steps.guard.outputs.skip != 'true'
@@ -640,7 +673,7 @@ runs:
       env:
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
         ACTION_PATH: ${{ github.action_path }}
-        DEPTH: ${{ inputs.depth_level }}
+        DEPTH: ${{ steps.resolve_depth.outputs.depth }}
       run: |
         BASE_DIR="${RUNNER_TEMP}/cb-base"
         HEAD_DIR="${RUNNER_TEMP}/cb-head"
@@ -677,7 +710,7 @@ runs:
         # inputs. So a free-tier run (oidc, forced Gemini) and a BYO OpenRouter-key
         # run with no model pinned would share a key yet produce different base
         # analyses; the mode discriminator keeps them from reusing each other's cache.
-        key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+        key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     # A committed analysis.json gives the head analysis stable component ids,
     # but the engine's incremental path ALSO needs the base static_analysis.pkl
@@ -731,7 +764,7 @@ runs:
       env:
         STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
         PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
-        DIAGRAM_DEPTH_LEVEL: ${{ inputs.depth_level }}
+        DIAGRAM_DEPTH_LEVEL: ${{ steps.resolve_depth.outputs.depth }}
         CACHING_DOCUMENTATION: 'false'
         ENABLE_MONITORING: 'false'
         ACTION_PATH: ${{ github.action_path }}
@@ -739,7 +772,7 @@ runs:
         BASE_DIR: ${{ steps.base.outputs.base_dir }}
         REPO_NAME: ${{ github.event.repository.name }}
         RUN_ID_BASE: ${{ github.run_id }}-${{ github.run_attempt }}-base
-        DEPTH: ${{ inputs.depth_level }}
+        DEPTH: ${{ steps.resolve_depth.outputs.depth }}
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
       run: |
         # Export the key under the selected provider's env var (only this one),
@@ -796,7 +829,7 @@ runs:
         # inputs. So a free-tier run (oidc, forced Gemini) and a BYO OpenRouter-key
         # run with no model pinned would share a key yet produce different base
         # analyses; the mode discriminator keeps them from reusing each other's cache.
-        key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ inputs.depth_level }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+        key: cb-base-v2-${{ runner.os }}-${{ steps.guard.outputs.base_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     - name: Analyze PR head (incremental from base)
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
@@ -806,7 +839,7 @@ runs:
       env:
         STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
         PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
-        DIAGRAM_DEPTH_LEVEL: ${{ inputs.depth_level }}
+        DIAGRAM_DEPTH_LEVEL: ${{ steps.resolve_depth.outputs.depth }}
         CACHING_DOCUMENTATION: 'false'
         ENABLE_MONITORING: 'false'
         ACTION_PATH: ${{ github.action_path }}
@@ -815,7 +848,7 @@ runs:
         HEAD_DIR: ${{ steps.base.outputs.head_dir }}
         REPO_NAME: ${{ github.event.repository.name }}
         RUN_ID_HEAD: ${{ github.run_id }}-${{ github.run_attempt }}-head
-        DEPTH: ${{ inputs.depth_level }}
+        DEPTH: ${{ steps.resolve_depth.outputs.depth }}
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
         HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
       run: |
@@ -940,7 +973,7 @@ runs:
         path: |
           ${{ runner.temp }}/cb-sync/static_analysis.pkl
           ${{ runner.temp }}/cb-sync/static_analysis.sha
-        key: cb-sync-${{ runner.os }}-${{ inputs.engine_ref }}-d${{ inputs.depth_level }}-${{ steps.llm.outputs.cache_provider }}-${{ steps.llm.outputs.cache_agent_model }}-${{ steps.llm.outputs.cache_parsing_model }}-${{ steps.sync_seed.outputs.baseline_sha }}
+        key: cb-sync-${{ runner.os }}-${{ inputs.engine_ref }}-d${{ steps.resolve_depth.outputs.depth }}-${{ steps.llm.outputs.cache_provider }}-${{ steps.llm.outputs.cache_agent_model }}-${{ steps.llm.outputs.cache_parsing_model }}-${{ steps.sync_seed.outputs.baseline_sha }}
 
     # Same rationale as the review pipeline's seed step: the committed
     # analysis.json supplies component ids, but the incremental path also needs
@@ -999,7 +1032,7 @@ runs:
       env:
         STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
         PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
-        DIAGRAM_DEPTH_LEVEL: ${{ inputs.depth_level }}
+        DIAGRAM_DEPTH_LEVEL: ${{ steps.resolve_depth.outputs.depth }}
         CACHING_DOCUMENTATION: 'false'
         ENABLE_MONITORING: 'false'
         ACTION_PATH: ${{ github.action_path }}
@@ -1008,7 +1041,7 @@ runs:
         REPO_NAME: ${{ github.event.repository.name }}
         RUN_ID_SYNC: ${{ github.run_id }}-${{ github.run_attempt }}-sync
         TARGET_SHA: ${{ steps.guard.outputs.target_sha }}
-        DEPTH: ${{ inputs.depth_level }}
+        DEPTH: ${{ steps.resolve_depth.outputs.depth }}
         FORCE_FULL: ${{ inputs.force_full }}
       run: |
         set -euo pipefail
@@ -1342,7 +1375,7 @@ runs:
         path: |
           ${{ runner.temp }}/cb-sync/static_analysis.pkl
           ${{ runner.temp }}/cb-sync/static_analysis.sha
-        key: cb-sync-${{ runner.os }}-${{ inputs.engine_ref }}-d${{ inputs.depth_level }}-${{ steps.llm.outputs.cache_provider }}-${{ steps.llm.outputs.cache_agent_model }}-${{ steps.llm.outputs.cache_parsing_model }}-${{ steps.guard.outputs.target_sha }}
+        key: cb-sync-${{ runner.os }}-${{ inputs.engine_ref }}-d${{ steps.resolve_depth.outputs.depth }}-${{ steps.llm.outputs.cache_provider }}-${{ steps.llm.outputs.cache_agent_model }}-${{ steps.llm.outputs.cache_parsing_model }}-${{ steps.guard.outputs.target_sha }}
 
     - name: Commit and push synced architecture
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
@@ -1466,7 +1499,7 @@ runs:
       env:
         START_TS: ${{ steps.guard.outputs.start_ts }}
         MODE: ${{ steps.sync_analyze.outputs.analysis_mode }}
-        DEPTH: ${{ inputs.depth_level }}
+        DEPTH: ${{ steps.resolve_depth.outputs.depth }}
         FILES_WRITTEN: ${{ steps.sync_commit.outputs.files_written }}
         COMMITTED: ${{ steps.sync_commit.outputs.committed }}
         PUSHED_SHA: ${{ steps.sync_commit.outputs.pushed_sha }}
