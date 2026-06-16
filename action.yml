@@ -700,47 +700,33 @@ runs:
       working-directory: target-repo
       env:
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
-        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
         ACTION_PATH: ${{ github.action_path }}
+        DEPTH: ${{ steps.resolve_depth.outputs.depth }}
       run: |
         BASE_DIR="${RUNNER_TEMP}/cb-base"
         HEAD_DIR="${RUNNER_TEMP}/cb-head"
         mkdir -p "$BASE_DIR" "$HEAD_DIR"
         echo "base_dir=$BASE_DIR" >> $GITHUB_OUTPUT
         echo "head_dir=$HEAD_DIR" >> $GITHUB_OUTPUT
-        BASELINE_SHA=""
-        # Use the newest analysis.json reachable by walking backwards through
-        # the PR head branch ancestry. If the PR branch is a->b->c->d and master
-        # is a->b->m1->m2, this deliberately searches d,c,b,a — not m2,m1,b,a.
-        while IFS= read -r candidate; do
-          if git cat-file -e "${candidate}:.codeboarding/analysis.json" 2>/dev/null; then
-            BASELINE_SHA="$candidate"
-            break
-          fi
-        done < <(git rev-list "$HEAD_SHA" -- .codeboarding/analysis.json 2>/dev/null || true)
-
-        if [ -n "$BASELINE_SHA" ] && git show "${BASELINE_SHA}:.codeboarding/analysis.json" > "${BASE_DIR}/analysis.json" 2>/dev/null; then
+        if git show "${BASE_SHA}:.codeboarding/analysis.json" > "${BASE_DIR}/analysis.json" 2>/dev/null; then
           if python3 "$ACTION_PATH/scripts/engine_adapter.py" validate-base \
               --analysis "${BASE_DIR}/analysis.json" \
-              --expected-sha "$BASELINE_SHA"; then
+              --expected-sha "$BASE_SHA" \
+              --expected-depth "$DEPTH"; then
             echo "committed=true" >> $GITHUB_OUTPUT
-            echo "baseline_sha=$BASELINE_SHA" >> $GITHUB_OUTPUT
-            if [ "$BASELINE_SHA" = "$HEAD_SHA" ]; then
-              echo "Using committed .codeboarding/analysis.json at PR head ${HEAD_SHA}."
-            else
-              echo "Using nearest committed .codeboarding/analysis.json at ${BASELINE_SHA} from PR head history ${HEAD_SHA}."
-            fi
+            echo "baseline_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+            echo "Using committed .codeboarding/analysis.json at PR base ${BASE_SHA}."
           else
             rm -f "${BASE_DIR}/analysis.json"
             echo "committed=false" >> $GITHUB_OUTPUT
             echo "baseline_sha=$BASE_SHA" >> $GITHUB_OUTPUT
-            echo "Committed baseline at ${BASELINE_SHA} is unusable; will generate a fresh base analysis at ${BASE_SHA}."
+            echo "Committed baseline at PR base ${BASE_SHA} is unusable; will generate a fresh base analysis."
           fi
         else
           rm -f "${BASE_DIR}/analysis.json"
           echo "committed=false" >> $GITHUB_OUTPUT
           echo "baseline_sha=$BASE_SHA" >> $GITHUB_OUTPUT
-          echo "No committed baseline found in PR head history; will generate one via a full analysis on the base commit ${BASE_SHA}."
+          echo "No committed baseline found at PR base ${BASE_SHA}; will generate one via a full analysis on the base commit."
         fi
 
     - name: Restore base artifacts (keyed by baseline SHA)
@@ -756,6 +742,27 @@ runs:
         # run with no model pinned would share a key yet produce different base
         # analyses; the mode discriminator keeps them from reusing each other's cache.
         key: cb-base-v2-${{ runner.os }}-${{ steps.base.outputs.baseline_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+
+    - name: Reassert committed base analysis after cache restore
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.base.outputs.committed == 'true'
+      shell: bash
+      working-directory: target-repo
+      env:
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        BASE_DIR: ${{ steps.base.outputs.base_dir }}
+        ACTION_PATH: ${{ github.action_path }}
+        DEPTH: ${{ steps.resolve_depth.outputs.depth }}
+      run: |
+        # The cache stores generated base artifacts under the baseline SHA so the
+        # static-analysis pkl can be reused. It must never replace the committed
+        # target-branch baseline used for the PR diff. Re-copy the versioned
+        # baseline after restore: cache may supply pkl/sha, but git is the source
+        # of truth for cb-base/analysis.json.
+        git show "${BASE_SHA}:.codeboarding/analysis.json" > "${BASE_DIR}/analysis.json"
+        python3 "$ACTION_PATH/scripts/engine_adapter.py" validate-base \
+          --analysis "${BASE_DIR}/analysis.json" \
+          --expected-sha "$BASE_SHA" \
+          --expected-depth "$DEPTH"
 
     # A committed analysis.json gives the head analysis stable component ids,
     # but the engine's incremental path ALSO needs the base static_analysis.pkl
