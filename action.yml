@@ -570,7 +570,7 @@ runs:
           # GitHub OIDC JWT — it's the unforgeable per-repo identity the proxy meters
           # and abuse-checks on, so it is mandatory even when a license is present.
           # The engine (ChatOpenAI) can only set the bearer, not a custom header, so a
-          # license rides the bearer alongside the OIDC token as `<jwt>~cblic~<license>`;
+          # license rides the bearer alongside the OIDC token as `<jwt>~codeboarding-license~<license>`;
           # the proxy splits on that separator (KEEP IN SYNC with gha_proxy handler).
           # ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN are injected into the runner process env
           # (NOT the `env` context) only when the job grants `id-token: write`; read them
@@ -593,7 +593,7 @@ runs:
             # Pack the license after the OIDC JWT; the proxy verifies the JWT (identity)
             # and validates the license (skips the free quota). Mask both halves.
             echo "::add-mask::$LICENSE"
-            BEARER="${OIDC_JWT}~cblic~${LICENSE}"
+            BEARER="${OIDC_JWT}~codeboarding-license~${LICENSE}"
             echo "Using CodeBoarding license via hosted proxy (OIDC-identified)."
           else
             BEARER="$OIDC_JWT"
