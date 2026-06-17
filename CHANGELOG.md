@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.5.0...v1.5.1) (2026-06-17)
+
+
+### Bug Fixes
+
+* make a CodeBoarding license work with the hosted proxy — license mode now mints the OIDC token and packs the license into the bearer (`<jwt>~codeboarding-license~<license>`), which the proxy splits, verifies, and uses to skip the free quota (previously sent the raw license as the bearer → 401 Invalid GitHub OIDC token) ([#41](https://github.com/CodeBoarding/CodeBoarding-action/issues/41)) ([56ed9e9](https://github.com/CodeBoarding/CodeBoarding-action/commit/56ed9e9cda6d084b194f3e3124dae296971c5cad))
+* rebuild the engine venv when its cached interpreter symlink is stale, so a runner Python patch bump no longer breaks runs with "Broken symlink … was the underlying Python interpreter removed?" ([#41](https://github.com/CodeBoarding/CodeBoarding-action/issues/41)) ([56ed9e9](https://github.com/CodeBoarding/CodeBoarding-action/commit/56ed9e9cda6d084b194f3e3124dae296971c5cad))
+* set up Java and .NET inside action ([#37](https://github.com/CodeBoarding/CodeBoarding-action/issues/37)) ([a7164ab](https://github.com/CodeBoarding/CodeBoarding-action/commit/a7164abe286eaf7c5f87184e05df175d92a0777f))
+
 ## [1.5.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.4.0...v1.5.0) (2026-06-15)
 
 
