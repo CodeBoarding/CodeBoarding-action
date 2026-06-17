@@ -480,16 +480,6 @@ runs:
       with:
         enable-cache: true   # cache ~/.cache/uv (wheels/builds) for fast cold installs
 
-    - name: Cache uv venv (engine)
-      if: steps.guard.outputs.skip != 'true'
-      uses: actions/cache@v4
-      with:
-        path: codeboarding-engine/.venv
-        # No restore-keys: a lockfile change must force a clean cold venv, not
-        # restore a venv built from a different lock (`uv pip install -e .` won't
-        # downgrade/sync already-installed transitive deps back to this uv.lock).
-        key: cb-uv-${{ runner.os }}-${{ hashFiles('codeboarding-engine/pyproject.toml', 'codeboarding-engine/uv.lock') }}
-
     - name: Cache LSP servers
       if: steps.guard.outputs.skip != 'true'
       uses: actions/cache@v4
@@ -506,19 +496,7 @@ runs:
       shell: bash
       working-directory: codeboarding-engine
       run: |
-        # Reuse the cached venv when it's healthy, but rebuild it if its interpreter
-        # symlink is dead. The cache key is the lockfiles only, NOT the Python patch
-        # version, so when setup-python provisions a newer patch (e.g. 3.13.13 ->
-        # 3.13.14) and GitHub GCs the old toolcache dir, the cached `.venv/bin/python3`
-        # symlink dangles. A bare `test -d .venv` would then reuse it and `uv pip
-        # install -e .` fails with "Broken symlink … was the underlying Python
-        # interpreter removed?". Probing the interpreter lets us discard the
-        # broken cached directory before asking uv to create a fresh venv.
-        if [ -d .venv ] && ! .venv/bin/python -c '' >/dev/null 2>&1; then
-          echo "Cached uv venv has a broken Python interpreter; recreating it."
-          rm -rf .venv
-        fi
-        test -d .venv || uv venv
+        uv venv --clear
         uv pip install -e .
 
     - name: Install LSP servers
