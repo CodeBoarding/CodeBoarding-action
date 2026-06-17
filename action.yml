@@ -490,7 +490,14 @@ runs:
       shell: bash
       working-directory: codeboarding-engine
       run: |
-        test -d .venv || uv venv   # reuse the cached venv instead of wiping it (--clear defeated the cache)
+        # Reuse the cached venv when it's healthy, but rebuild it if its interpreter
+        # symlink is dead. The cache key is the lockfiles only, NOT the Python patch
+        # version, so when setup-python provisions a newer patch (e.g. 3.13.13 ->
+        # 3.13.14) and GitHub GCs the old toolcache dir, the cached `.venv/bin/python3`
+        # symlink dangles. A bare `test -d .venv` would then reuse it and `uv pip
+        # install -e .` fails with "Broken symlink … was the underlying Python
+        # interpreter removed?". Probing the interpreter recreates the venv instead.
+        .venv/bin/python -c '' 2>/dev/null || uv venv   # rebuild on missing/broken venv
         uv pip install -e .
 
     - name: Install LSP servers
