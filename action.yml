@@ -512,8 +512,12 @@ runs:
         # 3.13.14) and GitHub GCs the old toolcache dir, the cached `.venv/bin/python3`
         # symlink dangles. A bare `test -d .venv` would then reuse it and `uv pip
         # install -e .` fails with "Broken symlink … was the underlying Python
-        # interpreter removed?". Probing the interpreter recreates the venv instead.
-        .venv/bin/python -c '' 2>/dev/null || uv venv   # rebuild on missing/broken venv
+        # interpreter removed?". So probe the interpreter; if it's missing or broken,
+        # remove the stale dir first — `uv venv` REFUSES to recreate over an existing
+        # `.venv` ("A virtual environment already exists") — then create a fresh one.
+        # On a healthy cache hit the probe passes and the venv is reused as-is, so the
+        # cache benefit is preserved (unlike an unconditional `--clear`).
+        .venv/bin/python -c '' 2>/dev/null || { rm -rf .venv && uv venv; }
         uv pip install -e .
 
     - name: Install LSP servers
