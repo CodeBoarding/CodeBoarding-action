@@ -29,13 +29,13 @@ or — with ``--expected-depth`` — its depth_level is DEEPER than requested;
 shallower is accepted because the engine records the depth reached, not the
 depth asked. The baseline's metadata.commit_hash is informational in review
 mode: sync commits generated artifacts on top of the analyzed source commit, so
-review trusts the analysis.json committed at the PR base rather than
+review trusts the analysis.json committed at the PR target branch tip rather than
 regenerating because the metadata SHA differs. ``baseline-info`` prints the
 baseline's ``commit_hash=`` (empty unless present and SHA-shaped).
 
 ``head`` (review) and ``analyze`` (sync) are the SAME incremental-or-full
 operation via the shared ``_incremental_or_full`` helper; they differ only in
-where the base ref comes from (the PR base SHA vs the committed analysis.json)
+where the base ref comes from (the PR target-branch SHA vs the committed analysis.json)
 and in that ``analyze`` is baseline-aware (full when the baseline is missing,
 lacks a commit_hash, or ``--force-full`` is set) and prints
 ``analysis_mode=full|incremental`` on stdout for the action to grep. Once an
@@ -171,7 +171,7 @@ def validate_base_analysis(
 ) -> tuple[bool, str]:
     """Return whether ``analysis.json`` is valid for ``expected_sha``.
 
-    Review mode reuses the analysis.json that is committed at the PR base. The
+    Review mode reuses the analysis.json that is committed at the PR target branch tip. The
     diagram's metadata.commit_hash records the source commit analyzed by sync,
     but the sync commit itself necessarily has a newer SHA because it adds the
     generated artifacts. Treat that metadata SHA as provenance, not freshness.
@@ -202,11 +202,11 @@ def validate_base_analysis(
     actual_sha = metadata.get("commit_hash")
     if isinstance(actual_sha, str) and actual_sha:
         if actual_sha == expected_sha:
-            message = f"Baseline analysis commit matches PR base {expected_sha}."
+            message = f"Baseline analysis commit matches target branch commit {expected_sha}."
         else:
-            message = f"Using committed baseline at PR base {expected_sha}; analysis metadata source is {actual_sha}."
+            message = f"Using committed baseline at target branch commit {expected_sha}; analysis metadata source is {actual_sha}."
     else:
-        message = f"Using committed baseline at PR base {expected_sha}; analysis metadata.commit_hash is missing."
+        message = f"Using committed baseline at target branch commit {expected_sha}; analysis metadata.commit_hash is missing."
 
     if expected_depth is not None:
         baseline_depth = _metadata_depth(metadata)
@@ -326,12 +326,31 @@ def run_head(
     base_ref: str,
     target_ref: str,
     source_sha: str,
+    force_full: bool = False,
 ) -> None:
-    """Review PR head: incremental from the PR base, full on a cache miss.
+    """Review PR head: incremental from the PR target branch tip, full on a cache miss.
 
     Print the selected mode explicitly so GitHub Action logs make it obvious
     whether review used the incremental path or fell back to a full analysis.
     """
+    if force_full:
+        from codeboarding_workflows.analysis import run_full
+
+        out_path = Path(output_dir)
+        _clear_dir(out_path)
+        res = run_full(
+            repo_name=repo_name,
+            repo_path=Path(repo_path),
+            output_dir=out_path,
+            run_id=run_id,
+            log_path=_log_path(output_dir, "cb-head.log"),
+            depth_level=depth,
+            source_sha=source_sha,
+        )
+        print(f"Analysis written: {res}")
+        print("head_analysis_mode=full")
+        return
+
     mode = _incremental_or_full(
         repo_path=repo_path,
         output_dir=output_dir,
@@ -518,6 +537,7 @@ def main(argv=None) -> int:
     for a in ("--repo", "--out", "--name", "--run-id", "--base-ref", "--target-ref", "--source-sha"):
         h.add_argument(a, required=True)
     h.add_argument("--depth", required=True, type=int, choices=range(1, 4))
+    h.add_argument("--force-full", action="store_true", help="Run a full PR-head analysis instead of incremental.")
 
     hc = sub.add_parser("health")
     for a in ("--artifact-dir", "--repo", "--name", "--issues-out"):
@@ -556,7 +576,15 @@ def main(argv=None) -> int:
             run_seed(args.repo, args.out, args.source_sha)
         elif args.cmd == "head":
             run_head(
-                args.repo, args.out, args.name, args.run_id, args.depth, args.base_ref, args.target_ref, args.source_sha
+                args.repo,
+                args.out,
+                args.name,
+                args.run_id,
+                args.depth,
+                args.base_ref,
+                args.target_ref,
+                args.source_sha,
+                args.force_full,
             )
         elif args.cmd == "health":
             Path(args.issues_out).write_text(str(run_health(args.artifact_dir, args.repo, args.name)))

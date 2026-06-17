@@ -2,7 +2,7 @@
 
 One action, two modes: architecture review on every pull request, and a versioned, always-current architecture baseline on your main branch.
 
-- **`mode: review`** (the default) — CodeBoarding analyzes your architecture before and after a change, comments on the PR with an inline Mermaid diagram and hosted webview link, and uploads the PR-head `analysis.json` plus base-commit metadata as a GitHub Actions artifact. It never commits generated files to the PR branch. Runs on `pull_request` and `issue_comment`.
+- **`mode: review`** (the default) — CodeBoarding analyzes your architecture on the target branch and PR branch, comments on the PR with an inline Mermaid diagram and hosted webview link, and uploads the PR-head `analysis.json` plus target-branch metadata as a GitHub Actions artifact. It never commits generated files to the PR branch. Runs on `pull_request` and `issue_comment`.
 - **`mode: sync`** — CodeBoarding keeps your architecture analysis versioned and current on your branch: on every push it commits the `analysis.json` baseline, `static_analysis.pkl` cache pair, health report, and readable markdown (`.codeboarding/*.md`), so reviews diff against your current architecture and your architecture has real git history. Runs on `push`, `workflow_dispatch`, and `schedule`. See [sync mode](#keep-your-architecture-versioned-sync-mode).
 
 Both modes run the [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) engine in CI: static analysis combined with LLM reasoning. They are designed to be used together — [sync mode keeps the baseline fresh that review mode diffs against](#how-the-two-modes-work-together) — but each works on its own.
@@ -20,10 +20,10 @@ Both modes run the [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) 
 
 ## What review mode does
 
-- Builds or reuses a baseline architecture analysis for the PR base.
+- Builds or reuses a baseline architecture analysis for the target branch tip the PR is opened against.
 - Runs incremental analysis on the PR head, then diffs components and relationships.
 - Posts a sticky PR comment with an inline Mermaid map. Green is added, yellow is modified, red (dashed) is deleted, for both nodes and edges.
-- Uploads the PR-head `analysis.json` plus base-commit metadata as a GitHub Actions artifact and links the hosted webview to that artifact instead of committing generated files to the PR branch.
+- Uploads the PR-head `analysis.json` plus target-branch metadata as a GitHub Actions artifact and links the hosted webview to that artifact instead of committing generated files to the PR branch.
 
 A PR comment looks like this:
 
@@ -234,7 +234,9 @@ Behavior worth knowing:
 
 ### How the two modes work together
 
-Sync mode keeps the committed `.codeboarding/analysis.json` baseline fresh on main. Review mode reuses that committed baseline for the PR base, so PR reviews diff against your *current* main architecture and run incrementally instead of rebuilding a base from scratch — faster and cheaper per PR.
+Sync mode keeps the committed `.codeboarding/analysis.json` baseline fresh on main. Review mode reuses that committed baseline from the target branch tip, so PR reviews diff against your *current* main architecture and run incrementally instead of rebuilding the target analysis from scratch — faster and cheaper per PR.
+
+For fork PRs, review mode compares the PR branch against the fork's branch with the same name as the PR target branch. For example, a PR opened into `upstream/main` from `alice:feature` compares `alice:main` to `alice:feature` when `alice:main` exists. If the fork comparison branch has no committed `.codeboarding/analysis.json`, review mode uses an empty baseline and renders the PR architecture as newly added instead of silently comparing against upstream's baseline.
 
 Leave `depth_level` empty unless you are choosing the depth for a first run or an intentional `force_full` rebuild. After a baseline exists, the committed `analysis.json` records the depth the engine should continue using, so review and sync mode do not need duplicate depth-selection logic.
 
@@ -272,7 +274,7 @@ Review mode does not need `contents: write`: PR-specific generated files are sto
 | `comment_header` | review | `Architecture review` | Heading for the PR comment. |
 | `trigger_command` | review | `/codeboarding` | Slash command for trusted on-demand runs. |
 | `cta_base_url` | review | empty | Click-proxy base URL: deep-links the editor link into VS Code/Cursor and adds a "get the extension" link (tracks owner/repo/pr). Empty links to the extension listing instead (GitHub strips `vscode:`/`cursor:` from comments). |
-| `webview_base_url` | review | `https://app.codeboarding.org` | Hosted webview base URL. The PR comment links to an artifact-backed head-vs-base architecture diff. Set empty to disable the browser link. |
+| `webview_base_url` | review | `https://app.codeboarding.org` | Hosted webview base URL. The PR comment links to an artifact-backed head-vs-comparison-branch architecture diff. Set empty to disable the browser link. |
 | `output_dir` | sync | `.codeboarding` | Directory the rendered docs and analysis metadata are committed to. Owned by the action: pre-existing top-level `.md` files in it are deleted on every run. |
 | `output_format` | sync | `.md` | Output format. Only `.md` is supported. |
 | `target_branch` | sync | `${{ github.ref_name }}` | Branch the generated docs are pushed to. |
@@ -287,7 +289,7 @@ Review mode does not need `contents: write`: PR-specific generated files are sto
 | `diagram_md` | review | Path to the generated Mermaid markdown block on the runner. |
 | `n_changed` | review | Number of changed components, counted recursively. |
 | `truncated` | review | `true` when the graph was reduced to fit GitHub Mermaid limits. |
-| `review_artifact_url` | review | GitHub Actions artifact URL containing the PR-head `analysis.json` and base-commit metadata. |
+| `review_artifact_url` | review | GitHub Actions artifact URL containing the PR-head `analysis.json` and comparison-branch metadata. |
 | `analysis_mode` | sync | `full` or `incremental`: whether the run rebuilt the analysis from scratch or reused the committed baseline. |
 | `files_written` | sync | The generated files written for the docs commit. |
 | `committed` | sync | `true` when a docs commit was pushed to `target_branch`; `false` when sync mode ran but had nothing to commit (or the push failed open). Empty only if sync mode did not run. |

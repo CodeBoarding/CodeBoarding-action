@@ -168,6 +168,23 @@ class TestAnalysis(_Base):
         self.assertEqual(ri.calls[0]["target_ref"], "head")
         self.assertIn("head_analysis_mode=incremental", buf.getvalue())
 
+    def test_head_force_full_skips_incremental(self):
+        ri, rf = _Rec(), _Rec()
+        self._install(run_full=rf, run_incremental=ri)
+        out = tempfile.mkdtemp()
+        (Path(out) / "stale.json").write_text("{}")
+        buf = StringIO()
+
+        with redirect_stdout(buf):
+            engine_adapter.run_head("/repo", out, "r", "rid", 2, "empty", "head", "head", force_full=True)
+
+        self.assertEqual(len(ri.calls), 0)
+        self.assertEqual(len(rf.calls), 1)
+        self.assertEqual(rf.calls[0]["depth_level"], 2)
+        self.assertEqual(rf.calls[0]["source_sha"], "head")
+        self.assertFalse((Path(out) / "stale.json").exists())
+        self.assertIn("head_analysis_mode=full", buf.getvalue())
+
     def test_head_falls_back_to_full_on_cache_miss(self):
         analysis, IncMiss, _ = self._install()  # install once so the exception class identity matches
         rf = _Rec()

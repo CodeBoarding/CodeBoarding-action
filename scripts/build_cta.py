@@ -71,7 +71,7 @@ def webview_url(
     artifact_name: str = "",
     artifact_url: str = "",
 ) -> str | None:
-    """Return the hosted-webview deep-link URL for this PR's head-vs-base diff, or None.
+    """Return the hosted-webview deep-link URL for this PR's head-vs-comparison-branch diff, or None.
 
     Deep-links straight to the diff. The base/head SHAs pin the code comparison;
     the optional run/artifact fields let the webview load PR-specific analysis
@@ -128,7 +128,7 @@ def build_cta(
     The ⚠️ banner shows whenever ``issues > 0``.
 
     When ``webview_ready`` a "explore in browser" line deep-links the hosted
-    webview to this PR's artifact-backed head-vs-base diff.
+    webview to this PR's artifact-backed head-vs-comparison-branch diff.
     """
     parts: list[str] = []
     if issues > 0:
@@ -188,7 +188,7 @@ def main() -> int:
     p.add_argument("--issues", default="0", help="Real architecture-issue count (0 -> no warning banner)")
     p.add_argument("--webview-base", default="", help="Hosted webview base URL (e.g. https://app.codeboarding.org)")
     p.add_argument("--head-sha", default="", help="PR head SHA the webview link pins to")
-    p.add_argument("--base-sha", default="", help="PR base SHA the webview link compares against")
+    p.add_argument("--base-sha", default="", help="Comparison-branch SHA the webview link compares against")
     p.add_argument("--run-id", default="", help="GitHub Actions run id containing the PR analysis artifact")
     p.add_argument("--artifact-name", default="", help="GitHub Actions artifact name containing PR analysis data")
     p.add_argument("--artifact-url", default="", help="GitHub Actions artifact URL containing PR analysis data")
