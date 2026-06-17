@@ -530,7 +530,6 @@ runs:
       shell: bash
       working-directory: codeboarding-engine
       run: |
-        uv venv --clear
         uv pip install -e .
 
     - name: Install LSP servers
@@ -992,7 +991,8 @@ runs:
           echo "::error::Head analysis ran but analysis.json is missing."
           exit 1
         fi
-        echo "base_analysis=$BASE_DIR/analysis.json" >> $GITHUB_OUTPUT
+        echo "base_analysis=$BASE_DIR/analysis.json" 
+        $GITHUB_OUTPUT
         echo "head_analysis=$HEAD_DIR/analysis.json" >> $GITHUB_OUTPUT
 
     - name: Architecture health check (best-effort)
