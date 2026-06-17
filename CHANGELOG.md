@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.5.0...v1.5.1) (2026-06-17)
+
+
+### Bug Fixes
+
+* set up Java and .NET inside action ([#37](https://github.com/CodeBoarding/CodeBoarding-action/issues/37)) ([a7164ab](https://github.com/CodeBoarding/CodeBoarding-action/commit/a7164abe286eaf7c5f87184e05df175d92a0777f))
+
 ## [1.5.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.4.0...v1.5.0) (2026-06-15)
 
 
