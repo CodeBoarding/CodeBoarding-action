@@ -225,15 +225,15 @@ def _sanitize(name: str) -> str:
     return re.sub(r"\W+", "_", name or "")
 
 
-# Mermaid label metacharacters → numeric/named char-refs (the ``#NNN;`` form
-# GitHub's strict renderer accepts). A bare ``]`` / ``)`` / ``}`` terminates a
-# node label and breaks the whole diagram, so escape the shape chars too — not
-# just ``#`` and ``"``.
+# Mermaid label metacharacters → numeric char refs (the ``#NNN;`` form GitHub's
+# strict renderer accepts). A bare ``]`` / ``)`` / ``}`` terminates a node label
+# and breaks the whole diagram, so escape the shape chars too — not just ``#``
+# and ``"``.
 _ESC_MAP = {
-    "&": "#amp;",
-    '"': "#quot;",
-    "<": "#lt;",
-    ">": "#gt;",
+    "&": "#38;",
+    '"': "#34;",
+    "<": "#60;",
+    ">": "#62;",
     "[": "#91;",
     "]": "#93;",
     "(": "#40;",

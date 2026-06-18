@@ -68,7 +68,7 @@ inputs:
     required: false
     default: ''
   webview_base_url:
-    description: 'Review mode: hosted webview base URL. The PR comment links to an artifact-backed head-vs-base architecture diff; review mode does not commit generated files to PR branches. Set empty to disable the browser link.'
+    description: 'Review mode: hosted webview base URL. The PR comment links to an artifact-backed head-vs-comparison-branch architecture diff; review mode does not commit generated files to PR branches. Set empty to disable the browser link.'
     required: false
     default: 'https://app.codeboarding.org'
   trigger_command:
@@ -146,7 +146,8 @@ runs:
   #   3. ANALYSIS (key live) — review: base/seed/head/health ; sync: seed/analyze
   #   4. Drop LLM key, then OUTPUT (no key) — review: diff→artifact→comment ; sync: render→commit
   # The binding between the modes is the committed .codeboarding/analysis.json
-  # baseline: sync (phase 3/4) writes it, review (phase 3) reads it as the PR base.
+  # baseline: sync (phase 3/4) writes it, review (phase 3) reads it from the
+  # target branch tip that the PR is opened against.
   steps:
     - name: Guard — resolve mode and target
       id: guard
@@ -282,6 +283,24 @@ runs:
           BASE_REF="$PULL_BASE_REF"
           BASE_REPO="$PULL_BASE_REPO"
           HEAD_REPO="$PULL_HEAD_REPO"
+          EMPTY_BASE="false"
+          FORK_COMPARE="false"
+          if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+            FORK_COMPARE="true"
+            # Fork PRs should compare against the fork's branch with the same
+            # name as the PR target branch, not upstream/main. If the fork has
+            # no such branch/baseline, the review starts from an empty baseline
+            # so the PR architecture renders as newly introduced.
+            FORK_BASE_SHA="$(git ls-remote "https://github.com/${HEAD_REPO}.git" "refs/heads/${BASE_REF}" | awk '{print $1; exit}')"
+            if [ -n "$FORK_BASE_SHA" ]; then
+              BASE_SHA="$FORK_BASE_SHA"
+              BASE_REPO="$HEAD_REPO"
+            else
+              BASE_SHA=""
+              BASE_REPO="$HEAD_REPO"
+              EMPTY_BASE="true"
+            fi
+          fi
         elif [ "$EVENT" = "pull_request_target" ]; then
           skip "pull_request_target is not supported because it can expose secrets to PR-head code; use pull_request or trusted issue_comment."
         elif [ "$EVENT" = "issue_comment" ]; then
@@ -318,11 +337,14 @@ runs:
           BASE_REPO="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["base"]["repo"]["full_name"])' 2>/dev/null)" || skip "Could not parse base repo from the PR API."
           HEAD_REPO="$(printf '%s' "$PR_JSON" | python3 -c 'import json,sys;print(json.load(sys.stdin)["head"]["repo"]["full_name"])' 2>/dev/null)" || skip "Could not parse head repo from the PR API."
           [ "$HEAD_REPO" = "$REPOSITORY" ] || skip "On-demand runs with secrets are disabled for fork PRs."
+          EMPTY_BASE="false"
+          FORK_COMPARE="false"
         else
           skip "Unsupported event '$EVENT' in review mode (use pull_request or issue_comment; set mode: sync to version your architecture on push)."
         fi
 
-        { [ -n "$PR_NUMBER" ] && [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ] && [ -n "$BASE_REPO" ] && [ -n "$HEAD_REPO" ]; } || skip "Could not resolve PR/base/head SHAs/repos."
+        { [ -n "$PR_NUMBER" ] && [ -n "$HEAD_SHA" ] && [ -n "$BASE_REPO" ] && [ -n "$HEAD_REPO" ]; } || skip "Could not resolve PR/base/head SHAs/repos."
+        { [ -n "$BASE_SHA" ] || [ "${EMPTY_BASE:-false}" = "true" ]; } || skip "Could not resolve comparison branch SHA."
         {
           echo "skip=false"
           echo "pr_number=$PR_NUMBER"
@@ -332,12 +354,18 @@ runs:
           echo "base_ref=$BASE_REF"
           echo "base_repo=$BASE_REPO"
           echo "head_repo=$HEAD_REPO"
+          echo "empty_base=${EMPTY_BASE:-false}"
+          echo "fork_compare=${FORK_COMPARE:-false}"
           echo "checkout_repo=$HEAD_REPO"
           echo "checkout_sha=$HEAD_SHA"
           # same_repo gates pushing the head analysis: forks give a read-only token.
           if [ "$HEAD_REPO" = "$REPOSITORY" ]; then echo "same_repo=true"; else echo "same_repo=false"; fi
         } >> "$GITHUB_OUTPUT"
-        echo "Resolved PR #$PR_NUMBER (base=$BASE_REPO@$BASE_SHA head=$HEAD_REPO@$HEAD_SHA) via $EVENT"
+        if [ "${EMPTY_BASE:-false}" = "true" ]; then
+          echo "Resolved PR #$PR_NUMBER (comparison branch ${HEAD_REPO}:${BASE_REF} has no tip; using empty baseline, head=$HEAD_REPO@$HEAD_SHA) via $EVENT"
+        else
+          echo "Resolved PR #$PR_NUMBER (comparison=$BASE_REPO@$BASE_SHA head=$HEAD_REPO@$HEAD_SHA) via $EVENT"
+        fi
 
     # Feedback exits the guard with skip=true, so the analysis "Acknowledge
     # command" step below (gated on skip != 'true') never fires for it; this one
@@ -427,11 +455,17 @@ runs:
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
         BASE_REPO: ${{ steps.guard.outputs.base_repo }}
         BASE_REF: ${{ steps.guard.outputs.base_ref }}
+        EMPTY_BASE: ${{ steps.guard.outputs.empty_base }}
       run: |
+        if [ "$EMPTY_BASE" = "true" ]; then
+          echo "No comparison branch tip is available; using empty baseline."
+          exit 0
+        fi
         git remote add base "https://github.com/${BASE_REPO}.git" 2>/dev/null || git remote set-url base "https://github.com/${BASE_REPO}.git"
         # The baseline search walks the PR head ancestry, which checkout fetched
-        # with fetch-depth: 0. We still fetch the PR base commit for GitHub-style
-        # changed-file diffs and for the no-baseline fallback full base analysis.
+        # with fetch-depth: 0. We still fetch the PR target-branch commit for
+        # GitHub-style changed-file diffs and for the no-baseline fallback full
+        # target analysis.
         if [ -n "$BASE_REF" ]; then
           git fetch --no-tags base "+refs/heads/${BASE_REF}:refs/remotes/codeboarding-base/${BASE_REF}" || true
         fi
@@ -440,8 +474,8 @@ runs:
           git remote add base "https://github.com/${BASE_REPO}.git" 2>/dev/null || git remote set-url base "https://github.com/${BASE_REPO}.git"
           git fetch base "$BASE_SHA" --depth=2 || true
         fi
-        git cat-file -e "$BASE_SHA" && echo "Base commit reachable." || \
-          (echo "::error::Base commit $BASE_SHA is not reachable." && exit 1)
+        git cat-file -e "$BASE_SHA" && echo "Target branch commit reachable." || \
+          (echo "::error::Target branch commit $BASE_SHA is not reachable." && exit 1)
 
     - name: Resolve analysis depth
       id: resolve_depth
@@ -480,16 +514,6 @@ runs:
       with:
         enable-cache: true   # cache ~/.cache/uv (wheels/builds) for fast cold installs
 
-    - name: Cache uv venv (engine)
-      if: steps.guard.outputs.skip != 'true'
-      uses: actions/cache@v4
-      with:
-        path: codeboarding-engine/.venv
-        # No restore-keys: a lockfile change must force a clean cold venv, not
-        # restore a venv built from a different lock (`uv pip install -e .` won't
-        # downgrade/sync already-installed transitive deps back to this uv.lock).
-        key: cb-uv-${{ runner.os }}-${{ hashFiles('codeboarding-engine/pyproject.toml', 'codeboarding-engine/uv.lock') }}
-
     - name: Cache LSP servers
       if: steps.guard.outputs.skip != 'true'
       uses: actions/cache@v4
@@ -506,18 +530,6 @@ runs:
       shell: bash
       working-directory: codeboarding-engine
       run: |
-        # Reuse the cached venv when it's healthy, but rebuild it if its interpreter
-        # symlink is dead. The cache key is the lockfiles only, NOT the Python patch
-        # version, so when setup-python provisions a newer patch (e.g. 3.13.13 ->
-        # 3.13.14) and GitHub GCs the old toolcache dir, the cached `.venv/bin/python3`
-        # symlink dangles. A bare `test -d .venv` would then reuse it and `uv pip
-        # install -e .` fails with "Broken symlink … was the underlying Python
-        # interpreter removed?". So probe the interpreter; if it's missing or broken,
-        # remove the stale dir first — `uv venv` REFUSES to recreate over an existing
-        # `.venv` ("A virtual environment already exists") — then create a fresh one.
-        # On a healthy cache hit the probe passes and the venv is reused as-is, so the
-        # cache benefit is preserved (unlike an unconditional `--clear`).
-        .venv/bin/python -c '' 2>/dev/null || { rm -rf .venv && uv venv; }
         uv pip install -e .
 
     - name: Install LSP servers
@@ -704,51 +716,64 @@ runs:
       working-directory: target-repo
       env:
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
-        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
         ACTION_PATH: ${{ github.action_path }}
+        DEPTH: ${{ steps.resolve_depth.outputs.depth }}
+        EMPTY_BASE: ${{ steps.guard.outputs.empty_base }}
+        FORK_COMPARE: ${{ steps.guard.outputs.fork_compare }}
       run: |
         BASE_DIR="${RUNNER_TEMP}/cb-base"
         HEAD_DIR="${RUNNER_TEMP}/cb-head"
         mkdir -p "$BASE_DIR" "$HEAD_DIR"
         echo "base_dir=$BASE_DIR" >> $GITHUB_OUTPUT
         echo "head_dir=$HEAD_DIR" >> $GITHUB_OUTPUT
-        BASELINE_SHA=""
-        # Use the newest analysis.json reachable by walking backwards through
-        # the PR head branch ancestry. If the PR branch is a->b->c->d and master
-        # is a->b->m1->m2, this deliberately searches d,c,b,a — not m2,m1,b,a.
-        while IFS= read -r candidate; do
-          if git cat-file -e "${candidate}:.codeboarding/analysis.json" 2>/dev/null; then
-            BASELINE_SHA="$candidate"
-            break
-          fi
-        done < <(git rev-list "$HEAD_SHA" -- .codeboarding/analysis.json 2>/dev/null || true)
-
-        if [ -n "$BASELINE_SHA" ] && git show "${BASELINE_SHA}:.codeboarding/analysis.json" > "${BASE_DIR}/analysis.json" 2>/dev/null; then
+        if [ "$EMPTY_BASE" = "true" ]; then
+          printf '%s\n' '{"metadata": {"baseline": "empty"}, "components": [], "components_relations": []}' > "${BASE_DIR}/analysis.json"
+          echo "committed=false" >> $GITHUB_OUTPUT
+          echo "empty_base=true" >> $GITHUB_OUTPUT
+          echo "baseline_sha=empty" >> $GITHUB_OUTPUT
+          echo "No committed baseline exists on the fork comparison branch; using an empty baseline so PR architecture renders as new."
+          exit 0
+        fi
+        echo "empty_base=false" >> $GITHUB_OUTPUT
+        if git show "${BASE_SHA}:.codeboarding/analysis.json" > "${BASE_DIR}/analysis.json" 2>/dev/null; then
           if python3 "$ACTION_PATH/scripts/engine_adapter.py" validate-base \
               --analysis "${BASE_DIR}/analysis.json" \
-              --expected-sha "$BASELINE_SHA"; then
+              --expected-sha "$BASE_SHA" \
+              --expected-depth "$DEPTH"; then
             echo "committed=true" >> $GITHUB_OUTPUT
-            echo "baseline_sha=$BASELINE_SHA" >> $GITHUB_OUTPUT
-            if [ "$BASELINE_SHA" = "$HEAD_SHA" ]; then
-              echo "Using committed .codeboarding/analysis.json at PR head ${HEAD_SHA}."
-            else
-              echo "Using nearest committed .codeboarding/analysis.json at ${BASELINE_SHA} from PR head history ${HEAD_SHA}."
-            fi
+            echo "baseline_sha=$BASE_SHA" >> $GITHUB_OUTPUT
+            echo "Using committed .codeboarding/analysis.json at target branch commit ${BASE_SHA}."
           else
             rm -f "${BASE_DIR}/analysis.json"
+            if [ "$FORK_COMPARE" = "true" ]; then
+              printf '%s\n' '{"metadata": {"baseline": "empty"}, "components": [], "components_relations": []}' > "${BASE_DIR}/analysis.json"
+              echo "committed=false" >> $GITHUB_OUTPUT
+              echo "empty_base=true" >> $GITHUB_OUTPUT
+              echo "baseline_sha=empty" >> $GITHUB_OUTPUT
+              echo "Fork comparison branch baseline at ${BASE_SHA} is unusable; using an empty baseline so PR architecture renders as new."
+              exit 0
+            fi
             echo "committed=false" >> $GITHUB_OUTPUT
             echo "baseline_sha=$BASE_SHA" >> $GITHUB_OUTPUT
-            echo "Committed baseline at ${BASELINE_SHA} is unusable; will generate a fresh base analysis at ${BASE_SHA}."
+            echo "Committed baseline at target branch commit ${BASE_SHA} is unusable; will generate a fresh target analysis."
           fi
         else
           rm -f "${BASE_DIR}/analysis.json"
+          if [ "$FORK_COMPARE" = "true" ]; then
+            printf '%s\n' '{"metadata": {"baseline": "empty"}, "components": [], "components_relations": []}' > "${BASE_DIR}/analysis.json"
+            echo "committed=false" >> $GITHUB_OUTPUT
+            echo "empty_base=true" >> $GITHUB_OUTPUT
+            echo "baseline_sha=empty" >> $GITHUB_OUTPUT
+            echo "No committed baseline found on the fork comparison branch at ${BASE_SHA}; using an empty baseline so PR architecture renders as new."
+            exit 0
+          fi
           echo "committed=false" >> $GITHUB_OUTPUT
           echo "baseline_sha=$BASE_SHA" >> $GITHUB_OUTPUT
-          echo "No committed baseline found in PR head history; will generate one via a full analysis on the base commit ${BASE_SHA}."
+          echo "No committed baseline found at target branch commit ${BASE_SHA}; will generate one via a full analysis on that commit."
         fi
 
     - name: Restore base artifacts (keyed by baseline SHA)
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.guard.outputs.empty_base != 'true'
       id: basecache
       uses: actions/cache/restore@v4
       with:
@@ -760,6 +785,27 @@ runs:
         # run with no model pinned would share a key yet produce different base
         # analyses; the mode discriminator keeps them from reusing each other's cache.
         key: cb-base-v2-${{ runner.os }}-${{ steps.base.outputs.baseline_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+
+    - name: Reassert committed base analysis after cache restore
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.base.outputs.committed == 'true'
+      shell: bash
+      working-directory: target-repo
+      env:
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        BASE_DIR: ${{ steps.base.outputs.base_dir }}
+        ACTION_PATH: ${{ github.action_path }}
+        DEPTH: ${{ steps.resolve_depth.outputs.depth }}
+      run: |
+        # The cache stores generated base artifacts under the baseline SHA so the
+        # static-analysis pkl can be reused. It must never replace the committed
+        # target-branch baseline used for the PR diff. Re-copy the versioned
+        # baseline after restore: cache may supply pkl/sha, but git is the source
+        # of truth for cb-base/analysis.json.
+        git show "${BASE_SHA}:.codeboarding/analysis.json" > "${BASE_DIR}/analysis.json"
+        python3 "$ACTION_PATH/scripts/engine_adapter.py" validate-base \
+          --analysis "${BASE_DIR}/analysis.json" \
+          --expected-sha "$BASE_SHA" \
+          --expected-depth "$DEPTH"
 
     # A committed analysis.json gives the head analysis stable component ids,
     # but the engine's incremental path ALSO needs the base static_analysis.pkl
@@ -807,7 +853,7 @@ runs:
         git -C "$TARGET" worktree remove --force "$BASE_SRC" 2>/dev/null || true
 
     - name: Generate base analysis (no committed baseline)
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.base.outputs.committed == 'false' && steps.basecache.outputs.cache-hit != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.base.outputs.empty_base != 'true' && steps.base.outputs.committed == 'false' && steps.basecache.outputs.cache-hit != 'true'
       shell: bash
       working-directory: codeboarding-engine
       env:
@@ -868,7 +914,7 @@ runs:
     # load-bearing — caching a pkl-less dir under this base SHA's key would
     # permanently suppress seeding retries for it.
     - name: Save generated base artifacts
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.basecache.outputs.cache-hit != 'true' && (steps.base.outputs.committed == 'false' || steps.seedbase.outputs.seed_ok == 'true')
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.base.outputs.empty_base != 'true' && steps.basecache.outputs.cache-hit != 'true' && (steps.base.outputs.committed == 'false' || steps.seedbase.outputs.seed_ok == 'true')
       uses: actions/cache/save@v4
       with:
         path: ${{ runner.temp }}/cb-base
@@ -900,6 +946,7 @@ runs:
         DEPTH: ${{ steps.resolve_depth.outputs.depth }}
         BASELINE_SHA: ${{ steps.base.outputs.baseline_sha }}
         HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
+        EMPTY_BASE: ${{ steps.base.outputs.empty_base }}
       run: |
         # Export the key under the selected provider's env var (only this one),
         # so the engine auto-selects that provider.
@@ -925,20 +972,27 @@ runs:
         # untouched as the "before" snapshot for the diff.
         cp -a "$BASE_DIR"/. "$HEAD_DIR"/ 2>/dev/null || true
         rm -rf "$HEAD_DIR/health"
-        uv run python "$ACTION_PATH/scripts/engine_adapter.py" head \
-          --repo "$TARGET_REPO" \
-          --out "$HEAD_DIR" \
-          --name "$REPO_NAME" \
-          --run-id "$RUN_ID_HEAD" \
-          --depth "$DEPTH" \
-          --base-ref "$BASELINE_SHA" \
-          --target-ref "$HEAD_SHA" \
+        head_args=(
+          head
+          --repo "$TARGET_REPO"
+          --out "$HEAD_DIR"
+          --name "$REPO_NAME"
+          --run-id "$RUN_ID_HEAD"
+          --depth "$DEPTH"
+          --base-ref "$BASELINE_SHA"
+          --target-ref "$HEAD_SHA"
           --source-sha "$HEAD_SHA"
+        )
+        if [ "$EMPTY_BASE" = "true" ]; then
+          head_args+=(--force-full)
+        fi
+        uv run python "$ACTION_PATH/scripts/engine_adapter.py" "${head_args[@]}"
         if [ ! -f "$HEAD_DIR/analysis.json" ]; then
           echo "::error::Head analysis ran but analysis.json is missing."
           exit 1
         fi
-        echo "base_analysis=$BASE_DIR/analysis.json" >> $GITHUB_OUTPUT
+        echo "base_analysis=$BASE_DIR/analysis.json" 
+        $GITHUB_OUTPUT
         echo "head_analysis=$HEAD_DIR/analysis.json" >> $GITHUB_OUTPUT
 
     - name: Architecture health check (best-effort)
@@ -968,7 +1022,7 @@ runs:
 
     # ---- Sync mode: analyze the target commit (mirrors the review pipeline's
     # baseline/seed/incremental strategy, but against the committed analysis.json
-    # in the working tree instead of the PR base). ----
+    # in the working tree instead of a PR comparison branch). ----
 
     - name: Seed sync workdir from committed baseline
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
@@ -1300,7 +1354,7 @@ runs:
         # color. The git listing is the PR's own changes (three-dot merge-base..head,
         # the same set as the Files-changed tab; --no-renames so a moved file's old
         # path still appears for the donor component). Node colors compare against
-        # the base *tip*, so a node colored only by base-branch churn on a stale PR
+        # the target branch tip, so a node colored only by target-branch churn on a stale PR
         # gets no dropdown. Best-effort: if the git diff fails (e.g. merge-base
         # unreachable on a shallow fork fetch) the script falls back to
         # analysis-derived changes, and if the script fails the section is omitted —
@@ -1323,15 +1377,15 @@ runs:
             cat "$DIAGRAM_MD"
             echo ""
             echo ""
-            echo "Colors indicate component changes compared to \`${BASE_REF}\`: 🟩 Added · 🟨 Modified · 🟥 Removed"
+            echo "Colors indicate component changes compared to target branch \`${BASE_REF}\`: 🟩 Added · 🟨 Modified · 🟥 Removed"
             if [ "$TRUNCATED" = "true" ]; then
               echo ""
               echo "<sub>Showing changed components only — the full graph exceeds GitHub's inline Mermaid limit.</sub>"
             fi
           elif [ "$CHANGED" = "true" ]; then
-            echo "Architecture changed versus \`${BASE_REF}\`, but the diagram is too large to render inline (GitHub caps inline Mermaid at ~500 edges)."
+            echo "Architecture changed versus target branch \`${BASE_REF}\`, but the diagram is too large to render inline (GitHub caps inline Mermaid at ~500 edges)."
           else
-            echo "No architectural changes detected versus \`${BASE_REF}\`."
+            echo "No architectural changes detected versus target branch \`${BASE_REF}\`."
           fi
           if [ -n "$ARTIFACT_URL" ]; then
             echo ""

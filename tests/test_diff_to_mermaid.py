@@ -121,14 +121,14 @@ class TestRender(unittest.TestCase):
         head = {"components": [comp('A "q" #h'), comp("B")], "components_relations": []}
         base = {"components": [comp("B")], "components_relations": []}
         text, _ = dm.render_mermaid(dm.build_diff(base, head), render_depth=1)
-        self.assertIn("#quot;", text)
+        self.assertIn("#34;", text)
         self.assertIn("#35;", text)
 
     def test_label_escaping_brackets_break_chars(self):
         # `]` / `(` / `&` would break GitHub's renderer if left raw.
         self.assertEqual(dm._esc("Has]Bracket"), "Has#93;Bracket")
         self.assertEqual(dm._esc("f(x)"), "f#40;x#41;")
-        self.assertEqual(dm._esc("A & B"), "A #amp; B")
+        self.assertEqual(dm._esc("A & B"), "A #38; B")
         head = {"components": [comp("Weird]Name(x)"), comp("B")], "components_relations": []}
         base = {"components": [comp("B")], "components_relations": []}
         text, _ = dm.render_mermaid(dm.build_diff(base, head))

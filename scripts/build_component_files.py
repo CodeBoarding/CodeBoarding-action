@@ -15,8 +15,8 @@ Which files count as "changed" for a component:
     40 would answer the wrong question. ``--no-renames`` matters: with rename
     detection on, a moved file's old path never appears in ``--name-only`` and
     the donor component's dropdown would silently vanish. Node colors compare
-    head against the base *tip*, so a node colored only by base-branch churn
-    on a stale PR intentionally gets no dropdown.
+    head against the target branch tip, so a node colored only by target-branch
+    churn on a stale PR intentionally gets no dropdown.
   * Without it: the analysis-derived change set — files added to / removed
     from the component plus files whose method set changed. This misses
     body-only edits (the analysis can't see them), so the git listing is
@@ -141,7 +141,7 @@ def render_component_files(
         base_match = comp if comp.get("diff_status") == "deleted" else base_by_name.get(dm._comp_name(comp))
         files = _changed_files_for(comp, base_match, changed_files)
         if not files:
-            continue  # e.g. relation-only change, base-branch churn, or a reorg the PR didn't touch
+            continue  # e.g. relation-only change, comparison-branch churn, or a reorg the PR didn't touch
         truncated = truncated or len(files) > MAX_FILES_PER_COMPONENT
         n_sub = (
             dm._count_changed_components(comp.get("components") or [])

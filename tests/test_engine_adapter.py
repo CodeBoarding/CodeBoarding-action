@@ -13,6 +13,57 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
+
+def _preload(name, **attrs):
+    m = types.ModuleType(name)
+    for k, v in attrs.items():
+        setattr(m, k, v)
+    sys.modules[name] = m
+    return m
+
+
+class _InitialBaselineUnavailableError(Exception):
+    pass
+
+
+class _InitialIncrementalCacheMissingError(Exception):
+    pass
+
+
+class _InitialSeverity:
+    WARNING, CRITICAL = "warning", "critical"
+
+
+class _InitialStaticAnalysisCache:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def get(self):
+        return None
+
+    def save(self, *args, **kwargs):
+        pass
+
+
+analysis = _preload(
+    "codeboarding_workflows.analysis",
+    run_full=lambda **kwargs: "OUT",
+    run_incremental=lambda **kwargs: "OUT",
+    BaselineUnavailableError=_InitialBaselineUnavailableError,
+)
+pkg = _preload("codeboarding_workflows")
+pkg.analysis = analysis
+exc = _preload("diagram_analysis.exceptions", IncrementalCacheMissingError=_InitialIncrementalCacheMissingError)
+da = _preload("diagram_analysis")
+da.exceptions = exc
+_preload("codeboarding_workflows.rendering", render_docs=lambda *args, **kwargs: None)
+_preload("health.models", Severity=_InitialSeverity)
+_preload("health.runner", run_health_checks=lambda *args, **kwargs: None)
+_preload("health")
+_preload("static_analyzer", get_static_analysis=lambda *args, **kwargs: {})
+_preload("static_analyzer.analysis_cache", StaticAnalysisCache=_InitialStaticAnalysisCache)
+_preload("static_analyzer.cluster_helpers", build_all_cluster_results=lambda *args, **kwargs: {})
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import engine_adapter  # noqa: E402
 
@@ -75,6 +126,10 @@ class TestAnalysis(_Base):
         exc = _mod("diagram_analysis.exceptions", IncrementalCacheMissingError=IncrementalCacheMissingError)
         da = _mod("diagram_analysis")
         da.exceptions = exc
+        engine_adapter.run_full = analysis.run_full
+        engine_adapter.run_incremental = analysis.run_incremental
+        engine_adapter.BaselineUnavailableError = BaselineUnavailableError
+        engine_adapter.IncrementalCacheMissingError = IncrementalCacheMissingError
         return analysis, IncrementalCacheMissingError, BaselineUnavailableError
 
     def test_base_calls_run_full(self):
@@ -168,11 +223,30 @@ class TestAnalysis(_Base):
         self.assertEqual(ri.calls[0]["target_ref"], "head")
         self.assertIn("head_analysis_mode=incremental", buf.getvalue())
 
+    def test_head_force_full_skips_incremental(self):
+        ri, rf = _Rec(), _Rec()
+        self._install(run_full=rf, run_incremental=ri)
+        out = tempfile.mkdtemp()
+        (Path(out) / "stale.json").write_text("{}")
+        buf = StringIO()
+
+        with redirect_stdout(buf):
+            engine_adapter.run_head("/repo", out, "r", "rid", 2, "empty", "head", "head", force_full=True)
+
+        self.assertEqual(len(ri.calls), 0)
+        self.assertEqual(len(rf.calls), 1)
+        self.assertEqual(rf.calls[0]["depth_level"], 2)
+        self.assertEqual(rf.calls[0]["source_sha"], "head")
+        self.assertFalse((Path(out) / "stale.json").exists())
+        self.assertIn("head_analysis_mode=full", buf.getvalue())
+
     def test_head_falls_back_to_full_on_cache_miss(self):
         analysis, IncMiss, _ = self._install()  # install once so the exception class identity matches
         rf = _Rec()
         analysis.run_full = rf
         analysis.run_incremental = _Rec(raises=IncMiss)
+        engine_adapter.run_full = analysis.run_full
+        engine_adapter.run_incremental = analysis.run_incremental
         out = tempfile.mkdtemp()
         (Path(out) / "stale.json").write_text("{}")  # must be wiped before the full run
         (Path(out) / "health").mkdir()
@@ -191,6 +265,8 @@ class TestAnalysis(_Base):
         rf = _Rec()
         analysis.run_full = rf
         analysis.run_incremental = _Rec(raises=BaseUnavail)
+        engine_adapter.run_full = analysis.run_full
+        engine_adapter.run_incremental = analysis.run_incremental
         engine_adapter.run_head("/repo", tempfile.mkdtemp(), "r", "rid", 1, "base", "head", "head")
         self.assertEqual(len(rf.calls), 1)  # BaselineUnavailableError also triggers the full re-run
 
@@ -486,6 +562,9 @@ class TestSeed(_Base):
             "static_analyzer.cluster_helpers", build_all_cluster_results=build_all_cluster_results
         )
         sa.analysis_cache = _mod("static_analyzer.analysis_cache", StaticAnalysisCache=_Cache)
+        engine_adapter.get_static_analysis = get_static_analysis
+        engine_adapter.build_all_cluster_results = build_all_cluster_results
+        engine_adapter.StaticAnalysisCache = _Cache
         return log, results
 
     def test_seed_analyzes_clusters_then_saves(self):
@@ -540,6 +619,9 @@ class TestHealth(_Base):
         _mod(
             "static_analyzer",
         )
+        engine_adapter.Severity = Severity
+        engine_adapter.run_health_checks = lambda sa, repo_name, repo_path: report
+        engine_adapter.StaticAnalysisCache = _Cache
         return Severity
 
     def test_counts_warning_and_critical(self):
@@ -577,6 +659,7 @@ class TestHealth(_Base):
         self.assertEqual(engine_adapter.run_health(str(artifact_dir), "/repo", "r"), 3)
 
     def test_malformed_health_report_falls_back(self):
+        self._install_health(report=None)
         artifact_dir = Path(tempfile.mkdtemp())
         report_dir = artifact_dir / "health"
         report_dir.mkdir()
@@ -584,8 +667,17 @@ class TestHealth(_Base):
         self.assertEqual(engine_adapter.run_health(str(artifact_dir), "/repo", "r"), 0)
 
     def test_missing_module_yields_zero(self):
-        # No health.* modules installed -> import fails -> 0, never raises.
-        self.assertEqual(engine_adapter.run_health("/art", "/repo", "r"), 0)
+        # Health failures are best-effort: return 0, never raise.
+        class _BrokenCache:
+            def __init__(self, *args, **kwargs):
+                raise ImportError("missing health dependency")
+
+        old_cache = engine_adapter.StaticAnalysisCache
+        engine_adapter.StaticAnalysisCache = _BrokenCache
+        try:
+            self.assertEqual(engine_adapter.run_health("/art", "/repo", "r"), 0)
+        finally:
+            engine_adapter.StaticAnalysisCache = old_cache
 
 
 class TestQuotaExhausted(_Base):
@@ -635,6 +727,10 @@ class TestQuotaExhausted(_Base):
         )
         da = _mod("diagram_analysis")
         da.exceptions = excmod
+        engine_adapter.run_full = analysis.run_full
+        engine_adapter.run_incremental = analysis.run_incremental
+        engine_adapter.BaselineUnavailableError = analysis.BaselineUnavailableError
+        engine_adapter.IncrementalCacheMissingError = excmod.IncrementalCacheMissingError
 
     def _run_base(self):
         return engine_adapter.main(
