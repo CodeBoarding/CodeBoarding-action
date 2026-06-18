@@ -1,11 +1,8 @@
 """CLI adapter between the action and the CodeBoarding analysis ENGINE.
 
 No analysis logic lives here. The engine is the separate ``CodeBoarding/
-CodeBoarding`` repo, checked out at runtime into ``codeboarding-engine/`` and
-imported lazily inside each function (``codeboarding_workflows`` etc.); this
+CodeBoarding`` repo, checked out at runtime into ``codeboarding-engine/``; this
 module just turns the action's shell steps into typed, tested calls into it.
-The lazy imports mean this file imports fine without the engine venv present —
-the tests stub those modules and assert we call the engine with the right args.
 
 Subcommands (all paths/refs come in as argv, never interpolated into source):
 
@@ -59,6 +56,20 @@ import os
 import re
 import shutil
 from pathlib import Path
+
+from codeboarding_workflows.analysis import BaselineUnavailableError, run_full, run_incremental
+from codeboarding_workflows.rendering import render_docs
+from diagram_analysis.exceptions import IncrementalCacheMissingError
+from static_analyzer import get_static_analysis
+from static_analyzer.analysis_cache import StaticAnalysisCache
+from static_analyzer.cluster_helpers import build_all_cluster_results
+
+try:
+    from health.models import Severity
+    from health.runner import run_health_checks
+except Exception as _health_import_error:  # engine without the health module
+    Severity = None
+    run_health_checks = None
 
 # A committed analysis.json's commit_hash is trusted only as far as a SHA shape:
 # it flows into GITHUB_OUTPUT, cache keys, and git refs, so anything else must
@@ -220,8 +231,6 @@ def validate_base_analysis(
 
 
 def run_base(repo_path: str, output_dir: str, repo_name: str, run_id: str, depth: int, source_sha: str) -> None:
-    from codeboarding_workflows.analysis import run_full
-
     res = run_full(
         repo_name=repo_name,
         repo_path=Path(repo_path),
@@ -253,10 +262,6 @@ def run_seed(repo_path: str, output_dir: str, source_sha: str) -> None:
     Errors propagate; the action step treats a failed seed as fail-open (the
     head run falls back to a full analysis, today's behavior).
     """
-    from static_analyzer import get_static_analysis
-    from static_analyzer.analysis_cache import StaticAnalysisCache
-    from static_analyzer.cluster_helpers import build_all_cluster_results
-
     results = get_static_analysis(Path(repo_path), cache_dir=Path(output_dir), source_sha=source_sha)
     cluster_results = build_all_cluster_results(results)
     StaticAnalysisCache(Path(output_dir), Path(repo_path)).save(results, source_sha=source_sha)
@@ -283,9 +288,6 @@ def _incremental_or_full(
     rule (which exceptions degrade to full, and the clear-before-full) lives in
     exactly one place — a bug fixed here is fixed for both modes.
     """
-    from codeboarding_workflows.analysis import BaselineUnavailableError, run_full, run_incremental
-    from diagram_analysis.exceptions import IncrementalCacheMissingError
-
     try:
         res = run_incremental(
             repo_path=Path(repo_path),
@@ -334,8 +336,6 @@ def run_head(
     whether review used the incremental path or fell back to a full analysis.
     """
     if force_full:
-        from codeboarding_workflows.analysis import run_full
-
         out_path = Path(output_dir)
         _clear_dir(out_path)
         res = run_full(
@@ -382,8 +382,6 @@ def run_analyze(
     out_path = Path(output_dir)
 
     def full(reason: str, analysis_depth: int) -> str:
-        from codeboarding_workflows.analysis import run_full
-
         print(f"{reason}; running full analysis.")
         _clear_dir(out_path)
         res = run_full(
@@ -430,8 +428,6 @@ def run_analyze(
 
 
 def run_render(analysis: str, output_dir: str, repo_name: str, repo_ref: str, output_format: str) -> None:
-    from codeboarding_workflows.rendering import render_docs
-
     out_path = Path(output_dir)
     _clear_dir(out_path)
     render_docs(
@@ -495,13 +491,10 @@ def run_health(artifact_dir: str, repo_path: str, repo_name: str) -> int:
         print(f"Architecture issues found in health report: {report_count}")
         return report_count
 
-    try:
-        from health.models import Severity
-        from health.runner import run_health_checks
-        from static_analyzer.analysis_cache import StaticAnalysisCache
-    except Exception as exc:  # engine without the health module
-        print(f"Health check skipped ({exc}).")
+    if Severity is None or run_health_checks is None:
+        print(f"Health check skipped ({_health_import_error}).")
         return 0
+
     try:
         cache = StaticAnalysisCache(artifact_dir=Path(artifact_dir), repo_root=Path(repo_path))
         sa = cache.get()
@@ -584,6 +577,7 @@ def main(argv=None) -> int:
                 args.base_ref,
                 args.target_ref,
                 args.source_sha,
+                # action.yml adds --force-full for EMPTY_BASE PRs (no comparison baseline).
                 args.force_full,
             )
         elif args.cmd == "health":

@@ -14,6 +14,58 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
+
+def _preload(name, **attrs):
+    module = types.ModuleType(name)
+    for key, value in attrs.items():
+        setattr(module, key, value)
+    sys.modules[name] = module
+    return module
+
+
+class _InitialBaselineUnavailableError(Exception):
+    pass
+
+
+class _InitialIncrementalCacheMissingError(Exception):
+    pass
+
+
+class _InitialSeverity:
+    WARNING, CRITICAL = "warning", "critical"
+
+
+class _InitialStaticAnalysisCache:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def get(self):
+        return None
+
+    def save(self, *args, **kwargs):
+        pass
+
+
+analysis = _preload(
+    "codeboarding_workflows.analysis",
+    run_full=lambda **kwargs: "OUT",
+    run_incremental=lambda **kwargs: "OUT",
+    BaselineUnavailableError=_InitialBaselineUnavailableError,
+)
+pkg = _preload("codeboarding_workflows")
+pkg.analysis = analysis
+rendering = _preload("codeboarding_workflows.rendering", render_docs=lambda *args, **kwargs: None)
+pkg.rendering = rendering
+exc = _preload("diagram_analysis.exceptions", IncrementalCacheMissingError=_InitialIncrementalCacheMissingError)
+da = _preload("diagram_analysis")
+da.exceptions = exc
+_preload("health.models", Severity=_InitialSeverity)
+_preload("health.runner", run_health_checks=lambda *args, **kwargs: None)
+_preload("health")
+_preload("static_analyzer", get_static_analysis=lambda *args, **kwargs: {})
+_preload("static_analyzer.analysis_cache", StaticAnalysisCache=_InitialStaticAnalysisCache)
+_preload("static_analyzer.cluster_helpers", build_all_cluster_results=lambda *args, **kwargs: {})
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import engine_adapter  # noqa: E402
 
@@ -84,6 +136,10 @@ class TestAnalyze(_Base):
         exc = _mod("diagram_analysis.exceptions", IncrementalCacheMissingError=IncrementalCacheMissingError)
         da = _mod("diagram_analysis")
         da.exceptions = exc
+        engine_adapter.run_full = analysis.run_full
+        engine_adapter.run_incremental = analysis.run_incremental
+        engine_adapter.BaselineUnavailableError = BaselineUnavailableError
+        engine_adapter.IncrementalCacheMissingError = IncrementalCacheMissingError
         return analysis, IncrementalCacheMissingError, BaselineUnavailableError
 
     def test_no_baseline_runs_full(self):
@@ -183,6 +239,8 @@ class TestAnalyze(_Base):
         rf = _Rec()
         analysis.run_full = rf
         analysis.run_incremental = _Rec(raises=IncMiss)
+        engine_adapter.run_full = analysis.run_full
+        engine_adapter.run_incremental = analysis.run_incremental
         out = Path(tempfile.mkdtemp())
         _write_analysis(out, commit="metadata-base", depth=3)
         (out / "stale.json").write_text("{}", encoding="utf-8")
@@ -199,6 +257,8 @@ class TestAnalyze(_Base):
         rf = _Rec()
         analysis.run_full = rf
         analysis.run_incremental = _Rec(raises=BaseUnavailable)
+        engine_adapter.run_full = analysis.run_full
+        engine_adapter.run_incremental = analysis.run_incremental
         out = tempfile.mkdtemp()
         _write_analysis(out, commit="metadata-base", depth=2)
 
@@ -233,6 +293,8 @@ class TestAnalyze(_Base):
         analysis, IncMiss, _ = self._install()
         analysis.run_full = _Rec()
         analysis.run_incremental = _Rec(raises=IncMiss)
+        engine_adapter.run_full = analysis.run_full
+        engine_adapter.run_incremental = analysis.run_incremental
         out = tempfile.mkdtemp()
         _write_analysis(out, commit="metadata-base", depth=2)
         buf = StringIO()
@@ -336,6 +398,7 @@ class TestRenderAndConcat(_Base):
         rendering = _mod("codeboarding_workflows.rendering", render_docs=rec)
         pkg = _mod("codeboarding_workflows")
         pkg.rendering = rendering
+        engine_adapter.render_docs = rec
         return rec
 
     def test_render_calls_engine_with_overview_root(self):
@@ -376,6 +439,7 @@ class TestSourceDispatch(_Base):
         rendering = _mod("codeboarding_workflows.rendering", render_docs=rec)
         pkg = _mod("codeboarding_workflows")
         pkg.rendering = rendering
+        engine_adapter.render_docs = rec
         with patch.dict(os.environ, {}, clear=True):
             rc = engine_adapter.main(
                 [
