@@ -34,7 +34,7 @@ inputs:
   codeboarding_version:
     description: 'CodeBoarding PyPI package version used as the analysis engine. Pin for reproducibility; set to a newer released version to opt into newer engine releases.'
     required: false
-    default: '0.12.2'
+    default: '0.12.3'
   depth_level:
     description: 'Analysis depth (1-3) for cold-start or force_full rebuilds. Once .codeboarding/analysis.json exists, its metadata.depth_level is the source of truth for incremental analysis and fallback-full recovery. Empty (default): 2 for cold starts.'
     required: false
@@ -487,11 +487,15 @@ runs:
         echo "depth=$DEPTH" >> "$GITHUB_OUTPUT"
         echo "Using default cold-start depth_level=$DEPTH."
 
-    - name: Set up Python 3.13
+    - name: Set up Python 3.12
       if: steps.guard.outputs.skip != 'true'
       uses: actions/setup-python@v5
       with:
-        python-version: '3.13'
+        # 3.12, not 3.13: the codeboarding package's transitive dep
+        # langchain-cerebras (>=0.8) is published only for >=3.11,<3.13, so a 3.13
+        # runner can't resolve the engine install. The engine itself supports
+        # <3.14, so bump this back to 3.13 once langchain-cerebras ships a 3.13 wheel.
+        python-version: '3.12'
 
     - name: Set up Node.js 20
       if: steps.guard.outputs.skip != 'true'
