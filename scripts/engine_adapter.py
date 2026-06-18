@@ -1,8 +1,11 @@
 """CLI adapter between the action and the CodeBoarding analysis ENGINE.
 
-No analysis logic lives here. The engine is the separate ``CodeBoarding/
-CodeBoarding`` repo, checked out at runtime into ``codeboarding-engine/``; this
-module just turns the action's shell steps into typed, tested calls into it.
+No analysis logic lives here. The engine is the published ``codeboarding`` PyPI
+package installed by the action and imported lazily inside each function
+(``codeboarding_workflows`` etc.); this module just turns the action's shell
+steps into typed, tested calls into it. The lazy imports mean this file imports
+fine without the package present — the tests stub those modules and assert we
+call the engine with the right args.
 
 Subcommands (all paths/refs come in as argv, never interpolated into source):
 
