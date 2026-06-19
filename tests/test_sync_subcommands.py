@@ -589,11 +589,16 @@ class TestBaselineDepth(_Base):
         self.assertEqual(engine_adapter.baseline_depth(self._write({"depth_level": 4}), True), 4)
         self.assertEqual(engine_adapter.baseline_depth(self._write({"depth_level": 99}), True), 10)
 
-    def test_floors_below_one(self):
-        self.assertEqual(engine_adapter.baseline_depth(self._write({"depth_level": 0}), False), 1)
-
-    def test_defaults_missing_or_unparseable(self):
-        for metadata in ({"depth_level": "x"}, {"commit_hash": "deadbeef1234"}):
+    def test_invalid_depth_uses_default(self):
+        # Every spec violation that isn't an over-cap clamp falls back to the
+        # default depth (2): a non-positive depth, an unparseable value, or a
+        # missing depth_level are all handled the same way.
+        for metadata in (
+            {"depth_level": 0},
+            {"depth_level": -3},
+            {"depth_level": "x"},
+            {"commit_hash": "deadbeef1234"},
+        ):
             with self.subTest(metadata=metadata):
                 self.assertEqual(engine_adapter.baseline_depth(self._write(metadata), False), 2)
 

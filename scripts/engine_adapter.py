@@ -178,10 +178,11 @@ def _metadata_depth(metadata: dict) -> int | None:
 def _resolve_depth(metadata: dict, licensed: bool, default_depth: int = _DEFAULT_DEPTH) -> int:
     """Resolve a usable analysis depth from a committed baseline's metadata.
 
-    Always returns a number in [1, tier-max] — never None. Both spec violations
-    are handled and logged with the exact condition:
-      * missing/unparseable depth_level -> the default cold-start depth;
-      * a depth below 1 or above the tier ceiling -> clamped into range.
+    Always returns a number in [1, tier-max] — never None. Each case is logged
+    with its exact condition:
+      * missing/unparseable/non-positive depth_level -> the default cold-start
+        depth (every "not a usable depth" spec violation is treated the same);
+      * a depth above the tier ceiling -> clamped down to the ceiling.
     The tier ceiling is the free cap for unlicensed runs and a much higher cap
     for licensed/BYO-key runs (see ``_max_depth``). A valid in-range depth passes
     through unchanged.
@@ -197,8 +198,8 @@ def _resolve_depth(metadata: dict, licensed: bool, default_depth: int = _DEFAULT
         )
         return min(default_depth, cap)
     if depth < 1:
-        print(f"Baseline depth_level {depth} is below 1; using default depth 2.", file=sys.stderr)
-        return 2
+        print(f"Baseline depth_level {depth} is not positive; using default depth {default_depth}.", file=sys.stderr)
+        return min(default_depth, cap)
     if depth > cap:
         tier = "licensed" if licensed else "free-tier"
         print(f"Baseline depth_level {depth} exceeds the {tier} max {cap}; clamping to {cap}.", file=sys.stderr)
