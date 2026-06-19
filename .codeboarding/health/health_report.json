@@ -1,6 +1,6 @@
 {
   "repository_name": "CodeBoarding-action",
-  "timestamp": "2026-06-17T16:32:40.429278+00:00",
+  "timestamp": "2026-06-19T01:32:15.613141+00:00",
   "overall_score": 0.9954935622317596,
   "check_summaries": [
     {
@@ -30,8 +30,8 @@
             {
               "entity_name": "scripts.engine_adapter.main",
               "file_path": "scripts/engine_adapter.py",
-              "line_start": 504,
-              "line_end": 582,
+              "line_start": 519,
+              "line_end": 607,
               "metric_value": 11
             }
           ]
@@ -75,8 +75,8 @@
             {
               "entity_name": "[unreachable_code] Type analysis indicates code is unreachable",
               "file_path": "scripts/engine_adapter.py",
-              "line_start": 448,
-              "line_end": 448,
+              "line_start": 466,
+              "line_end": 466,
               "metric_value": 0.0
             }
           ]
