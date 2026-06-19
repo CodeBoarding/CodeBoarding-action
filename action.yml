@@ -31,10 +31,10 @@ inputs:
     description: 'Token used for sync-mode git pushes to target_branch. Defaults to the workflow github.token, which can push when the calling workflow grants "permissions: contents: write". Kept separate from github_token so commenting can use a GitHub App token while the push uses the workflow token (whose write access the consumer controls).'
     required: false
     default: ${{ github.token }}
-  engine_ref:
-    description: 'Git ref (tag/branch/SHA) of CodeBoarding/CodeBoarding used as the analysis engine. Pinned to a release for reproducibility; override to track a newer ref.'
+  codeboarding_version:
+    description: 'CodeBoarding PyPI package version used as the analysis engine. Pin for reproducibility; set to a newer released version to opt into newer engine releases.'
     required: false
-    default: 'v0.12.1'
+    default: '0.12.3'
   depth_level:
     description: 'Analysis depth (1-3) for cold-start or force_full rebuilds. Once .codeboarding/analysis.json exists, its metadata.depth_level is the source of truth for incremental analysis and fallback-full recovery. Empty (default): 2 for cold starts.'
     required: false
@@ -142,7 +142,7 @@ runs:
   # interleave only because they share the LLM-key lifecycle, NOT because they
   # are unrelated:
   #   1. GUARD            — resolve mode + event eligibility + SHAs (one source of truth)
-  #   2. SHARED SETUP     — checkout engine + target, Python/Node/uv, caches, LLM-key prep
+  #   2. SHARED SETUP     — checkout target, Python/Node/uv, install CodeBoarding, caches, LLM-key prep
   #   3. ANALYSIS (key live) — review: base/seed/head/health ; sync: seed/analyze
   #   4. Drop LLM key, then OUTPUT (no key) — review: diff→artifact→comment ; sync: render→commit
   # The binding between the modes is the committed .codeboarding/analysis.json
@@ -425,15 +425,6 @@ runs:
           9.0.x
           10.0.x
 
-    - name: Checkout CodeBoarding engine
-      if: steps.guard.outputs.skip != 'true'
-      uses: actions/checkout@v4
-      with:
-        repository: CodeBoarding/CodeBoarding
-        ref: ${{ inputs.engine_ref }}
-        path: codeboarding-engine
-        persist-credentials: false
-
     # Review mode: the PR head repo at the head SHA. Sync mode: this repo at the
     # pushed/selected SHA. Always credential-free — sync pushes authenticate
     # explicitly via push_token.
@@ -496,11 +487,15 @@ runs:
         echo "depth=$DEPTH" >> "$GITHUB_OUTPUT"
         echo "Using default cold-start depth_level=$DEPTH."
 
-    - name: Set up Python 3.13
+    - name: Set up Python 3.12
       if: steps.guard.outputs.skip != 'true'
       uses: actions/setup-python@v5
       with:
-        python-version: '3.13'
+        # 3.12, not 3.13: the codeboarding package's transitive dep
+        # langchain-cerebras (>=0.8) is published only for >=3.11,<3.13, so a 3.13
+        # runner can't resolve the engine install. The engine itself supports
+        # <3.14, so bump this back to 3.13 once langchain-cerebras ships a 3.13 wheel.
+        python-version: '3.12'
 
     - name: Set up Node.js 20
       if: steps.guard.outputs.skip != 'true'
@@ -508,36 +503,36 @@ runs:
       with:
         node-version: '20'
 
-    - name: Install uv
-      if: steps.guard.outputs.skip != 'true'
-      uses: astral-sh/setup-uv@v4
-      with:
-        enable-cache: true   # cache ~/.cache/uv (wheels/builds) for fast cold installs
-
     - name: Cache LSP servers
       if: steps.guard.outputs.skip != 'true'
       uses: actions/cache@v4
       with:
         path: |
-          codeboarding-engine/static_analyzer/servers/node_modules
-          codeboarding-engine/static_analyzer/servers/bin
-        key: cb-lsp-${{ runner.os }}-v1
+          ~/.codeboarding/servers
+        key: cb-lsp-${{ runner.os }}-${{ inputs.codeboarding_version }}-v1
         restore-keys: |
           cb-lsp-${{ runner.os }}-
 
-    - name: Install Python dependencies
+    - name: Install CodeBoarding package
       if: steps.guard.outputs.skip != 'true'
       shell: bash
-      working-directory: codeboarding-engine
+      env:
+        CODEBOARDING_VERSION: ${{ inputs.codeboarding_version }}
       run: |
-        uv pip install -e .
+        set -euo pipefail
+        SPEC="$CODEBOARDING_VERSION"
+        case "$SPEC" in
+          '' ) SPEC='' ;;
+          [0-9]* ) SPEC="==$SPEC" ;;
+        esac
+        python -m pip install --upgrade pip
+        python -m pip install "codeboarding${SPEC}"
 
     - name: Install LSP servers
       if: steps.guard.outputs.skip != 'true'
       shell: bash
-      working-directory: codeboarding-engine
       run: |
-        uv run python install.py --auto-install-npm
+        codeboarding-setup --auto-install-npm
 
     - name: Prepare & verify LLM key
       if: steps.guard.outputs.skip != 'true'
@@ -784,7 +779,7 @@ runs:
         # inputs. So a free-tier run (oidc, forced Gemini) and a BYO OpenRouter-key
         # run with no model pinned would share a key yet produce different base
         # analyses; the mode discriminator keeps them from reusing each other's cache.
-        key: cb-base-v2-${{ runner.os }}-${{ steps.base.outputs.baseline_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+        key: cb-base-v2-${{ runner.os }}-${{ steps.base.outputs.baseline_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.codeboarding_version }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     - name: Reassert committed base analysis after cache restore
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.base.outputs.committed == 'true'
@@ -818,10 +813,7 @@ runs:
       id: seedbase
       continue-on-error: true
       shell: bash
-      working-directory: codeboarding-engine
       env:
-        STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
-        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
         CACHING_DOCUMENTATION: 'false'
         ENABLE_MONITORING: 'false'
         ACTION_PATH: ${{ github.action_path }}
@@ -836,7 +828,7 @@ runs:
         git -C "$TARGET" worktree prune
         rm -rf "$BASE_SRC"
         git -C "$TARGET" worktree add --detach "$BASE_SRC" "$BASELINE_SHA"
-        if uv run python "$ACTION_PATH/scripts/engine_adapter.py" seed \
+        if python "$ACTION_PATH/scripts/engine_adapter.py" seed \
              --repo "$BASE_SRC" \
              --out "$BASE_DIR" \
              --source-sha "$BASELINE_SHA" \
@@ -855,10 +847,7 @@ runs:
     - name: Generate base analysis (no committed baseline)
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.base.outputs.empty_base != 'true' && steps.base.outputs.committed == 'false' && steps.basecache.outputs.cache-hit != 'true'
       shell: bash
-      working-directory: codeboarding-engine
       env:
-        STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
-        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
         DIAGRAM_DEPTH_LEVEL: ${{ steps.resolve_depth.outputs.depth }}
         CACHING_DOCUMENTATION: 'false'
         ENABLE_MONITORING: 'false'
@@ -896,7 +885,7 @@ runs:
         git -C "$TARGET" worktree prune
         rm -rf "$BASE_SRC"
         git -C "$TARGET" worktree add --detach "$BASE_SRC" "$BASE_SHA"
-        uv run python "$ACTION_PATH/scripts/engine_adapter.py" base \
+        python "$ACTION_PATH/scripts/engine_adapter.py" base \
           --repo "$BASE_SRC" \
           --out "$BASE_DIR" \
           --name "$REPO_NAME" \
@@ -924,16 +913,13 @@ runs:
         # inputs. So a free-tier run (oidc, forced Gemini) and a BYO OpenRouter-key
         # run with no model pinned would share a key yet produce different base
         # analyses; the mode discriminator keeps them from reusing each other's cache.
-        key: cb-base-v2-${{ runner.os }}-${{ steps.base.outputs.baseline_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.engine_ref }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+        key: cb-base-v2-${{ runner.os }}-${{ steps.base.outputs.baseline_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.codeboarding_version }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     - name: Analyze PR head (incremental from base)
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       id: analyze
       shell: bash
-      working-directory: codeboarding-engine
       env:
-        STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
-        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
         DIAGRAM_DEPTH_LEVEL: ${{ steps.resolve_depth.outputs.depth }}
         CACHING_DOCUMENTATION: 'false'
         ENABLE_MONITORING: 'false'
@@ -986,13 +972,12 @@ runs:
         if [ "$EMPTY_BASE" = "true" ]; then
           head_args+=(--force-full)
         fi
-        uv run python "$ACTION_PATH/scripts/engine_adapter.py" "${head_args[@]}"
+        python "$ACTION_PATH/scripts/engine_adapter.py" "${head_args[@]}"
         if [ ! -f "$HEAD_DIR/analysis.json" ]; then
           echo "::error::Head analysis ran but analysis.json is missing."
           exit 1
         fi
-        echo "base_analysis=$BASE_DIR/analysis.json" 
-        $GITHUB_OUTPUT
+        echo "base_analysis=$BASE_DIR/analysis.json" >> "$GITHUB_OUTPUT"
         echo "head_analysis=$HEAD_DIR/analysis.json" >> $GITHUB_OUTPUT
 
     - name: Architecture health check (best-effort)
@@ -1000,10 +985,7 @@ runs:
       id: health
       continue-on-error: true
       shell: bash
-      working-directory: codeboarding-engine
       env:
-        STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
-        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
         ACTION_PATH: ${{ github.action_path }}
         ARTIFACT_DIR: ${{ steps.base.outputs.head_dir }}
         TARGET_REPO: ${{ github.workspace }}/target-repo
@@ -1011,7 +993,7 @@ runs:
       run: |
         rm -f /tmp/cb-issues.txt
         # engine_adapter writes the WARNING/CRITICAL count (0 on any failure — best-effort).
-        uv run python "$ACTION_PATH/scripts/engine_adapter.py" health \
+        python "$ACTION_PATH/scripts/engine_adapter.py" health \
           --artifact-dir "$ARTIFACT_DIR" \
           --repo "$TARGET_REPO" \
           --name "$REPO_NAME" \
@@ -1085,7 +1067,7 @@ runs:
         path: |
           ${{ runner.temp }}/cb-sync/static_analysis.pkl
           ${{ runner.temp }}/cb-sync/static_analysis.sha
-        key: cb-sync-${{ runner.os }}-${{ inputs.engine_ref }}-d${{ steps.resolve_depth.outputs.depth }}-${{ steps.llm.outputs.cache_provider }}-${{ steps.llm.outputs.cache_agent_model }}-${{ steps.llm.outputs.cache_parsing_model }}-${{ steps.sync_seed.outputs.baseline_sha }}
+        key: cb-sync-${{ runner.os }}-${{ inputs.codeboarding_version }}-d${{ steps.resolve_depth.outputs.depth }}-${{ steps.llm.outputs.cache_provider }}-${{ steps.llm.outputs.cache_agent_model }}-${{ steps.llm.outputs.cache_parsing_model }}-${{ steps.sync_seed.outputs.baseline_sha }}
 
     # Same rationale as the review pipeline's seed step: the committed
     # analysis.json supplies component ids, but the incremental path also needs
@@ -1095,10 +1077,7 @@ runs:
       id: sync_seedcache
       continue-on-error: true
       shell: bash
-      working-directory: codeboarding-engine
       env:
-        STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
-        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
         # The seed subcommand defaults to github_action attribution; sync-mode
         # telemetry must report as sync (setdefault never clobbers this).
         CODEBOARDING_SOURCE: 'sync'
@@ -1123,7 +1102,7 @@ runs:
         git -C "$TARGET_REPO" worktree prune
         rm -rf "$BASE_SRC"
         git -C "$TARGET_REPO" worktree add --detach "$BASE_SRC" "$BASELINE_SHA"
-        if uv run python "$ACTION_PATH/scripts/engine_adapter.py" seed \
+        if python "$ACTION_PATH/scripts/engine_adapter.py" seed \
              --repo "$BASE_SRC" \
              --out "$ANALYSIS_DIR" \
              --source-sha "$BASELINE_SHA" \
@@ -1140,10 +1119,7 @@ runs:
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
       id: sync_analyze
       shell: bash
-      working-directory: codeboarding-engine
       env:
-        STATIC_ANALYSIS_CONFIG: ${{ github.workspace }}/codeboarding-engine/static_analysis_config.yml
-        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
         DIAGRAM_DEPTH_LEVEL: ${{ steps.resolve_depth.outputs.depth }}
         CACHING_DOCUMENTATION: 'false'
         ENABLE_MONITORING: 'false'
@@ -1186,7 +1162,7 @@ runs:
         )
         [ "$FORCE_FULL" = "true" ] && args+=(--force-full)
         LOG="${RUNNER_TEMP}/cb-sync-analyze.log"
-        uv run python "$ACTION_PATH/scripts/engine_adapter.py" analyze "${args[@]}" | tee "$LOG"
+        python "$ACTION_PATH/scripts/engine_adapter.py" analyze "${args[@]}" | tee "$LOG"
         MODE="$(sed -n 's/^analysis_mode=//p' "$LOG" | tail -1)"
         MODE="${MODE:-unknown}"
         echo "analysis_mode=$MODE" >> "$GITHUB_OUTPUT"
@@ -1417,9 +1393,7 @@ runs:
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
       id: sync_render
       shell: bash
-      working-directory: codeboarding-engine
       env:
-        PROJECT_ROOT: ${{ github.workspace }}/codeboarding-engine
         ACTION_PATH: ${{ github.action_path }}
         ANALYSIS_DIR: ${{ steps.sync_seed.outputs.cb_dir }}
         RENDER_DIR: ${{ steps.sync_seed.outputs.render_dir }}
@@ -1433,14 +1407,14 @@ runs:
       run: |
         set -euo pipefail
         REPO_REF="https://github.com/${REPOSITORY}/blob/${TARGET_BRANCH}/${OUTPUT_DIR}"
-        uv run python "$ACTION_PATH/scripts/engine_adapter.py" render \
+        python "$ACTION_PATH/scripts/engine_adapter.py" render \
           --analysis "$ANALYSIS_DIR/analysis.json" \
           --out "$RENDER_DIR" \
           --repo-name "$REPO_NAME" \
           --repo-ref "$REPO_REF" \
           --format "$OUTPUT_FORMAT"
         if [ "$WRITE_ARCHITECTURE_MD" = "true" ]; then
-          uv run python "$ACTION_PATH/scripts/engine_adapter.py" concat \
+          python "$ACTION_PATH/scripts/engine_adapter.py" concat \
             --docs-dir "$RENDER_DIR" \
             --out "$ARCHITECTURE_FILE"
         fi
@@ -1470,7 +1444,7 @@ runs:
         path: |
           ${{ runner.temp }}/cb-sync/static_analysis.pkl
           ${{ runner.temp }}/cb-sync/static_analysis.sha
-        key: cb-sync-${{ runner.os }}-${{ inputs.engine_ref }}-d${{ steps.resolve_depth.outputs.depth }}-${{ steps.llm.outputs.cache_provider }}-${{ steps.llm.outputs.cache_agent_model }}-${{ steps.llm.outputs.cache_parsing_model }}-${{ steps.guard.outputs.target_sha }}
+        key: cb-sync-${{ runner.os }}-${{ inputs.codeboarding_version }}-d${{ steps.resolve_depth.outputs.depth }}-${{ steps.llm.outputs.cache_provider }}-${{ steps.llm.outputs.cache_agent_model }}-${{ steps.llm.outputs.cache_parsing_model }}-${{ steps.guard.outputs.target_sha }}
 
     - name: Commit and push synced architecture
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'

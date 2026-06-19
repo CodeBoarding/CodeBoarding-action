@@ -8,9 +8,9 @@
 #   FAST (no LLM, instant) — diff two existing analysis.json files and preview:
 #     scripts/run_local.sh --base-json BASE.json --head-json HEAD.json
 #
-#   FULL pipeline (needs OPENROUTER_API_KEY) — run the engine on two refs of a
-#   local repo, exactly like the action (committed-or-generated base, then
-#   incremental head), then diff + preview:
+#   FULL pipeline (needs OPENROUTER_API_KEY) — run the installed codeboarding
+#   package on two refs of a local repo, exactly like the action
+#   (committed-or-generated base, then incremental head), then diff + preview:
 #     export OPENROUTER_API_KEY=sk-or-...
 #     scripts/run_local.sh --repo /path/to/repo --base <ref> --head <ref>
 #
@@ -21,7 +21,7 @@
 set -euo pipefail
 
 ACTION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENGINE="${ENGINE:-$ACTION_DIR/../CodeBoarding}"
+ENGINE="${ENGINE:-}"
 OUT="$ACTION_DIR/.cb-local"
 DEPTH="1"
 DIRECTION="LR"
@@ -43,7 +43,7 @@ while [ $# -gt 0 ]; do
     --head) HEAD_REF="$2"; shift 2;;
     --base-json) BASE_JSON="$2"; shift 2;;
     --head-json) HEAD_JSON="$2"; shift 2;;
-    --engine) ENGINE="$2"; shift 2;;
+    --engine) ENGINE="$2"; shift 2;;  # optional local CodeBoarding checkout for engine development
     --out) OUT="$2"; shift 2;;
     --depth) DEPTH="$2"; shift 2;;
     --direction) DIRECTION="$2"; shift 2;;
@@ -60,17 +60,16 @@ done
 mkdir -p "$OUT"
 
 run_engine() {
-  ( cd "$ENGINE"
-    export STATIC_ANALYSIS_CONFIG="$ENGINE/static_analysis_config.yml" \
-           PROJECT_ROOT="$ENGINE" \
-           DIAGRAM_DEPTH_LEVEL="$DEPTH" \
+  (
+    if [ -n "$ENGINE" ]; then cd "$ENGINE"; fi
+    export DIAGRAM_DEPTH_LEVEL="$DEPTH" \
            CACHING_DOCUMENTATION="false" \
            ENABLE_MONITORING="false"
     # OPENROUTER_API_KEY is inherited from the environment (full mode requires it).
     # Pass the model only when set; empty -> engine's own valid per-provider default.
     if [ -n "$AGENT_MODEL" ]; then export AGENT_MODEL; fi
     if [ -n "$PARSING_MODEL" ]; then export PARSING_MODEL; fi
-    uv run python "$ACTION_DIR/scripts/engine_adapter.py" "$@" )
+    python "$ACTION_DIR/scripts/engine_adapter.py" "$@" )
 }
 
 if [ -n "$BASE_JSON" ] && [ -n "$HEAD_JSON" ]; then
@@ -81,7 +80,9 @@ else
   if [ -z "$REPO" ] || [ -z "$BASE_REF" ] || [ -z "$HEAD_REF" ]; then
     echo "Need either --base-json/--head-json, or --repo/--base/--head." >&2; exit 2
   fi
-  [ -d "$ENGINE" ] || { echo "Engine not found at $ENGINE (set --engine or \$ENGINE)." >&2; exit 2; }
+  if [ -n "$ENGINE" ] && [ ! -d "$ENGINE" ]; then
+    echo "Engine not found at $ENGINE (set --engine or install the codeboarding package)." >&2; exit 2
+  fi
   [ -n "${OPENROUTER_API_KEY:-}" ] || { echo "Export OPENROUTER_API_KEY for the full pipeline." >&2; exit 2; }
   REPO="$(cd "$REPO" && pwd)"
   BASE_SHA="$(git -C "$REPO" rev-parse "$BASE_REF^{commit}")"
