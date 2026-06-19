@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-06-19T22:16:06.111528+00:00",
-    "commit_hash": "6aa40f2349afe7a2659af86f454d8ff2e2f44415",
+    "generated_at": "2026-06-19T22:21:23.206819+00:00",
+    "commit_hash": "ca1e623484dd3fb014e14f279af2d43825787f84",
     "repo_name": "CodeBoarding-action",
     "depth_level": 2,
     "file_coverage_summary": {
@@ -1730,9 +1730,9 @@
             "scripts.engine_adapter._flag_quota_exhausted",
             "scripts.engine_adapter._log_path",
             "scripts.engine_adapter._clear_dir",
+            "scripts.engine_adapter._supported_depth",
             "scripts.engine_adapter._load_metadata",
             "scripts.engine_adapter._metadata_depth",
-            "scripts.engine_adapter._supported_depth",
             "scripts.engine_adapter._analysis_depth_or_default",
             "scripts.engine_adapter._metadata_commit",
             "scripts.engine_adapter.baseline_info",
@@ -1810,9 +1810,9 @@
                 "scripts.engine_adapter._flag_quota_exhausted",
                 "scripts.engine_adapter._log_path",
                 "scripts.engine_adapter._clear_dir",
+                "scripts.engine_adapter._supported_depth",
                 "scripts.engine_adapter._load_metadata",
                 "scripts.engine_adapter._metadata_depth",
-                "scripts.engine_adapter._supported_depth",
                 "scripts.engine_adapter._analysis_depth_or_default",
                 "scripts.engine_adapter._metadata_commit",
                 "scripts.engine_adapter.baseline_info",
