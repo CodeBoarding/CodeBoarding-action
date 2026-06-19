@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-06-19T01:37:03.162763+00:00",
-    "commit_hash": "9a839187d0d1c5c71ea8e25c9e0f9b92718fcda0",
+    "generated_at": "2026-06-19T22:16:06.111528+00:00",
+    "commit_hash": "6aa40f2349afe7a2659af86f454d8ff2e2f44415",
     "repo_name": "CodeBoarding-action",
     "depth_level": 2,
     "file_coverage_summary": {
@@ -63,16 +63,19 @@
     "scripts/engine_adapter.py": {
       "method_keys": [
         "scripts/engine_adapter.py|scripts.engine_adapter._health_import_error",
+        "scripts/engine_adapter.py|scripts.engine_adapter._max_depth",
         "scripts/engine_adapter.py|scripts.engine_adapter._is_quota_exhausted",
         "scripts/engine_adapter.py|scripts.engine_adapter._flag_quota_exhausted",
         "scripts/engine_adapter.py|scripts.engine_adapter._log_path",
         "scripts/engine_adapter.py|scripts.engine_adapter._clear_dir",
+        "scripts/engine_adapter.py|scripts.engine_adapter._supported_depth",
         "scripts/engine_adapter.py|scripts.engine_adapter._load_metadata",
         "scripts/engine_adapter.py|scripts.engine_adapter._metadata_depth",
-        "scripts/engine_adapter.py|scripts.engine_adapter._supported_depth",
+        "scripts/engine_adapter.py|scripts.engine_adapter._resolve_depth",
         "scripts/engine_adapter.py|scripts.engine_adapter._analysis_depth_or_default",
         "scripts/engine_adapter.py|scripts.engine_adapter._metadata_commit",
         "scripts/engine_adapter.py|scripts.engine_adapter.baseline_info",
+        "scripts/engine_adapter.py|scripts.engine_adapter.baseline_depth",
         "scripts/engine_adapter.py|scripts.engine_adapter.validate_base_analysis",
         "scripts/engine_adapter.py|scripts.engine_adapter.run_base",
         "scripts/engine_adapter.py|scripts.engine_adapter.run_seed",
@@ -372,50 +375,43 @@
     "scripts/engine_adapter.py|scripts.engine_adapter._health_import_error": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._health_import_error",
-      "start_line": 73,
-      "end_line": 73,
+      "start_line": 87,
+      "end_line": 87,
       "type": "VARIABLE"
+    },
+    "scripts/engine_adapter.py|scripts.engine_adapter._max_depth": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter._max_depth",
+      "start_line": 105,
+      "end_line": 106,
+      "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._is_quota_exhausted": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._is_quota_exhausted",
-      "start_line": 89,
-      "end_line": 104,
+      "start_line": 115,
+      "end_line": 130,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._flag_quota_exhausted": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._flag_quota_exhausted",
-      "start_line": 107,
-      "end_line": 116,
+      "start_line": 133,
+      "end_line": 142,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._log_path": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._log_path",
-      "start_line": 119,
-      "end_line": 120,
+      "start_line": 145,
+      "end_line": 146,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._clear_dir": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._clear_dir",
-      "start_line": 123,
-      "end_line": 129,
-      "type": "FUNCTION"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._load_metadata": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._load_metadata",
-      "start_line": 132,
-      "end_line": 142,
-      "type": "FUNCTION"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._metadata_depth": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._metadata_depth",
-      "start_line": 145,
-      "end_line": 149,
+      "start_line": 149,
+      "end_line": 155,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._supported_depth": {
@@ -425,116 +421,144 @@
       "end_line": 154,
       "type": "FUNCTION"
     },
+    "scripts/engine_adapter.py|scripts.engine_adapter._load_metadata": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter._load_metadata",
+      "start_line": 158,
+      "end_line": 168,
+      "type": "FUNCTION"
+    },
+    "scripts/engine_adapter.py|scripts.engine_adapter._metadata_depth": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter._metadata_depth",
+      "start_line": 171,
+      "end_line": 175,
+      "type": "FUNCTION"
+    },
+    "scripts/engine_adapter.py|scripts.engine_adapter._resolve_depth": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter._resolve_depth",
+      "start_line": 178,
+      "end_line": 207,
+      "type": "FUNCTION"
+    },
     "scripts/engine_adapter.py|scripts.engine_adapter._analysis_depth_or_default": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._analysis_depth_or_default",
-      "start_line": 157,
-      "end_line": 162,
+      "start_line": 210,
+      "end_line": 214,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._metadata_commit": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._metadata_commit",
-      "start_line": 165,
-      "end_line": 167,
+      "start_line": 217,
+      "end_line": 219,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.baseline_info": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.baseline_info",
-      "start_line": 170,
-      "end_line": 180,
+      "start_line": 222,
+      "end_line": 232,
+      "type": "FUNCTION"
+    },
+    "scripts/engine_adapter.py|scripts.engine_adapter.baseline_depth": {
+      "file_path": "scripts/engine_adapter.py",
+      "qualified_name": "scripts.engine_adapter.baseline_depth",
+      "start_line": 235,
+      "end_line": 250,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.validate_base_analysis": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.validate_base_analysis",
-      "start_line": 183,
-      "end_line": 233,
+      "start_line": 253,
+      "end_line": 309,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_base": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_base",
-      "start_line": 236,
-      "end_line": 246,
+      "start_line": 312,
+      "end_line": 322,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_seed": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_seed",
-      "start_line": 249,
-      "end_line": 272,
+      "start_line": 325,
+      "end_line": 348,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._incremental_or_full": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._incremental_or_full",
-      "start_line": 275,
-      "end_line": 322,
+      "start_line": 351,
+      "end_line": 399,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_head": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_head",
-      "start_line": 325,
-      "end_line": 368,
+      "start_line": 402,
+      "end_line": 447,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_analyze": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_analyze",
-      "start_line": 371,
-      "end_line": 430,
+      "start_line": 450,
+      "end_line": 516,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_analyze.full": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_analyze.full",
-      "start_line": 387,
-      "end_line": 401,
+      "start_line": 474,
+      "end_line": 488,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_render": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_render",
-      "start_line": 433,
-      "end_line": 444,
+      "start_line": 519,
+      "end_line": 530,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_concat": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_concat",
-      "start_line": 447,
-      "end_line": 460,
+      "start_line": 533,
+      "end_line": 546,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._count_report_issues": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._count_report_issues",
-      "start_line": 463,
-      "end_line": 476,
+      "start_line": 549,
+      "end_line": 562,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._count_health_report": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._count_health_report",
-      "start_line": 479,
-      "end_line": 487,
+      "start_line": 565,
+      "end_line": 573,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_health": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_health",
-      "start_line": 490,
-      "end_line": 516,
+      "start_line": 576,
+      "end_line": 602,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.main": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.main",
-      "start_line": 519,
-      "end_line": 607,
+      "start_line": 605,
+      "end_line": 711,
       "type": "FUNCTION"
     },
     "scripts/submit_feedback.py|scripts.submit_feedback.telemetry_disabled": {
@@ -700,7 +724,8 @@
         3,
         4,
         8,
-        9
+        9,
+        10
       ],
       "file_methods": [
         {
@@ -739,18 +764,11 @@
             "scripts.engine_adapter._flag_quota_exhausted",
             "scripts.engine_adapter._log_path",
             "scripts.engine_adapter._clear_dir",
-            "scripts.engine_adapter._load_metadata",
-            "scripts.engine_adapter._metadata_depth",
-            "scripts.engine_adapter._supported_depth",
-            "scripts.engine_adapter._analysis_depth_or_default",
-            "scripts.engine_adapter._metadata_commit",
-            "scripts.engine_adapter.baseline_info",
             "scripts.engine_adapter.validate_base_analysis",
             "scripts.engine_adapter.run_base",
             "scripts.engine_adapter.run_seed",
             "scripts.engine_adapter._incremental_or_full",
             "scripts.engine_adapter.run_head",
-            "scripts.engine_adapter.run_analyze",
             "scripts.engine_adapter.run_analyze.full",
             "scripts.engine_adapter.run_render",
             "scripts.engine_adapter.run_concat",
@@ -765,30 +783,38 @@
       "can_expand": true,
       "components": [
         {
-          "name": "Workflow Controller",
-          "description": "Acts as the primary entry point and state validator for the GitHub Action, interpreting configuration and initializing the environment.",
+          "name": "Execution Controller",
+          "description": "Manages the high-level lifecycle of the action, including environment validation, state persistence, and the decision logic for running full codebase scans versus incremental PR analysis.",
           "key_entities": [
             {
-              "qualified_name": "scripts.engine_adapter.main",
+              "qualified_name": "scripts.engine_adapter.run_analyze",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 519,
-              "reference_end_line": 607
+              "reference_start_line": 450,
+              "reference_end_line": 516
             },
             {
               "qualified_name": "scripts.engine_adapter.validate_base_analysis",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 183,
-              "reference_end_line": 233
+              "reference_start_line": 253,
+              "reference_end_line": 309
             },
             {
-              "qualified_name": "scripts.engine_adapter.run_base",
+              "qualified_name": "scripts.engine_adapter._incremental_or_full",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 236,
-              "reference_end_line": 246
+              "reference_start_line": 351,
+              "reference_end_line": 399
+            },
+            {
+              "qualified_name": "scripts.engine_adapter.run_health",
+              "reference_file": "scripts/engine_adapter.py",
+              "reference_start_line": 576,
+              "reference_end_line": 602
             }
           ],
           "source_cluster_ids": [
-            2
+            1,
+            5,
+            6
           ],
           "file_methods": [
             {
@@ -796,11 +822,19 @@
               "methods": [
                 "scripts.engine_adapter._is_quota_exhausted",
                 "scripts.engine_adapter._flag_quota_exhausted",
+                "scripts.engine_adapter._log_path",
+                "scripts.engine_adapter._clear_dir",
                 "scripts.engine_adapter.validate_base_analysis",
                 "scripts.engine_adapter.run_base",
                 "scripts.engine_adapter.run_seed",
+                "scripts.engine_adapter._incremental_or_full",
+                "scripts.engine_adapter.run_head",
+                "scripts.engine_adapter.run_analyze.full",
                 "scripts.engine_adapter.run_render",
                 "scripts.engine_adapter.run_concat",
+                "scripts.engine_adapter._count_report_issues",
+                "scripts.engine_adapter._count_health_report",
+                "scripts.engine_adapter.run_health",
                 "scripts.engine_adapter.main"
               ]
             }
@@ -809,87 +843,30 @@
           "can_expand": true
         },
         {
-          "name": "Analysis Strategy Manager",
-          "description": "The core logic engine that determines the analysis mode (full vs. incremental) and manages the persistence of analysis metadata.",
+          "name": "Component Mapper",
+          "description": "Bridges the gap between raw file system changes and the logical architecture by aggregating file-level diffs into component-level changes.",
           "key_entities": [
-            {
-              "qualified_name": "scripts.engine_adapter.run_analyze",
-              "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 371,
-              "reference_end_line": 430
-            },
-            {
-              "qualified_name": "scripts.engine_adapter._incremental_or_full",
-              "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 275,
-              "reference_end_line": 322
-            },
-            {
-              "qualified_name": "scripts.engine_adapter._load_metadata",
-              "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 132,
-              "reference_end_line": 142
-            },
-            {
-              "qualified_name": "scripts.engine_adapter.baseline_info",
-              "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 170,
-              "reference_end_line": 180
-            }
-          ],
-          "source_cluster_ids": [
-            3,
-            5
-          ],
-          "file_methods": [
-            {
-              "file_path": "scripts/engine_adapter.py",
-              "methods": [
-                "scripts.engine_adapter._log_path",
-                "scripts.engine_adapter._clear_dir",
-                "scripts.engine_adapter._load_metadata",
-                "scripts.engine_adapter._metadata_depth",
-                "scripts.engine_adapter._supported_depth",
-                "scripts.engine_adapter._analysis_depth_or_default",
-                "scripts.engine_adapter._metadata_commit",
-                "scripts.engine_adapter.baseline_info",
-                "scripts.engine_adapter._incremental_or_full",
-                "scripts.engine_adapter.run_head",
-                "scripts.engine_adapter.run_analyze",
-                "scripts.engine_adapter.run_analyze.full"
-              ]
-            }
-          ],
-          "component_id": "1.2",
-          "can_expand": true
-        },
-        {
-          "name": "Visualization & Reporting Engine",
-          "description": "Consumes structured analysis output to generate human-readable artifacts like Mermaid.js diagrams and health reports.",
-          "key_entities": [
-            {
-              "qualified_name": "scripts.diff_to_mermaid.render_mermaid",
-              "reference_file": "scripts/diff_to_mermaid.py",
-              "reference_start_line": 396,
-              "reference_end_line": 521
-            },
-            {
-              "qualified_name": "scripts.engine_adapter.run_health",
-              "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 490,
-              "reference_end_line": 516
-            },
             {
               "qualified_name": "scripts.build_component_files.main",
               "reference_file": "scripts/build_component_files.py",
               "reference_start_line": 178,
               "reference_end_line": 213
+            },
+            {
+              "qualified_name": "scripts.diff_to_mermaid.load_analysis",
+              "reference_file": "scripts/diff_to_mermaid.py",
+              "reference_start_line": 50,
+              "reference_end_line": 54
+            },
+            {
+              "qualified_name": "scripts.diff_to_mermaid._diff_components",
+              "reference_file": "scripts/diff_to_mermaid.py",
+              "reference_start_line": 162,
+              "reference_end_line": 207
             }
           ],
           "source_cluster_ids": [
-            1,
-            4,
-            6
+            2
           ],
           "file_methods": [
             {
@@ -904,28 +881,63 @@
                 "scripts.diff_to_mermaid.load_analysis",
                 "scripts.diff_to_mermaid._rel_key",
                 "scripts.diff_to_mermaid._diff_relations",
-                "scripts.diff_to_mermaid._has_changes",
                 "scripts.diff_to_mermaid._diff_components",
                 "scripts.diff_to_mermaid.build_diff",
+                "scripts.diff_to_mermaid._Scope.resolve",
+                "scripts.diff_to_mermaid.main"
+              ]
+            }
+          ],
+          "component_id": "1.2",
+          "can_expand": true
+        },
+        {
+          "name": "Visual Synthesis Engine",
+          "description": "Responsible for the deterministic generation of Mermaid.js diagrams, processing mapped component changes to produce hierarchical visualizations.",
+          "key_entities": [
+            {
+              "qualified_name": "scripts.diff_to_mermaid.render_mermaid",
+              "reference_file": "scripts/diff_to_mermaid.py",
+              "reference_start_line": 396,
+              "reference_end_line": 521
+            },
+            {
+              "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build.emit_level",
+              "reference_file": "scripts/diff_to_mermaid.py",
+              "reference_start_line": 449,
+              "reference_end_line": 466
+            },
+            {
+              "qualified_name": "scripts.diff_to_mermaid._Scope",
+              "reference_file": "scripts/diff_to_mermaid.py",
+              "reference_start_line": 265,
+              "reference_end_line": 309
+            },
+            {
+              "qualified_name": "scripts.diff_to_mermaid._has_changes",
+              "reference_file": "scripts/diff_to_mermaid.py",
+              "reference_start_line": 151,
+              "reference_end_line": 159
+            }
+          ],
+          "source_cluster_ids": [
+            3,
+            4
+          ],
+          "file_methods": [
+            {
+              "file_path": "scripts/diff_to_mermaid.py",
+              "methods": [
+                "scripts.diff_to_mermaid._has_changes",
                 "scripts.diff_to_mermaid._esc",
                 "scripts.diff_to_mermaid._truncate",
                 "scripts.diff_to_mermaid._Scope",
-                "scripts.diff_to_mermaid._Scope.resolve",
                 "scripts.diff_to_mermaid._init_directive",
                 "scripts.diff_to_mermaid._has_changed_relations",
                 "scripts.diff_to_mermaid.render_mermaid",
                 "scripts.diff_to_mermaid.render_mermaid.build",
                 "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
-                "scripts.diff_to_mermaid.render_mermaid.build.emit_level",
-                "scripts.diff_to_mermaid.main"
-              ]
-            },
-            {
-              "file_path": "scripts/engine_adapter.py",
-              "methods": [
-                "scripts.engine_adapter._count_report_issues",
-                "scripts.engine_adapter._count_health_report",
-                "scripts.engine_adapter.run_health"
+                "scripts.diff_to_mermaid.render_mermaid.build.emit_level"
               ]
             }
           ],
@@ -935,45 +947,36 @@
       ],
       "components_relations": [
         {
-          "relation": "orchestrates execution mode and baseline validation",
-          "src_name": "Workflow Controller",
-          "dst_name": "Analysis Strategy Manager",
-          "src_id": "1.1",
-          "dst_id": "1.2",
-          "edge_count": 6,
-          "is_static": true
-        },
-        {
-          "relation": "delegates metadata loading and analysis execution",
-          "src_name": "Workflow Controller",
-          "dst_name": "Analysis Strategy Manager",
+          "relation": "triggers change detection and mapping",
+          "src_name": "Execution Controller",
+          "dst_name": "Component Mapper",
           "src_id": "1.1",
           "dst_id": "1.2",
           "edge_count": 0,
           "is_static": false
         },
         {
-          "relation": "triggers health report generation",
-          "src_name": "Workflow Controller",
-          "dst_name": "Visualization & Reporting Engine",
+          "relation": "orchestrates diagram generation",
+          "src_name": "Execution Controller",
+          "dst_name": "Visual Synthesis Engine",
           "src_id": "1.1",
           "dst_id": "1.3",
-          "edge_count": 1,
-          "is_static": true
+          "edge_count": 0,
+          "is_static": false
         },
         {
-          "relation": "provides structured analysis data for rendering",
-          "src_name": "Analysis Strategy Manager",
-          "dst_name": "Visualization & Reporting Engine",
+          "relation": "provides mapped component diffs for rendering",
+          "src_name": "Component Mapper",
+          "dst_name": "Visual Synthesis Engine",
           "src_id": "1.2",
           "dst_id": "1.3",
-          "edge_count": 0,
-          "is_static": false
+          "edge_count": 2,
+          "is_static": true
         },
         {
-          "relation": "supplies component metadata for diagram construction",
-          "src_name": "Analysis Strategy Manager",
-          "dst_name": "Visualization & Reporting Engine",
+          "relation": "validates change status for visual inclusion",
+          "src_name": "Component Mapper",
+          "dst_name": "Visual Synthesis Engine",
           "src_id": "1.2",
           "dst_id": "1.3",
           "edge_count": 0,
@@ -1008,7 +1011,8 @@
         2,
         6,
         7,
-        10
+        10,
+        11
       ],
       "file_methods": [
         {
@@ -1040,6 +1044,37 @@
           ]
         },
         {
+          "file_path": "scripts/engine_adapter.py",
+          "methods": [
+            "scripts.engine_adapter._health_import_error",
+            "scripts.engine_adapter._max_depth",
+            "scripts.engine_adapter._is_quota_exhausted",
+            "scripts.engine_adapter._flag_quota_exhausted",
+            "scripts.engine_adapter._log_path",
+            "scripts.engine_adapter._clear_dir",
+            "scripts.engine_adapter._load_metadata",
+            "scripts.engine_adapter._metadata_depth",
+            "scripts.engine_adapter._resolve_depth",
+            "scripts.engine_adapter._analysis_depth_or_default",
+            "scripts.engine_adapter._metadata_commit",
+            "scripts.engine_adapter.baseline_info",
+            "scripts.engine_adapter.baseline_depth",
+            "scripts.engine_adapter.validate_base_analysis",
+            "scripts.engine_adapter.run_base",
+            "scripts.engine_adapter.run_seed",
+            "scripts.engine_adapter._incremental_or_full",
+            "scripts.engine_adapter.run_head",
+            "scripts.engine_adapter.run_analyze",
+            "scripts.engine_adapter.run_analyze.full",
+            "scripts.engine_adapter.run_render",
+            "scripts.engine_adapter.run_concat",
+            "scripts.engine_adapter._count_report_issues",
+            "scripts.engine_adapter._count_health_report",
+            "scripts.engine_adapter.run_health",
+            "scripts.engine_adapter.main"
+          ]
+        },
+        {
           "file_path": "scripts/submit_feedback.py",
           "methods": [
             "scripts.submit_feedback.telemetry_disabled",
@@ -1063,7 +1098,7 @@
       "components": [
         {
           "name": "Structural Change Analyzer",
-          "description": "Responsible for the low-level detection of modifications within the codebase, traversing the file system and utilizing structural comparison logic to identify changed files and methods.",
+          "description": "Responsible for the low-level inspection of code changes, distinguishing between trivial textual edits and structural modifications to determine the actual impact on the codebase.",
           "key_entities": [
             {
               "qualified_name": "scripts.build_component_files._changed_files_for",
@@ -1082,17 +1117,11 @@
               "reference_file": "scripts/diff_to_mermaid.py",
               "reference_start_line": 82,
               "reference_end_line": 85
-            },
-            {
-              "qualified_name": "scripts.diff_to_mermaid._has_method_changes",
-              "reference_file": "scripts/diff_to_mermaid.py",
-              "reference_start_line": 88,
-              "reference_end_line": 93
             }
           ],
           "source_cluster_ids": [
-            4,
-            5
+            2,
+            3
           ],
           "file_methods": [
             {
@@ -1101,58 +1130,7 @@
                 "scripts.build_component_files._walk",
                 "scripts.build_component_files._subtree_files",
                 "scripts.build_component_files._subtree_methods",
-                "scripts.build_component_files._changed_files_for"
-              ]
-            },
-            {
-              "file_path": "scripts/diff_to_mermaid.py",
-              "methods": [
-                "scripts.diff_to_mermaid._file_methods",
-                "scripts.diff_to_mermaid._methods_by_file",
-                "scripts.diff_to_mermaid._has_structural_changes",
-                "scripts.diff_to_mermaid._has_method_changes"
-              ]
-            }
-          ],
-          "component_id": "2.1",
-          "can_expand": true
-        },
-        {
-          "name": "Architectural Mapper & Visualizer",
-          "description": "Maps raw structural changes to the project's high-level component architecture and formats the data for Mermaid.js rendering.",
-          "key_entities": [
-            {
-              "qualified_name": "scripts.build_component_files.render_component_files",
-              "reference_file": "scripts/build_component_files.py",
-              "reference_start_line": 124,
-              "reference_end_line": 175
-            },
-            {
-              "qualified_name": "scripts.diff_to_mermaid._filter_changed",
-              "reference_file": "scripts/diff_to_mermaid.py",
-              "reference_start_line": 312,
-              "reference_end_line": 354
-            },
-            {
-              "qualified_name": "scripts.diff_to_mermaid._comp_id",
-              "reference_file": "scripts/diff_to_mermaid.py",
-              "reference_start_line": 60,
-              "reference_end_line": 61
-            },
-            {
-              "qualified_name": "scripts.diff_to_mermaid._Scope",
-              "reference_file": "scripts/diff_to_mermaid.py",
-              "reference_start_line": 265,
-              "reference_end_line": 309
-            }
-          ],
-          "source_cluster_ids": [
-            1
-          ],
-          "file_methods": [
-            {
-              "file_path": "scripts/build_component_files.py",
-              "methods": [
+                "scripts.build_component_files._changed_files_for",
                 "scripts.build_component_files._block",
                 "scripts.build_component_files.render_component_files"
               ]
@@ -1162,6 +1140,10 @@
               "methods": [
                 "scripts.diff_to_mermaid._comp_id",
                 "scripts.diff_to_mermaid._comp_name",
+                "scripts.diff_to_mermaid._file_methods",
+                "scripts.diff_to_mermaid._methods_by_file",
+                "scripts.diff_to_mermaid._has_structural_changes",
+                "scripts.diff_to_mermaid._has_method_changes",
                 "scripts.diff_to_mermaid._sanitize",
                 "scripts.diff_to_mermaid._display_status",
                 "scripts.diff_to_mermaid._Scope.__init__",
@@ -1171,37 +1153,117 @@
               ]
             }
           ],
+          "component_id": "2.1",
+          "can_expand": true
+        },
+        {
+          "name": "Incremental Analysis Orchestrator",
+          "description": "Manages the execution lifecycle and state of the engine by comparing current changes against stored metadata to decide between full scans or incremental updates.",
+          "key_entities": [
+            {
+              "qualified_name": "scripts.engine_adapter.run_analyze",
+              "reference_file": "scripts/engine_adapter.py",
+              "reference_start_line": 450,
+              "reference_end_line": 516
+            },
+            {
+              "qualified_name": "scripts.engine_adapter._load_metadata",
+              "reference_file": "scripts/engine_adapter.py",
+              "reference_start_line": 158,
+              "reference_end_line": 168
+            },
+            {
+              "qualified_name": "scripts.engine_adapter._incremental_or_full",
+              "reference_file": "scripts/engine_adapter.py",
+              "reference_start_line": 351,
+              "reference_end_line": 399
+            },
+            {
+              "qualified_name": "scripts.engine_adapter.baseline_info",
+              "reference_file": "scripts/engine_adapter.py",
+              "reference_start_line": 222,
+              "reference_end_line": 232
+            }
+          ],
+          "source_cluster_ids": [
+            4,
+            5,
+            6
+          ],
+          "file_methods": [
+            {
+              "file_path": "scripts/engine_adapter.py",
+              "methods": [
+                "scripts.engine_adapter._max_depth",
+                "scripts.engine_adapter._is_quota_exhausted",
+                "scripts.engine_adapter._flag_quota_exhausted",
+                "scripts.engine_adapter._log_path",
+                "scripts.engine_adapter._clear_dir",
+                "scripts.engine_adapter._load_metadata",
+                "scripts.engine_adapter._metadata_depth",
+                "scripts.engine_adapter._resolve_depth",
+                "scripts.engine_adapter._analysis_depth_or_default",
+                "scripts.engine_adapter._metadata_commit",
+                "scripts.engine_adapter.baseline_info",
+                "scripts.engine_adapter.baseline_depth",
+                "scripts.engine_adapter.validate_base_analysis",
+                "scripts.engine_adapter.run_base",
+                "scripts.engine_adapter.run_seed",
+                "scripts.engine_adapter._incremental_or_full",
+                "scripts.engine_adapter.run_head",
+                "scripts.engine_adapter.run_analyze",
+                "scripts.engine_adapter.run_analyze.full",
+                "scripts.engine_adapter.run_render",
+                "scripts.engine_adapter.run_concat",
+                "scripts.engine_adapter.main"
+              ]
+            }
+          ],
           "component_id": "2.2",
           "can_expand": true
         },
         {
-          "name": "Analysis Lifecycle & Telemetry",
-          "description": "Manages external communication of findings, constructing telemetry payloads to update the CodeBoarding platform on engine performance and results.",
+          "name": "Analysis Validator & Feedback Loop",
+          "description": "Ensures the integrity of the diffing process by monitoring analysis health, validating structural mapping accuracy, and processing external feedback.",
           "key_entities": [
+            {
+              "qualified_name": "scripts.engine_adapter.run_health",
+              "reference_file": "scripts/engine_adapter.py",
+              "reference_start_line": 576,
+              "reference_end_line": 602
+            },
+            {
+              "qualified_name": "scripts.submit_feedback.main",
+              "reference_file": "scripts/submit_feedback.py",
+              "reference_start_line": 147,
+              "reference_end_line": 172
+            },
+            {
+              "qualified_name": "scripts.engine_adapter._count_report_issues",
+              "reference_file": "scripts/engine_adapter.py",
+              "reference_start_line": 549,
+              "reference_end_line": 562
+            },
             {
               "qualified_name": "scripts.submit_feedback.build_payload",
               "reference_file": "scripts/submit_feedback.py",
               "reference_start_line": 119,
               "reference_end_line": 132
-            },
-            {
-              "qualified_name": "scripts.submit_feedback.post",
-              "reference_file": "scripts/submit_feedback.py",
-              "reference_start_line": 135,
-              "reference_end_line": 144
-            },
-            {
-              "qualified_name": "scripts.submit_feedback.extract_feedback",
-              "reference_file": "scripts/submit_feedback.py",
-              "reference_start_line": 55,
-              "reference_end_line": 69
             }
           ],
           "source_cluster_ids": [
-            2,
-            3
+            1,
+            7
           ],
           "file_methods": [
+            {
+              "file_path": "scripts/engine_adapter.py",
+              "methods": [
+                "scripts.engine_adapter._count_report_issues",
+                "scripts.engine_adapter._count_health_report",
+                "scripts.engine_adapter.run_health"
+              ]
+            },
             {
               "file_path": "scripts/submit_feedback.py",
               "methods": [
@@ -1227,18 +1289,36 @@
       ],
       "components_relations": [
         {
-          "relation": "queries for modified files and methods",
-          "src_name": "Architectural Mapper & Visualizer",
-          "dst_name": "Structural Change Analyzer",
+          "relation": "provides change impact data to",
+          "src_name": "Structural Change Analyzer",
+          "dst_name": "Incremental Analysis Orchestrator",
+          "src_id": "2.1",
+          "dst_id": "2.2",
+          "edge_count": 0,
+          "is_static": false
+        },
+        {
+          "relation": "triggers health diagnostics for",
+          "src_name": "Incremental Analysis Orchestrator",
+          "dst_name": "Analysis Validator & Feedback Loop",
           "src_id": "2.2",
-          "dst_id": "2.1",
+          "dst_id": "2.3",
           "edge_count": 1,
           "is_static": true
         },
         {
-          "relation": "extracts analysis results for payload construction",
-          "src_name": "Analysis Lifecycle & Telemetry",
-          "dst_name": "Architectural Mapper & Visualizer",
+          "relation": "delegates structural diffing to",
+          "src_name": "Incremental Analysis Orchestrator",
+          "dst_name": "Structural Change Analyzer",
+          "src_id": "2.2",
+          "dst_id": "2.1",
+          "edge_count": 0,
+          "is_static": false
+        },
+        {
+          "relation": "reports analysis health metrics to",
+          "src_name": "Analysis Validator & Feedback Loop",
+          "dst_name": "Incremental Analysis Orchestrator",
           "src_id": "2.3",
           "dst_id": "2.2",
           "edge_count": 0,
@@ -1906,7 +1986,7 @@
   ],
   "components_relations": [
     {
-      "relation": "triggers incremental analysis",
+      "relation": "determines analysis depth and scope",
       "src_name": "Analysis Orchestrator",
       "dst_name": "Structural Diffing Engine",
       "src_id": "1",
@@ -1915,7 +1995,16 @@
       "is_static": false
     },
     {
-      "relation": "provides filtered change sets",
+      "relation": "triggers health checks and rendering",
+      "src_name": "Analysis Orchestrator",
+      "dst_name": "Mermaid Visualization Engine",
+      "src_id": "1",
+      "dst_id": "3",
+      "edge_count": 0,
+      "is_static": false
+    },
+    {
+      "relation": "provides filtered change sets for diagramming",
       "src_name": "Structural Diffing Engine",
       "dst_name": "Mermaid Visualization Engine",
       "src_id": "2",
@@ -1924,7 +2013,16 @@
       "is_static": true
     },
     {
-      "relation": "queries component metadata",
+      "relation": "provides metadata for feedback loops",
+      "src_name": "Structural Diffing Engine",
+      "dst_name": "UX & Integration Layer",
+      "src_id": "2",
+      "dst_id": "4",
+      "edge_count": 2,
+      "is_static": true
+    },
+    {
+      "relation": "requests component counts and naming",
       "src_name": "Mermaid Visualization Engine",
       "dst_name": "Structural Diffing Engine",
       "src_id": "3",
@@ -1933,7 +2031,7 @@
       "is_static": true
     },
     {
-      "relation": "provides rendered diagrams",
+      "relation": "delegates UI building for visualization",
       "src_name": "Mermaid Visualization Engine",
       "dst_name": "UX & Integration Layer",
       "src_id": "3",
@@ -1942,16 +2040,16 @@
       "is_static": true
     },
     {
-      "relation": "filters changes for presentation",
+      "relation": "resolves depth constraints for metadata",
       "src_name": "UX & Integration Layer",
       "dst_name": "Structural Diffing Engine",
       "src_id": "4",
       "dst_id": "2",
-      "edge_count": 1,
+      "edge_count": 6,
       "is_static": true
     },
     {
-      "relation": "initiates health checks",
+      "relation": "initiates visualization of component files",
       "src_name": "UX & Integration Layer",
       "dst_name": "Mermaid Visualization Engine",
       "src_id": "4",
