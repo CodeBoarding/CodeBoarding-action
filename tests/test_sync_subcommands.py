@@ -5,6 +5,7 @@ is byte-identical and already covered by tests/test_engine_adapter.py."""
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import types
@@ -191,6 +192,21 @@ class TestAnalyze(_Base):
         self.assertTrue((out / "stale.json").exists())
         self.assertTrue((out / "health").exists())
 
+    def test_depth_four_baseline_runs_incremental(self):
+        # The accepted depth ceiling is 4: a committed depth-4 baseline is a
+        # supported value, so sync runs incremental at depth 4 (it is not rejected
+        # as out-of-range and forced to full).
+        rf, ri = _Rec(), _Rec()
+        self._install(run_full=rf, run_incremental=ri)
+        out = Path(tempfile.mkdtemp())
+        _write_analysis(out, commit="metadata-base", depth=4)
+
+        mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 2)
+
+        self.assertEqual(mode, "incremental")
+        self.assertEqual(len(rf.calls), 0)
+        self.assertEqual(len(ri.calls), 1)
+
     def test_shallower_baseline_runs_incremental(self):
         # The engine records the depth REACHED, not requested: a depth-2 push on
         # a repo that never expands keeps writing depth_level 1, so a strict !=
@@ -369,7 +385,7 @@ class TestAnalyze(_Base):
             self.assertEqual(os.environ["CODEBOARDING_SOURCE"], "sync")
 
     def test_main_rejects_invalid_depth(self):
-        for depth in ("0", "4", "x"):
+        for depth in ("0", "5", "x"):
             with self.subTest(depth=depth):
                 with redirect_stderr(StringIO()):
                     with self.assertRaises(SystemExit):
@@ -522,6 +538,57 @@ class TestBaselineInfo(_Base):
             engine_adapter.main(["baseline-info", "--analysis", str(path)])
         self.assertIn("commit_hash=", buf.getvalue())
         self.assertNotIn("nope", buf.getvalue())
+
+
+class TestBaselineDepth(_Base):
+    """baseline-depth lets review inherit the committed baseline's depth_level so
+    the PR head is analyzed at the same depth as the base it is diffed against."""
+
+    def _write(self, metadata):
+        out = Path(tempfile.mkdtemp())
+        (out / "analysis.json").write_text(json.dumps({"metadata": metadata}), encoding="utf-8")
+        return out / "analysis.json"
+
+    def test_returns_supported_depth(self):
+        for depth in (1, 2, 3, 4):
+            with self.subTest(depth=depth):
+                self.assertEqual(engine_adapter.baseline_depth(self._write({"depth_level": depth})), depth)
+
+    def test_returns_none_for_unsupported_or_missing(self):
+        for metadata in ({"depth_level": 0}, {"depth_level": 5}, {"depth_level": "x"}, {}):
+            with self.subTest(metadata=metadata):
+                self.assertIsNone(engine_adapter.baseline_depth(self._write(metadata)))
+        self.assertIsNone(engine_adapter.baseline_depth(Path(tempfile.mkdtemp()) / "absent.json"))
+
+    def test_main_prints_depth_line(self):
+        path = self._write({"depth_level": 4})
+        buf = StringIO()
+        with patch.dict(os.environ, {}, clear=True), redirect_stdout(buf):
+            rc = engine_adapter.main(["baseline-depth", "--analysis", str(path)])
+        self.assertEqual(rc, 0)
+        self.assertIn("depth_level=4", buf.getvalue())
+
+    def test_main_prints_empty_for_missing_depth(self):
+        path = self._write({"commit_hash": "deadbeef1234"})
+        buf = StringIO()
+        with patch.dict(os.environ, {}, clear=True), redirect_stdout(buf):
+            engine_adapter.main(["baseline-depth", "--analysis", str(path)])
+        self.assertIn("depth_level=", buf.getvalue())
+        self.assertNotIn("depth_level=None", buf.getvalue())
+
+    def test_runs_without_engine_installed(self):
+        # The action calls baseline-depth BEFORE the engine package is installed,
+        # so it must work as a subprocess with no engine modules on sys.path.
+        path = self._write({"depth_level": 4})
+        adapter = Path(__file__).resolve().parent.parent / "scripts" / "engine_adapter.py"
+        result = subprocess.run(
+            [sys.executable, str(adapter), "baseline-depth", "--analysis", str(path)],
+            capture_output=True,
+            text=True,
+            cwd=tempfile.mkdtemp(),  # not the repo: no stub engine modules importable
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("depth_level=4", result.stdout)
 
 
 if __name__ == "__main__":

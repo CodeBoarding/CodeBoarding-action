@@ -189,7 +189,7 @@ class TestAnalysis(_Base):
             self.assertEqual(os.environ["CODEBOARDING_SOURCE"], "github_action")
 
     def test_main_rejects_invalid_depth(self):
-        for depth in ("0", "4", "x"):
+        for depth in ("0", "5", "x"):
             with self.subTest(depth=depth):
                 with redirect_stderr(StringIO()):
                     with self.assertRaises(SystemExit):
@@ -210,6 +210,30 @@ class TestAnalysis(_Base):
                                 "abc123",
                             ]
                         )
+
+    def test_main_accepts_depth_four(self):
+        # The action's accepted depth ceiling is 4 so a committed depth-4 baseline
+        # is a first-class value review can inherit (the engine has no depth cap).
+        rf = _Rec()
+        self._install(run_full=rf)
+        engine_adapter.main(
+            [
+                "base",
+                "--repo",
+                "/repo",
+                "--out",
+                "/out",
+                "--name",
+                "myrepo",
+                "--run-id",
+                "rid-base",
+                "--depth",
+                "4",
+                "--source-sha",
+                "abc123",
+            ]
+        )
+        self.assertEqual(rf.calls[0]["depth_level"], 4)
 
     def test_head_uses_incremental(self):
         ri, rf = _Rec(), _Rec()
@@ -497,6 +521,25 @@ class TestValidateBase(_Base):
             self.assertTrue(ok)
             self.assertIn("matches", message)
 
+    def test_validate_base_accepts_depth_four_baseline(self):
+        # The core fix: review inherits the committed baseline's depth, so a
+        # depth-4 baseline validated at --expected-depth 4 is accepted (reused,
+        # not regenerated). Validated at a shallower expected depth it is still
+        # rejected (an explicit shallower depth_level input).
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(
+                json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 4}}),
+                encoding="utf-8",
+            )
+
+            ok_same, _ = engine_adapter.validate_base_analysis(path, "abc123", expected_depth=4)
+            ok_shallower, message = engine_adapter.validate_base_analysis(path, "abc123", expected_depth=2)
+
+            self.assertTrue(ok_same)
+            self.assertFalse(ok_shallower)
+            self.assertIn("deeper", message)
+
     def test_main_validate_base_expected_depth_exit_codes(self):
         # patch.dict: main() setdefaults CODEBOARDING_SOURCE; don't leak it.
         with patch.dict(os.environ), tempfile.TemporaryDirectory() as tmp:
@@ -518,10 +561,18 @@ class TestValidateBase(_Base):
                 ),
                 1,
             )
+            # depth 4 is now an accepted value (against a depth-2 baseline a
+            # shallower-or-equal expected depth passes the depth check).
+            self.assertEqual(
+                engine_adapter.main(
+                    ["validate-base", "--analysis", str(path), "--expected-sha", "abc123", "--expected-depth", "4"]
+                ),
+                0,
+            )
             with redirect_stderr(StringIO()):
-                with self.assertRaises(SystemExit):  # depth outside 1-3 rejected by argparse
+                with self.assertRaises(SystemExit):  # depth outside 1-4 rejected by argparse
                     engine_adapter.main(
-                        ["validate-base", "--analysis", str(path), "--expected-sha", "abc123", "--expected-depth", "4"]
+                        ["validate-base", "--analysis", str(path), "--expected-sha", "abc123", "--expected-depth", "5"]
                     )
 
 

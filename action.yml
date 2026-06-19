@@ -36,7 +36,7 @@ inputs:
     required: false
     default: '0.12.3'
   depth_level:
-    description: 'Analysis depth (1-3) for cold-start or force_full rebuilds. Once .codeboarding/analysis.json exists, its metadata.depth_level is the source of truth for incremental analysis and fallback-full recovery. Empty (default): 2 for cold starts.'
+    description: 'Analysis depth (1-4) for cold-start or force_full rebuilds. Once .codeboarding/analysis.json exists, its metadata.depth_level is the source of truth: sync runs incremental at the baseline depth, and review analyzes the PR head at the committed baseline depth so the diff is apples-to-apples. Empty (default): 2 for cold starts.'
     required: false
     default: ''
   agent_model:
@@ -210,8 +210,8 @@ runs:
           *) echo "::error::mode must be 'review' or 'sync' (got '$MODE')."; exit 1 ;;
         esac
         case "$DEPTH" in
-          ''|1|2|3) ;;
-          *) echo "::error::depth_level must be 1, 2, or 3 (empty = default cold-start depth 2)."; exit 1 ;;
+          ''|1|2|3|4) ;;
+          *) echo "::error::depth_level must be 1, 2, 3, or 4 (empty = default cold-start depth 2)."; exit 1 ;;
         esac
         echo "mode=$MODE" >> "$GITHUB_OUTPUT"
 
@@ -472,8 +472,13 @@ runs:
       id: resolve_depth
       if: steps.guard.outputs.skip != 'true'
       shell: bash
+      working-directory: target-repo
       env:
         INPUT_DEPTH: ${{ inputs.depth_level }}
+        MODE: ${{ steps.guard.outputs.mode }}
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        EMPTY_BASE: ${{ steps.guard.outputs.empty_base }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
         # Explicit input controls cold-start/force_full rebuilds. Existing
@@ -482,6 +487,31 @@ runs:
           echo "depth=$INPUT_DEPTH" >> "$GITHUB_OUTPUT"
           echo "Using explicit depth_level=$INPUT_DEPTH."
           exit 0
+        fi
+        # Review against a committed baseline: analyze the PR head at the SAME
+        # depth the committed .codeboarding/analysis.json was generated with, so
+        # head and base diff apples-to-apples. Defaulting to a shallower depth
+        # would make validate-base reject the deeper baseline, force the action to
+        # regenerate a shallower base, and (because the artifact then carries no
+        # committed base SHA) leave the webview diffing the deeper committed base
+        # against the shallower head — reporting phantom "deleted" components.
+        # The engine is not installed yet at this step, so baseline-depth runs on
+        # the runner's stdlib python3 (it only parses the committed JSON).
+        if [ "$MODE" = "review" ] && [ "$EMPTY_BASE" != "true" ] && [ -n "$BASE_SHA" ]; then
+          BASE_ANALYSIS="$(mktemp)"
+          if git show "${BASE_SHA}:.codeboarding/analysis.json" > "$BASE_ANALYSIS" 2>/dev/null; then
+            INHERITED="$(python3 "$ACTION_PATH/scripts/engine_adapter.py" baseline-depth --analysis "$BASE_ANALYSIS" | sed -n 's/^depth_level=//p')"
+            rm -f "$BASE_ANALYSIS"
+            if [ -n "$INHERITED" ]; then
+              echo "depth=$INHERITED" >> "$GITHUB_OUTPUT"
+              echo "Inheriting committed baseline depth_level=$INHERITED for the PR-head analysis."
+              exit 0
+            fi
+            echo "Committed baseline has no usable depth_level; using default cold-start depth."
+          else
+            rm -f "$BASE_ANALYSIS"
+            echo "No committed baseline at ${BASE_SHA}; using default cold-start depth."
+          fi
         fi
         DEPTH=2
         echo "depth=$DEPTH" >> "$GITHUB_OUTPUT"

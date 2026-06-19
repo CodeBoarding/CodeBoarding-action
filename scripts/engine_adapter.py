@@ -1,11 +1,12 @@
 """CLI adapter between the action and the CodeBoarding analysis ENGINE.
 
 No analysis logic lives here. The engine is the published ``codeboarding`` PyPI
-package installed by the action and imported lazily inside each function
-(``codeboarding_workflows`` etc.); this module just turns the action's shell
-steps into typed, tested calls into it. The lazy imports mean this file imports
-fine without the package present — the tests stub those modules and assert we
-call the engine with the right args.
+package installed by the action (``codeboarding_workflows`` etc.); this module
+just turns the action's shell steps into typed, tested calls into it. The engine
+imports are best-effort at module load, so this file imports fine without the
+package present — the metadata-only subcommands (``baseline-info``,
+``baseline-depth``, ``validate-base``) run with the stdlib alone, and the tests
+stub the engine modules to assert we call the engine with the right args.
 
 Subcommands (all paths/refs come in as argv, never interpolated into source):
 
@@ -15,6 +16,7 @@ Subcommands (all paths/refs come in as argv, never interpolated into source):
   health         --artifact-dir D --repo P --name N --issues-out FILE
   validate-base  --analysis F --expected-sha SHA [--expected-depth K]
   baseline-info  --analysis F
+  baseline-depth --analysis F
   analyze        --repo P --out D --name N --run-id ID --source-sha SHA --depth K [--force-full]
   render         --analysis F --out D --repo-name N --repo-ref R [--format .md]
   concat         --docs-dir D --out F
@@ -60,12 +62,23 @@ import re
 import shutil
 from pathlib import Path
 
-from codeboarding_workflows.analysis import BaselineUnavailableError, run_full, run_incremental
-from codeboarding_workflows.rendering import render_docs
-from diagram_analysis.exceptions import IncrementalCacheMissingError
-from static_analyzer import get_static_analysis
-from static_analyzer.analysis_cache import StaticAnalysisCache
-from static_analyzer.cluster_helpers import build_all_cluster_results
+# The engine packages are imported best-effort so the metadata-only subcommands
+# (``baseline-info``, ``baseline-depth``, ``validate-base``) run with the stdlib
+# alone — they parse a committed analysis.json and never touch the engine. The
+# action invokes them BEFORE the engine package is pip-installed (e.g. while
+# resolving the review depth), so a hard import here would break that step. The
+# analysis subcommands that DO need the engine fail loudly when these are None.
+try:
+    from codeboarding_workflows.analysis import BaselineUnavailableError, run_full, run_incremental
+    from codeboarding_workflows.rendering import render_docs
+    from diagram_analysis.exceptions import IncrementalCacheMissingError
+    from static_analyzer import get_static_analysis
+    from static_analyzer.analysis_cache import StaticAnalysisCache
+    from static_analyzer.cluster_helpers import build_all_cluster_results
+except Exception:  # engine package not installed (metadata-only subcommands don't need it)
+    BaselineUnavailableError = IncrementalCacheMissingError = _MissingEngine = type("_MissingEngine", (Exception,), {})
+    run_full = run_incremental = render_docs = None
+    get_static_analysis = StaticAnalysisCache = build_all_cluster_results = None
 
 try:
     from health.models import Severity
@@ -151,7 +164,7 @@ def _metadata_depth(metadata: dict) -> int | None:
 
 def _supported_depth(metadata: dict) -> int | None:
     depth = _metadata_depth(metadata)
-    return depth if depth in range(1, 4) else None
+    return depth if depth in range(1, 5) else None
 
 
 def _analysis_depth_or_default(output_dir: Path, default_depth: int = _DEFAULT_DEPTH) -> int:
@@ -180,6 +193,21 @@ def baseline_info(analysis_path: Path) -> str:
     return commit if _SHA_RE.match(commit) else ""
 
 
+def baseline_depth(analysis_path: Path) -> int | None:
+    """Return the committed baseline's metadata.depth_level when present and a
+    supported value (1-4), else None. Review mode uses this (via the
+    ``baseline-depth`` subcommand) to analyze the PR head at the SAME depth the
+    committed baseline was generated with, so head and base diff apples-to-apples
+    instead of defaulting to a shallower depth and reporting phantom changes.
+    Parsing + the supported-range guard live here so the action shell never reads
+    the JSON inline (mirrors ``baseline_info``).
+    """
+    metadata = _load_metadata(analysis_path)
+    if not isinstance(metadata, dict):
+        return None
+    return _supported_depth(metadata)
+
+
 def validate_base_analysis(
     analysis_path: Path, expected_sha: str, expected_depth: int | None = None
 ) -> tuple[bool, str]:
@@ -198,6 +226,12 @@ def validate_base_analysis(
     expands persists depth_level 1 — rejecting that would force a full
     regeneration on every PR without ever converging. A missing or
     unparseable depth_level is accepted — legacy baselines predate the field.
+
+    Review now derives ``expected_depth`` from the committed baseline's own
+    depth_level (via the ``baseline-depth`` subcommand), so the deeper-than-expected
+    rejection no longer fires for the normal case — head and base are analyzed at
+    the same depth. The rejection remains a safety net for an explicit
+    ``depth_level`` input that is shallower than the committed baseline.
     """
     try:
         data = json.loads(analysis_path.read_text(encoding="utf-8"))
@@ -523,7 +557,7 @@ def main(argv=None) -> int:
     b = sub.add_parser("base")
     for a in ("--repo", "--out", "--name", "--run-id", "--source-sha"):
         b.add_argument(a, required=True)
-    b.add_argument("--depth", required=True, type=int, choices=range(1, 4))
+    b.add_argument("--depth", required=True, type=int, choices=range(1, 5))
 
     s = sub.add_parser("seed")
     for a in ("--repo", "--out", "--source-sha"):
@@ -532,7 +566,7 @@ def main(argv=None) -> int:
     h = sub.add_parser("head")
     for a in ("--repo", "--out", "--name", "--run-id", "--base-ref", "--target-ref", "--source-sha"):
         h.add_argument(a, required=True)
-    h.add_argument("--depth", required=True, type=int, choices=range(1, 4))
+    h.add_argument("--depth", required=True, type=int, choices=range(1, 5))
     h.add_argument("--force-full", action="store_true", help="Run a full PR-head analysis instead of incremental.")
 
     hc = sub.add_parser("health")
@@ -542,15 +576,18 @@ def main(argv=None) -> int:
     vb = sub.add_parser("validate-base")
     vb.add_argument("--analysis", required=True)
     vb.add_argument("--expected-sha", required=True)
-    vb.add_argument("--expected-depth", type=int, choices=range(1, 4))
+    vb.add_argument("--expected-depth", type=int, choices=range(1, 5))
 
     bi = sub.add_parser("baseline-info")
     bi.add_argument("--analysis", required=True)
 
+    bd = sub.add_parser("baseline-depth")
+    bd.add_argument("--analysis", required=True)
+
     an = sub.add_parser("analyze")
     for a in ("--repo", "--out", "--name", "--run-id", "--source-sha"):
         an.add_argument(a, required=True)
-    an.add_argument("--depth", required=True, type=int, choices=range(1, 4))
+    an.add_argument("--depth", required=True, type=int, choices=range(1, 5))
     an.add_argument("--force-full", action="store_true", help="Ignore any committed baseline and run a full analysis.")
 
     rn = sub.add_parser("render")
@@ -591,6 +628,9 @@ def main(argv=None) -> int:
             return 0 if ok else 1
         elif args.cmd == "baseline-info":
             print(f"commit_hash={baseline_info(Path(args.analysis))}")
+        elif args.cmd == "baseline-depth":
+            depth = baseline_depth(Path(args.analysis))
+            print(f"depth_level={depth if depth is not None else ''}")
         elif args.cmd == "analyze":
             run_analyze(args.repo, args.out, args.name, args.run_id, args.source_sha, args.depth, args.force_full)
         elif args.cmd == "render":
