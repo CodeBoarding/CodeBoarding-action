@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.4](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.5.3...v1.5.4) (2026-06-19)
+
+
+### Bug Fixes
+
+* review inherits committed baseline depth for the PR diff ([#45](https://github.com/CodeBoarding/CodeBoarding-action/issues/45)) ([6aa40f2](https://github.com/CodeBoarding/CodeBoarding-action/commit/6aa40f2349afe7a2659af86f454d8ff2e2f44415))
+
 ## [1.5.3](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.5.2...v1.5.3) (2026-06-19)
 
 
