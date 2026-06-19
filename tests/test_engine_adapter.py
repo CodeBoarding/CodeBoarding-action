@@ -189,7 +189,9 @@ class TestAnalysis(_Base):
             self.assertEqual(os.environ["CODEBOARDING_SOURCE"], "github_action")
 
     def test_main_rejects_invalid_depth(self):
-        for depth in ("0", "5", "x"):
+        # argparse enforces the structural range 1-10; the per-tier cap (free=3)
+        # is applied later by the action/resolver, not here.
+        for depth in ("0", "11", "x"):
             with self.subTest(depth=depth):
                 with redirect_stderr(StringIO()):
                     with self.assertRaises(SystemExit):
@@ -570,9 +572,9 @@ class TestValidateBase(_Base):
                 0,
             )
             with redirect_stderr(StringIO()):
-                with self.assertRaises(SystemExit):  # depth outside 1-4 rejected by argparse
+                with self.assertRaises(SystemExit):  # depth outside 1-10 rejected by argparse
                     engine_adapter.main(
-                        ["validate-base", "--analysis", str(path), "--expected-sha", "abc123", "--expected-depth", "5"]
+                        ["validate-base", "--analysis", str(path), "--expected-sha", "abc123", "--expected-depth", "11"]
                     )
 
 

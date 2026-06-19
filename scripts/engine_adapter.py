@@ -60,6 +60,7 @@ import json
 import os
 import re
 import shutil
+import sys
 from pathlib import Path
 
 # The engine packages are imported best-effort so the metadata-only subcommands
@@ -92,6 +93,18 @@ except Exception as _health_import_error:  # engine without the health module
 # be rejected before it reaches the action shell.
 _SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 _DEFAULT_DEPTH = 2
+
+# Per-tier ceiling on analysis depth. The engine has no hard cap (depth_level is
+# just the abstraction-expansion bound), so the limit is a product decision:
+# the free hosted tier is capped to keep per-run cost bounded; licensed/BYO-key
+# users (who pay for their own tokens or hold a license) get a much higher ceiling.
+_FREE_MAX_DEPTH = 3
+_LICENSED_MAX_DEPTH = 10
+
+
+def _max_depth(licensed: bool) -> int:
+    return _LICENSED_MAX_DEPTH if licensed else _FREE_MAX_DEPTH
+
 
 # On the free hosted tier the proxy returns HTTP 402 with this message when the
 # repo owner's weekly token budget is spent. We detect it so the action can post
@@ -162,17 +175,42 @@ def _metadata_depth(metadata: dict) -> int | None:
         return None
 
 
-def _supported_depth(metadata: dict) -> int | None:
+def _resolve_depth(metadata: dict, licensed: bool, default_depth: int = _DEFAULT_DEPTH) -> int:
+    """Resolve a usable analysis depth from a committed baseline's metadata.
+
+    Always returns a number in [1, tier-max] — never None. Both spec violations
+    are handled and logged with the exact condition:
+      * missing/unparseable depth_level -> the default cold-start depth;
+      * a depth below 1 or above the tier ceiling -> clamped into range.
+    The tier ceiling is the free cap for unlicensed runs and a much higher cap
+    for licensed/BYO-key runs (see ``_max_depth``). A valid in-range depth passes
+    through unchanged.
+    """
+    cap = _max_depth(licensed)
     depth = _metadata_depth(metadata)
-    return depth if depth in range(1, 5) else None
+    # Diagnostics go to stderr so stdout stays a clean machine-readable channel
+    # (the ``baseline-depth`` subcommand prints only ``depth_level=<n>`` to stdout).
+    if depth is None:
+        print(
+            f"Baseline metadata.depth_level is missing/unparseable; using default depth {default_depth}.",
+            file=sys.stderr,
+        )
+        return min(default_depth, cap)
+    if depth < 1:
+        print(f"Baseline depth_level {depth} is below 1; using default depth 2.", file=sys.stderr)
+        return 2
+    if depth > cap:
+        tier = "licensed" if licensed else "free-tier"
+        print(f"Baseline depth_level {depth} exceeds the {tier} max {cap}; clamping to {cap}.", file=sys.stderr)
+        return cap
+    return depth
 
 
-def _analysis_depth_or_default(output_dir: Path, default_depth: int = _DEFAULT_DEPTH) -> int:
+def _analysis_depth_or_default(output_dir: Path, licensed: bool, default_depth: int = _DEFAULT_DEPTH) -> int:
     metadata = _load_metadata(output_dir / "analysis.json")
     if not isinstance(metadata, dict):
-        return default_depth
-    depth = _supported_depth(metadata)
-    return depth if depth is not None else default_depth
+        return min(default_depth, _max_depth(licensed))
+    return _resolve_depth(metadata, licensed, default_depth)
 
 
 def _metadata_commit(metadata: dict) -> str:
@@ -193,19 +231,22 @@ def baseline_info(analysis_path: Path) -> str:
     return commit if _SHA_RE.match(commit) else ""
 
 
-def baseline_depth(analysis_path: Path) -> int | None:
-    """Return the committed baseline's metadata.depth_level when present and a
-    supported value (1-4), else None. Review mode uses this (via the
-    ``baseline-depth`` subcommand) to analyze the PR head at the SAME depth the
-    committed baseline was generated with, so head and base diff apples-to-apples
-    instead of defaulting to a shallower depth and reporting phantom changes.
-    Parsing + the supported-range guard live here so the action shell never reads
+def baseline_depth(analysis_path: Path, licensed: bool) -> int | None:
+    """Return the depth to analyze the PR head at, inherited from the committed
+    baseline and clamped to the tier ceiling — or None when there is NO committed
+    baseline at all (genuine cold start; the caller then uses its own default).
+
+    Review mode uses this (via the ``baseline-depth`` subcommand) so the head is
+    analyzed at the SAME depth as the base it is diffed against (apples-to-apples).
+    A present-but-out-of-range or unparseable depth is clamped/defaulted (and
+    logged) by ``_resolve_depth`` rather than rejected, so review never silently
+    shallows a usable baseline. Parsing lives here so the action shell never reads
     the JSON inline (mirrors ``baseline_info``).
     """
     metadata = _load_metadata(analysis_path)
-    if not isinstance(metadata, dict):
-        return None
-    return _supported_depth(metadata)
+    if not isinstance(metadata, dict) or not metadata:
+        return None  # no baseline / no metadata → cold start, caller defaults
+    return _resolve_depth(metadata, licensed)
 
 
 def validate_base_analysis(
@@ -317,6 +358,7 @@ def _incremental_or_full(
     target_ref: str,
     source_sha: str,
     log_name: str,
+    licensed: bool,
 ) -> str:
     """Run incremental from *base_ref*; on a cache/baseline miss, clear the
     output dir and run a full analysis. Returns "incremental" or "full".
@@ -341,7 +383,7 @@ def _incremental_or_full(
     except (IncrementalCacheMissingError, BaselineUnavailableError) as exc:
         print(f"Incremental unavailable ({exc}); running full analysis.")
         out_path = Path(output_dir)
-        fallback_depth = _analysis_depth_or_default(out_path, depth)
+        fallback_depth = _analysis_depth_or_default(out_path, licensed, depth)
         _clear_dir(out_path)
         res = run_full(
             repo_name=repo_name,
@@ -366,6 +408,7 @@ def run_head(
     target_ref: str,
     source_sha: str,
     force_full: bool = False,
+    licensed: bool = False,
 ) -> None:
     """Review PR head: incremental from the PR target branch tip, full on a cache miss.
 
@@ -398,6 +441,7 @@ def run_head(
         target_ref=target_ref,
         source_sha=source_sha,
         log_name="cb-head.log",
+        licensed=licensed,
     )
     print(f"head_analysis_mode={mode}")
 
@@ -410,11 +454,19 @@ def run_analyze(
     source_sha: str,
     depth: int,
     force_full: bool = False,
+    licensed: bool = False,
 ) -> str:
     """Sync analysis: incremental from the committed baseline, full when the
-    baseline is missing/unparseable or ``force_full`` is set. Prints
-    ``analysis_mode=full|incremental`` on stdout — the action greps that line,
-    so it must be printed exactly once per run.
+    baseline is absent or untrusted (no commit_hash) or ``force_full`` is set.
+    Prints ``analysis_mode=full|incremental`` on stdout — the action greps that
+    line, so it must be printed exactly once per run.
+
+    The baseline's depth_level is resolved (clamped/defaulted, never None) for the
+    incremental run; whether to do a full rebuild is decided by trustworthiness
+    (commit_hash), NOT by the depth. The engine's incremental path needs a usable
+    cache + base commit, not a particular depth, and falls back to full itself if
+    the cache is missing — so a present baseline with an odd depth_level still runs
+    incremental at a sane depth rather than forcing a costly full rebuild.
     """
     out_path = Path(output_dir)
 
@@ -435,15 +487,13 @@ def run_analyze(
         return "full"
 
     if force_full:
-        return full("Full analysis forced (force_full)", depth)
+        return full("Full analysis forced (force_full)", min(depth, _max_depth(licensed)))
 
     metadata = _load_metadata(out_path / "analysis.json")
     if metadata is None:
-        return full("No baseline analysis.json found", depth)
+        return full("No baseline analysis.json found", min(depth, _max_depth(licensed)))
 
-    baseline_depth = _supported_depth(metadata)
-    if baseline_depth is None:
-        return full("Baseline metadata.depth_level is missing", _DEFAULT_DEPTH)
+    baseline_depth = _resolve_depth(metadata, licensed)
 
     base_ref = _metadata_commit(metadata)
     if not base_ref:
@@ -459,6 +509,7 @@ def run_analyze(
         target_ref=source_sha,
         source_sha=source_sha,
         log_name="cb-sync.log",
+        licensed=licensed,
     )
     print(f"analysis_mode={mode}")
     return mode
@@ -554,10 +605,16 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
 
+    # The structural ceiling is the licensed max; the per-run tier cap (free vs
+    # licensed) is enforced by the action guard (explicit input) and _resolve_depth
+    # (inherited baseline), so a too-deep value is rejected or clamped, not silently
+    # truncated by argparse.
+    depth_choices = range(1, _LICENSED_MAX_DEPTH + 1)
+
     b = sub.add_parser("base")
     for a in ("--repo", "--out", "--name", "--run-id", "--source-sha"):
         b.add_argument(a, required=True)
-    b.add_argument("--depth", required=True, type=int, choices=range(1, 5))
+    b.add_argument("--depth", required=True, type=int, choices=depth_choices)
 
     s = sub.add_parser("seed")
     for a in ("--repo", "--out", "--source-sha"):
@@ -566,7 +623,8 @@ def main(argv=None) -> int:
     h = sub.add_parser("head")
     for a in ("--repo", "--out", "--name", "--run-id", "--base-ref", "--target-ref", "--source-sha"):
         h.add_argument(a, required=True)
-    h.add_argument("--depth", required=True, type=int, choices=range(1, 5))
+    h.add_argument("--depth", required=True, type=int, choices=depth_choices)
+    h.add_argument("--licensed", action="store_true", help="Licensed/BYO-key run (raises the depth ceiling).")
     h.add_argument("--force-full", action="store_true", help="Run a full PR-head analysis instead of incremental.")
 
     hc = sub.add_parser("health")
@@ -576,18 +634,20 @@ def main(argv=None) -> int:
     vb = sub.add_parser("validate-base")
     vb.add_argument("--analysis", required=True)
     vb.add_argument("--expected-sha", required=True)
-    vb.add_argument("--expected-depth", type=int, choices=range(1, 5))
+    vb.add_argument("--expected-depth", type=int, choices=depth_choices)
 
     bi = sub.add_parser("baseline-info")
     bi.add_argument("--analysis", required=True)
 
     bd = sub.add_parser("baseline-depth")
     bd.add_argument("--analysis", required=True)
+    bd.add_argument("--licensed", action="store_true", help="Licensed/BYO-key run (raises the depth ceiling).")
 
     an = sub.add_parser("analyze")
     for a in ("--repo", "--out", "--name", "--run-id", "--source-sha"):
         an.add_argument(a, required=True)
-    an.add_argument("--depth", required=True, type=int, choices=range(1, 5))
+    an.add_argument("--depth", required=True, type=int, choices=depth_choices)
+    an.add_argument("--licensed", action="store_true", help="Licensed/BYO-key run (raises the depth ceiling).")
     an.add_argument("--force-full", action="store_true", help="Ignore any committed baseline and run a full analysis.")
 
     rn = sub.add_parser("render")
@@ -619,6 +679,7 @@ def main(argv=None) -> int:
                 args.source_sha,
                 # action.yml adds --force-full for EMPTY_BASE PRs (no comparison baseline).
                 args.force_full,
+                args.licensed,
             )
         elif args.cmd == "health":
             Path(args.issues_out).write_text(str(run_health(args.artifact_dir, args.repo, args.name)))
@@ -629,10 +690,12 @@ def main(argv=None) -> int:
         elif args.cmd == "baseline-info":
             print(f"commit_hash={baseline_info(Path(args.analysis))}")
         elif args.cmd == "baseline-depth":
-            depth = baseline_depth(Path(args.analysis))
+            depth = baseline_depth(Path(args.analysis), args.licensed)
             print(f"depth_level={depth if depth is not None else ''}")
         elif args.cmd == "analyze":
-            run_analyze(args.repo, args.out, args.name, args.run_id, args.source_sha, args.depth, args.force_full)
+            run_analyze(
+                args.repo, args.out, args.name, args.run_id, args.source_sha, args.depth, args.force_full, args.licensed
+            )
         elif args.cmd == "render":
             run_render(args.analysis, args.out, args.repo_name, args.repo_ref, args.format)
         elif args.cmd == "concat":
