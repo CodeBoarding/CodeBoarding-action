@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.3](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.5.2...v1.5.3) (2026-06-19)
+
+
+### Bug Fixes
+
+* compare review diagrams against target baseline ([#39](https://github.com/CodeBoarding/CodeBoarding-action/issues/39)) ([7339fbf](https://github.com/CodeBoarding/CodeBoarding-action/commit/7339fbf500f4fa9d4d31a60a17b692d1a3d8d05f))
+* install CodeBoarding engine from PyPI ([#44](https://github.com/CodeBoarding/CodeBoarding-action/issues/44)) ([224aa76](https://github.com/CodeBoarding/CodeBoarding-action/commit/224aa7613e472b07f1849b5fcc360e3cf3f98a5e))
+
 ## [1.5.2](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.5.1...v1.5.2) (2026-06-17)
 
 
