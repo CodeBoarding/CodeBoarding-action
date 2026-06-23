@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.5.4...v1.6.0) (2026-06-23)
+
+
+### Features
+
+* **cta:** emit short GitHub-style webview PR links ([6f6bb39](https://github.com/CodeBoarding/CodeBoarding-action/commit/6f6bb39e4e3a4fb08d5b3fdf8305e91e522e35ca))
+
 ## [1.5.4](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.5.3...v1.5.4) (2026-06-19)
 
 
