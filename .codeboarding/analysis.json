@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-06-19T22:21:23.206819+00:00",
-    "commit_hash": "ca1e623484dd3fb014e14f279af2d43825787f84",
+    "generated_at": "2026-06-23T21:34:33.201745+00:00",
+    "commit_hash": "6f6bb39e4e3a4fb08d5b3fdf8305e91e522e35ca",
     "repo_name": "CodeBoarding-action",
     "depth_level": 2,
     "file_coverage_summary": {
@@ -68,7 +68,6 @@
         "scripts/engine_adapter.py|scripts.engine_adapter._flag_quota_exhausted",
         "scripts/engine_adapter.py|scripts.engine_adapter._log_path",
         "scripts/engine_adapter.py|scripts.engine_adapter._clear_dir",
-        "scripts/engine_adapter.py|scripts.engine_adapter._supported_depth",
         "scripts/engine_adapter.py|scripts.engine_adapter._load_metadata",
         "scripts/engine_adapter.py|scripts.engine_adapter._metadata_depth",
         "scripts/engine_adapter.py|scripts.engine_adapter._resolve_depth",
@@ -412,13 +411,6 @@
       "qualified_name": "scripts.engine_adapter._clear_dir",
       "start_line": 149,
       "end_line": 155,
-      "type": "FUNCTION"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._supported_depth": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._supported_depth",
-      "start_line": 152,
-      "end_line": 154,
       "type": "FUNCTION"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._load_metadata": {
@@ -1698,7 +1690,8 @@
         5,
         9,
         10,
-        11
+        11,
+        12
       ],
       "file_methods": [
         {
@@ -1726,16 +1719,19 @@
         {
           "file_path": "scripts/engine_adapter.py",
           "methods": [
+            "scripts.engine_adapter._health_import_error",
+            "scripts.engine_adapter._max_depth",
             "scripts.engine_adapter._is_quota_exhausted",
             "scripts.engine_adapter._flag_quota_exhausted",
             "scripts.engine_adapter._log_path",
             "scripts.engine_adapter._clear_dir",
-            "scripts.engine_adapter._supported_depth",
             "scripts.engine_adapter._load_metadata",
             "scripts.engine_adapter._metadata_depth",
+            "scripts.engine_adapter._resolve_depth",
             "scripts.engine_adapter._analysis_depth_or_default",
             "scripts.engine_adapter._metadata_commit",
             "scripts.engine_adapter.baseline_info",
+            "scripts.engine_adapter.baseline_depth",
             "scripts.engine_adapter.validate_base_analysis",
             "scripts.engine_adapter.run_base",
             "scripts.engine_adapter.run_seed",
@@ -1745,6 +1741,9 @@
             "scripts.engine_adapter.run_analyze.full",
             "scripts.engine_adapter.run_render",
             "scripts.engine_adapter.run_concat",
+            "scripts.engine_adapter._count_report_issues",
+            "scripts.engine_adapter._count_health_report",
+            "scripts.engine_adapter.run_health",
             "scripts.engine_adapter.main"
           ]
         }
@@ -1775,47 +1774,56 @@
           "can_expand": true
         },
         {
-          "name": "Presentation Orchestrator & State Manager",
-          "description": "Acts as the primary coordinator for the UX layer, validating analysis state, managing quotas, and ensuring data consistency for visualizers and CTA builders.",
+          "name": "Analysis Lifecycle Orchestrator",
+          "description": "Acts as the primary adapter between the GitHub Action environment and the analysis engine, managing execution flow and validation.",
           "key_entities": [
             {
               "qualified_name": "scripts.engine_adapter.main",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 519,
-              "reference_end_line": 607
+              "reference_start_line": 605,
+              "reference_end_line": 711
             },
             {
               "qualified_name": "scripts.engine_adapter.run_analyze",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 371,
-              "reference_end_line": 430
+              "reference_start_line": 450,
+              "reference_end_line": 516
+            },
+            {
+              "qualified_name": "scripts.engine_adapter.run_health",
+              "reference_file": "scripts/engine_adapter.py",
+              "reference_start_line": 576,
+              "reference_end_line": 602
             },
             {
               "qualified_name": "scripts.engine_adapter.validate_base_analysis",
               "reference_file": "scripts/engine_adapter.py",
-              "reference_start_line": 183,
-              "reference_end_line": 233
+              "reference_start_line": 253,
+              "reference_end_line": 309
             }
           ],
           "source_cluster_ids": [
             1,
             2,
-            5
+            4,
+            6
           ],
           "file_methods": [
             {
               "file_path": "scripts/engine_adapter.py",
               "methods": [
+                "scripts.engine_adapter._max_depth",
                 "scripts.engine_adapter._is_quota_exhausted",
                 "scripts.engine_adapter._flag_quota_exhausted",
                 "scripts.engine_adapter._log_path",
                 "scripts.engine_adapter._clear_dir",
-                "scripts.engine_adapter._supported_depth",
                 "scripts.engine_adapter._load_metadata",
                 "scripts.engine_adapter._metadata_depth",
+                "scripts.engine_adapter._resolve_depth",
                 "scripts.engine_adapter._analysis_depth_or_default",
                 "scripts.engine_adapter._metadata_commit",
                 "scripts.engine_adapter.baseline_info",
+                "scripts.engine_adapter.baseline_depth",
                 "scripts.engine_adapter.validate_base_analysis",
                 "scripts.engine_adapter.run_base",
                 "scripts.engine_adapter.run_seed",
@@ -1825,6 +1833,9 @@
                 "scripts.engine_adapter.run_analyze.full",
                 "scripts.engine_adapter.run_render",
                 "scripts.engine_adapter.run_concat",
+                "scripts.engine_adapter._count_report_issues",
+                "scripts.engine_adapter._count_health_report",
+                "scripts.engine_adapter.run_health",
                 "scripts.engine_adapter.main"
               ]
             }
@@ -1833,8 +1844,8 @@
           "can_expand": true
         },
         {
-          "name": "Visual Diagramming Engine",
-          "description": "Translates internal diff data and component relationships into Mermaid.js syntax, managing scope and label truncation for GitHub UI readability.",
+          "name": "Visual Diff Generator",
+          "description": "Transforms internal structural analysis and diff data into human-readable Mermaid.js diagrams.",
           "key_entities": [
             {
               "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build",
@@ -1849,14 +1860,14 @@
               "reference_end_line": 309
             },
             {
-              "qualified_name": "scripts.diff_to_mermaid._truncate",
+              "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
               "reference_file": "scripts/diff_to_mermaid.py",
-              "reference_start_line": 256,
-              "reference_end_line": 258
+              "reference_start_line": 435,
+              "reference_end_line": 447
             }
           ],
           "source_cluster_ids": [
-            4
+            3
           ],
           "file_methods": [
             {
@@ -1875,30 +1886,30 @@
           "can_expand": true
         },
         {
-          "name": "IDE & Web Integration Handler",
-          "description": "Detects user environments and generates specialized URLs to enable direct navigation from GitHub comments to local IDEs or webviews.",
+          "name": "Engagement & Integration Manager",
+          "description": "Handles the final presentation layer by generating interactive CTAs and environment-specific deep links.",
           "key_entities": [
             {
               "qualified_name": "scripts.build_cta.main",
               "reference_file": "scripts/build_cta.py",
-              "reference_start_line": 181,
-              "reference_end_line": 223
-            },
-            {
-              "qualified_name": "scripts.build_cta.detect_editors",
-              "reference_file": "scripts/build_cta.py",
-              "reference_start_line": 36,
-              "reference_end_line": 48
+              "reference_start_line": 155,
+              "reference_end_line": 189
             },
             {
               "qualified_name": "scripts.build_cta.webview_url",
               "reference_file": "scripts/build_cta.py",
-              "reference_start_line": 62,
-              "reference_end_line": 94
+              "reference_start_line": 63,
+              "reference_end_line": 81
+            },
+            {
+              "qualified_name": "scripts.build_cta.detect_editors",
+              "reference_file": "scripts/build_cta.py",
+              "reference_start_line": 37,
+              "reference_end_line": 49
             }
           ],
           "source_cluster_ids": [
-            3
+            5
           ],
           "file_methods": [
             {
@@ -1919,38 +1930,47 @@
       ],
       "components_relations": [
         {
-          "relation": "delegates diagram generation to",
-          "src_name": "Presentation Orchestrator & State Manager",
-          "dst_name": "Visual Diagramming Engine",
+          "relation": "triggers diagram generation from analysis",
+          "src_name": "Analysis Lifecycle Orchestrator",
+          "dst_name": "Visual Diff Generator",
           "src_id": "4.1",
           "dst_id": "4.2",
           "edge_count": 0,
           "is_static": false
         },
         {
-          "relation": "provides analysis state for CTA generation",
-          "src_name": "Presentation Orchestrator & State Manager",
-          "dst_name": "IDE & Web Integration Handler",
+          "relation": "provides context for CTA generation",
+          "src_name": "Analysis Lifecycle Orchestrator",
+          "dst_name": "Engagement & Integration Manager",
           "src_id": "4.1",
           "dst_id": "4.3",
           "edge_count": 0,
           "is_static": false
         },
         {
-          "relation": "triggers feedback collection on completion",
-          "src_name": "Presentation Orchestrator & State Manager",
+          "relation": "provides visual assets for final report",
+          "src_name": "Visual Diff Generator",
+          "dst_name": "Engagement & Integration Manager",
+          "src_id": "4.2",
+          "dst_id": "4.3",
+          "edge_count": 0,
+          "is_static": false
+        },
+        {
+          "relation": "initiates feedback collection via deep links",
+          "src_name": "Engagement & Integration Manager",
           "dst_name": "Telemetry & Feedback Handler",
-          "src_id": "4.1",
+          "src_id": "4.3",
           "dst_id": "4.4",
           "edge_count": 0,
           "is_static": false
         },
         {
-          "relation": "provides component identifiers for deep-linking",
-          "src_name": "Visual Diagramming Engine",
-          "dst_name": "IDE & Web Integration Handler",
-          "src_id": "4.2",
-          "dst_id": "4.3",
+          "relation": "reports execution metrics and status",
+          "src_name": "Analysis Lifecycle Orchestrator",
+          "dst_name": "Telemetry & Feedback Handler",
+          "src_id": "4.1",
+          "dst_id": "4.4",
           "edge_count": 0,
           "is_static": false
         },
@@ -1962,31 +1982,13 @@
           "dst_id": "4.2",
           "edge_count": 1,
           "is_static": true
-        },
-        {
-          "relation": "Passes metadata about the analysis to be included in telemetry payloads",
-          "src_name": "Data Adapter & Pre-processor",
-          "dst_name": "Telemetry & Feedback Handler",
-          "src_id": "4.2",
-          "dst_id": "4.4",
-          "edge_count": 1,
-          "is_static": true
-        },
-        {
-          "relation": "calls",
-          "src_name": "Telemetry & Feedback Handler",
-          "dst_name": "Architectural Visualization Engine",
-          "src_id": "4.4",
-          "dst_id": "4.1",
-          "edge_count": 3,
-          "is_static": true
         }
       ]
     }
   ],
   "components_relations": [
     {
-      "relation": "determines analysis depth and scope",
+      "relation": "triggers incremental or full analysis",
       "src_name": "Analysis Orchestrator",
       "dst_name": "Structural Diffing Engine",
       "src_id": "1",
@@ -1995,7 +1997,7 @@
       "is_static": false
     },
     {
-      "relation": "triggers health checks and rendering",
+      "relation": "initiates diagram generation",
       "src_name": "Analysis Orchestrator",
       "dst_name": "Mermaid Visualization Engine",
       "src_id": "1",
@@ -2004,7 +2006,7 @@
       "is_static": false
     },
     {
-      "relation": "provides filtered change sets for diagramming",
+      "relation": "provides file-level change sets",
       "src_name": "Structural Diffing Engine",
       "dst_name": "Mermaid Visualization Engine",
       "src_id": "2",
@@ -2013,16 +2015,7 @@
       "is_static": true
     },
     {
-      "relation": "provides metadata for feedback loops",
-      "src_name": "Structural Diffing Engine",
-      "dst_name": "UX & Integration Layer",
-      "src_id": "2",
-      "dst_id": "4",
-      "edge_count": 2,
-      "is_static": true
-    },
-    {
-      "relation": "requests component counts and naming",
+      "relation": "queries component metadata for rendering",
       "src_name": "Mermaid Visualization Engine",
       "dst_name": "Structural Diffing Engine",
       "src_id": "3",
@@ -2031,7 +2024,7 @@
       "is_static": true
     },
     {
-      "relation": "delegates UI building for visualization",
+      "relation": "provides rendered diagram syntax",
       "src_name": "Mermaid Visualization Engine",
       "dst_name": "UX & Integration Layer",
       "src_id": "3",
@@ -2040,22 +2033,22 @@
       "is_static": true
     },
     {
-      "relation": "resolves depth constraints for metadata",
+      "relation": "filters changes for final presentation",
       "src_name": "UX & Integration Layer",
       "dst_name": "Structural Diffing Engine",
       "src_id": "4",
       "dst_id": "2",
-      "edge_count": 6,
+      "edge_count": 1,
       "is_static": true
     },
     {
-      "relation": "initiates visualization of component files",
+      "relation": "reports telemetry and feedback",
       "src_name": "UX & Integration Layer",
-      "dst_name": "Mermaid Visualization Engine",
+      "dst_name": "Analysis Orchestrator",
       "src_id": "4",
-      "dst_id": "3",
-      "edge_count": 1,
-      "is_static": true
+      "dst_id": "1",
+      "edge_count": 0,
+      "is_static": false
     }
   ]
 }
