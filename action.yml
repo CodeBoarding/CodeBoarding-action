@@ -1368,15 +1368,14 @@ runs:
         # committed to the PR branch.
         cta() {
           local extra=()
+          # ARTIFACT_NAME presence is the readiness gate (an analysis artifact was
+          # uploaded for this run). The short webview link itself needs only the run id
+          # — the webview re-derives head/base/artifact from the run + its metadata.
           if [ -n "$WEBVIEW_BASE" ] && [ -n "$ARTIFACT_NAME" ]; then
             extra+=(
               --webview-ready
               --webview-base "$WEBVIEW_BASE"
-              --head-sha "$HEAD_SHA"
-              --base-sha "$BASE_SHA"
               --run-id "$RUN_ID"
-              --artifact-name "$ARTIFACT_NAME"
-              --artifact-url "$ARTIFACT_URL"
             )
           fi
           python3 "$ACTION_PATH/scripts/build_cta.py" \

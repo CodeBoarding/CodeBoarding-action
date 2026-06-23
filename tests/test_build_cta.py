@@ -79,39 +79,31 @@ class TestBuildCta(unittest.TestCase):
 class TestWebviewUrl(unittest.TestCase):
     WV = "https://app.codeboarding.org"
 
-    def test_url_built_with_head_ref_and_compare_base(self):
-        url = bc.webview_url(self.WV, "Org", "Repo", "headsha", "basesha")
-        self.assertIn("https://app.codeboarding.org/?", url)
-        self.assertIn("repo=Org%2FRepo", url)
-        self.assertIn("ref=headsha", url)
-        self.assertIn("compare=basesha", url)
-        self.assertFalse(url.startswith("🌐"))  # a bare URL now, not a markdown line
+    def test_url_is_github_style_pr_path(self):
+        url = bc.webview_url(self.WV, "Org", "Repo", pr="9", run_id="123")
+        self.assertEqual(url, "https://app.codeboarding.org/Org/Repo/pull/9?run=123")
 
-    def test_url_omits_compare_when_no_base(self):
-        url = bc.webview_url(self.WV, "o", "r", "headsha", "")
-        self.assertIn("ref=headsha", url)
+    def test_url_carries_only_pr_path_and_run(self):
+        # Head/base SHAs and the artifact name/url are re-derived by the webview, so
+        # none of them appear in the short link.
+        url = bc.webview_url(self.WV, "o", "r", pr="9", run_id="123")
+        self.assertIn("/o/r/pull/9", url)
+        self.assertIn("run=123", url)
+        self.assertNotIn("ref=", url)
         self.assertNotIn("compare=", url)
+        self.assertNotIn("artifact", url)
+        self.assertNotIn("repo=o%2Fr", url)  # not the old query-style link
 
-    def test_url_includes_artifact_lookup_params(self):
-        url = bc.webview_url(
-            self.WV,
-            "o",
-            "r",
-            "headsha",
-            "basesha",
-            pr="9",
-            run_id="123",
-            artifact_name="codeboarding-pr-9-headsha",
-            artifact_url="https://github.com/o/r/actions/runs/123/artifacts/456",
-        )
-        self.assertIn("pr=9", url)
-        self.assertIn("run_id=123", url)
-        self.assertIn("artifact=codeboarding-pr-9-headsha", url)
-        self.assertIn("artifact_url=https%3A%2F%2Fgithub.com%2Fo%2Fr%2Factions%2Fruns%2F123%2Fartifacts%2F456", url)
+    def test_url_none_without_pr_or_run(self):
+        self.assertIsNone(bc.webview_url(self.WV, "o", "r", pr="9"))  # no run
+        self.assertIsNone(bc.webview_url(self.WV, "o", "r", run_id="123"))  # no pr
+        self.assertIsNone(bc.webview_url("", "o", "r", pr="9", run_id="123"))  # no base
 
-    def test_url_none_without_head_sha_or_base(self):
-        self.assertIsNone(bc.webview_url(self.WV, "o", "r", "", "basesha"))
-        self.assertIsNone(bc.webview_url("", "o", "r", "headsha", "basesha"))
+    def test_trailing_slash_in_webview_base_is_normalized(self):
+        a = bc.webview_url("https://app.codeboarding.org/", "o", "r", pr="9", run_id="1")
+        b = bc.webview_url("https://app.codeboarding.org", "o", "r", pr="9", run_id="1")
+        self.assertEqual(a, b)
+        self.assertNotIn(".org//", a)
 
     def test_cta_includes_browser_link_when_ready(self):
         out = bc.build_cta(
@@ -122,14 +114,12 @@ class TestWebviewUrl(unittest.TestCase):
             repo_with(),
             issues=0,
             webview_base=self.WV,
-            head_sha="headsha",
-            base_sha="basesha",
             webview_ready=True,
+            run_id="123",
         )
         self.assertIn("Explore this PR", out)
         self.assertIn("your [**browser**](", out)
-        self.assertIn("ref=headsha", out)
-        self.assertIn("compare=basesha", out)
+        self.assertIn("/Org/Repo/pull/9?run=123", out)
         self.assertIn("VS Code", out)  # editor merged into the same line
 
     def test_cta_omits_browser_link_when_not_ready(self):
@@ -142,11 +132,10 @@ class TestWebviewUrl(unittest.TestCase):
             repo_with(),
             issues=0,
             webview_base=self.WV,
-            head_sha="headsha",
-            base_sha="basesha",
             webview_ready=False,
+            run_id="123",
         )
-        self.assertNotIn("ref=headsha", out)  # no browser link
+        self.assertNotIn("/pull/", out)  # no browser link
         self.assertNotIn("[**browser**]", out)
         self.assertIn("Explore this PR", out)  # the line is still there, editor-only
         self.assertIn("VS Code", out)
@@ -160,12 +149,11 @@ class TestWebviewUrl(unittest.TestCase):
             repo_with(),
             issues=0,
             webview_base="",
-            head_sha="headsha",
-            base_sha="basesha",
             webview_ready=True,
+            run_id="123",
         )
         self.assertNotIn("[**browser**]", out)
-        self.assertNotIn("ref=headsha", out)
+        self.assertNotIn("/pull/", out)
 
 
 class TestJoinOr(unittest.TestCase):
@@ -179,9 +167,7 @@ class TestMergedExploreLine(unittest.TestCase):
     WV = "https://app.codeboarding.org"
 
     def _ready(self, repo, cta=""):
-        return bc.build_cta(
-            cta, "o", "r", "1", repo, webview_base=self.WV, head_sha="h", base_sha="b", webview_ready=True
-        )
+        return bc.build_cta(cta, "o", "r", "1", repo, webview_base=self.WV, webview_ready=True, run_id="123")
 
     def test_browser_and_single_editor_joined_with_or(self):
         out = self._ready(repo_with())  # default VS Code

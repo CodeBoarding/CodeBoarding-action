@@ -3,8 +3,9 @@
 The body is a single line — "Explore this PR's architecture in your browser or
 VS Code" — that merges the hosted-webview link with the editor link(s), preceded by
 a warning banner when real health findings exist. The "browser" link (a no-install
-hosted webview) is included only when ``webview_ready`` and points at the uploaded
-GitHub Actions artifact for this PR analysis. With a click proxy (``cta_base``) the
+hosted webview) is included only when ``webview_ready``; it's a short GitHub-style
+link (``/owner/repo/pull/<pr>?run=<run_id>``) that the webview resolves to this PR's
+uploaded analysis artifact for the run. With a click proxy (``cta_base``) the
 editor link routes through it (owner/repo/pr tracked) and deep-links into the editor
 (the proxy redirects to a ``vscode:``/``cursor:`` URL), and a separate "install the
 extension" link is appended. Without a proxy GitHub's comment sanitizer strips custom
@@ -63,35 +64,21 @@ def webview_url(
     webview_base: str,
     owner: str,
     repo: str,
-    head_sha: str,
-    base_sha: str,
     *,
     pr: str = "",
     run_id: str = "",
-    artifact_name: str = "",
-    artifact_url: str = "",
 ) -> str | None:
-    """Return the hosted-webview deep-link URL for this PR's head-vs-comparison-branch diff, or None.
+    """Return the hosted-webview PR deep-link, or None.
 
-    Deep-links straight to the diff. The base/head SHAs pin the code comparison;
-    the optional run/artifact fields let the webview load PR-specific analysis
-    data from the workflow artifact instead of from the PR branch.
+    A GitHub-style short link: ``{base}/{owner}/{repo}/pull/{pr}?run={run_id}``. The
+    webview re-derives the head SHA, base SHA, and artifact name from the workflow
+    run's uploaded artifact (+ its metadata.json), so the link carries only the PR
+    number and the run id — short, and stable across re-runs.
     """
-    if not (webview_base and owner and repo and head_sha):
+    if not (webview_base and owner and repo and pr and run_id):
         return None
     base = webview_base.rstrip("/")
-    params = {"repo": f"{owner}/{repo}", "ref": head_sha}
-    if base_sha:
-        params["compare"] = base_sha
-    if pr:
-        params["pr"] = pr
-    if run_id:
-        params["run_id"] = run_id
-    if artifact_name:
-        params["artifact"] = artifact_name
-    if artifact_url:
-        params["artifact_url"] = artifact_url
-    return f"{base}/?{urlencode(params)}"
+    return f"{base}/{owner}/{repo}/pull/{pr}?{urlencode({'run': run_id})}"
 
 
 def _join_or(items: list[str]) -> str:
@@ -112,12 +99,8 @@ def build_cta(
     issues: int = 0,
     *,
     webview_base: str = "",
-    head_sha: str = "",
-    base_sha: str = "",
     webview_ready: bool = False,
     run_id: str = "",
-    artifact_name: str = "",
-    artifact_url: str = "",
 ) -> str:
     """Return the markdown CTA footer: a health-warning banner plus an editor link.
 
@@ -127,8 +110,9 @@ def build_cta(
     ``vscode:``/``cursor:`` schemes), and the redundant install link is dropped.
     The ⚠️ banner shows whenever ``issues > 0``.
 
-    When ``webview_ready`` a "explore in browser" line deep-links the hosted
-    webview to this PR's artifact-backed head-vs-comparison-branch diff.
+    When ``webview_ready`` an "explore in browser" line deep-links the hosted webview
+    to this PR's diff (``/owner/repo/pull/<pr>?run=<run_id>``); the webview re-derives
+    the head/base/artifact from the run, so only the PR number and run id are needed.
     """
     parts: list[str] = []
     if issues > 0:
@@ -154,17 +138,7 @@ def build_cta(
     # "in your browser or VS Code" / "in VS Code".
     targets: list[str] = []
     if webview_ready:
-        wv = webview_url(
-            webview_base,
-            owner,
-            repo,
-            head_sha,
-            base_sha,
-            pr=pr,
-            run_id=run_id,
-            artifact_name=artifact_name,
-            artifact_url=artifact_url,
-        )
+        wv = webview_url(webview_base, owner, repo, pr=pr, run_id=run_id)
         if wv:
             targets.append(f"your [**browser**]({wv})")
     targets += [f"[**{_EDITOR_LABEL[e]}**]({editor_href[e]})" for e in editors]
@@ -187,11 +161,7 @@ def main() -> int:
     p.add_argument("--repo-path", required=True, type=Path, help="Path to the analyzed repo checkout")
     p.add_argument("--issues", default="0", help="Real architecture-issue count (0 -> no warning banner)")
     p.add_argument("--webview-base", default="", help="Hosted webview base URL (e.g. https://app.codeboarding.org)")
-    p.add_argument("--head-sha", default="", help="PR head SHA the webview link pins to")
-    p.add_argument("--base-sha", default="", help="Comparison-branch SHA the webview link compares against")
     p.add_argument("--run-id", default="", help="GitHub Actions run id containing the PR analysis artifact")
-    p.add_argument("--artifact-name", default="", help="GitHub Actions artifact name containing PR analysis data")
-    p.add_argument("--artifact-url", default="", help="GitHub Actions artifact URL containing PR analysis data")
     p.add_argument(
         "--webview-ready",
         action="store_true",
@@ -212,12 +182,8 @@ def main() -> int:
             args.repo_path,
             issues,
             webview_base=args.webview_base,
-            head_sha=args.head_sha,
-            base_sha=args.base_sha,
             webview_ready=args.webview_ready,
             run_id=args.run_id,
-            artifact_name=args.artifact_name,
-            artifact_url=args.artifact_url,
         )
     )
     return 0
