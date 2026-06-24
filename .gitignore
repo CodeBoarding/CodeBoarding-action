@@ -20,6 +20,13 @@ docs/development/architecture.md
 # Environment files
 .env
 
+# Secrets / credentials — never commit GitHub App private keys or similar.
+# (e.g. codeboarding-review.<date>.private-key.pem downloaded for CI setup.)
+*.pem
+*.key
+*.p12
+*.pfx
+
 # Logs
 *.log
 
