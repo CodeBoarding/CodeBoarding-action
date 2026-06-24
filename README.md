@@ -173,7 +173,7 @@ In review workflows that include `issue_comment`, anyone whose comment reaches t
 
 ## Keep your architecture versioned (sync mode)
 
-With `mode: sync`, the action analyzes the pushed commit and commits the results back to the branch (as `codeboarding[bot]`), so your architecture analysis stays versioned in git and tracks the code instead of drifting from it:
+With `mode: sync`, the action analyzes the pushed commit and commits the results back to the branch (as `codeboarding-review[bot]` when the CodeBoarding GitHub App token is configured, otherwise `github-actions[bot]`), so your architecture analysis stays versioned in git and tracks the code instead of drifting from it:
 
 - `.codeboarding/*.md` — rendered architecture docs: `overview.md` plus one page per component (directory configurable via `output_dir`).
 - `.codeboarding/analysis.json` — the machine-readable analysis, which doubles as the baseline that review mode diffs against.

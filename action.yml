@@ -231,14 +231,20 @@ runs:
             skip "Sync mode runs on branch pushes, not tag pushes."
           fi
           # Regen-loop guard: never re-analyze our OWN baseline commit. Sync
-          # commits as codeboarding[bot]; if a push's head commit is ours, skip.
+          # commits as codeboarding-review[bot]; if a push's head commit is ours,
+          # skip. The legacy codeboarding[bot] email is still matched so baselines
+          # committed before the identity change don't re-trigger on the next push.
           # This holds even if a consumer omits the workflow's paths-ignore (the
           # primary guard), and replaces the old "[skip ci]" marker — which
           # leaked into squash-merge commit messages and wrongly skipped the
           # workflows real merges should run (sync itself, release tooling, CI).
-          if [ "$EVENT" = "push" ] && [ "$HEAD_AUTHOR_EMAIL" = "codeboarding[bot]@users.noreply.github.com" ]; then
-            skip "Push head commit is CodeBoarding's own baseline commit; not re-analyzing (loop guard)."
-          fi
+          case "$HEAD_AUTHOR_EMAIL" in
+            "codeboarding-review[bot]@users.noreply.github.com"|"codeboarding[bot]@users.noreply.github.com")
+              if [ "$EVENT" = "push" ]; then
+                skip "Push head commit is CodeBoarding's own baseline commit; not re-analyzing (loop guard)."
+              fi
+              ;;
+          esac
           case "$OUTPUT_FORMAT" in
             .md) ;;
             *) echo "::error::output_format must be .md."; exit 1 ;;
@@ -1593,8 +1599,8 @@ runs:
           exit 0
         fi
 
-        git config user.name "codeboarding[bot]"
-        git config user.email "codeboarding[bot]@users.noreply.github.com"
+        git config user.name "codeboarding-review[bot]"
+        git config user.email "codeboarding-review[bot]@users.noreply.github.com"
         git commit -m "$COMMIT_MESSAGE" >/dev/null
 
         # Push with fetch+rebase retries: another push may land on target_branch

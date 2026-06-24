@@ -52,8 +52,8 @@ jobs:
       # and target repo into subdirectories, so this local checkout is untouched.
       - uses: actions/checkout@v4
       # Mint the CodeBoarding GitHub App token so the baseline commit lands as
-      # codeboarding[bot] (App avatar = the CodeBoarding logo) instead of the
-      # generic github-actions[bot]. Mirrors the review workflow's token flow.
+      # codeboarding-review[bot] (App avatar = the CodeBoarding logo) instead of
+      # the generic github-actions[bot]. Mirrors the review workflow's token flow.
       # Fails open: when App credentials are absent/invalid we fall back to
       # github.token below, and the commit shows the default Actions identity.
       # End-user repos can't reuse this — the App private key is never shipped to
