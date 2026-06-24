@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.6.0...v1.6.1) (2026-06-24)
+
+
+### Bug Fixes
+
+* **sync:** commit baseline as codeboarding-review[bot], not codeboarding[bot] ([6f097bb](https://github.com/CodeBoarding/CodeBoarding-action/commit/6f097bb48ecc5ea4239c8ae73cc118fd6e4c73a8))
+
 ## [1.6.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.5.4...v1.6.0) (2026-06-23)
 
 
