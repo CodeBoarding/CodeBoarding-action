@@ -1,6 +1,6 @@
 {
   "repository_name": "CodeBoarding-action",
-  "timestamp": "2026-06-23T23:12:52.612863+00:00",
+  "timestamp": "2026-06-30T19:18:15.557759+00:00",
   "overall_score": 0.995,
   "check_summaries": [
     {
@@ -53,6 +53,24 @@
       "description": "Detects classes with too many methods, too much code, or too many outgoing dependencies",
       "check_type": "standard",
       "total_entities_checked": 1,
+      "findings_count": 0,
+      "warning_count": 0,
+      "score": 1.0,
+      "finding_groups": []
+    },
+    {
+      "check_name": "circular_dependencies",
+      "description": "Detects circular dependencies between packages",
+      "check_type": "circular_dependencies",
+      "cycles": [],
+      "packages_checked": 1,
+      "packages_in_cycles": 0
+    },
+    {
+      "check_name": "package_instability",
+      "description": "Computes Martin's instability metric (I = Ce / (Ca + Ce)) per package",
+      "check_type": "standard",
+      "total_entities_checked": 0,
       "findings_count": 0,
       "warning_count": 0,
       "score": 1.0,
