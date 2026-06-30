@@ -10,12 +10,9 @@ on:
   issue_comment:
     types: [created]
 
-permissions:
-  # write: the action commits the generated .codeboarding/analysis.json back to the
-  # PR branch so the webview can open this PR's diff at the head SHA (same-repo PRs).
-  contents: write
-  pull-requests: write
-  issues: write
+# No workflow-level permissions: the single job below requests only what it
+# needs (least privilege), so the default token starts with none.
+permissions: {}
 
 concurrency:
   group: codeboarding-${{ github.event.pull_request.number || github.event.issue.number }}
@@ -27,6 +24,13 @@ jobs:
   review:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      # Review mode reads the repo + committed baseline and posts a PR comment;
+      # it does NOT commit generated files back to the branch (that is sync mode
+      # only — see action.yml `mode` input). So contents stays read-only.
+      contents: read
+      pull-requests: write  # post / update the architecture-diff PR comment
+      issues: write         # the /codeboarding issue_comment trigger + comment API
     if: >
       (github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.draft == false) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
