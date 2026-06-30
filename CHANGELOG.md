@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.6.1...v1.7.0) (2026-06-30)
+
+
+### Features
+
+* scope CI workflow permissions to least privilege ([#50](https://github.com/CodeBoarding/CodeBoarding-action/issues/50)) ([cb64c17](https://github.com/CodeBoarding/CodeBoarding-action/commit/cb64c17291deaff5db3a7c67a4ce2f4b1c7887b2))
+
 ## [1.6.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.6.0...v1.6.1) (2026-06-24)
 
 
