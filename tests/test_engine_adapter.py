@@ -45,17 +45,30 @@ class _InitialStaticAnalysisCache:
         pass
 
 
+class _RunPaths:
+    def __init__(self, repo_path=None, output_dir=None, project_name=None):
+        self.repo_path, self.output_dir, self.project_name = repo_path, output_dir, project_name
+
+
+class _RunContext:
+    def __init__(self, run_id=None, log_path=None, repo_dir=None):
+        self.run_id, self.log_path, self.repo_dir = run_id, log_path, repo_dir
+
+
 analysis = _preload(
     "codeboarding_workflows.analysis",
-    run_full=lambda **kwargs: "OUT",
-    run_incremental=lambda **kwargs: "OUT",
+    run_full=lambda *a, **k: "OUT",
+    run_incremental=lambda *a, **k: "OUT",
     BaselineUnavailableError=_InitialBaselineUnavailableError,
 )
 pkg = _preload("codeboarding_workflows")
 pkg.analysis = analysis
 exc = _preload("diagram_analysis.exceptions", IncrementalCacheMissingError=_InitialIncrementalCacheMissingError)
-da = _preload("diagram_analysis")
+da = _preload("diagram_analysis", RunPaths=_RunPaths, RunContext=_RunContext)
 da.exceptions = exc
+_preload("diagram_analysis.io_utils", write_fingerprint=lambda *a, **k: None)
+_preload("agents.content_hash", hash_repo_source_files=lambda *a, **k: {})
+_preload("agents")
 _preload("codeboarding_workflows.rendering", render_docs=lambda *args, **kwargs: None)
 _preload("health.models", Severity=_InitialSeverity)
 _preload("health.runner", run_health_checks=lambda *args, **kwargs: None)
@@ -68,10 +81,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import engine_adapter  # noqa: E402
 
 _STUBBED = [
+    "agents",
+    "agents.content_hash",
     "codeboarding_workflows",
     "codeboarding_workflows.analysis",
     "diagram_analysis",
     "diagram_analysis.exceptions",
+    "diagram_analysis.io_utils",
     "health",
     "health.models",
     "health.runner",
@@ -83,11 +99,13 @@ _STUBBED = [
 
 class _Rec:
     def __init__(self, ret="OUT", raises=None):
-        self.calls = []
+        self.calls = []  # kwargs of each call
+        self.args = []  # positional args of each call
         self._ret, self._raises = ret, raises
 
     def __call__(self, *a, **k):
         self.calls.append(k)
+        self.args.append(a)
         if self._raises:
             raise self._raises("boom")
         return self._ret
@@ -137,11 +155,13 @@ class TestAnalysis(_Base):
         self._install(run_full=rf)
         engine_adapter.run_base("/repo", "/out", "myrepo", "rid-base", 2, "abc123")
         self.assertEqual(len(rf.calls), 1)
-        k = rf.calls[0]
-        self.assertEqual(k["repo_name"], "myrepo")
-        self.assertEqual(str(k["repo_path"]), "/repo")
-        self.assertEqual(k["depth_level"], 2)
-        self.assertEqual(k["source_sha"], "abc123")
+        run_paths, run_context = rf.args[0]
+        self.assertEqual(run_paths.project_name, "myrepo")
+        self.assertEqual(str(run_paths.repo_path), "/repo")
+        self.assertEqual(str(run_paths.output_dir), "/out")
+        self.assertEqual(run_context.run_id, "rid-base")
+        self.assertEqual(rf.calls[0]["depth_level"], 2)
+        self.assertEqual(rf.calls[0]["source_sha"], "abc123")
 
     def test_main_parses_depth_as_int(self):
         rf = _Rec()
@@ -242,11 +262,14 @@ class TestAnalysis(_Base):
         self._install(run_full=rf, run_incremental=ri)
         buf = StringIO()
         with redirect_stdout(buf):
-            engine_adapter.run_head("/repo", "/out", "r", "rid", 1, "base", "head", "head")
+            engine_adapter.run_head("/repo", "/out", "r", "rid", 1, "head")
         self.assertEqual(len(ri.calls), 1)
         self.assertEqual(len(rf.calls), 0)  # no fallback
-        self.assertEqual(ri.calls[0]["base_ref"], "base")
-        self.assertEqual(ri.calls[0]["target_ref"], "head")
+        # Git-free: no base/target ref — Core diffs the seeded fingerprint itself.
+        run_paths, run_context = ri.args[0]
+        self.assertEqual(str(run_paths.repo_path), "/repo")
+        self.assertEqual(str(run_paths.output_dir), "/out")
+        self.assertEqual(run_context.run_id, "rid")
         self.assertIn("head_analysis_mode=incremental", buf.getvalue())
 
     def test_head_force_full_skips_incremental(self):
@@ -257,7 +280,7 @@ class TestAnalysis(_Base):
         buf = StringIO()
 
         with redirect_stdout(buf):
-            engine_adapter.run_head("/repo", out, "r", "rid", 2, "empty", "head", "head", force_full=True)
+            engine_adapter.run_head("/repo", out, "r", "rid", 2, "head", force_full=True)
 
         self.assertEqual(len(ri.calls), 0)
         self.assertEqual(len(rf.calls), 1)
@@ -279,7 +302,7 @@ class TestAnalysis(_Base):
         (Path(out) / "health" / "stale.json").write_text("{}")
         buf = StringIO()
         with redirect_stdout(buf):
-            engine_adapter.run_head("/repo", out, "r", "rid", 3, "base", "head", "head")
+            engine_adapter.run_head("/repo", out, "r", "rid", 3, "head")
         self.assertEqual(len(rf.calls), 1)  # fell back to full
         self.assertEqual(rf.calls[0]["depth_level"], 3)
         self.assertFalse((Path(out) / "stale.json").exists())  # head dir wiped before full
@@ -293,7 +316,7 @@ class TestAnalysis(_Base):
         analysis.run_incremental = _Rec(raises=BaseUnavail)
         engine_adapter.run_full = analysis.run_full
         engine_adapter.run_incremental = analysis.run_incremental
-        engine_adapter.run_head("/repo", tempfile.mkdtemp(), "r", "rid", 1, "base", "head", "head")
+        engine_adapter.run_head("/repo", tempfile.mkdtemp(), "r", "rid", 1, "head")
         self.assertEqual(len(rf.calls), 1)  # BaselineUnavailableError also triggers the full re-run
 
 

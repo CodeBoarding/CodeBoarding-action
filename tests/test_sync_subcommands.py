@@ -47,10 +47,20 @@ class _InitialStaticAnalysisCache:
         pass
 
 
+class _RunPaths:
+    def __init__(self, repo_path=None, output_dir=None, project_name=None):
+        self.repo_path, self.output_dir, self.project_name = repo_path, output_dir, project_name
+
+
+class _RunContext:
+    def __init__(self, run_id=None, log_path=None, repo_dir=None):
+        self.run_id, self.log_path, self.repo_dir = run_id, log_path, repo_dir
+
+
 analysis = _preload(
     "codeboarding_workflows.analysis",
-    run_full=lambda **kwargs: "OUT",
-    run_incremental=lambda **kwargs: "OUT",
+    run_full=lambda *a, **k: "OUT",
+    run_incremental=lambda *a, **k: "OUT",
     BaselineUnavailableError=_InitialBaselineUnavailableError,
 )
 pkg = _preload("codeboarding_workflows")
@@ -58,8 +68,11 @@ pkg.analysis = analysis
 rendering = _preload("codeboarding_workflows.rendering", render_docs=lambda *args, **kwargs: None)
 pkg.rendering = rendering
 exc = _preload("diagram_analysis.exceptions", IncrementalCacheMissingError=_InitialIncrementalCacheMissingError)
-da = _preload("diagram_analysis")
+da = _preload("diagram_analysis", RunPaths=_RunPaths, RunContext=_RunContext)
 da.exceptions = exc
+_preload("diagram_analysis.io_utils", write_fingerprint=lambda *a, **k: None)
+_preload("agents.content_hash", hash_repo_source_files=lambda *a, **k: {})
+_preload("agents")
 _preload("health.models", Severity=_InitialSeverity)
 _preload("health.runner", run_health_checks=lambda *args, **kwargs: None)
 _preload("health")
@@ -71,11 +84,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import engine_adapter  # noqa: E402
 
 _STUBBED = [
+    "agents",
+    "agents.content_hash",
     "codeboarding_workflows",
     "codeboarding_workflows.analysis",
     "codeboarding_workflows.rendering",
     "diagram_analysis",
     "diagram_analysis.exceptions",
+    "diagram_analysis.io_utils",
     "static_analyzer",
     "static_analyzer.analysis_cache",
     "static_analyzer.cluster_helpers",
@@ -153,27 +169,28 @@ class TestAnalyze(_Base):
         self.assertEqual(mode, "full")
         self.assertEqual(len(rf.calls), 1)
         self.assertEqual(len(ri.calls), 0)
-        kwargs = rf.calls[0][1]
-        self.assertEqual(kwargs["repo_name"], "myrepo")
-        self.assertEqual(str(kwargs["repo_path"]), "/repo")
-        self.assertEqual(kwargs["depth_level"], 2)
-        self.assertEqual(kwargs["source_sha"], "head123")
+        run_paths, run_context = rf.calls[0][0]
+        self.assertEqual(run_paths.project_name, "myrepo")
+        self.assertEqual(str(run_paths.repo_path), "/repo")
+        self.assertEqual(rf.calls[0][1]["depth_level"], 2)
+        self.assertEqual(rf.calls[0][1]["source_sha"], "head123")
 
-    def test_incremental_uses_metadata_commit_as_base_ref(self):
+    def test_committed_baseline_runs_incremental(self):
+        # Git-free: a committed analysis.json is the baseline; incremental runs
+        # (Core diffs the committed fingerprint itself), with no commit_hash gate.
         rf, ri = _Rec(), _Rec()
         self._install(run_full=rf, run_incremental=ri)
         out = tempfile.mkdtemp()
-        _write_analysis(out, commit="metadata-base", depth=2)
+        _write_analysis(out, depth=2)
 
         mode = engine_adapter.run_analyze("/repo", out, "myrepo", "rid", "head123", 2)
 
         self.assertEqual(mode, "incremental")
         self.assertEqual(len(rf.calls), 0)
         self.assertEqual(len(ri.calls), 1)
-        kwargs = ri.calls[0][1]
-        self.assertEqual(kwargs["base_ref"], "metadata-base")
-        self.assertEqual(kwargs["target_ref"], "head123")
-        self.assertEqual(kwargs["source_sha"], "head123")
+        run_paths, run_context = ri.calls[0][0]
+        self.assertEqual(str(run_paths.repo_path), "/repo")
+        self.assertEqual(run_context.run_id, "rid")
 
     def test_deeper_baseline_still_runs_incremental(self):
         rf, ri = _Rec(), _Rec()
@@ -194,7 +211,7 @@ class TestAnalyze(_Base):
 
     def test_deep_baseline_runs_incremental_regardless_of_tier(self):
         # A committed depth-7 baseline still runs incremental (the depth value
-        # doesn't gate incremental — only commit_hash does); on the free tier the
+        # doesn't gate incremental — baseline presence does); on the free tier the
         # depth is clamped for any eventual run, but incremental is unaffected.
         rf, ri = _Rec(), _Rec()
         self._install(run_full=rf, run_incremental=ri)
@@ -207,20 +224,19 @@ class TestAnalyze(_Base):
         self.assertEqual(len(rf.calls), 0)
         self.assertEqual(len(ri.calls), 1)
 
-    def test_over_cap_baseline_depth_clamped_on_full_fallback(self):
-        # When a full rebuild happens (here: baseline has no commit_hash), the
-        # resolved depth is clamped to the tier ceiling: free clamps 7 -> 3,
-        # licensed keeps 7.
+    def test_over_cap_depth_clamped_on_forced_full(self):
+        # When a full run happens (here: force_full), the requested depth is
+        # clamped to the tier ceiling: free clamps 7 -> 3, licensed keeps 7.
         for licensed, expected in ((False, 3), (True, 7)):
             with self.subTest(licensed=licensed):
                 rf, ri = _Rec(), _Rec()
                 self._install(run_full=rf, run_incremental=ri)
                 out = Path(tempfile.mkdtemp())
-                out.joinpath("analysis.json").write_text(
-                    json.dumps({"metadata": {"depth_level": 7}}), encoding="utf-8"  # no commit_hash -> full
-                )
+                _write_analysis(out, depth=2)
 
-                mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 2, licensed=licensed)
+                mode = engine_adapter.run_analyze(
+                    "/repo", str(out), "myrepo", "rid", "head123", 7, force_full=True, licensed=licensed
+                )
 
                 self.assertEqual(mode, "full")
                 self.assertEqual(rf.calls[0][1]["depth_level"], expected)
@@ -240,27 +256,25 @@ class TestAnalyze(_Base):
         self.assertEqual(len(rf.calls), 0)
         self.assertEqual(len(ri.calls), 1)
 
-    def test_missing_depth_with_valid_commit_runs_incremental(self):
-        # A missing/unparseable depth_level is no longer a reason to force a full
-        # rebuild: incremental needs a usable cache + base commit (commit_hash),
-        # not a particular depth. With a valid commit_hash we run incremental;
-        # the depth defaults to 2 for the run (and the engine itself falls back to
-        # full if the cache is actually absent).
+    def test_missing_depth_still_runs_incremental(self):
+        # A missing/unparseable depth_level is not a reason to force a full: the
+        # baseline (analysis.json) is present, so incremental runs; the depth
+        # resolves to a default and Core falls back to full itself if the cache
+        # is actually absent.
         rf, ri = _Rec(), _Rec()
         self._install(run_full=rf, run_incremental=ri)
         out = Path(tempfile.mkdtemp())
-        out.joinpath("analysis.json").write_text(
-            json.dumps({"metadata": {"commit_hash": "metadata-base"}}), encoding="utf-8"
-        )
+        out.joinpath("analysis.json").write_text(json.dumps({"metadata": {}}), encoding="utf-8")
 
         mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 3)
 
         self.assertEqual(mode, "incremental")
         self.assertEqual(len(rf.calls), 0)
         self.assertEqual(len(ri.calls), 1)
-        self.assertEqual(ri.calls[0][1]["base_ref"], "metadata-base")
 
-    def test_missing_commit_in_baseline_runs_full_at_baseline_depth(self):
+    def test_baseline_without_commit_still_runs_incremental(self):
+        # commit_hash is gone from #401 metadata, so its absence no longer forces
+        # a full rebuild — a present analysis.json runs incremental git-free.
         rf, ri = _Rec(), _Rec()
         self._install(run_full=rf, run_incremental=ri)
         out = Path(tempfile.mkdtemp())
@@ -268,10 +282,9 @@ class TestAnalyze(_Base):
 
         mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 1)
 
-        self.assertEqual(mode, "full")
-        self.assertEqual(len(rf.calls), 1)
-        self.assertEqual(len(ri.calls), 0)
-        self.assertEqual(rf.calls[0][1]["depth_level"], 3)
+        self.assertEqual(mode, "incremental")
+        self.assertEqual(len(ri.calls), 1)
+        self.assertEqual(len(rf.calls), 0)
 
     def test_falls_back_to_full_on_cache_miss(self):
         analysis, IncMiss, _ = self._install()
