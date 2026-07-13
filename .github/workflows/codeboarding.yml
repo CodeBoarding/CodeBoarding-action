@@ -116,3 +116,10 @@ jobs:
         with:
           github_token: ${{ steps.codeboarding-app-token-client.outputs.token || steps.codeboarding-app-token-app.outputs.token || github.token }}
           llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          # TEMPORARY — revert before merge. This PR targets Core's git-free API
+          # (#401), which is on Core `main` but not yet on PyPI. Install the engine
+          # from `main` so this dogfood review job validates the migration end to
+          # end against the unreleased API. Before merging, DELETE this line so the
+          # action installs the released `codeboarding_version` default — never
+          # ship a git ref to users.
+          codeboarding_version: ' @ git+https://github.com/CodeBoarding/CodeBoarding@main'
