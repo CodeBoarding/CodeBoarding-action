@@ -4,9 +4,10 @@ No analysis logic lives here. The engine is the published ``codeboarding`` PyPI
 package installed by the action (``codeboarding_workflows`` etc.); this module
 just turns the action's shell steps into typed, tested calls into it. The engine
 imports are best-effort at module load, so this file imports fine without the
-package present — the metadata-only subcommands (``baseline-info``,
-``baseline-depth``, ``validate-base``) run with the stdlib alone, and the tests
-stub the engine modules to assert we call the engine with the right args.
+package present — the metadata-only subcommands (``baseline-info`` and
+``baseline-depth``) run with the stdlib alone, while ``validate-base`` uses the
+installed Core model to check schema compatibility. The tests stub the engine
+modules to assert we call the engine with the right args.
 
 Subcommands (all paths/refs come in as argv, never interpolated into source):
 
@@ -38,12 +39,14 @@ baseline's ``commit_hash=`` (empty unless present and SHA-shaped).
 ``head`` (review) and ``analyze`` (sync) are the SAME incremental-or-full
 operation via the shared ``_incremental_or_full`` helper. Change detection is
 git-free: Core diffs the current checkout against the seeded ``fingerprint.json``
-sidecar, so neither passes a base/target ref. ``analyze`` is baseline-aware (full
-when the committed analysis.json is missing or ``--force-full`` is set) and prints
-``analysis_mode=full|incremental`` on stdout for the action to grep. Once an
-analysis.json exists, its metadata.depth_level is the source of truth for
-incremental and fallback-full depth; ``--depth`` is the cold-start/force-full
-depth.
+sidecar, so neither passes a base/target ref. The helper asks the installed
+Core's ``UnifiedAnalysisJson`` model to validate the baseline and rebuilds with
+a full analysis when the model cannot load it (including the pre-0.13.0 format).
+``analyze`` is baseline-aware (full when the committed analysis.json is missing
+or ``--force-full`` is set) and prints ``analysis_mode=full|incremental`` on
+stdout for the action to grep. Once a compatible analysis.json exists, its
+metadata.depth_level is the source of truth for incremental and fallback-full
+depth; ``--depth`` is the cold-start/force-full depth.
 ``render`` writes per-component markdown with root name ``overview``; ``concat``
 joins overview.md first plus the remaining *.md (sorted) into one architecture
 file.
@@ -64,10 +67,9 @@ import sys
 from pathlib import Path
 
 # The engine packages are imported best-effort so the metadata-only subcommands
-# (``baseline-info``, ``baseline-depth``, ``validate-base``) run with the stdlib
-# alone — they parse a committed analysis.json and never touch the engine. The
-# action invokes them BEFORE the engine package is pip-installed (e.g. while
-# resolving the review depth), so a hard import here would break that step. The
+# (``baseline-info`` and ``baseline-depth``) run with the stdlib alone — they
+# parse a committed analysis.json and never touch the engine. Keeping imports
+# best-effort also gives analysis commands a clear error for an old package. The
 # analysis subcommands that DO need the engine fail loudly when these are None.
 try:
     from agents.content_hash import hash_repo_source_files
@@ -93,19 +95,32 @@ except Exception as _health_import_error:  # engine without the health module
     Severity = None
     run_health_checks = None
 
+try:
+    from diagram_analysis.analysis_json import UnifiedAnalysisJson
+except Exception:  # unavailable only for metadata commands run without Core installed
+    UnifiedAnalysisJson = None
+
 # The engine imports above are all-or-nothing: on failure every engine symbol is
-# None. The metadata-only subcommands (baseline-info/baseline-depth/validate-base),
-# concat, and best-effort health run fine without the engine; the analysis
+# None. The metadata-only subcommands (baseline-info/baseline-depth), concat,
+# and best-effort health run fine without the engine; analysis and validation
 # subcommands do NOT. Guard those so a missing OR too-old engine fails with a
 # clear, actionable message instead of a cryptic "'NoneType' object is not
 # callable" deep in the run. "Too old" is the live case: an engine that predates
 # Core #401 has no RunPaths/RunContext, so those symbols import as None here.
-_ENGINE_COMMANDS = ("base", "seed", "head", "analyze", "render")
+_ENGINE_COMMANDS = ("base", "seed", "head", "validate-base", "analyze", "render")
 
 
 def _require_engine(cmd: str) -> None:
-    if RunPaths is not None:
+    if cmd == "validate-base" and UnifiedAnalysisJson is not None:
         return
+    if cmd != "validate-base" and RunPaths is not None:
+        return
+    if cmd == "validate-base":
+        raise RuntimeError(
+            "The 'validate-base' subcommand needs the CodeBoarding analysis engine, but the installed "
+            "'codeboarding' package is missing or too old: it does not export the unified analysis "
+            "model used to validate analysis.json. Pin the action's codeboarding_version input to 0.13.0 or newer."
+        )
     raise RuntimeError(
         f"The '{cmd}' subcommand needs the CodeBoarding analysis engine, but the installed "
         "'codeboarding' package is missing or too old: it does not export the git-free "
@@ -189,15 +204,20 @@ def _clear_dir(path: Path) -> None:
             child.unlink()
 
 
-def _load_metadata(analysis_path: Path) -> dict | None:
+def _load_analysis(analysis_path: Path) -> dict | None:
     try:
         data = json.loads(analysis_path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
     except (OSError, json.JSONDecodeError):
         return {}
-    if not isinstance(data, dict):
-        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _load_metadata(analysis_path: Path) -> dict | None:
+    data = _load_analysis(analysis_path)
+    if data is None:
+        return None
     metadata = data.get("metadata")
     return metadata if isinstance(metadata, dict) else {}
 
@@ -253,6 +273,29 @@ def _metadata_commit(metadata: dict) -> str:
     return value if isinstance(value, str) else ""
 
 
+def _analysis_model_error(data: dict) -> str | None:
+    """Return an error when the installed Core model cannot load *data* losslessly.
+
+    Pydantic models may accept an older document by ignoring unknown fields and
+    filling new defaults. A model round-trip catches that schema drift without
+    teaching the action about any particular Core field.
+    """
+    if UnifiedAnalysisJson is None:
+        raise RuntimeError(
+            "Validating analysis.json compatibility requires the installed CodeBoarding engine model "
+            "(diagram_analysis.analysis_json.UnifiedAnalysisJson)."
+        )
+    try:
+        model = UnifiedAnalysisJson.model_validate(data)
+        normalized = model.model_dump(mode="json", exclude_none=True)
+    except Exception as exc:
+        detail = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
+        return f"Installed CodeBoarding model could not load baseline analysis.json ({detail})"
+    if normalized != data:
+        return "Installed CodeBoarding model could not load baseline analysis.json without schema changes"
+    return None
+
+
 def baseline_info(analysis_path: Path) -> str:
     """Return the committed baseline's commit_hash when present and SHA-shaped,
     else "". Sync mode uses this (via the ``baseline-info`` subcommand) instead
@@ -294,6 +337,11 @@ def validate_base_analysis(
     but the sync commit itself necessarily has a newer SHA because it adds the
     generated artifacts. Treat that metadata SHA as provenance, not freshness.
 
+    A baseline that the installed Core model cannot load is rejected so review
+    mode generates a fresh target analysis before running the PR-head
+    incremental analysis. This handles the 0.13.0 format break without
+    duplicating Core's schema or coupling the action to individual JSON fields.
+
     When ``expected_depth`` is given, a baseline whose metadata.depth_level
     parses as an int and is DEEPER than expected is rejected (review mode
     regenerates instead of diffing against a deeper analysis). A shallower
@@ -322,6 +370,10 @@ def validate_base_analysis(
     metadata = data.get("metadata")
     if not isinstance(metadata, dict):
         return False, "Baseline analysis metadata is missing."
+
+    model_error = _analysis_model_error(data)
+    if model_error:
+        return False, f"{model_error}; a full analysis is required."
 
     actual_sha = metadata.get("commit_hash")
     if isinstance(actual_sha, str) and actual_sha:
@@ -404,13 +456,23 @@ def _incremental_or_full(
     exactly one place — a bug fixed here is fixed for both modes.
     """
     run_paths, run_context = _run_ctx(repo_path, output_dir, repo_name, run_id, log_name)
+    out_path = Path(output_dir)
+    analysis = _load_analysis(out_path / "analysis.json")
+    model_error = "Baseline analysis.json is missing or unreadable" if not analysis else _analysis_model_error(analysis)
+    if model_error:
+        print(f"Incremental unavailable ({model_error}); running full analysis.")
+        fallback_depth = _analysis_depth_or_default(out_path, licensed, depth)
+        _clear_dir(out_path)
+        res = run_full(run_paths, run_context, depth_level=fallback_depth, source_sha=source_sha)
+        print(f"Analysis written: {res}")
+        return "full"
+
     try:
         res = run_incremental(run_paths, run_context)
         print(f"Analysis written: {res}")
         return "incremental"
     except (IncrementalCacheMissingError, BaselineUnavailableError) as exc:
         print(f"Incremental unavailable ({exc}); running full analysis.")
-        out_path = Path(output_dir)
         fallback_depth = _analysis_depth_or_default(out_path, licensed, depth)
         _clear_dir(out_path)
         res = run_full(run_paths, run_context, depth_level=fallback_depth, source_sha=source_sha)

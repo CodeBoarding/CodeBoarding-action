@@ -226,7 +226,7 @@ jobs:
 
 Behavior worth knowing:
 
-- The first run on a branch is a full analysis at depth 2 by default; subsequent runs reuse the committed baseline and run incrementally when they can (the `analysis_mode` output tells you which happened). Once an `analysis.json` exists, its recorded `metadata.depth_level` is preserved for incremental runs and fallback-full recovery.
+- The first run on a branch is a full analysis at depth 2 by default; subsequent runs reuse the committed baseline and run incrementally when they can (the `analysis_mode` output tells you which happened). Once an `analysis.json` exists, its recorded `metadata.depth_level` is preserved for incremental runs and fallback-full recovery. Baselines in a format the installed engine can no longer load—including the pre-0.13.0 format—are rebuilt automatically with a full analysis at that preserved depth.
 - The commit is skipped when nothing meaningful changed (an empty diff, or only `generated_at`/timestamp fields). The push retries a few times with fetch+rebase and fails open, so a race with another push never fails your CI.
 - Tag pushes are skipped. `pull_request` events soft-skip in sync mode, so a mistakenly shared workflow can never push docs from a PR run.
 - The bot commit carries **no `[skip ci]`** — on a squash-merge that marker leaks into the merge commit and would skip the very sync run (and release tooling, CI) the merge should trigger. The regen loop is instead prevented by the `paths-ignore` list above **and** by the action skipping re-analysis of its own bot commit, so a merge to `main` reliably triggers a fresh incremental sync.
@@ -264,7 +264,7 @@ Review mode does not need `contents: write`: PR-specific generated files are sto
 | `mode` | both | `review` | `review` posts the PR architecture-diff comment; `sync` analyzes on push and commits the architecture (`analysis.json` + rendered docs) to `target_branch`, keeping it versioned and current. |
 | `github_token` | both | `${{ github.token }}` | Token for GitHub API calls; in review mode it posts or updates the PR comment. |
 | `push_token` | sync | `${{ github.token }}` | Token used for sync-mode pushes to `target_branch`. The workflow token can push when the workflow grants `permissions: contents: write`. Separate from `github_token` so commenting can use a GitHub App token while the push uses the workflow token. |
-| `codeboarding_version` | both | `0.12.5` | CodeBoarding PyPI package version used as the analysis engine. Pin for reproducibility. |
+| `codeboarding_version` | both | `0.13.0` | CodeBoarding PyPI package version used as the analysis engine. Pin for reproducibility. |
 | `depth_level` | both | empty (`2` for cold starts) | Analysis depth for first analysis and `force_full` rebuilds. Max depends on tier: **3** on the free hosted tier, **10** with a CodeBoarding license or your own `llm_api_key`. Once `.codeboarding/analysis.json` exists, its `metadata.depth_level` is the source of truth: sync runs incremental at the baseline depth, and review analyzes the PR head at the committed baseline depth so the diff is apples-to-apples (clamped to the tier max). |
 | `render_depth` | review | `1` | Display depth for the PR diagram. Keep `1` for a clean top-level view. |
 | `diagram_direction` | review | `LR` | Mermaid direction: `LR`, `TD`, `TB`, `RL`, or `BT`. |
@@ -315,7 +315,7 @@ Full local pipeline:
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...
-python -m pip install codeboarding==0.12.5
+python -m pip install codeboarding==0.13.0
 codeboarding-setup --auto-install-npm
 scripts/run_local.sh --repo /path/to/repo --base <base-ref> --head <head-ref>
 ```

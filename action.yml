@@ -34,7 +34,7 @@ inputs:
   codeboarding_version:
     description: 'CodeBoarding PyPI package version used as the analysis engine. Pin for reproducibility; set to a newer released version to opt into newer engine releases.'
     required: false
-    default: '0.12.5'
+    default: '0.13.0'
   depth_level:
     description: 'Analysis depth for cold-start or force_full rebuilds. Max depends on tier: 3 on the free hosted tier, 10 with a CodeBoarding license or your own llm_api_key. Once .codeboarding/analysis.json exists, its metadata.depth_level is the source of truth: sync runs incremental at the baseline depth, and review analyzes the PR head at the committed baseline depth so the diff is apples-to-apples (clamped to the tier max). Empty (default): 2 for cold starts.'
     required: false
@@ -794,14 +794,6 @@ runs:
             echo "Using committed .codeboarding/analysis.json at target branch commit ${BASE_SHA}."
           else
             rm -f "${BASE_DIR}/analysis.json"
-            if [ "$FORK_COMPARE" = "true" ]; then
-              printf '%s\n' '{"metadata": {"baseline": "empty"}, "components": [], "components_relations": []}' > "${BASE_DIR}/analysis.json"
-              echo "committed=false" >> $GITHUB_OUTPUT
-              echo "empty_base=true" >> $GITHUB_OUTPUT
-              echo "baseline_sha=empty" >> $GITHUB_OUTPUT
-              echo "Fork comparison branch baseline at ${BASE_SHA} is unusable; using an empty baseline so PR architecture renders as new."
-              exit 0
-            fi
             echo "committed=false" >> $GITHUB_OUTPUT
             echo "baseline_sha=$BASE_SHA" >> $GITHUB_OUTPUT
             echo "Committed baseline at target branch commit ${BASE_SHA} is unusable; will generate a fresh target analysis."
@@ -1480,8 +1472,12 @@ runs:
         else
           rm -f "$OUTPUT_DIR/static_analysis.pkl" "$OUTPUT_DIR/static_analysis.sha"
         fi
+        # Core 0.13.0 no longer emits the legacy version sidecar. Remove a stale
+        # tracked copy while migrating the accompanying analysis.json format.
         if [ -f "$ANALYSIS_DIR/codeboarding_version.json" ]; then
           cp "$ANALYSIS_DIR/codeboarding_version.json" "$OUTPUT_DIR/codeboarding_version.json"
+        else
+          rm -f "$OUTPUT_DIR/codeboarding_version.json"
         fi
         if [ -f "$ANALYSIS_DIR/health/health_report.json" ]; then
           cp "$ANALYSIS_DIR/health/health_report.json" "$OUTPUT_DIR/health/health_report.json"
@@ -1501,7 +1497,7 @@ runs:
         add_if_present_or_tracked "$OUTPUT_DIR/fingerprint.json"
         add_if_present_or_tracked "$OUTPUT_DIR/static_analysis.pkl"
         add_if_present_or_tracked "$OUTPUT_DIR/static_analysis.sha"
-        [ -f "$OUTPUT_DIR/codeboarding_version.json" ] && stage_paths+=("$OUTPUT_DIR/codeboarding_version.json")
+        add_if_present_or_tracked "$OUTPUT_DIR/codeboarding_version.json"
         [ -f "$OUTPUT_DIR/health/health_report.json" ] && stage_paths+=("$OUTPUT_DIR/health/health_report.json")
         if [ "$WRITE_ARCHITECTURE_MD" = "true" ]; then
           stage_paths+=("docs/development/architecture.md")

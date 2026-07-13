@@ -57,6 +57,23 @@ class _RunContext:
         self.run_id, self.log_path, self.repo_dir = run_id, log_path, repo_dir
 
 
+class _InitialUnifiedAnalysisJson:
+    def __init__(self, data):
+        self.data = data
+
+    @classmethod
+    def model_validate(cls, data):
+        return cls(data)
+
+    def model_dump(self, **kwargs):
+        return self.data
+
+
+class _LossyUnifiedAnalysisJson(_InitialUnifiedAnalysisJson):
+    def model_dump(self, **kwargs):
+        return {"normalized": True}
+
+
 analysis = _preload(
     "codeboarding_workflows.analysis",
     run_full=lambda *a, **k: "OUT",
@@ -70,6 +87,7 @@ pkg.rendering = rendering
 exc = _preload("diagram_analysis.exceptions", IncrementalCacheMissingError=_InitialIncrementalCacheMissingError)
 da = _preload("diagram_analysis", RunPaths=_RunPaths, RunContext=_RunContext)
 da.exceptions = exc
+_preload("diagram_analysis.analysis_json", UnifiedAnalysisJson=_InitialUnifiedAnalysisJson)
 _preload("diagram_analysis.io_utils", write_fingerprint=lambda *a, **k: None)
 _preload("agents.content_hash", hash_repo_source_files=lambda *a, **k: {})
 _preload("agents")
@@ -90,6 +108,7 @@ _STUBBED = [
     "codeboarding_workflows.analysis",
     "codeboarding_workflows.rendering",
     "diagram_analysis",
+    "diagram_analysis.analysis_json",
     "diagram_analysis.exceptions",
     "diagram_analysis.io_utils",
     "static_analyzer",
@@ -191,6 +210,26 @@ class TestAnalyze(_Base):
         run_paths, run_context = ri.calls[0][0]
         self.assertEqual(str(run_paths.repo_path), "/repo")
         self.assertEqual(run_context.run_id, "rid")
+
+    def test_incompatible_baseline_runs_full_at_baseline_depth(self):
+        rf, ri = _Rec(), _Rec()
+        self._install(run_full=rf, run_incremental=ri)
+        out = Path(tempfile.mkdtemp())
+        _write_analysis(out, depth=3)
+        (out / "stale.json").write_text("{}", encoding="utf-8")
+        buf = StringIO()
+
+        with patch.object(engine_adapter, "UnifiedAnalysisJson", _LossyUnifiedAnalysisJson):
+            with redirect_stdout(buf):
+                mode = engine_adapter.run_analyze("/repo", str(out), "myrepo", "rid", "head123", 1)
+
+        self.assertEqual(mode, "full")
+        self.assertEqual(len(ri.calls), 0)
+        self.assertEqual(len(rf.calls), 1)
+        self.assertEqual(rf.calls[0][1]["depth_level"], 3)
+        self.assertFalse((out / "stale.json").exists())
+        self.assertIn("could not load baseline analysis.json", buf.getvalue())
+        self.assertEqual(self._markers(buf), ["analysis_mode=full"])
 
     def test_deeper_baseline_still_runs_incremental(self):
         rf, ri = _Rec(), _Rec()
