@@ -849,5 +849,38 @@ class TestQuotaExhausted(_Base):
         self.assertFalse(sentinel.exists(), "non-quota errors must not write the sentinel")
 
 
+class TestEngineRequired(_Base):
+    """A missing/too-old engine (RunPaths imported as None) fails the analysis
+    subcommands with a clear message, while metadata-only subcommands still run."""
+
+    def _argv(self, cmd):
+        run = ["--repo", "/r", "--out", "/o", "--name", "n", "--run-id", "id", "--source-sha", "s"]
+        return {
+            "base": [cmd, *run, "--depth", "2"],
+            "seed": [cmd, "--repo", "/r", "--out", "/o", "--source-sha", "s"],
+            "head": [cmd, *run, "--depth", "2"],
+            "analyze": [cmd, *run, "--depth", "2"],
+            "render": [cmd, "--analysis", "/a.json", "--out", "/o", "--repo-name", "n", "--repo-ref", "r"],
+        }[cmd]
+
+    def test_engine_commands_fail_clearly_when_engine_missing(self):
+        for cmd in engine_adapter._ENGINE_COMMANDS:
+            with self.subTest(cmd=cmd), patch.object(engine_adapter, "RunPaths", None):
+                with self.assertRaises(RuntimeError) as ctx:
+                    engine_adapter.main(self._argv(cmd))
+                msg = str(ctx.exception)
+                self.assertIn(cmd, msg)
+                self.assertIn("too old", msg)
+                self.assertIn("codeboarding_version", msg)
+
+    def test_metadata_command_runs_without_engine(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "analysis.json"
+            path.write_text(json.dumps({"metadata": {"commit_hash": "abc1234"}}))
+            with patch.object(engine_adapter, "RunPaths", None), redirect_stdout(StringIO()):
+                rc = engine_adapter.main(["baseline-info", "--analysis", str(path)])
+        self.assertEqual(rc, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

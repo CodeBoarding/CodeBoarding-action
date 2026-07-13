@@ -93,6 +93,27 @@ except Exception as _health_import_error:  # engine without the health module
     Severity = None
     run_health_checks = None
 
+# The engine imports above are all-or-nothing: on failure every engine symbol is
+# None. The metadata-only subcommands (baseline-info/baseline-depth/validate-base),
+# concat, and best-effort health run fine without the engine; the analysis
+# subcommands do NOT. Guard those so a missing OR too-old engine fails with a
+# clear, actionable message instead of a cryptic "'NoneType' object is not
+# callable" deep in the run. "Too old" is the live case: an engine that predates
+# Core #401 has no RunPaths/RunContext, so those symbols import as None here.
+_ENGINE_COMMANDS = ("base", "seed", "head", "analyze", "render")
+
+
+def _require_engine(cmd: str) -> None:
+    if RunPaths is not None:
+        return
+    raise RuntimeError(
+        f"The '{cmd}' subcommand needs the CodeBoarding analysis engine, but the installed "
+        "'codeboarding' package is missing or too old: it does not export the git-free "
+        "content-versioning API (RunPaths/RunContext, added in Core #401). Pin the action's "
+        "codeboarding_version input to a release that includes it."
+    )
+
+
 # A committed analysis.json's commit_hash is trusted only as far as a SHA shape:
 # it flows into GITHUB_OUTPUT, cache keys, and git refs, so anything else must
 # be rejected before it reaches the action shell.
@@ -633,6 +654,8 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     source = "sync" if args.cmd in ("analyze", "render", "concat") else "github_action"
     os.environ.setdefault("CODEBOARDING_SOURCE", source)
+    if args.cmd in _ENGINE_COMMANDS:
+        _require_engine(args.cmd)
     try:
         if args.cmd == "base":
             run_base(args.repo, args.out, args.name, args.run_id, args.depth, args.source_sha)
