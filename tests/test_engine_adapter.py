@@ -45,17 +45,54 @@ class _InitialStaticAnalysisCache:
         pass
 
 
+class _RunPaths:
+    def __init__(self, repo_path=None, output_dir=None, project_name=None):
+        self.repo_path, self.output_dir, self.project_name = repo_path, output_dir, project_name
+
+
+class _RunContext:
+    def __init__(self, run_id=None, log_path=None, repo_dir=None):
+        self.run_id, self.log_path, self.repo_dir = run_id, log_path, repo_dir
+
+
+class _InitialUnifiedAnalysisJson:
+    def __init__(self, data):
+        self.data = data
+
+    @classmethod
+    def model_validate(cls, data):
+        return cls(data)
+
+    def model_dump(self, **kwargs):
+        return self.data
+
+
+class _RejectingUnifiedAnalysisJson:
+    @classmethod
+    def model_validate(cls, data):
+        raise ValueError("incompatible analysis schema")
+
+
+class _LossyUnifiedAnalysisJson(_InitialUnifiedAnalysisJson):
+    def model_dump(self, **kwargs):
+        return {"normalized": True}
+
+
 analysis = _preload(
     "codeboarding_workflows.analysis",
-    run_full=lambda **kwargs: "OUT",
-    run_incremental=lambda **kwargs: "OUT",
+    run_full=lambda *a, **k: "OUT",
+    run_incremental=lambda *a, **k: "OUT",
     BaselineUnavailableError=_InitialBaselineUnavailableError,
 )
 pkg = _preload("codeboarding_workflows")
 pkg.analysis = analysis
 exc = _preload("diagram_analysis.exceptions", IncrementalCacheMissingError=_InitialIncrementalCacheMissingError)
-da = _preload("diagram_analysis")
+da = _preload("diagram_analysis", RunPaths=_RunPaths, RunContext=_RunContext)
 da.exceptions = exc
+_preload("diagram_analysis.analysis_json", UnifiedAnalysisJson=_InitialUnifiedAnalysisJson)
+_preload("diagram_analysis.io_utils", write_fingerprint=lambda *a, **k: None)
+_preload("agents.content_hash", hash_repo_source_files=lambda *a, **k: {})
+_preload("agents")
 _preload("codeboarding_workflows.rendering", render_docs=lambda *args, **kwargs: None)
 _preload("health.models", Severity=_InitialSeverity)
 _preload("health.runner", run_health_checks=lambda *args, **kwargs: None)
@@ -68,10 +105,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import engine_adapter  # noqa: E402
 
 _STUBBED = [
+    "agents",
+    "agents.content_hash",
     "codeboarding_workflows",
     "codeboarding_workflows.analysis",
     "diagram_analysis",
+    "diagram_analysis.analysis_json",
     "diagram_analysis.exceptions",
+    "diagram_analysis.io_utils",
     "health",
     "health.models",
     "health.runner",
@@ -83,11 +124,13 @@ _STUBBED = [
 
 class _Rec:
     def __init__(self, ret="OUT", raises=None):
-        self.calls = []
+        self.calls = []  # kwargs of each call
+        self.args = []  # positional args of each call
         self._ret, self._raises = ret, raises
 
     def __call__(self, *a, **k):
         self.calls.append(k)
+        self.args.append(a)
         if self._raises:
             raise self._raises("boom")
         return self._ret
@@ -99,6 +142,15 @@ def _mod(name, **attrs):
         setattr(m, k, v)
     sys.modules[name] = m
     return m
+
+
+def _write_model_valid_analysis(output_dir, **metadata):
+    path = Path(output_dir)
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "analysis.json").write_text(
+        json.dumps({"metadata": metadata}),
+        encoding="utf-8",
+    )
 
 
 class _Base(unittest.TestCase):
@@ -137,11 +189,13 @@ class TestAnalysis(_Base):
         self._install(run_full=rf)
         engine_adapter.run_base("/repo", "/out", "myrepo", "rid-base", 2, "abc123")
         self.assertEqual(len(rf.calls), 1)
-        k = rf.calls[0]
-        self.assertEqual(k["repo_name"], "myrepo")
-        self.assertEqual(str(k["repo_path"]), "/repo")
-        self.assertEqual(k["depth_level"], 2)
-        self.assertEqual(k["source_sha"], "abc123")
+        run_paths, run_context = rf.args[0]
+        self.assertEqual(run_paths.project_name, "myrepo")
+        self.assertEqual(str(run_paths.repo_path), "/repo")
+        self.assertEqual(str(run_paths.output_dir), "/out")
+        self.assertEqual(run_context.run_id, "rid-base")
+        self.assertEqual(rf.calls[0]["depth_level"], 2)
+        self.assertEqual(rf.calls[0]["source_sha"], "abc123")
 
     def test_main_parses_depth_as_int(self):
         rf = _Rec()
@@ -240,13 +294,18 @@ class TestAnalysis(_Base):
     def test_head_uses_incremental(self):
         ri, rf = _Rec(), _Rec()
         self._install(run_full=rf, run_incremental=ri)
+        out = tempfile.mkdtemp()
+        _write_model_valid_analysis(out, depth_level=1)
         buf = StringIO()
         with redirect_stdout(buf):
-            engine_adapter.run_head("/repo", "/out", "r", "rid", 1, "base", "head", "head")
+            engine_adapter.run_head("/repo", out, "r", "rid", 1, "head")
         self.assertEqual(len(ri.calls), 1)
         self.assertEqual(len(rf.calls), 0)  # no fallback
-        self.assertEqual(ri.calls[0]["base_ref"], "base")
-        self.assertEqual(ri.calls[0]["target_ref"], "head")
+        # Git-free: no base/target ref — Core diffs the seeded fingerprint itself.
+        run_paths, run_context = ri.args[0]
+        self.assertEqual(str(run_paths.repo_path), "/repo")
+        self.assertEqual(str(run_paths.output_dir), out)
+        self.assertEqual(run_context.run_id, "rid")
         self.assertIn("head_analysis_mode=incremental", buf.getvalue())
 
     def test_head_force_full_skips_incremental(self):
@@ -257,7 +316,7 @@ class TestAnalysis(_Base):
         buf = StringIO()
 
         with redirect_stdout(buf):
-            engine_adapter.run_head("/repo", out, "r", "rid", 2, "empty", "head", "head", force_full=True)
+            engine_adapter.run_head("/repo", out, "r", "rid", 2, "head", force_full=True)
 
         self.assertEqual(len(ri.calls), 0)
         self.assertEqual(len(rf.calls), 1)
@@ -274,12 +333,13 @@ class TestAnalysis(_Base):
         engine_adapter.run_full = analysis.run_full
         engine_adapter.run_incremental = analysis.run_incremental
         out = tempfile.mkdtemp()
+        _write_model_valid_analysis(out, depth_level=3)
         (Path(out) / "stale.json").write_text("{}")  # must be wiped before the full run
         (Path(out) / "health").mkdir()
         (Path(out) / "health" / "stale.json").write_text("{}")
         buf = StringIO()
         with redirect_stdout(buf):
-            engine_adapter.run_head("/repo", out, "r", "rid", 3, "base", "head", "head")
+            engine_adapter.run_head("/repo", out, "r", "rid", 3, "head")
         self.assertEqual(len(rf.calls), 1)  # fell back to full
         self.assertEqual(rf.calls[0]["depth_level"], 3)
         self.assertFalse((Path(out) / "stale.json").exists())  # head dir wiped before full
@@ -293,8 +353,32 @@ class TestAnalysis(_Base):
         analysis.run_incremental = _Rec(raises=BaseUnavail)
         engine_adapter.run_full = analysis.run_full
         engine_adapter.run_incremental = analysis.run_incremental
-        engine_adapter.run_head("/repo", tempfile.mkdtemp(), "r", "rid", 1, "base", "head", "head")
+        out = tempfile.mkdtemp()
+        _write_model_valid_analysis(out, depth_level=1)
+        engine_adapter.run_head("/repo", out, "r", "rid", 1, "head")
         self.assertEqual(len(rf.calls), 1)  # BaselineUnavailableError also triggers the full re-run
+
+    def test_head_rebuilds_analysis_rejected_by_core_model(self):
+        ri, rf = _Rec(), _Rec()
+        self._install(run_full=rf, run_incremental=ri)
+        out = Path(tempfile.mkdtemp())
+        (out / "analysis.json").write_text(
+            json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 3}}),
+            encoding="utf-8",
+        )
+        (out / "stale.json").write_text("{}", encoding="utf-8")
+        buf = StringIO()
+
+        with patch.object(engine_adapter, "UnifiedAnalysisJson", _RejectingUnifiedAnalysisJson):
+            with redirect_stdout(buf):
+                engine_adapter.run_head("/repo", str(out), "r", "rid", 1, "head")
+
+        self.assertEqual(len(ri.calls), 0)
+        self.assertEqual(len(rf.calls), 1)
+        self.assertEqual(rf.calls[0]["depth_level"], 3)
+        self.assertFalse((out / "stale.json").exists())
+        self.assertIn("could not load baseline analysis.json", buf.getvalue())
+        self.assertIn("head_analysis_mode=full", buf.getvalue())
 
 
 class TestValidateBase(_Base):
@@ -402,6 +486,22 @@ class TestValidateBase(_Base):
             self.assertTrue(ok)
             self.assertIn("commit_hash", message)
 
+    def test_validate_base_rejects_lossy_model_load(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "analysis.json"
+            path.write_text(
+                json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 2}}),
+                encoding="utf-8",
+            )
+
+            with patch.object(engine_adapter, "UnifiedAnalysisJson", _LossyUnifiedAnalysisJson):
+                ok, message = engine_adapter.validate_base_analysis(path, "abc123")
+
+            self.assertFalse(ok)
+            self.assertIn("could not load baseline analysis.json", message)
+            self.assertIn("without schema changes", message)
+            self.assertIn("full analysis", message)
+
     def test_main_validate_base_exit_codes(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "analysis.json"
@@ -495,7 +595,8 @@ class TestValidateBase(_Base):
             self.assertIn("deeper", message)
 
     def test_validate_base_accepts_legacy_baseline_without_depth(self):
-        # Missing or unparseable depth_level -> accept (baselines predate the field).
+        # Missing or unparseable depth_level remains acceptable when the
+        # installed Core model accepts the document.
         for metadata in (
             {"commit_hash": "abc123"},
             {"commit_hash": "abc123", "depth_level": "not-a-number"},
@@ -824,6 +925,44 @@ class TestQuotaExhausted(_Base):
                 with self.assertRaises(RuntimeError):
                     self._run_base()
         self.assertFalse(sentinel.exists(), "non-quota errors must not write the sentinel")
+
+
+class TestEngineRequired(_Base):
+    """A missing/too-old engine (RunPaths imported as None) fails the analysis
+    subcommands with a clear message, while metadata-only subcommands still run."""
+
+    def _argv(self, cmd):
+        run = ["--repo", "/r", "--out", "/o", "--name", "n", "--run-id", "id", "--source-sha", "s"]
+        return {
+            "base": [cmd, *run, "--depth", "2"],
+            "seed": [cmd, "--repo", "/r", "--out", "/o", "--source-sha", "s"],
+            "head": [cmd, *run, "--depth", "2"],
+            "validate-base": [cmd, "--analysis", "/a.json", "--expected-sha", "abc123"],
+            "analyze": [cmd, *run, "--depth", "2"],
+            "render": [cmd, "--analysis", "/a.json", "--out", "/o", "--repo-name", "n", "--repo-ref", "r"],
+        }[cmd]
+
+    def test_engine_commands_fail_clearly_when_engine_missing(self):
+        for cmd in engine_adapter._ENGINE_COMMANDS:
+            with (
+                self.subTest(cmd=cmd),
+                patch.object(engine_adapter, "RunPaths", None),
+                patch.object(engine_adapter, "UnifiedAnalysisJson", None),
+            ):
+                with self.assertRaises(RuntimeError) as ctx:
+                    engine_adapter.main(self._argv(cmd))
+                msg = str(ctx.exception)
+                self.assertIn(cmd, msg)
+                self.assertIn("too old", msg)
+                self.assertIn("codeboarding_version", msg)
+
+    def test_metadata_command_runs_without_engine(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "analysis.json"
+            path.write_text(json.dumps({"metadata": {"commit_hash": "abc1234"}}))
+            with patch.object(engine_adapter, "RunPaths", None), redirect_stdout(StringIO()):
+                rc = engine_adapter.main(["baseline-info", "--analysis", str(path)])
+        self.assertEqual(rc, 0)
 
 
 if __name__ == "__main__":

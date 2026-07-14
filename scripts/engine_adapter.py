@@ -4,15 +4,16 @@ No analysis logic lives here. The engine is the published ``codeboarding`` PyPI
 package installed by the action (``codeboarding_workflows`` etc.); this module
 just turns the action's shell steps into typed, tested calls into it. The engine
 imports are best-effort at module load, so this file imports fine without the
-package present — the metadata-only subcommands (``baseline-info``,
-``baseline-depth``, ``validate-base``) run with the stdlib alone, and the tests
-stub the engine modules to assert we call the engine with the right args.
+package present — the metadata-only subcommands (``baseline-info`` and
+``baseline-depth``) run with the stdlib alone, while ``validate-base`` uses the
+installed Core model to check schema compatibility. The tests stub the engine
+modules to assert we call the engine with the right args.
 
 Subcommands (all paths/refs come in as argv, never interpolated into source):
 
   base           --repo P --out D --name N --run-id ID --depth K --source-sha SHA
   seed           --repo P --out D --source-sha SHA
-  head           --repo P --out D --name N --run-id ID --depth K --base-ref B --target-ref T --source-sha SHA
+  head           --repo P --out D --name N --run-id ID --depth K --source-sha SHA
   health         --artifact-dir D --repo P --name N --issues-out FILE
   validate-base  --analysis F --expected-sha SHA [--expected-depth K]
   baseline-info  --analysis F
@@ -36,14 +37,16 @@ regenerating because the metadata SHA differs. ``baseline-info`` prints the
 baseline's ``commit_hash=`` (empty unless present and SHA-shaped).
 
 ``head`` (review) and ``analyze`` (sync) are the SAME incremental-or-full
-operation via the shared ``_incremental_or_full`` helper; they differ only in
-where the base ref comes from (the PR target-branch SHA vs the committed analysis.json)
-and in that ``analyze`` is baseline-aware (full when the baseline is missing,
-lacks a commit_hash, or ``--force-full`` is set) and prints
-``analysis_mode=full|incremental`` on stdout for the action to grep. Once an
-analysis.json exists, its metadata.depth_level is the source of truth for
-incremental and fallback-full depth; ``--depth`` is the cold-start/force-full
-depth.
+operation via the shared ``_incremental_or_full`` helper. Change detection is
+git-free: Core diffs the current checkout against the seeded ``fingerprint.json``
+sidecar, so neither passes a base/target ref. The helper asks the installed
+Core's ``UnifiedAnalysisJson`` model to validate the baseline and rebuilds with
+a full analysis when the model cannot load it (including the pre-0.13.0 format).
+``analyze`` is baseline-aware (full when the committed analysis.json is missing
+or ``--force-full`` is set) and prints ``analysis_mode=full|incremental`` on
+stdout for the action to grep. Once a compatible analysis.json exists, its
+metadata.depth_level is the source of truth for incremental and fallback-full
+depth; ``--depth`` is the cold-start/force-full depth.
 ``render`` writes per-component markdown with root name ``overview``; ``concat``
 joins overview.md first plus the remaining *.md (sorted) into one architecture
 file.
@@ -64,22 +67,26 @@ import sys
 from pathlib import Path
 
 # The engine packages are imported best-effort so the metadata-only subcommands
-# (``baseline-info``, ``baseline-depth``, ``validate-base``) run with the stdlib
-# alone — they parse a committed analysis.json and never touch the engine. The
-# action invokes them BEFORE the engine package is pip-installed (e.g. while
-# resolving the review depth), so a hard import here would break that step. The
+# (``baseline-info`` and ``baseline-depth``) run with the stdlib alone — they
+# parse a committed analysis.json and never touch the engine. Keeping imports
+# best-effort also gives analysis commands a clear error for an old package. The
 # analysis subcommands that DO need the engine fail loudly when these are None.
 try:
+    from agents.content_hash import hash_repo_source_files
     from codeboarding_workflows.analysis import BaselineUnavailableError, run_full, run_incremental
     from codeboarding_workflows.rendering import render_docs
+    from diagram_analysis import RunContext, RunPaths
     from diagram_analysis.exceptions import IncrementalCacheMissingError
+    from diagram_analysis.io_utils import write_fingerprint
     from static_analyzer import get_static_analysis
     from static_analyzer.analysis_cache import StaticAnalysisCache
     from static_analyzer.cluster_helpers import build_all_cluster_results
 except Exception:  # engine package not installed (metadata-only subcommands don't need it)
     BaselineUnavailableError = IncrementalCacheMissingError = _MissingEngine = type("_MissingEngine", (Exception,), {})
     run_full = run_incremental = render_docs = None
+    RunContext = RunPaths = None
     get_static_analysis = StaticAnalysisCache = build_all_cluster_results = None
+    hash_repo_source_files = write_fingerprint = None
 
 try:
     from health.models import Severity
@@ -87,6 +94,40 @@ try:
 except Exception as _health_import_error:  # engine without the health module
     Severity = None
     run_health_checks = None
+
+try:
+    from diagram_analysis.analysis_json import UnifiedAnalysisJson
+except Exception:  # unavailable only for metadata commands run without Core installed
+    UnifiedAnalysisJson = None
+
+# The engine imports above are all-or-nothing: on failure every engine symbol is
+# None. The metadata-only subcommands (baseline-info/baseline-depth), concat,
+# and best-effort health run fine without the engine; analysis and validation
+# subcommands do NOT. Guard those so a missing OR too-old engine fails with a
+# clear, actionable message instead of a cryptic "'NoneType' object is not
+# callable" deep in the run. "Too old" is the live case: an engine that predates
+# Core #401 has no RunPaths/RunContext, so those symbols import as None here.
+_ENGINE_COMMANDS = ("base", "seed", "head", "validate-base", "analyze", "render")
+
+
+def _require_engine(cmd: str) -> None:
+    if cmd == "validate-base" and UnifiedAnalysisJson is not None:
+        return
+    if cmd != "validate-base" and RunPaths is not None:
+        return
+    if cmd == "validate-base":
+        raise RuntimeError(
+            "The 'validate-base' subcommand needs the CodeBoarding analysis engine, but the installed "
+            "'codeboarding' package is missing or too old: it does not export the unified analysis "
+            "model used to validate analysis.json. Pin the action's codeboarding_version input to 0.13.0 or newer."
+        )
+    raise RuntimeError(
+        f"The '{cmd}' subcommand needs the CodeBoarding analysis engine, but the installed "
+        "'codeboarding' package is missing or too old: it does not export the git-free "
+        "content-versioning API (RunPaths/RunContext, added in Core #401). Pin the action's "
+        "codeboarding_version input to a release that includes it."
+    )
+
 
 # A committed analysis.json's commit_hash is trusted only as far as a SHA shape:
 # it flows into GITHUB_OUTPUT, cache keys, and git refs, so anything else must
@@ -146,6 +187,14 @@ def _log_path(output_dir: str, filename: str) -> str:
     return str(Path(output_dir) / filename)
 
 
+def _run_ctx(repo_path: str, output_dir: str, repo_name: str, run_id: str, log_name: str):
+    """Build the (RunPaths, RunContext) pair Core's run_full/run_incremental take."""
+    repo_dir = Path(repo_path)
+    run_paths = RunPaths(repo_path=repo_dir, output_dir=Path(output_dir), project_name=repo_name)
+    run_context = RunContext(run_id=run_id, log_path=_log_path(output_dir, log_name), repo_dir=repo_dir)
+    return run_paths, run_context
+
+
 def _clear_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
     for child in path.iterdir():
@@ -155,15 +204,20 @@ def _clear_dir(path: Path) -> None:
             child.unlink()
 
 
-def _load_metadata(analysis_path: Path) -> dict | None:
+def _load_analysis(analysis_path: Path) -> dict | None:
     try:
         data = json.loads(analysis_path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
     except (OSError, json.JSONDecodeError):
         return {}
-    if not isinstance(data, dict):
-        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _load_metadata(analysis_path: Path) -> dict | None:
+    data = _load_analysis(analysis_path)
+    if data is None:
+        return None
     metadata = data.get("metadata")
     return metadata if isinstance(metadata, dict) else {}
 
@@ -219,6 +273,29 @@ def _metadata_commit(metadata: dict) -> str:
     return value if isinstance(value, str) else ""
 
 
+def _analysis_model_error(data: dict) -> str | None:
+    """Return an error when the installed Core model cannot load *data* losslessly.
+
+    Pydantic models may accept an older document by ignoring unknown fields and
+    filling new defaults. A model round-trip catches that schema drift without
+    teaching the action about any particular Core field.
+    """
+    if UnifiedAnalysisJson is None:
+        raise RuntimeError(
+            "Validating analysis.json compatibility requires the installed CodeBoarding engine model "
+            "(diagram_analysis.analysis_json.UnifiedAnalysisJson)."
+        )
+    try:
+        model = UnifiedAnalysisJson.model_validate(data)
+        normalized = model.model_dump(mode="json", exclude_none=True)
+    except Exception as exc:
+        detail = str(exc).splitlines()[0] if str(exc) else type(exc).__name__
+        return f"Installed CodeBoarding model could not load baseline analysis.json ({detail})"
+    if normalized != data:
+        return "Installed CodeBoarding model could not load baseline analysis.json without schema changes"
+    return None
+
+
 def baseline_info(analysis_path: Path) -> str:
     """Return the committed baseline's commit_hash when present and SHA-shaped,
     else "". Sync mode uses this (via the ``baseline-info`` subcommand) instead
@@ -260,6 +337,11 @@ def validate_base_analysis(
     but the sync commit itself necessarily has a newer SHA because it adds the
     generated artifacts. Treat that metadata SHA as provenance, not freshness.
 
+    A baseline that the installed Core model cannot load is rejected so review
+    mode generates a fresh target analysis before running the PR-head
+    incremental analysis. This handles the 0.13.0 format break without
+    duplicating Core's schema or coupling the action to individual JSON fields.
+
     When ``expected_depth`` is given, a baseline whose metadata.depth_level
     parses as an int and is DEEPER than expected is rejected (review mode
     regenerates instead of diffing against a deeper analysis). A shallower
@@ -289,6 +371,10 @@ def validate_base_analysis(
     if not isinstance(metadata, dict):
         return False, "Baseline analysis metadata is missing."
 
+    model_error = _analysis_model_error(data)
+    if model_error:
+        return False, f"{model_error}; a full analysis is required."
+
     actual_sha = metadata.get("commit_hash")
     if isinstance(actual_sha, str) and actual_sha:
         if actual_sha == expected_sha:
@@ -310,15 +396,8 @@ def validate_base_analysis(
 
 
 def run_base(repo_path: str, output_dir: str, repo_name: str, run_id: str, depth: int, source_sha: str) -> None:
-    res = run_full(
-        repo_name=repo_name,
-        repo_path=Path(repo_path),
-        output_dir=Path(output_dir),
-        run_id=run_id,
-        log_path=_log_path(output_dir, "cb-base.log"),
-        depth_level=depth,
-        source_sha=source_sha,
-    )
+    run_paths, run_context = _run_ctx(repo_path, output_dir, repo_name, run_id, "cb-base.log")
+    res = run_full(run_paths, run_context, depth_level=depth, source_sha=source_sha)
     print(f"Base analysis written: {res}")
 
 
@@ -338,12 +417,18 @@ def run_seed(repo_path: str, output_dir: str, source_sha: str) -> None:
     persists the pkl on LSP teardown, before clustering — saving only there
     would recreate the pkl-without-cluster-baseline state this fixes.
 
+    Also writes the whole-tree ``fingerprint.json`` sidecar: git-free incremental
+    diffs the head checkout against it, so a committed baseline that only carries
+    analysis.json + pkl would otherwise leave incremental with no baseline and
+    force a full run.
+
     Errors propagate; the action step treats a failed seed as fail-open (the
     head run falls back to a full analysis, today's behavior).
     """
     results = get_static_analysis(Path(repo_path), cache_dir=Path(output_dir), source_sha=source_sha)
     cluster_results = build_all_cluster_results(results)
     StaticAnalysisCache(Path(output_dir), Path(repo_path)).save(results, source_sha=source_sha)
+    write_fingerprint(Path(output_dir), hash_repo_source_files(Path(repo_path)))
     summary = ", ".join(f"{lang}={len(cr.clusters)}" for lang, cr in sorted(cluster_results.items()))
     print(f"Seeded static-analysis baseline in {output_dir} (clusters: {summary or 'none'})")
 
@@ -355,46 +440,42 @@ def _incremental_or_full(
     repo_name: str,
     run_id: str,
     depth: int,
-    base_ref: str,
-    target_ref: str,
     source_sha: str,
     log_name: str,
     licensed: bool,
 ) -> str:
-    """Run incremental from *base_ref*; on a cache/baseline miss, clear the
-    output dir and run a full analysis. Returns "incremental" or "full".
+    """Run incremental against the seeded baseline; on a cache/baseline miss,
+    clear the output dir and run a full analysis. Returns "incremental" or "full".
+
+    Change detection is git-free: Core diffs the current checkout against the
+    seeded ``fingerprint.json`` sidecar itself, so no base/target ref is passed.
+    ``source_sha`` still tags the full fallback's static-analysis cache.
 
     Shared by the review head path and the sync analyze path so the fallback
     rule (which exceptions degrade to full, and the clear-before-full) lives in
     exactly one place — a bug fixed here is fixed for both modes.
     """
+    run_paths, run_context = _run_ctx(repo_path, output_dir, repo_name, run_id, log_name)
+    out_path = Path(output_dir)
+    analysis = _load_analysis(out_path / "analysis.json")
+    model_error = "Baseline analysis.json is missing or unreadable" if not analysis else _analysis_model_error(analysis)
+    if model_error:
+        print(f"Incremental unavailable ({model_error}); running full analysis.")
+        fallback_depth = _analysis_depth_or_default(out_path, licensed, depth)
+        _clear_dir(out_path)
+        res = run_full(run_paths, run_context, depth_level=fallback_depth, source_sha=source_sha)
+        print(f"Analysis written: {res}")
+        return "full"
+
     try:
-        res = run_incremental(
-            repo_path=Path(repo_path),
-            output_dir=Path(output_dir),
-            project_name=repo_name,
-            run_id=run_id,
-            log_path=_log_path(output_dir, log_name),
-            base_ref=base_ref,
-            target_ref=target_ref,
-            source_sha=source_sha,
-        )
+        res = run_incremental(run_paths, run_context)
         print(f"Analysis written: {res}")
         return "incremental"
     except (IncrementalCacheMissingError, BaselineUnavailableError) as exc:
         print(f"Incremental unavailable ({exc}); running full analysis.")
-        out_path = Path(output_dir)
         fallback_depth = _analysis_depth_or_default(out_path, licensed, depth)
         _clear_dir(out_path)
-        res = run_full(
-            repo_name=repo_name,
-            repo_path=Path(repo_path),
-            output_dir=out_path,
-            run_id=run_id,
-            log_path=_log_path(output_dir, log_name),
-            depth_level=fallback_depth,
-            source_sha=source_sha,
-        )
+        res = run_full(run_paths, run_context, depth_level=fallback_depth, source_sha=source_sha)
         print(f"Analysis written: {res}")
         return "full"
 
@@ -405,13 +486,11 @@ def run_head(
     repo_name: str,
     run_id: str,
     depth: int,
-    base_ref: str,
-    target_ref: str,
     source_sha: str,
     force_full: bool = False,
     licensed: bool = False,
 ) -> None:
-    """Review PR head: incremental from the PR target branch tip, full on a cache miss.
+    """Review PR head: incremental against the seeded baseline, full on a cache miss.
 
     Print the selected mode explicitly so GitHub Action logs make it obvious
     whether review used the incremental path or fell back to a full analysis.
@@ -419,15 +498,8 @@ def run_head(
     if force_full:
         out_path = Path(output_dir)
         _clear_dir(out_path)
-        res = run_full(
-            repo_name=repo_name,
-            repo_path=Path(repo_path),
-            output_dir=out_path,
-            run_id=run_id,
-            log_path=_log_path(output_dir, "cb-head.log"),
-            depth_level=depth,
-            source_sha=source_sha,
-        )
+        run_paths, run_context = _run_ctx(repo_path, output_dir, repo_name, run_id, "cb-head.log")
+        res = run_full(run_paths, run_context, depth_level=depth, source_sha=source_sha)
         print(f"Analysis written: {res}")
         print("head_analysis_mode=full")
         return
@@ -438,8 +510,6 @@ def run_head(
         repo_name=repo_name,
         run_id=run_id,
         depth=depth,
-        base_ref=base_ref,
-        target_ref=target_ref,
         source_sha=source_sha,
         log_name="cb-head.log",
         licensed=licensed,
@@ -457,32 +527,22 @@ def run_analyze(
     force_full: bool = False,
     licensed: bool = False,
 ) -> str:
-    """Sync analysis: incremental from the committed baseline, full when the
-    baseline is absent or untrusted (no commit_hash) or ``force_full`` is set.
-    Prints ``analysis_mode=full|incremental`` on stdout — the action greps that
-    line, so it must be printed exactly once per run.
+    """Sync analysis: incremental against the committed baseline, full when the
+    baseline is absent or ``force_full`` is set. Prints ``analysis_mode=full|incremental``
+    on stdout — the action greps that line, so it must be printed exactly once per run.
 
-    The baseline's depth_level is resolved (clamped/defaulted, never None) for the
-    incremental run; whether to do a full rebuild is decided by trustworthiness
-    (commit_hash), NOT by the depth. The engine's incremental path needs a usable
-    cache + base commit, not a particular depth, and falls back to full itself if
-    the cache is missing — so a present baseline with an odd depth_level still runs
-    incremental at a sane depth rather than forcing a costly full rebuild.
+    Change detection is git-free: the baseline is trusted when its ``fingerprint.json``
+    sidecar is present (``_incremental_or_full`` falls back to full itself if the
+    sidecar or cache is missing), so there's no ``commit_hash`` gate. The baseline's
+    depth_level is resolved (clamped/defaulted, never None) for the incremental run.
     """
     out_path = Path(output_dir)
 
     def full(reason: str, analysis_depth: int) -> str:
         print(f"{reason}; running full analysis.")
         _clear_dir(out_path)
-        res = run_full(
-            repo_name=repo_name,
-            repo_path=Path(repo_path),
-            output_dir=out_path,
-            run_id=run_id,
-            log_path=_log_path(output_dir, "cb-sync.log"),
-            depth_level=analysis_depth,
-            source_sha=source_sha,
-        )
+        run_paths, run_context = _run_ctx(repo_path, output_dir, repo_name, run_id, "cb-sync.log")
+        res = run_full(run_paths, run_context, depth_level=analysis_depth, source_sha=source_sha)
         print(f"Analysis written: {res}")
         print("analysis_mode=full")
         return "full"
@@ -495,19 +555,12 @@ def run_analyze(
         return full("No baseline analysis.json found", min(depth, _max_depth(licensed)))
 
     baseline_depth = _resolve_depth(metadata, licensed)
-
-    base_ref = _metadata_commit(metadata)
-    if not base_ref:
-        return full("Baseline metadata.commit_hash is missing", baseline_depth)
-
     mode = _incremental_or_full(
         repo_path=repo_path,
         output_dir=output_dir,
         repo_name=repo_name,
         run_id=run_id,
         depth=baseline_depth,
-        base_ref=base_ref,
-        target_ref=source_sha,
         source_sha=source_sha,
         log_name="cb-sync.log",
         licensed=licensed,
@@ -622,7 +675,7 @@ def main(argv=None) -> int:
         s.add_argument(a, required=True)
 
     h = sub.add_parser("head")
-    for a in ("--repo", "--out", "--name", "--run-id", "--base-ref", "--target-ref", "--source-sha"):
+    for a in ("--repo", "--out", "--name", "--run-id", "--source-sha"):
         h.add_argument(a, required=True)
     h.add_argument("--depth", required=True, type=int, choices=depth_choices)
     h.add_argument("--licensed", action="store_true", help="Licensed/BYO-key run (raises the depth ceiling).")
@@ -663,6 +716,8 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     source = "sync" if args.cmd in ("analyze", "render", "concat") else "github_action"
     os.environ.setdefault("CODEBOARDING_SOURCE", source)
+    if args.cmd in _ENGINE_COMMANDS:
+        _require_engine(args.cmd)
     try:
         if args.cmd == "base":
             run_base(args.repo, args.out, args.name, args.run_id, args.depth, args.source_sha)
@@ -675,8 +730,6 @@ def main(argv=None) -> int:
                 args.name,
                 args.run_id,
                 args.depth,
-                args.base_ref,
-                args.target_ref,
                 args.source_sha,
                 # action.yml adds --force-full for EMPTY_BASE PRs (no comparison baseline).
                 args.force_full,

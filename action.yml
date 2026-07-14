@@ -34,7 +34,7 @@ inputs:
   codeboarding_version:
     description: 'CodeBoarding PyPI package version used as the analysis engine. Pin for reproducibility; set to a newer released version to opt into newer engine releases.'
     required: false
-    default: '0.12.5'
+    default: '0.13.0'
   depth_level:
     description: 'Analysis depth for cold-start or force_full rebuilds. Max depends on tier: 3 on the free hosted tier, 10 with a CodeBoarding license or your own llm_api_key. Once .codeboarding/analysis.json exists, its metadata.depth_level is the source of truth: sync runs incremental at the baseline depth, and review analyzes the PR head at the committed baseline depth so the diff is apples-to-apples (clamped to the tier max). Empty (default): 2 for cold starts.'
     required: false
@@ -794,14 +794,6 @@ runs:
             echo "Using committed .codeboarding/analysis.json at target branch commit ${BASE_SHA}."
           else
             rm -f "${BASE_DIR}/analysis.json"
-            if [ "$FORK_COMPARE" = "true" ]; then
-              printf '%s\n' '{"metadata": {"baseline": "empty"}, "components": [], "components_relations": []}' > "${BASE_DIR}/analysis.json"
-              echo "committed=false" >> $GITHUB_OUTPUT
-              echo "empty_base=true" >> $GITHUB_OUTPUT
-              echo "baseline_sha=empty" >> $GITHUB_OUTPUT
-              echo "Fork comparison branch baseline at ${BASE_SHA} is unusable; using an empty baseline so PR architecture renders as new."
-              exit 0
-            fi
             echo "committed=false" >> $GITHUB_OUTPUT
             echo "baseline_sha=$BASE_SHA" >> $GITHUB_OUTPUT
             echo "Committed baseline at target branch commit ${BASE_SHA} is unusable; will generate a fresh target analysis."
@@ -833,7 +825,7 @@ runs:
         # inputs. So a free-tier run (oidc, forced Gemini) and a BYO OpenRouter-key
         # run with no model pinned would share a key yet produce different base
         # analyses; the mode discriminator keeps them from reusing each other's cache.
-        key: cb-base-v2-${{ runner.os }}-${{ steps.base.outputs.baseline_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.codeboarding_version }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+        key: cb-base-v3-${{ runner.os }}-${{ steps.base.outputs.baseline_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.codeboarding_version }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     - name: Reassert committed base analysis after cache restore
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.base.outputs.committed == 'true'
@@ -967,7 +959,7 @@ runs:
         # inputs. So a free-tier run (oidc, forced Gemini) and a BYO OpenRouter-key
         # run with no model pinned would share a key yet produce different base
         # analyses; the mode discriminator keeps them from reusing each other's cache.
-        key: cb-base-v2-${{ runner.os }}-${{ steps.base.outputs.baseline_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.codeboarding_version }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
+        key: cb-base-v3-${{ runner.os }}-${{ steps.base.outputs.baseline_sha }}-d${{ steps.resolve_depth.outputs.depth }}-${{ inputs.codeboarding_version }}-${{ steps.llm.outputs.mode }}-${{ inputs.llm_provider }}-${{ inputs.agent_model }}-${{ inputs.parsing_model }}
 
     - name: Analyze PR head (incremental from base)
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
@@ -1020,8 +1012,6 @@ runs:
           --name "$REPO_NAME"
           --run-id "$RUN_ID_HEAD"
           --depth "$DEPTH"
-          --base-ref "$BASELINE_SHA"
-          --target-ref "$HEAD_SHA"
           --source-sha "$HEAD_SHA"
         )
         # Raise the depth ceiling for licensed/BYO-key runs (controls the
@@ -1087,93 +1077,30 @@ runs:
           echo "arch_file=$ARCHITECTURE_FILE"
         } >> "$GITHUB_OUTPUT"
 
-        if [ -f "$OUTPUT_DIR/analysis.json" ]; then
+        # Git-free baseline: the committed .codeboarding/ is self-contained
+        # (analysis.json for component ids + fingerprint.json for change detection,
+        # plus the optional static_analysis.pkl warm-start the prior sync committed).
+        # Incremental needs analysis.json AND fingerprint.json; a missing pkl only
+        # costs a cold LSP pass, so it doesn't gate baseline-present.
+        if [ -f "$OUTPUT_DIR/analysis.json" ] && [ -f "$OUTPUT_DIR/fingerprint.json" ]; then
           cp "$OUTPUT_DIR/analysis.json" "$ANALYSIS_DIR/analysis.json"
+          cp "$OUTPUT_DIR/fingerprint.json" "$ANALYSIS_DIR/fingerprint.json"
           if [ -f "$OUTPUT_DIR/static_analysis.pkl" ] && [ -f "$OUTPUT_DIR/static_analysis.sha" ]; then
             cp "$OUTPUT_DIR/static_analysis.pkl" "$ANALYSIS_DIR/static_analysis.pkl"
             cp "$OUTPUT_DIR/static_analysis.sha" "$ANALYSIS_DIR/static_analysis.sha"
-            echo "committed_cache=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "committed_cache=false" >> "$GITHUB_OUTPUT"
           fi
-          # baseline-info parses metadata.commit_hash and emits it ONLY when it is
-          # present and SHA-shaped, so an unusable/injected value never reaches
-          # GITHUB_OUTPUT, the cache key, or git. (Pure stdlib — no engine venv.)
-          BASELINE_SHA="$(python3 "$ACTION_PATH/scripts/engine_adapter.py" baseline-info \
-            --analysis "$ANALYSIS_DIR/analysis.json" | sed -n 's/^commit_hash=//p')"
-          if [ -n "$BASELINE_SHA" ]; then
-            echo "baseline_present=true" >> "$GITHUB_OUTPUT"
-            echo "baseline_sha=$BASELINE_SHA" >> "$GITHUB_OUTPUT"
-            echo "Using committed baseline generated for $BASELINE_SHA."
-          else
-            rm -f "$ANALYSIS_DIR/analysis.json" "$ANALYSIS_DIR/static_analysis.pkl" "$ANALYSIS_DIR/static_analysis.sha"
-            echo "baseline_present=false" >> "$GITHUB_OUTPUT"
-            echo "baseline_sha=none" >> "$GITHUB_OUTPUT"
-            echo "committed_cache=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Committed analysis.json has no usable metadata.commit_hash; a full analysis will run."
-          fi
+          echo "baseline_present=true" >> "$GITHUB_OUTPUT"
+          echo "Using committed baseline (analysis.json + fingerprint.json)."
         else
           echo "baseline_present=false" >> "$GITHUB_OUTPUT"
-          echo "baseline_sha=none" >> "$GITHUB_OUTPUT"
-          echo "committed_cache=false" >> "$GITHUB_OUTPUT"
-          echo "No committed baseline found; a full analysis will run."
+          echo "No committed baseline (analysis.json + fingerprint.json); a full analysis will run."
         fi
 
-    - name: Restore sync static-analysis cache
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.sync_seed.outputs.baseline_present == 'true' && steps.sync_seed.outputs.committed_cache != 'true'
-      id: sync_cache
-      uses: actions/cache/restore@v4
-      with:
-        path: |
-          ${{ runner.temp }}/cb-sync/static_analysis.pkl
-          ${{ runner.temp }}/cb-sync/static_analysis.sha
-        key: cb-sync-${{ runner.os }}-${{ inputs.codeboarding_version }}-d${{ steps.resolve_depth.outputs.depth }}-${{ steps.llm.outputs.cache_provider }}-${{ steps.llm.outputs.cache_agent_model }}-${{ steps.llm.outputs.cache_parsing_model }}-${{ steps.sync_seed.outputs.baseline_sha }}
-
-    # Same rationale as the review pipeline's seed step: the committed
-    # analysis.json supplies component ids, but the incremental path also needs
-    # the baseline static_analysis.pkl (LSP + clustering, no LLM). Fail-open.
-    - name: Seed sync static-analysis cache at baseline SHA
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.sync_seed.outputs.baseline_present == 'true' && steps.sync_seed.outputs.committed_cache != 'true' && steps.sync_cache.outputs.cache-hit != 'true'
-      id: sync_seedcache
-      continue-on-error: true
-      shell: bash
-      env:
-        # The seed subcommand defaults to github_action attribution; sync-mode
-        # telemetry must report as sync (setdefault never clobbers this).
-        CODEBOARDING_SOURCE: 'sync'
-        CACHING_DOCUMENTATION: 'false'
-        ENABLE_MONITORING: 'false'
-        ACTION_PATH: ${{ github.action_path }}
-        TARGET_REPO: ${{ github.workspace }}/target-repo
-        ANALYSIS_DIR: ${{ steps.sync_seed.outputs.cb_dir }}
-        BASELINE_SHA: ${{ steps.sync_seed.outputs.baseline_sha }}
-      run: |
-        set -euo pipefail
-        echo "seed_ok=false" >> "$GITHUB_OUTPUT"
-        if ! git -C "$TARGET_REPO" cat-file -e "${BASELINE_SHA}^{commit}" 2>/dev/null; then
-          echo "::warning::Baseline commit $BASELINE_SHA is not reachable; analysis will fall back to full if needed."
-          exit 0
-        fi
-
-        # Clean up any stale registration before re-adding (rm -rf alone leaves a
-        # dangling worktree entry that makes a retry's `worktree add` fail).
-        BASE_SRC="${RUNNER_TEMP}/cb-sync-base-src"
-        git -C "$TARGET_REPO" worktree remove --force "$BASE_SRC" 2>/dev/null || true
-        git -C "$TARGET_REPO" worktree prune
-        rm -rf "$BASE_SRC"
-        git -C "$TARGET_REPO" worktree add --detach "$BASE_SRC" "$BASELINE_SHA"
-        if python "$ACTION_PATH/scripts/engine_adapter.py" seed \
-             --repo "$BASE_SRC" \
-             --out "$ANALYSIS_DIR" \
-             --source-sha "$BASELINE_SHA" \
-           && [ -f "$ANALYSIS_DIR/static_analysis.pkl" ] && [ -f "$ANALYSIS_DIR/static_analysis.sha" ]; then
-          echo "seed_ok=true" >> "$GITHUB_OUTPUT"
-          echo "::notice::Seeded static-analysis cache for $BASELINE_SHA."
-        else
-          rm -f "$ANALYSIS_DIR/static_analysis.pkl" "$ANALYSIS_DIR/static_analysis.sha"
-          echo "::warning::Static-analysis seeding failed; analysis may fall back to full."
-        fi
-        git -C "$TARGET_REPO" worktree remove --force "$BASE_SRC" 2>/dev/null || true
+    # Git-free sync needs no baseline-SHA worktree seed: the committed
+    # fingerprint.json is the change-detection baseline and the committed
+    # static_analysis.pkl (staged by the prior sync) is the warm-start cache.
+    # The first-ever run has no committed baseline and runs full, which writes
+    # all three artifacts for the next run to reuse.
 
     - name: Analyze target repository (sync)
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
@@ -1484,30 +1411,9 @@ runs:
         echo "docs_dir=$RENDER_DIR" >> "$GITHUB_OUTPUT"
         echo "architecture_file=$ARCHITECTURE_FILE" >> "$GITHUB_OUTPUT"
 
-    - name: Check sync static-analysis cache files
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
-      id: sync_cachecheck
-      shell: bash
-      env:
-        ANALYSIS_DIR: ${{ steps.sync_seed.outputs.cb_dir }}
-      run: |
-        set -euo pipefail
-        if [ -f "$ANALYSIS_DIR/static_analysis.pkl" ] && [ -f "$ANALYSIS_DIR/static_analysis.sha" ]; then
-          echo "has_cache=true" >> "$GITHUB_OUTPUT"
-        else
-          echo "has_cache=false" >> "$GITHUB_OUTPUT"
-          echo "::notice::No static-analysis pkl/sha pair to cache."
-        fi
-
-    - name: Save sync static-analysis cache
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.sync_cachecheck.outputs.has_cache == 'true'
-      continue-on-error: true
-      uses: actions/cache/save@v4
-      with:
-        path: |
-          ${{ runner.temp }}/cb-sync/static_analysis.pkl
-          ${{ runner.temp }}/cb-sync/static_analysis.sha
-        key: cb-sync-${{ runner.os }}-${{ inputs.codeboarding_version }}-d${{ steps.resolve_depth.outputs.depth }}-${{ steps.llm.outputs.cache_provider }}-${{ steps.llm.outputs.cache_agent_model }}-${{ steps.llm.outputs.cache_parsing_model }}-${{ steps.guard.outputs.target_sha }}
+    # Sync no longer saves the static-analysis pkl to the Actions cache: it is
+    # committed back to .codeboarding/ alongside analysis.json + fingerprint.json,
+    # a more durable cross-runner baseline than the ephemeral, SHA-keyed cache.
 
     - name: Commit and push synced architecture
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
@@ -1553,14 +1459,25 @@ runs:
         fi
         cp "${rendered[@]}" "$OUTPUT_DIR/"
         cp "$ANALYSIS_DIR/analysis.json" "$OUTPUT_DIR/analysis.json"
+        # Commit the whole-tree fingerprint so the next sync's git-free incremental
+        # has its change-detection baseline (analysis.json alone can't drive it).
+        if [ -f "$ANALYSIS_DIR/fingerprint.json" ]; then
+          cp "$ANALYSIS_DIR/fingerprint.json" "$OUTPUT_DIR/fingerprint.json"
+        else
+          rm -f "$OUTPUT_DIR/fingerprint.json"
+        fi
         if [ -f "$ANALYSIS_DIR/static_analysis.pkl" ] && [ -f "$ANALYSIS_DIR/static_analysis.sha" ]; then
           cp "$ANALYSIS_DIR/static_analysis.pkl" "$OUTPUT_DIR/static_analysis.pkl"
           cp "$ANALYSIS_DIR/static_analysis.sha" "$OUTPUT_DIR/static_analysis.sha"
         else
           rm -f "$OUTPUT_DIR/static_analysis.pkl" "$OUTPUT_DIR/static_analysis.sha"
         fi
+        # Core 0.13.0 no longer emits the legacy version sidecar. Remove a stale
+        # tracked copy while migrating the accompanying analysis.json format.
         if [ -f "$ANALYSIS_DIR/codeboarding_version.json" ]; then
           cp "$ANALYSIS_DIR/codeboarding_version.json" "$OUTPUT_DIR/codeboarding_version.json"
+        else
+          rm -f "$OUTPUT_DIR/codeboarding_version.json"
         fi
         if [ -f "$ANALYSIS_DIR/health/health_report.json" ]; then
           cp "$ANALYSIS_DIR/health/health_report.json" "$OUTPUT_DIR/health/health_report.json"
@@ -1577,9 +1494,10 @@ runs:
             stage_paths+=("$1")
           fi
         }
+        add_if_present_or_tracked "$OUTPUT_DIR/fingerprint.json"
         add_if_present_or_tracked "$OUTPUT_DIR/static_analysis.pkl"
         add_if_present_or_tracked "$OUTPUT_DIR/static_analysis.sha"
-        [ -f "$OUTPUT_DIR/codeboarding_version.json" ] && stage_paths+=("$OUTPUT_DIR/codeboarding_version.json")
+        add_if_present_or_tracked "$OUTPUT_DIR/codeboarding_version.json"
         [ -f "$OUTPUT_DIR/health/health_report.json" ] && stage_paths+=("$OUTPUT_DIR/health/health_report.json")
         if [ "$WRITE_ARCHITECTURE_MD" = "true" ]; then
           stage_paths+=("docs/development/architecture.md")
