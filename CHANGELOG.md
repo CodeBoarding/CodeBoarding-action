@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.8.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.7.0...v1.8.0) (2026-07-14)
+
+
+### Features
+
+* migrate to Core's git-free incremental ([#401](https://github.com/CodeBoarding/CodeBoarding-action/issues/401)) ([#52](https://github.com/CodeBoarding/CodeBoarding-action/issues/52)) ([d585139](https://github.com/CodeBoarding/CodeBoarding-action/commit/d5851390a0ab3a99aba064476c69cbc556957ec7))
+
+
+### Bug Fixes
+
+* update Core dependency to 0.13.1 ([#54](https://github.com/CodeBoarding/CodeBoarding-action/issues/54)) ([e651a9a](https://github.com/CodeBoarding/CodeBoarding-action/commit/e651a9a71ec5b26198ac1a8f3c137f28fd383e76))
+
 ## [1.7.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.6.1...v1.7.0) (2026-06-30)
 
 
