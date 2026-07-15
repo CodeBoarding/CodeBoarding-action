@@ -1,6 +1,7 @@
 """Unit tests for scripts/build_component_files.py — per-component changed-file dropdowns."""
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -219,6 +220,24 @@ class TestCLI(unittest.TestCase):
 
     def _run(self, d, *extra):
         out = d / "out.md"
+        core = d / "fake-core"
+        (core / "codeboarding_workflows").mkdir(parents=True)
+        (core / "diagram_analysis").mkdir()
+        (core / "codeboarding_workflows" / "__init__.py").write_text("")
+        (core / "diagram_analysis" / "__init__.py").write_text("")
+        (core / "codeboarding_workflows" / "rendering.py").write_text(
+            "def project_relations_to_level(relations, level_ids, id_to_name):\n"
+            "    return [r for r in relations if r.src_id in level_ids and r.dst_id in level_ids]\n"
+        )
+        (core / "diagram_analysis" / "analysis_json.py").write_text(
+            "from types import SimpleNamespace\n"
+            "def parse_unified_analysis(data):\n"
+            "    components = [SimpleNamespace(component_id=c['component_id']) for c in data.get('components', [])]\n"
+            "    relations = [SimpleNamespace(**r) for r in data.get('components_relations', [])]\n"
+            "    return SimpleNamespace(components=components, components_relations=relations), {}\n"
+            "def build_id_to_name_map(root, subs):\n"
+            "    return {}\n"
+        )
         args = [
             sys.executable,
             str(SCRIPT),
@@ -229,7 +248,8 @@ class TestCLI(unittest.TestCase):
             "--out",
             str(out),
         ]
-        return out, subprocess.run([*args, *extra], capture_output=True, text=True)
+        env = {**os.environ, "PYTHONPATH": str(core)}
+        return out, subprocess.run([*args, *extra], capture_output=True, text=True, env=env)
 
     def test_main_writes_out_file_and_prints_meta(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -47,11 +47,62 @@ _EDGE_LABEL_MAX = 48
 # --------------------------------------------------------------------------- #
 # load
 # --------------------------------------------------------------------------- #
-def load_analysis(path: Path) -> dict:
+def _relation_dict(relation) -> dict:
+    """Keep the relation fields used by the diff after Core projects an edge."""
+    return {
+        "relation": relation.relation,
+        "src_name": relation.src_name,
+        "dst_name": relation.dst_name,
+        "src_id": relation.src_id,
+        "dst_id": relation.dst_id,
+    }
+
+
+def _project_analysis(data: dict, root_analysis, sub_analyses: dict, id_to_name: dict, projector) -> dict:
+    """Attach Core's global-relation projection to every nested JSON level."""
+    global_relations = list(root_analysis.components_relations)
+
+    def project_level(container: dict, analysis) -> None:
+        level_ids = {component.component_id for component in analysis.components}
+        container["components_relations"] = [
+            _relation_dict(relation) for relation in projector(global_relations, level_ids, id_to_name)
+        ]
+        for component in container.get("components") or []:
+            component_id = component.get("component_id", "")
+            sub_analysis = sub_analyses.get(component_id)
+            if sub_analysis is not None:
+                project_level(component, sub_analysis)
+
+    project_level(data, root_analysis)
+    return data
+
+
+def read_analysis_json(path: Path) -> dict:
     try:
         return json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
         sys.exit(f"::error::Could not read analysis JSON at {path}: {exc}")
+
+
+def load_analysis(path: Path) -> dict:
+    data = read_analysis_json(path)
+    try:
+        from codeboarding_workflows.rendering import project_relations_to_level
+        from diagram_analysis.analysis_json import build_id_to_name_map, parse_unified_analysis
+    except ImportError as exc:
+        sys.exit(f"::error::Could not load the installed CodeBoarding analysis reader: {exc}")
+
+    try:
+        root_analysis, sub_analyses = parse_unified_analysis(data)
+    except (KeyError, TypeError, ValueError) as exc:
+        sys.exit(f"::error::Could not parse analysis JSON at {path}: {exc}")
+    return _project_analysis(
+        data,
+        root_analysis,
+        sub_analyses,
+        build_id_to_name_map(root_analysis, sub_analyses),
+        project_relations_to_level,
+    )
 
 
 # --------------------------------------------------------------------------- #

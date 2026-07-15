@@ -200,6 +200,9 @@ def main() -> int:
             sys.exit(f"::error::Could not read changed-files list at {args.changed_files}: {exc}")
         changed = {line.strip() for line in raw.splitlines() if line.strip()}
 
+    # Use the same projected relation view as Mermaid so relation-only changes
+    # agree on which parent component changed. Projection does not alter the
+    # component file membership consumed below.
     base = dm.load_analysis(args.base)
     head = dm.load_analysis(args.head)
     text, meta = render_component_files(dm.build_diff(base, head), base, changed)
