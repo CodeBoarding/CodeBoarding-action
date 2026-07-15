@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.8.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.8.0...v1.8.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* render global analysis relations in PR diagrams ([#56](https://github.com/CodeBoarding/CodeBoarding-action/issues/56)) ([0a8328b](https://github.com/CodeBoarding/CodeBoarding-action/commit/0a8328baf2b86e92af9a7ea4efb4dc1cab77855b))
+* update CodeBoarding dependency to 0.13.2 ([7358554](https://github.com/CodeBoarding/CodeBoarding-action/commit/735855451ca372a4e4c1d3275d0167e9bedf4385))
+
 ## [1.8.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.7.0...v1.8.0) (2026-07-14)
 
 
