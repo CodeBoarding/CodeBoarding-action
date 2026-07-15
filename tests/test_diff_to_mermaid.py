@@ -1,9 +1,13 @@
 """Unit tests for scripts/diff_to_mermaid.py — diff logic + Mermaid rendering."""
 
+import json
 import re
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import diff_to_mermaid as dm  # noqa: E402
@@ -33,6 +37,159 @@ def linkstyle_indices_in_range(text):
 
 
 class TestDiff(unittest.TestCase):
+    def test_core_loader_projects_global_relation_into_rendered_mermaid(self):
+        root_a = SimpleNamespace(component_id="1")
+        root_b = SimpleNamespace(component_id="2")
+        child_a = SimpleNamespace(component_id="1.1")
+        child_b = SimpleNamespace(component_id="2.1")
+
+        def parse_unified_analysis(data):
+            relations = [SimpleNamespace(**relation) for relation in data.get("components_relations", [])]
+            root = SimpleNamespace(components=[root_a, root_b], components_relations=relations)
+            return root, {
+                "1": SimpleNamespace(components=[child_a]),
+                "2": SimpleNamespace(components=[child_b]),
+            }
+
+        def build_id_to_name_map(_root, _subs):
+            return {"1": "Root A", "2": "Root B", "1.1": "Child A", "2.1": "Child B"}
+
+        def project_relations_to_level(relations, level_ids, id_to_name):
+            projected = []
+            for relation in relations:
+                src_id = next(
+                    (cid for cid in level_ids if relation.src_id == cid or relation.src_id.startswith(cid + ".")), None
+                )
+                dst_id = next(
+                    (cid for cid in level_ids if relation.dst_id == cid or relation.dst_id.startswith(cid + ".")), None
+                )
+                if src_id is None or dst_id is None or src_id == dst_id:
+                    continue
+                projected.append(
+                    SimpleNamespace(
+                        relation=relation.relation,
+                        src_name=id_to_name[src_id],
+                        dst_name=id_to_name[dst_id],
+                        src_id=src_id,
+                        dst_id=dst_id,
+                    )
+                )
+            return projected
+
+        rendering = ModuleType("codeboarding_workflows.rendering")
+        rendering.project_relations_to_level = project_relations_to_level
+        analysis_json = ModuleType("diagram_analysis.analysis_json")
+        analysis_json.parse_unified_analysis = parse_unified_analysis
+        analysis_json.build_id_to_name_map = build_id_to_name_map
+        modules = {
+            "codeboarding_workflows": ModuleType("codeboarding_workflows"),
+            "codeboarding_workflows.rendering": rendering,
+            "diagram_analysis": ModuleType("diagram_analysis"),
+            "diagram_analysis.analysis_json": analysis_json,
+        }
+        analysis = {
+            "components": [
+                {"name": "Root A", "component_id": "1", "components": [{"name": "Child A", "component_id": "1.1"}]},
+                {"name": "Root B", "component_id": "2", "components": [{"name": "Child B", "component_id": "2.1"}]},
+            ],
+            "components_relations": [],
+        }
+
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, modules):
+            base_path = Path(tmp) / "base.json"
+            head_path = Path(tmp) / "head.json"
+            base_path.write_text(json.dumps(analysis))
+            head_path.write_text(
+                json.dumps(
+                    {
+                        **analysis,
+                        "components_relations": [
+                            {
+                                "relation": "calls",
+                                "src_name": "Child A",
+                                "dst_name": "Child B",
+                                "src_id": "1.1",
+                                "dst_id": "2.1",
+                            }
+                        ],
+                    }
+                )
+            )
+            diff = dm.build_diff(dm.load_analysis(base_path), dm.load_analysis(head_path))
+
+        text, meta = dm.render_mermaid(diff)
+        self.assertIn('n_Root_A -- "calls" --> n_Root_B', text)
+        self.assertEqual(meta["n_edges"], 1)
+        self.assertTrue(meta["changed"])
+
+    def test_projects_global_relations_at_every_component_level(self):
+        child = SimpleNamespace(component_id="1.1")
+        peer = SimpleNamespace(component_id="1.2")
+        root_a = SimpleNamespace(component_id="1")
+        root_b = SimpleNamespace(component_id="2")
+        global_relation = SimpleNamespace(
+            relation="calls",
+            src_name="Child",
+            dst_name="Root B",
+            src_id="1.1",
+            dst_id="2",
+        )
+        sibling_relation = SimpleNamespace(
+            relation="delegates",
+            src_name="Child",
+            dst_name="Peer",
+            src_id="1.1",
+            dst_id="1.2",
+        )
+        root_analysis = SimpleNamespace(
+            components=[root_a, root_b], components_relations=[global_relation, sibling_relation]
+        )
+        sub_analysis = SimpleNamespace(components=[child, peer])
+        data = {
+            "components": [
+                {
+                    "name": "Root A",
+                    "component_id": "1",
+                    "components": [
+                        {"name": "Child", "component_id": "1.1"},
+                        {"name": "Peer", "component_id": "1.2"},
+                    ],
+                    "components_relations": [{"relation": "stale"}],
+                },
+                {"name": "Root B", "component_id": "2"},
+            ],
+            "components_relations": [],
+        }
+
+        def projector(relations, level_ids, _id_to_name):
+            self.assertEqual(relations, [global_relation, sibling_relation])
+            if level_ids == {"1", "2"}:
+                return [
+                    SimpleNamespace(
+                        relation="calls",
+                        src_name="Root A",
+                        dst_name="Root B",
+                        src_id="1",
+                        dst_id="2",
+                    )
+                ]
+            if level_ids == {"1.1", "1.2"}:
+                return [sibling_relation]
+            self.fail(f"unexpected component level: {level_ids}")
+
+        projected = dm._project_analysis(
+            data,
+            root_analysis,
+            {"1": sub_analysis},
+            {"1": "Root A", "2": "Root B", "1.1": "Child", "1.2": "Peer"},
+            projector,
+        )
+
+        self.assertEqual(projected["components_relations"][0]["src_id"], "1")
+        nested_relations = projected["components"][0]["components_relations"]
+        self.assertEqual(nested_relations[0]["src_id"], "1.1")
+        self.assertEqual(nested_relations[0]["dst_id"], "1.2")
+
     def test_added_modified_deleted_unchanged(self):
         base = {"components": [comp("A", {"a.py": ["f"]}), comp("B"), comp("D")], "components_relations": []}
         head = {"components": [comp("A", {"a.py": ["f", "g"]}), comp("B"), comp("C")], "components_relations": []}
