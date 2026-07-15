@@ -147,6 +147,13 @@ steps:
 
 When `walkthrough_url` is set, the action first uploads the PR analysis artifact and posts the sticky review comment. It then calls `<WALKTHROUGH_URL>/walkthrough` with the PR URL, the supplied license, and the workflow token, and uploads the Lambda response as a `codeboarding-walkthrough-<pr>-<sha>` artifact containing `walkthrough.json`. The Lambda token needs Actions-read access; use a GitHub App token for `github_token` only if that app also has Actions read permission. Leave `walkthrough_url` empty to skip this paid, opt-in step.
 
+### Artifact lifecycle
+
+1. Review mode writes the PR-head architecture data to `codeboarding-pr-<pr>-<sha>`. That artifact contains `analysis.json` and `metadata.json`, including the workflow run and head SHA.
+2. The action uploads that source artifact, builds and posts the sticky architecture review comment, and only then starts the walkthrough request.
+3. The Lambda receives the PR URL, paid license, and short-lived workflow token. It uses the token to find and read the matching review artifact; neither token is stored in the returned document.
+4. The action validates that the Lambda response is JSON and uploads it unchanged as `codeboarding-walkthrough-<pr>-<sha>`, containing `walkthrough.json`. Consumers can download that result artifact or read its URL from the action's `walkthrough_artifact_url` output.
+
 ## Bring your own LLM provider
 
 OpenRouter is the default, but you can use any provider the engine supports. Set `llm_provider` and pass that provider's key:
