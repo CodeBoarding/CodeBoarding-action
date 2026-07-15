@@ -1,13 +1,13 @@
 {
   "repository_name": "CodeBoarding-action",
-  "timestamp": "2026-07-14T13:18:48.904444+00:00",
-  "overall_score": 0.9952380952380953,
+  "timestamp": "2026-07-15T17:37:38.893979+00:00",
+  "overall_score": 0.9954545454545455,
   "check_summaries": [
     {
       "check_name": "function_size",
       "description": "Checks that functions/methods do not exceed line count thresholds",
       "check_type": "standard",
-      "total_entities_checked": 83,
+      "total_entities_checked": 87,
       "findings_count": 0,
       "warning_count": 0,
       "score": 1.0,
@@ -17,10 +17,10 @@
       "check_name": "fan_out",
       "description": "Checks efferent coupling: how many other functions each function calls",
       "check_type": "standard",
-      "total_entities_checked": 83,
+      "total_entities_checked": 87,
       "findings_count": 1,
       "warning_count": 1,
-      "score": 0.9879518072289156,
+      "score": 0.9885057471264368,
       "finding_groups": [
         {
           "severity": "warning",
@@ -42,7 +42,7 @@
       "check_name": "fan_in",
       "description": "Checks afferent coupling: how many other functions call each function",
       "check_type": "standard",
-      "total_entities_checked": 83,
+      "total_entities_checked": 87,
       "findings_count": 0,
       "warning_count": 0,
       "score": 1.0,

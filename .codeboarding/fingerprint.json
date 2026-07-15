@@ -1,19 +1,19 @@
 {
   "files": {
-    "README.md": "437c1d5c6c71abc9",
     "release-please-config.json": "e1ea6dfc5a9fa8bd",
-    "LICENSE": "356a3402bd47e108",
-    "pyproject.toml": "d2f78b9c7f0b5865",
     "AGENT.md": "6f89daa8e2f2a3b5",
-    "CHANGELOG.md": "606ddce8be344f76",
+    "README.md": "437c1d5c6c71abc9",
     "action.yml": "5ed3fade2a6a08c8",
+    "CHANGELOG.md": "606ddce8be344f76",
+    "pyproject.toml": "d2f78b9c7f0b5865",
+    "LICENSE": "356a3402bd47e108",
+    "assets/icon.svg": "1f5885e35bb4798e",
     "scripts/build_cta.py": "8b2953156606caab",
-    "scripts/engine_adapter.py": "b84ea0daacfb2846",
     "scripts/submit_feedback.py": "71ccef667b21feda",
+    "scripts/diff_to_mermaid.py": "5ce398438ebca41e",
+    "scripts/build_component_files.py": "aec54432fc8adf81",
+    "scripts/engine_adapter.py": "b84ea0daacfb2846",
     "scripts/run_local.sh": "e67093b7cb812e1c",
-    "scripts/diff_to_mermaid.py": "496400edacd53980",
-    "scripts/build_component_files.py": "8266a2171cec1e97",
-    "docs/COMMIT_STRATEGY.md": "07bb1c3c7d08ac3e",
-    "assets/icon.svg": "1f5885e35bb4798e"
+    "docs/COMMIT_STRATEGY.md": "07bb1c3c7d08ac3e"
   }
 }
