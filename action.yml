@@ -71,6 +71,10 @@ inputs:
     description: 'Review mode: hosted webview base URL. The PR comment links to an artifact-backed head-vs-comparison-branch architecture diff; review mode does not commit generated files to PR branches. Set empty to disable the browser link.'
     required: false
     default: 'https://app.codeboarding.org'
+  walkthrough_url:
+    description: 'Review mode: base URL of the paid CodeBoarding walkthrough Lambda (for example, secrets.WALKTHROUGH_URL). When set, the action invokes <url>/walkthrough after posting the review comment and uploads its walkthrough.json response as a workflow artifact. Requires license_key and a token with actions: read.'
+    required: false
+    default: ''
   trigger_command:
     description: 'Review mode: slash-command that triggers the action from a PR comment (issue_comment event). A comment whose first word is this runs the diagram on-demand.'
     required: false
@@ -134,6 +138,9 @@ outputs:
   review_artifact_url:
     description: 'Review mode: GitHub Actions artifact URL containing the PR-head analysis.json and metadata.'
     value: ${{ steps.upload_review_artifact.outputs.artifact-url }}
+  walkthrough_artifact_url:
+    description: 'Review mode: GitHub Actions artifact URL containing walkthrough.json, when walkthrough_url is configured.'
+    value: ${{ steps.upload_walkthrough_artifact.outputs.artifact-url }}
 
 runs:
   using: 'composite'
@@ -1376,6 +1383,68 @@ runs:
         number: ${{ steps.guard.outputs.pr_number }}
         path: ${{ steps.body.outputs.body_file }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
+
+    # The walkthrough Lambda ingests the review artifact just uploaded above, so
+    # it must run only after the review has been published. It receives the
+    # workflow token solely to read the PR and its Actions artifact; the Lambda
+    # response is saved verbatim as its own artifact for later consumers.
+    - name: Generate PR walkthrough
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && inputs.walkthrough_url != ''
+      id: walkthrough
+      shell: bash
+      env:
+        WALKTHROUGH_URL: ${{ inputs.walkthrough_url }}
+        LICENSE_KEY: ${{ inputs.license_key }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        OWNER_REPO: ${{ github.repository }}
+        PR: ${{ steps.guard.outputs.pr_number }}
+        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
+      run: |
+        set -euo pipefail
+        endpoint="${WALKTHROUGH_URL%/}/walkthrough"
+        [ -n "$LICENSE_KEY" ] || {
+          echo "::error::walkthrough_url requires license_key with an active pro or custom CodeBoarding license."
+          exit 1
+        }
+        [ -n "$GITHUB_TOKEN" ] || {
+          echo "::error::walkthrough_url requires github_token with Actions read access."
+          exit 1
+        }
+        echo "::add-mask::$LICENSE_KEY"
+        echo "::add-mask::$GITHUB_TOKEN"
+
+        WALKTHROUGH_PATH="${RUNNER_TEMP}/walkthrough.json"
+        PR_URL="https://github.com/${OWNER_REPO}/pull/${PR}"
+        python3 - "$PR_URL" <<'PY' | curl --fail-with-body --silent --show-error \
+          --retry 3 --retry-all-errors --max-time 900 \
+          -X POST "$endpoint" \
+          -H "Authorization: Bearer $LICENSE_KEY" \
+          -H "X-GitHub-Token: $GITHUB_TOKEN" \
+          -H "Content-Type: application/json" \
+          --data @- \
+          --output "$WALKTHROUGH_PATH"
+        import json
+        import sys
+        print(json.dumps({"pull_request_url": sys.argv[1]}))
+        PY
+        python3 - "$WALKTHROUGH_PATH" <<'PY'
+        import json
+        import sys
+
+        with open(sys.argv[1], encoding="utf-8") as response:
+            json.load(response)
+        PY
+        echo "path=$WALKTHROUGH_PATH" >> "$GITHUB_OUTPUT"
+        echo "name=codeboarding-walkthrough-${PR}-${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+
+    - name: Upload PR walkthrough artifact
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && inputs.walkthrough_url != ''
+      id: upload_walkthrough_artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.walkthrough.outputs.name }}
+        path: ${{ steps.walkthrough.outputs.path }}
+        retention-days: 14
 
     # ---- Sync mode: render and commit the architecture. ----
 

@@ -73,6 +73,7 @@ on:
     types: [created]
 
 permissions:
+  actions: read       # needed only when walkthrough_url is configured
   contents: read
   pull-requests: write
   issues: write
@@ -124,6 +125,27 @@ The free tier is metered per repository owner against a weekly cap. For more —
 ```
 
 Add the secret under **Settings → Secrets and variables → Actions** (e.g. `OPENROUTER_API_KEY = sk-or-...`). For local runs with `scripts/run_local.sh`, export `OPENROUTER_API_KEY` as an environment variable instead. When `llm_api_key` is set it takes precedence; `license_key` is used only when no key is set; with neither, the free OIDC tier is used.
+
+## PR walkthrough artifact
+
+The paid CodeBoarding walkthrough Lambda can turn the posted architecture review into a `walkthrough.json` artifact. Store the Lambda base URL in `WALKTHROUGH_URL` and an active `pro` or `custom` license in `CODEBOARDING_LICENSE`, then configure the review action as follows:
+
+```yaml
+permissions:
+  actions: read        # lets the Lambda read this run's review artifact
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+
+steps:
+  - uses: CodeBoarding/CodeBoarding-action@v1
+    with:
+      license_key: ${{ secrets.CODEBOARDING_LICENSE }}
+      walkthrough_url: ${{ secrets.WALKTHROUGH_URL }}
+```
+
+When `walkthrough_url` is set, the action first uploads the PR analysis artifact and posts the sticky review comment. It then calls `<WALKTHROUGH_URL>/walkthrough` with the PR URL, the supplied license, and the workflow token, and uploads the Lambda response as a `codeboarding-walkthrough-<pr>-<sha>` artifact containing `walkthrough.json`. The Lambda token needs Actions-read access; use a GitHub App token for `github_token` only if that app also has Actions read permission. Leave `walkthrough_url` empty to skip this paid, opt-in step.
 
 ## Bring your own LLM provider
 
@@ -275,6 +297,7 @@ Review mode does not need `contents: write`: PR-specific generated files are sto
 | `trigger_command` | review | `/codeboarding` | Slash command for trusted on-demand runs. |
 | `cta_base_url` | review | empty | Click-proxy base URL: deep-links the editor link into VS Code/Cursor and adds a "get the extension" link (tracks owner/repo/pr). Empty links to the extension listing instead (GitHub strips `vscode:`/`cursor:` from comments). |
 | `webview_base_url` | review | `https://app.codeboarding.org` | Hosted webview base URL. The PR comment links to an artifact-backed head-vs-comparison-branch architecture diff. Set empty to disable the browser link. |
+| `walkthrough_url` | review | empty | Base URL of the paid walkthrough Lambda, normally `${{ secrets.WALKTHROUGH_URL }}`. When set, the action invokes `<url>/walkthrough` after posting the review comment and uploads `walkthrough.json`. Requires `license_key` and a GitHub token with `actions: read`. |
 | `output_dir` | sync | `.codeboarding` | Directory the rendered docs and analysis metadata are committed to. Owned by the action: pre-existing top-level `.md` files in it are deleted on every run. |
 | `output_format` | sync | `.md` | Output format. Only `.md` is supported. |
 | `target_branch` | sync | `${{ github.ref_name }}` | Branch the generated docs are pushed to. |
@@ -290,6 +313,7 @@ Review mode does not need `contents: write`: PR-specific generated files are sto
 | `n_changed` | review | Number of changed components, counted recursively. |
 | `truncated` | review | `true` when the graph was reduced to fit GitHub Mermaid limits. |
 | `review_artifact_url` | review | GitHub Actions artifact URL containing the PR-head `analysis.json` and comparison-branch metadata. |
+| `walkthrough_artifact_url` | review | GitHub Actions artifact URL containing the Lambda-generated `walkthrough.json`; empty when walkthroughs are not configured. |
 | `analysis_mode` | sync | `full` or `incremental`: whether the run rebuilt the analysis from scratch or reused the committed baseline. |
 | `files_written` | sync | The generated files written for the docs commit. |
 | `committed` | sync | `true` when a docs commit was pushed to `target_branch`; `false` when sync mode ran but had nothing to commit (or the push failed open). Empty only if sync mode did not run. |
