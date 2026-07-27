@@ -13,16 +13,26 @@ on:
   push:
     branches: [main]
     # Loop guard: don't re-trigger on the files this workflow itself commits.
-    # Deliberately NOT '.codeboarding/**': that would also swallow pushes that
-    # only edit the user-authored .codeboarding/.codeboardingignore, which
-    # changes analysis scope and should regenerate the baseline. The action also
-    # skips re-analyzing its own bot commit as a backstop; the bot commit uses no
+    # This list must name EVERY generated artifact (an un-ignored one leaks the
+    # bot's own commit through and re-triggers), and must name ONLY generated
+    # artifacts — never a user-authored input, whose edit changes analysis scope
+    # and must regenerate the baseline. So: deliberately NOT '.codeboarding/**'
+    # (would swallow .codeboarding/.codeboardingignore) and NOT
+    # '.codeboarding/health/**' (would swallow the user-authored health/.healthignore
+    # and health/health_config.json) — only the generated health/health_report.json
+    # is listed. In push mode the action also skips re-analyzing its own commit by
+    # author email as a backstop; in pull_request mode this list is the loop guard
+    # (a merged baseline PR touches only these files), with the commit step's
+    # "nothing to commit" gate stopping any stray re-run. The bot commit uses no
     # [skip ci] (that would leak through squash-merges and skip real merges).
     paths-ignore:
       - '.codeboarding/*.md'
       - '.codeboarding/analysis.json'
+      - '.codeboarding/fingerprint.json'
+      - '.codeboarding/static_analysis.pkl'
+      - '.codeboarding/static_analysis.sha'
       - '.codeboarding/codeboarding_version.json'
-      - '.codeboarding/health/**'
+      - '.codeboarding/health/health_report.json'
       - 'docs/development/architecture.md'
   workflow_dispatch:
     inputs:

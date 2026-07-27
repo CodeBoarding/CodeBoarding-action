@@ -31,8 +31,14 @@ jobs:
       contents: read
       pull-requests: write  # post / update the architecture-diff PR comment
       issues: write         # the /codeboarding issue_comment trigger + comment API
+    # Never auto-review the sync mode's own baseline PR (head branch
+    # 'codeboarding/sync', the sync_pr_branch default): it only changes generated
+    # files, so a diff comment would be noise. Consumers using sync_strategy:
+    # pull_request should match this exclusion to their sync_pr_branch and, if they
+    # run other pull_request workflows (tests, lint), exclude the branch there too.
     if: >
-      (github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.draft == false) ||
+      (github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.draft == false &&
+       github.head_ref != 'codeboarding/sync') ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
        startsWith(github.event.comment.body, '/codeboarding') &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))

@@ -28,7 +28,7 @@ inputs:
     required: false
     default: ${{ github.token }}
   push_token:
-    description: 'Token used for sync-mode git pushes to target_branch. Defaults to the workflow github.token, which can push when the calling workflow grants "permissions: contents: write". Kept separate from github_token so commenting can use a GitHub App token while the push uses the workflow token (whose write access the consumer controls).'
+    description: 'Token used for sync-mode delivery. Defaults to the workflow github.token, which can push when the calling workflow grants "permissions: contents: write". Kept separate from github_token so commenting can use a GitHub App token while the push uses the workflow token (whose write access the consumer controls). In sync_strategy: pull_request this token ALSO opens/updates the rolling PR (via gh), so it must additionally carry pull-requests: write; a github.token-opened PR does not trigger other workflows, while an App/PAT-opened PR does.'
     required: false
     default: ${{ github.token }}
   codeboarding_version:
@@ -111,6 +111,18 @@ inputs:
     description: 'Sync mode: ignore any committed baseline and run a full analysis from scratch. Use to rebuild a stale or corrupt baseline (the manual escape hatch that replaces the old refresh-baseline workflow).'
     required: false
     default: 'false'
+  sync_strategy:
+    description: 'Sync mode: how the generated baseline is delivered. "push" (default): commit and fast-forward directly to target_branch (needs contents: write and an unprotected target_branch). "pull_request": commit to a dedicated bot branch (sync_pr_branch) and open/update ONE rolling PR into target_branch, for repositories whose default branch is protected against direct pushes (needs contents: write AND pull-requests: write, and push_token scoped to open PRs). Merge that PR on a cadence to keep the baseline on target_branch current — that is what keeps review-mode diffs fast and incremental sync warm.'
+    required: false
+    default: 'push'
+  sync_pr_branch:
+    description: 'Sync mode (pull_request strategy): the machine-owned head branch the baseline is committed to and the rolling PR is opened from. Force-updated (reset to the current target_branch tip + one baseline commit) on every run, so exactly one PR stays open and its diff is always just the generated files. Do not commit to it by hand — pushes are overwritten. Ignored when sync_strategy is "push".'
+    required: false
+    default: 'codeboarding/sync'
+  sync_pr_title:
+    description: 'Sync mode (pull_request strategy): title for the rolling baseline PR. Ignored when sync_strategy is "push".'
+    required: false
+    default: 'CodeBoarding: sync architecture baseline'
 
 outputs:
   diagram_md:
@@ -129,8 +141,14 @@ outputs:
     description: 'Sync mode: number of rendered markdown files in output_dir.'
     value: ${{ steps.sync_commit.outputs.files_written }}
   committed:
-    description: 'Sync mode: true when a docs commit was created and pushed.'
+    description: 'Sync mode: true when a baseline commit was created and delivered (pushed to target_branch in "push" strategy, or pushed to sync_pr_branch with its PR opened/updated in "pull_request" strategy).'
     value: ${{ steps.sync_commit.outputs.committed }}
+  sync_pr_url:
+    description: 'Sync mode (pull_request strategy): URL of the opened/updated rolling baseline PR (empty in "push" strategy or when no PR was produced).'
+    value: ${{ steps.sync_commit.outputs.sync_pr_url }}
+  sync_pr_number:
+    description: 'Sync mode (pull_request strategy): number of the opened/updated rolling baseline PR (empty in "push" strategy or when no PR was produced).'
+    value: ${{ steps.sync_commit.outputs.sync_pr_number }}
   review_artifact_url:
     description: 'Review mode: GitHub Actions artifact URL containing the PR-head analysis.json and metadata.'
     value: ${{ steps.upload_review_artifact.outputs.artifact-url }}
@@ -199,6 +217,8 @@ runs:
         WRITE_ARCH: ${{ inputs.write_architecture_md }}
         DEPTH: ${{ inputs.depth_level }}
         HEAD_AUTHOR_EMAIL: ${{ github.event.head_commit.author.email }}
+        SYNC_STRATEGY: ${{ inputs.sync_strategy }}
+        SYNC_PR_BRANCH: ${{ inputs.sync_pr_branch }}
       run: |
         set -uo pipefail
         skip() { echo "::notice::$1 Skipping."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
@@ -245,6 +265,20 @@ runs:
               fi
               ;;
           esac
+          # Validate the sync delivery strategy up front (misconfig = hard fail).
+          case "$SYNC_STRATEGY" in
+            push|pull_request) ;;
+            *) echo "::error::sync_strategy must be 'push' or 'pull_request' (got '$SYNC_STRATEGY')."; exit 1 ;;
+          esac
+          if [ "$SYNC_STRATEGY" = "pull_request" ]; then
+            [ -n "$SYNC_PR_BRANCH" ] || { echo "::error::sync_pr_branch is empty."; exit 1; }
+          fi
+          # Note: pull_request strategy has NO author-email loop guard — merging the
+          # rolling sync PR re-authors the commit to the merger, not the bot. The
+          # loop is prevented by the workflow's paths-ignore (a merged baseline PR
+          # touches only generated files, all listed there) plus the "nothing to
+          # commit" gate in the commit step, which stops any stray re-run from
+          # producing a new commit. See README "Protected default branch".
           case "$OUTPUT_FORMAT" in
             .md) ;;
             *) echo "::error::output_format must be .md."; exit 1 ;;
@@ -1432,11 +1466,35 @@ runs:
         PUSH_TOKEN: ${{ inputs.push_token }}
         REPOSITORY: ${{ github.repository }}
         SERVER_URL: ${{ github.server_url }}
+        SYNC_STRATEGY: ${{ inputs.sync_strategy }}
+        SYNC_PR_BRANCH: ${{ inputs.sync_pr_branch }}
+        SYNC_PR_TITLE: ${{ inputs.sync_pr_title }}
+        # gh (PR create/update) authenticates via GH_TOKEN. Reuse push_token so the
+        # branch push and the PR use one identity; it must carry pull-requests: write
+        # in pull_request strategy. Unused by the "push" strategy.
+        GH_TOKEN: ${{ inputs.push_token }}
       run: |
         set -euo pipefail
         echo "committed=false" >> "$GITHUB_OUTPUT"
         echo "files_written=0" >> "$GITHUB_OUTPUT"
         [ -n "$PUSH_TOKEN" ] && echo "::add-mask::$PUSH_TOKEN"
+        AUTH_URL="https://x-access-token:${PUSH_TOKEN}@${SERVER_URL#https://}/${REPOSITORY}.git"
+
+        # The pull_request strategy rebuilds a machine-owned rolling branch on the
+        # LIVE target_branch tip each run (not the analyzed checkout), so the PR
+        # diff is always exactly the generated baseline — never a stale merge-base
+        # that would show conflicts once a prior sync PR has merged. The no-op gate
+        # below then compares against live target_branch too. The "push" strategy
+        # keeps committing on the analyzed checkout (github.sha) and fast-forwarding
+        # target_branch. The tree is clean here (analysis writes to a scratch dir),
+        # so resetting to the fetched tip cannot clobber local work.
+        if [ "$SYNC_STRATEGY" = "pull_request" ]; then
+          if ! git fetch "$AUTH_URL" "$TARGET_BRANCH"; then
+            echo "::warning::Could not fetch ${TARGET_BRANCH} to rebuild ${SYNC_PR_BRANCH}; skipping this run. The next repository change can regenerate."
+            exit 0
+          fi
+          git checkout -B "$SYNC_PR_BRANCH" FETCH_HEAD
+        fi
 
         # Replace the previously committed rendered docs wholesale: stale files
         # (components that no longer exist) must be deleted, not left behind.
@@ -1521,10 +1579,51 @@ runs:
         git config user.email "codeboarding-review[bot]@users.noreply.github.com"
         git commit -m "$COMMIT_MESSAGE" >/dev/null
 
-        # Push with fetch+rebase retries: another push may land on target_branch
-        # while the analysis runs. Fail-open on final rejection — the next
-        # repository change regenerates.
-        AUTH_URL="https://x-access-token:${PUSH_TOKEN}@${SERVER_URL#https://}/${REPOSITORY}.git"
+        # ---- Deliver: pull_request strategy — force-push the rolling branch and
+        # ensure exactly one open PR into target_branch. ----
+        if [ "$SYNC_STRATEGY" = "pull_request" ]; then
+          NEW_SHA="$(git rev-parse HEAD)"
+          # Force-push the machine-owned rolling branch: its history is reset to the
+          # live target_branch tip each run, so the push is never a fast-forward.
+          # Serialized by the workflow's concurrency group, so there is no
+          # force-with-lease race to guard. Fail-open, like the push strategy below.
+          if ! git push --force "$AUTH_URL" "HEAD:refs/heads/${SYNC_PR_BRANCH}"; then
+            echo "::warning::Could not push the sync branch ${SYNC_PR_BRANCH}; likely missing contents: write. The next repository change can regenerate."
+            echo "files_written=${#new_md[@]}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "files_written=${#new_md[@]}" >> "$GITHUB_OUTPUT"
+          echo "Pushed baseline to ${SYNC_PR_BRANCH} as ${NEW_SHA}."
+
+          # Ensure ONE open PR from the sync branch into target_branch. Every gh call
+          # fails open: an under-scoped token (no pull-requests: write) or an API
+          # error degrades to "branch pushed, no PR" with a warning, never a red job.
+          PR_BODY="Automated CodeBoarding architecture baseline sync into \`${TARGET_BRANCH}\`. Regenerated and force-updated on every push; merge it to keep the committed analysis under \`${OUTPUT_DIR}/\` current, which keeps pull-request reviews fast and incremental sync warm. \`${SYNC_PR_BRANCH}\` is machine-owned and overwritten on every run."
+          pr_url="$(gh pr list --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --state open --json url --jq '.[0].url // empty' 2>/dev/null || true)"
+          if [ -z "$pr_url" ]; then
+            # No open PR yet — create one. A dedup error from an eventually-consistent
+            # replica ("already exists" / 422) is success: re-query for the open PR.
+            pr_url="$(gh pr create --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --title "$SYNC_PR_TITLE" --body "$PR_BODY" 2>/dev/null || true)"
+            if [ -z "$pr_url" ]; then
+              pr_url="$(gh pr list --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --state open --json url --jq '.[0].url // empty' 2>/dev/null || true)"
+            fi
+          fi
+          if [ -n "$pr_url" ]; then
+            pr_number="$(gh pr list --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+            echo "committed=true" >> "$GITHUB_OUTPUT"
+            echo "pushed_sha=$NEW_SHA" >> "$GITHUB_OUTPUT"
+            echo "sync_pr_url=$pr_url" >> "$GITHUB_OUTPUT"
+            echo "sync_pr_number=$pr_number" >> "$GITHUB_OUTPUT"
+            echo "Sync PR ready: $pr_url"
+          else
+            echo "::warning::Sync branch ${SYNC_PR_BRANCH} pushed, but no PR into ${TARGET_BRANCH} could be opened or found. Ensure the token carries pull-requests: write."
+          fi
+          exit 0
+        fi
+
+        # ---- Deliver: push strategy — fast-forward target_branch with fetch+rebase
+        # retries: another push may land on target_branch while the analysis runs.
+        # Fail-open on final rejection — the next repository change regenerates. ----
         for attempt in 1 2 3; do
           if git push "$AUTH_URL" "HEAD:refs/heads/${TARGET_BRANCH}"; then
             NEW_SHA="$(git rev-parse HEAD)"
@@ -1535,7 +1634,7 @@ runs:
             exit 0
           fi
           if [ "$attempt" -eq 3 ]; then
-            echo "::warning::Could not push architecture to ${TARGET_BRANCH}; likely missing contents: write permission or branch protection rejected the bot."
+            echo "::warning::Could not push architecture to ${TARGET_BRANCH}; likely missing contents: write permission or branch protection rejected the bot (use sync_strategy: pull_request for a protected branch)."
             echo "files_written=${#new_md[@]}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -1566,6 +1665,8 @@ runs:
         FILES_WRITTEN: ${{ steps.sync_commit.outputs.files_written }}
         COMMITTED: ${{ steps.sync_commit.outputs.committed }}
         PUSHED_SHA: ${{ steps.sync_commit.outputs.pushed_sha }}
+        SYNC_STRATEGY: ${{ inputs.sync_strategy }}
+        SYNC_PR_URL: ${{ steps.sync_commit.outputs.sync_pr_url }}
       run: |
         set -euo pipefail
         NOW="$(date +%s)"
@@ -1577,7 +1678,14 @@ runs:
           echo "- Analysis mode: ${MODE:-unknown}"
           echo "- Depth: $DEPTH"
           echo "- Rendered markdown files: ${FILES_WRITTEN:-0}"
-          echo "- Commit pushed: ${COMMITTED:-false}"
+          if [ "${SYNC_STRATEGY:-push}" = "pull_request" ]; then
+            echo "- Baseline PR updated: ${COMMITTED:-false}"
+            if [ -n "${SYNC_PR_URL:-}" ]; then
+              echo "- Sync PR: $SYNC_PR_URL"
+            fi
+          else
+            echo "- Commit pushed: ${COMMITTED:-false}"
+          fi
           if [ -n "${PUSHED_SHA:-}" ]; then
             echo "- Pushed SHA: $PUSHED_SHA"
           fi
