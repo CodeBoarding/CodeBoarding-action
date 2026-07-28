@@ -26,6 +26,8 @@ The engine writes these under `.codeboarding/`:
 
 > **Principle:** sync mode is the only git writer. Review mode never commits generated files to PR branches, so generated artifacts cannot conflict with `main` during merge.
 
+**Delivery (`sync_strategy`).** The *set* of committed files above is identical either way; only how it reaches `main` differs. `push` (default) fast-forwards `main` directly. `pull_request` (for protected `main`) commits the same files to a machine-owned `sync_pr_branch` and opens one rolling PR into `main` — the baseline reaches `main` only on merge. Incremental sync always seeds from the baseline committed on `main` (never from the unmerged PR branch — that keeps an untrusted `static_analysis.pkl` off the runner), so under `pull_request` the rolling PR must be merged on a cadence to keep the baseline warm; each run still re-detects **every** change since the last-merged baseline via the whole-tree `fingerprint.json`, so no commits are missed between merges.
+
 ## Where to commit — two separate workflows
 
 1. **CI/CD on `main` (the baseline keeper).** On push to `main`, regenerate and commit `analysis.json`, `static_analysis.pkl`, `static_analysis.sha`, `health/health_report.json`, and rendered docs to `main`. Keeps the baseline current so PRs diff against an accurate, up-to-date snapshot and the extension shows a real diagram on the default branch.

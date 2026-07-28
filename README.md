@@ -113,7 +113,7 @@ Models are optional. Omit `agent_model` and `parsing_model` to use the defaults,
 <a id="more-usage"></a>
 ## More usage (your own key or a license)
 
-The free tier is metered per repository owner against a weekly cap. For more — or unmetered — usage, supply a credential. Both paths skip the proxy/OIDC and need no `id-token: write`:
+The free tier is metered per repository owner against a weekly cap. For more — or unmetered — usage, supply a credential. Option A (your own key) talks to the provider directly and needs no `id-token: write`; Option B (a license) still uses the hosted proxy, so it keeps `id-token: write` (the proxy verifies the OIDC identity, then the license skips the quota):
 
 ```yaml
         with:
@@ -190,23 +190,27 @@ on:
   push:
     branches: [main]
     # Loop guard: don't re-trigger on the files this workflow itself commits.
-    # Listed explicitly (not '.codeboarding/**') so that editing your own
-    # .codeboarding/.codeboardingignore still regenerates the docs. (The action
-    # also skips re-analyzing its own bot commit as a backstop, and deliberately
-    # does NOT use [skip ci] — that would leak through squash-merges.)
+    # List every GENERATED file, and only generated files — never a user-authored
+    # input, whose edit changes analysis scope and must regenerate. So not
+    # '.codeboarding/**' (would swallow .codeboarding/.codeboardingignore) and not
+    # '.codeboarding/health/**' (would swallow your health/.healthignore and
+    # health/health_config.json); list only the generated health/health_report.json.
+    # (The action also skips re-analyzing its own bot commit as a backstop, and
+    # deliberately does NOT use [skip ci] — that would leak through squash-merges.)
     paths-ignore:
       - '.codeboarding/*.md'
       - '.codeboarding/analysis.json'
+      - '.codeboarding/fingerprint.json'
       - '.codeboarding/static_analysis.pkl'
       - '.codeboarding/static_analysis.sha'
       - '.codeboarding/codeboarding_version.json'
-      - '.codeboarding/health/**'
+      - '.codeboarding/health/health_report.json'
       - 'docs/development/architecture.md'
   workflow_dispatch:
 
 permissions:
   contents: write   # commit the generated docs to the branch
-  id-token: write   # free hosted tier (omit if you set llm_api_key/license_key)
+  id-token: write   # hosted tiers, free + license (omit only if you set llm_api_key)
 
 concurrency:
   group: codeboarding-sync
@@ -231,6 +235,44 @@ Behavior worth knowing:
 - Tag pushes are skipped. `pull_request` events soft-skip in sync mode, so a mistakenly shared workflow can never push docs from a PR run.
 - The bot commit carries **no `[skip ci]`** — on a squash-merge that marker leaks into the merge commit and would skip the very sync run (and release tooling, CI) the merge should trigger. The regen loop is instead prevented by the `paths-ignore` list above **and** by the action skipping re-analysis of its own bot commit, so a merge to `main` reliably triggers a fresh incremental sync.
 - `output_dir` is owned by the action: pre-existing top-level markdown files in it are deleted on every run (stale component pages must not linger). Don't point it at a directory with hand-written docs.
+
+### Protected default branch (open a PR instead of pushing)
+
+If your default branch rejects direct pushes (branch protection), set `sync_strategy: pull_request`. Instead of committing the baseline straight to `target_branch`, the action commits it to a machine-owned branch (`sync_pr_branch`, default `codeboarding/sync`) and opens — then keeps force-updating — a **single rolling PR** into `target_branch`. Merge that PR to land the baseline; your protection rules stay fully intact (no bypass actor), and the PR diff is always just the generated files.
+
+This builds on the sync workflow above — same `on:` (with the `paths-ignore` list) and the same `concurrency` block, which is **required** here (see the note on concurrency below). Only the job changes:
+
+```yaml
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write        # push the sync branch
+      pull-requests: write   # open/update the rolling PR
+      id-token: write        # hosted tiers, free + license (omit only if you set llm_api_key)
+    steps:
+      - uses: CodeBoarding/CodeBoarding-action@v1
+        with:
+          mode: sync
+          sync_strategy: pull_request
+          # push_token must carry pull-requests: write. The default github.token
+          # does when the job grants it (above) AND the repo/org setting "Allow
+          # GitHub Actions to create and approve pull requests" is enabled — see the
+          # note below. A GitHub App token or PAT also works, attributes the PR to
+          # that identity, and (unlike github.token) lets the PR trigger other
+          # workflows.
+          # push_token: ${{ steps.app-token.outputs.token }}
+```
+
+Operational requirements and behavior:
+
+- **Merge the rolling PR on a cadence.** The baseline reaches `target_branch` only when this PR is merged. That is what keeps review-mode diffs fast (review reads the baseline from the PR's base branch) *and* keeps incremental sync warm: each sync run seeds its incremental analysis from the baseline committed on `target_branch`, and re-detects **every** change since that last-merged baseline (change detection is whole-tree content-based, so no commits in between are ever missed — just larger diffs the longer you wait to merge). The action never seeds from the unmerged sync branch, so a poisoned or half-written baseline on that branch can never influence an analysis.
+- **Merging the PR does not re-trigger a full analysis.** A merge of a baseline-only PR changes only generated files, which the `paths-ignore` above already excludes — so the workflow never starts. Keep that list complete and generated-only: your own `.codeboardingignore` / `.healthignore` / `health_config.json` are deliberately left out so editing analysis scope still regenerates. (If you drop a generated path from the list, the merge triggers one run that then no-ops at the "nothing to commit" step — a single wasted run, never a loop.)
+- **Exclude the sync branch from your other PR workflows.** The rolling PR would otherwise trigger your review workflow, tests, and lint on a baseline-only diff. Use a **job-level head-branch guard** on each — `if: github.head_ref != 'codeboarding/sync'`. Note that `on.pull_request.branches-ignore` filters the PR's *base* branch, not its head, so it will **not** exclude the rolling PR (which targets `main`) — the `if:` guard is the correct tool.
+- **Allow Actions to create PRs.** With the default `github.token`, `pull-requests: write` alone is not enough if your repo or org has disabled *Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests"*. In that configuration the branch is pushed but every PR-create fails open (no PR). Enable that setting, or set `push_token` to a GitHub App token / PAT with `pull-requests: write`.
+- **Keep the serializing `concurrency` block.** It is required, not optional: it makes sync runs execute one at a time so the newest commit's baseline wins the rolling PR. The action leases its force-push (`--force-with-lease`) as a safety net, but without the concurrency group two runs can still race and one will fail open rather than land — so a run may be skipped until the next change.
+- **The sync branch is machine-owned.** It is reset to the current `target_branch` tip plus one baseline commit and force-pushed every run. Don't commit to it by hand. Closing the PR without merging is not sticky — the next push reopens it; use `workflow_dispatch` to pause.
 
 ### How the two modes work together
 
@@ -263,8 +305,8 @@ Review mode does not need `contents: write`: PR-specific generated files are sto
 | `proxy_url` | both | CodeBoarding proxy | Hosted LLM proxy base URL for the free/license tiers (the engine's `OPENROUTER_BASE_URL`). Override only for a self-hosted/dev proxy. |
 | `mode` | both | `review` | `review` posts the PR architecture-diff comment; `sync` analyzes on push and commits the architecture (`analysis.json` + rendered docs) to `target_branch`, keeping it versioned and current. |
 | `github_token` | both | `${{ github.token }}` | Token for GitHub API calls; in review mode it posts or updates the PR comment. |
-| `push_token` | sync | `${{ github.token }}` | Token used for sync-mode pushes to `target_branch`. The workflow token can push when the workflow grants `permissions: contents: write`. Separate from `github_token` so commenting can use a GitHub App token while the push uses the workflow token. |
-| `codeboarding_version` | both | `0.13.1` | CodeBoarding PyPI package version used as the analysis engine. Pin for reproducibility. |
+| `push_token` | sync | `${{ github.token }}` | Token for sync-mode delivery. The workflow token can push when the workflow grants `permissions: contents: write`. Separate from `github_token` so commenting can use a GitHub App token while the push uses the workflow token. In `sync_strategy: pull_request` it also opens/updates the rolling PR, so it must additionally carry `pull-requests: write`. |
+| `codeboarding_version` | both | `0.13.3` | CodeBoarding PyPI package version used as the analysis engine. Pin for reproducibility. |
 | `depth_level` | both | empty (`2` for cold starts) | Analysis depth for first analysis and `force_full` rebuilds. Max depends on tier: **3** on the free hosted tier, **10** with a CodeBoarding license or your own `llm_api_key`. Once `.codeboarding/analysis.json` exists, its `metadata.depth_level` is the source of truth: sync runs incremental at the baseline depth, and review analyzes the PR head at the committed baseline depth so the diff is apples-to-apples (clamped to the tier max). |
 | `render_depth` | review | `1` | Display depth for the PR diagram. Keep `1` for a clean top-level view. |
 | `diagram_direction` | review | `LR` | Mermaid direction: `LR`, `TD`, `TB`, `RL`, or `BT`. |
@@ -277,10 +319,13 @@ Review mode does not need `contents: write`: PR-specific generated files are sto
 | `webview_base_url` | review | `https://app.codeboarding.org` | Hosted webview base URL. The PR comment links to an artifact-backed head-vs-comparison-branch architecture diff. Set empty to disable the browser link. |
 | `output_dir` | sync | `.codeboarding` | Directory the rendered docs and analysis metadata are committed to. Owned by the action: pre-existing top-level `.md` files in it are deleted on every run. |
 | `output_format` | sync | `.md` | Output format. Only `.md` is supported. |
-| `target_branch` | sync | `${{ github.ref_name }}` | Branch the generated docs are pushed to. |
+| `target_branch` | sync | `${{ github.ref_name }}` | In `push` strategy, the branch the docs are pushed to. In `pull_request` strategy, the PR base branch. |
 | `write_architecture_md` | sync | `true` | Also write `docs/development/architecture.md`: all rendered pages concatenated, `overview.md` first. |
 | `commit_message` | sync | `chore(codeboarding): sync architecture baseline` | Commit message for the generated docs. No `[skip ci]` (it would leak through squash-merges); the regen loop is guarded by `paths-ignore` + the action's own bot-commit check. |
 | `force_full` | sync | `false` | Ignore any committed baseline and run a full analysis from scratch. Use to rebuild a stale or corrupt baseline (e.g. from a `workflow_dispatch`). |
+| `sync_strategy` | sync | `push` | Delivery method. `push` commits and fast-forwards `target_branch` (needs `contents: write` and an unprotected branch). `pull_request` commits to `sync_pr_branch` and opens/updates one rolling PR into `target_branch`, for protected branches (needs `contents: write` **and** `pull-requests: write`). See [Protected default branch](#protected-default-branch-open-a-pr-instead-of-pushing). |
+| `sync_pr_branch` | sync | `codeboarding/sync` | `pull_request` strategy only: the machine-owned head branch, force-updated each run. Ignored in `push` strategy. |
+| `sync_pr_title` | sync | `[CodeBoarding sync]` | `pull_request` strategy only: prefix for the rolling baseline PR title. The analyzed commit hash and first 20 characters of its subject are appended and refreshed on every run. |
 
 ## Outputs
 
@@ -292,7 +337,9 @@ Review mode does not need `contents: write`: PR-specific generated files are sto
 | `review_artifact_url` | review | GitHub Actions artifact URL containing the PR-head `analysis.json` and comparison-branch metadata. |
 | `analysis_mode` | sync | `full` or `incremental`: whether the run rebuilt the analysis from scratch or reused the committed baseline. |
 | `files_written` | sync | The generated files written for the docs commit. |
-| `committed` | sync | `true` when a docs commit was pushed to `target_branch`; `false` when sync mode ran but had nothing to commit (or the push failed open). Empty only if sync mode did not run. |
+| `committed` | sync | `true` when a baseline commit was delivered (pushed to `target_branch` in `push` strategy, or pushed to `sync_pr_branch` with its PR opened/updated in `pull_request` strategy); `false` when sync ran but had nothing to commit (or delivery failed open). Empty only if sync mode did not run. |
+| `sync_pr_url` | sync | `pull_request` strategy: URL of the opened/updated rolling baseline PR. Empty in `push` strategy or when no PR was produced. |
+| `sync_pr_number` | sync | `pull_request` strategy: number of the rolling baseline PR. Empty in `push` strategy or when no PR was produced. |
 
 Outputs of the mode that did not run are empty strings.
 
@@ -315,7 +362,7 @@ Full local pipeline:
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...
-python -m pip install codeboarding==0.13.1
+python -m pip install codeboarding==0.13.3
 codeboarding-setup --auto-install-npm
 scripts/run_local.sh --repo /path/to/repo --base <base-ref> --head <head-ref>
 ```
