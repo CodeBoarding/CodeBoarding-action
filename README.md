@@ -325,7 +325,7 @@ Review mode does not need `contents: write`: PR-specific generated files are sto
 | `force_full` | sync | `false` | Ignore any committed baseline and run a full analysis from scratch. Use to rebuild a stale or corrupt baseline (e.g. from a `workflow_dispatch`). |
 | `sync_strategy` | sync | `push` | Delivery method. `push` commits and fast-forwards `target_branch` (needs `contents: write` and an unprotected branch). `pull_request` commits to `sync_pr_branch` and opens/updates one rolling PR into `target_branch`, for protected branches (needs `contents: write` **and** `pull-requests: write`). See [Protected default branch](#protected-default-branch-open-a-pr-instead-of-pushing). |
 | `sync_pr_branch` | sync | `codeboarding/sync` | `pull_request` strategy only: the machine-owned head branch, force-updated each run. Ignored in `push` strategy. |
-| `sync_pr_title` | sync | `CodeBoarding: sync architecture baseline` | `pull_request` strategy only: title of the rolling baseline PR. |
+| `sync_pr_title` | sync | `[CodeBoarding sync]` | `pull_request` strategy only: prefix for the rolling baseline PR title. The analyzed commit hash and first 20 characters of its subject are appended and refreshed on every run. |
 
 ## Outputs
 

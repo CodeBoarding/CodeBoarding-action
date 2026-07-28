@@ -120,9 +120,9 @@ inputs:
     required: false
     default: 'codeboarding/sync'
   sync_pr_title:
-    description: 'Sync mode (pull_request strategy): title for the rolling baseline PR. Ignored when sync_strategy is "push".'
+    description: 'Sync mode (pull_request strategy): prefix for the rolling baseline PR title. The analyzed commit hash and first 20 characters of its subject are appended and refreshed on every run. Ignored when sync_strategy is "push".'
     required: false
-    default: 'CodeBoarding: sync architecture baseline'
+    default: '[CodeBoarding sync]'
 
 outputs:
   diagram_md:
@@ -1664,6 +1664,8 @@ runs:
           # which commit the baseline describes. Kept current on every run.
           SRC_SHORT="$(git rev-parse --short "$ANALYZED_SHA" 2>/dev/null || printf '%s' "${ANALYZED_SHA:0:7}")"
           SRC_SUBJECT="$(git log -1 --format=%s "$ANALYZED_SHA" 2>/dev/null || true)"
+          SRC_SUMMARY="$(printf '%s' "${SRC_SUBJECT:0:20}" | sed 's/[[:space:]]*$//')"
+          PR_TITLE="${SYNC_PR_TITLE} ${SRC_SHORT}: ${SRC_SUMMARY}"
           PR_BODY="$(printf '%s\n\n%s' \
             "Generated from source revision \`${SRC_SHORT}\`${SRC_SUBJECT:+: ${SRC_SUBJECT}} (target \`${TARGET_BRANCH}\`)." \
             "Automated CodeBoarding architecture baseline sync. Regenerated and force-updated on every push; merge it to keep the committed analysis under \`${OUTPUT_DIR}/\` current, which keeps pull-request reviews fast and incremental sync warm. \`${SYNC_PR_BRANCH}\` is machine-owned and overwritten on every run.")"
@@ -1681,13 +1683,14 @@ runs:
           }
           pr_number="$(own_open_sync_pr)"
           if [ -n "$pr_number" ]; then
-            # Existing rolling PR — refresh its body to the current source revision.
-            gh pr edit "$pr_number" --repo "$REPOSITORY" --body "$PR_BODY" >/dev/null 2>&1 || true
+            # Existing rolling PR — refresh its title and body to the current
+            # source revision.
+            gh pr edit "$pr_number" --repo "$REPOSITORY" --title "$PR_TITLE" --body "$PR_BODY" >/dev/null 2>&1 || true
             pr_url="$(gh pr view "$pr_number" --repo "$REPOSITORY" --json url --jq '.url' 2>/dev/null || true)"
           else
             # No open PR yet — create one. A dedup error from an eventually-consistent
             # replica ("already exists" / 422) is success: re-query for the open PR.
-            pr_url="$(gh pr create --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --title "$SYNC_PR_TITLE" --body "$PR_BODY" 2>/dev/null || true)"
+            pr_url="$(gh pr create --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --title "$PR_TITLE" --body "$PR_BODY" 2>/dev/null || true)"
             pr_number="$(own_open_sync_pr)"
             if [ -z "$pr_url" ] && [ -n "$pr_number" ]; then
               pr_url="$(gh pr view "$pr_number" --repo "$REPOSITORY" --json url --jq '.url' 2>/dev/null || true)"
