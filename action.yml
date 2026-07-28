@@ -272,6 +272,10 @@ runs:
           esac
           if [ "$SYNC_STRATEGY" = "pull_request" ]; then
             [ -n "$SYNC_PR_BRANCH" ] || { echo "::error::sync_pr_branch is empty."; exit 1; }
+            # Must differ from the PR base, or the force-push would target the base
+            # branch itself instead of opening a PR (silently no-PR on a protected
+            # base, or an overwrite of the base on a writable one).
+            [ "$SYNC_PR_BRANCH" != "$TARGET_BRANCH" ] || { echo "::error::sync_pr_branch ('$SYNC_PR_BRANCH') must differ from target_branch in pull_request strategy."; exit 1; }
           fi
           # Note: pull_request strategy has NO author-email loop guard — merging the
           # rolling sync PR re-authors the commit to the merger, not the bot. The
@@ -1469,6 +1473,9 @@ runs:
         SYNC_STRATEGY: ${{ inputs.sync_strategy }}
         SYNC_PR_BRANCH: ${{ inputs.sync_pr_branch }}
         SYNC_PR_TITLE: ${{ inputs.sync_pr_title }}
+        # The source commit that was analyzed (recorded in the rolling PR body so
+        # reviewers see exactly which revision the baseline describes).
+        ANALYZED_SHA: ${{ steps.guard.outputs.target_sha }}
         # gh (PR create/update) authenticates via GH_TOKEN. Reuse push_token so the
         # branch push and the PR use one identity; it must carry pull-requests: write
         # in pull_request strategy. Unused by the "push" strategy.
@@ -1488,11 +1495,16 @@ runs:
         # keeps committing on the analyzed checkout (github.sha) and fast-forwarding
         # target_branch. The tree is clean here (analysis writes to a scratch dir),
         # so resetting to the fetched tip cannot clobber local work.
+        SYNC_TIP=""
         if [ "$SYNC_STRATEGY" = "pull_request" ]; then
           if ! git fetch "$AUTH_URL" "$TARGET_BRANCH"; then
             echo "::warning::Could not fetch ${TARGET_BRANCH} to rebuild ${SYNC_PR_BRANCH}; skipping this run. The next repository change can regenerate."
             exit 0
           fi
+          # Record the sync branch tip BEFORE we rebuild it, to lease the later
+          # force-push against it (see the push below). Empty when the branch does
+          # not exist yet (first run) — then the push plain-creates it.
+          SYNC_TIP="$(git ls-remote "$AUTH_URL" "refs/heads/${SYNC_PR_BRANCH}" 2>/dev/null | awk '{print $1; exit}')"
           git checkout -B "$SYNC_PR_BRANCH" FETCH_HEAD
         fi
 
@@ -1563,14 +1575,32 @@ runs:
         stage_paths+=("${old_md[@]}" "${new_md[@]}")
         git add -f -A -- "${stage_paths[@]}"
 
+        # A no-op means target_branch already carries the current baseline. In
+        # pull_request strategy that can happen while a rolling PR is still open —
+        # e.g. a source change was reverted before its baseline PR merged — leaving
+        # that PR proposing an OBSOLETE delta that must not stay mergeable. Deleting
+        # the remote branch auto-closes the PR; the next real change recreates both.
+        # Fail-open; a no-op in push strategy or when no sync branch exists.
+        reconcile_stale_sync_pr() {
+          [ "$SYNC_STRATEGY" = "pull_request" ] || return 0
+          git ls-remote --exit-code --heads "$AUTH_URL" "$SYNC_PR_BRANCH" >/dev/null 2>&1 || return 0
+          if git push "$AUTH_URL" --delete "refs/heads/${SYNC_PR_BRANCH}" >/dev/null 2>&1; then
+            echo "Reconciled: deleted ${SYNC_PR_BRANCH} to close a now-obsolete sync PR (${TARGET_BRANCH} already current)."
+          else
+            echo "::warning::Could not delete ${SYNC_PR_BRANCH} to close a stale sync PR; it may need manual closing."
+          fi
+        }
+
         if git diff --cached --quiet; then
           echo "::notice::Generated architecture is unchanged; nothing to commit."
+          reconcile_stale_sync_pr
           echo "files_written=${#new_md[@]}" >> "$GITHUB_OUTPUT"
           exit 0
         fi
         if git diff --cached --quiet -I '"generated_at"' -I '"timestamp"'; then
           git reset -q
           echo "::notice::Only volatile timestamp fields changed; skipping commit."
+          reconcile_stale_sync_pr
           echo "files_written=${#new_md[@]}" >> "$GITHUB_OUTPUT"
           exit 0
         fi
@@ -1585,38 +1615,58 @@ runs:
           NEW_SHA="$(git rev-parse HEAD)"
           # Force-push the machine-owned rolling branch: its history is reset to the
           # live target_branch tip each run, so the push is never a fast-forward.
-          # Serialized by the workflow's concurrency group, so there is no
-          # force-with-lease race to guard. Fail-open, like the push strategy below.
-          if ! git push --force "$AUTH_URL" "HEAD:refs/heads/${SYNC_PR_BRANCH}"; then
-            echo "::warning::Could not push the sync branch ${SYNC_PR_BRANCH}; likely missing contents: write. The next repository change can regenerate."
+          # Lease against the tip observed at the start of this step (SYNC_TIP): with
+          # the required serializing concurrency group this never triggers, but if a
+          # caller omits it, a concurrent run that already pushed a newer baseline is
+          # NOT silently clobbered — our lease fails and we fail open, letting the
+          # next change reconcile, instead of overwriting it. Plain --force when the
+          # branch did not exist yet (first run).
+          if [ -n "$SYNC_TIP" ]; then
+            force_opt="--force-with-lease=refs/heads/${SYNC_PR_BRANCH}:${SYNC_TIP}"
+          else
+            force_opt="--force"
+          fi
+          if ! git push "$force_opt" "$AUTH_URL" "HEAD:refs/heads/${SYNC_PR_BRANCH}"; then
+            echo "::warning::Could not update ${SYNC_PR_BRANCH} (a concurrent run may have pushed a newer baseline, or contents: write is missing). The next repository change can regenerate."
             echo "files_written=${#new_md[@]}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "files_written=${#new_md[@]}" >> "$GITHUB_OUTPUT"
           echo "Pushed baseline to ${SYNC_PR_BRANCH} as ${NEW_SHA}."
 
+          # PR body records the analyzed source revision so reviewers see exactly
+          # which commit the baseline describes. Kept current on every run.
+          SRC_SHORT="$(git rev-parse --short "$ANALYZED_SHA" 2>/dev/null || printf '%s' "${ANALYZED_SHA:0:7}")"
+          SRC_SUBJECT="$(git log -1 --format=%s "$ANALYZED_SHA" 2>/dev/null || true)"
+          PR_BODY="$(printf '%s\n\n%s' \
+            "Generated from source revision \`${SRC_SHORT}\`${SRC_SUBJECT:+: ${SRC_SUBJECT}} (target \`${TARGET_BRANCH}\`)." \
+            "Automated CodeBoarding architecture baseline sync. Regenerated and force-updated on every push; merge it to keep the committed analysis under \`${OUTPUT_DIR}/\` current, which keeps pull-request reviews fast and incremental sync warm. \`${SYNC_PR_BRANCH}\` is machine-owned and overwritten on every run.")"
+
           # Ensure ONE open PR from the sync branch into target_branch. Every gh call
           # fails open: an under-scoped token (no pull-requests: write) or an API
           # error degrades to "branch pushed, no PR" with a warning, never a red job.
-          PR_BODY="Automated CodeBoarding architecture baseline sync into \`${TARGET_BRANCH}\`. Regenerated and force-updated on every push; merge it to keep the committed analysis under \`${OUTPUT_DIR}/\` current, which keeps pull-request reviews fast and incremental sync warm. \`${SYNC_PR_BRANCH}\` is machine-owned and overwritten on every run."
-          pr_url="$(gh pr list --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --state open --json url --jq '.[0].url // empty' 2>/dev/null || true)"
-          if [ -z "$pr_url" ]; then
+          pr_number="$(gh pr list --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+          if [ -n "$pr_number" ]; then
+            # Existing rolling PR — refresh its body to the current source revision.
+            gh pr edit "$pr_number" --repo "$REPOSITORY" --body "$PR_BODY" >/dev/null 2>&1 || true
+            pr_url="$(gh pr view "$pr_number" --repo "$REPOSITORY" --json url --jq '.url' 2>/dev/null || true)"
+          else
             # No open PR yet — create one. A dedup error from an eventually-consistent
             # replica ("already exists" / 422) is success: re-query for the open PR.
             pr_url="$(gh pr create --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --title "$SYNC_PR_TITLE" --body "$PR_BODY" 2>/dev/null || true)"
-            if [ -z "$pr_url" ]; then
-              pr_url="$(gh pr list --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --state open --json url --jq '.[0].url // empty' 2>/dev/null || true)"
+            pr_number="$(gh pr list --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+            if [ -z "$pr_url" ] && [ -n "$pr_number" ]; then
+              pr_url="$(gh pr view "$pr_number" --repo "$REPOSITORY" --json url --jq '.url' 2>/dev/null || true)"
             fi
           fi
           if [ -n "$pr_url" ]; then
-            pr_number="$(gh pr list --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)"
             echo "committed=true" >> "$GITHUB_OUTPUT"
             echo "pushed_sha=$NEW_SHA" >> "$GITHUB_OUTPUT"
             echo "sync_pr_url=$pr_url" >> "$GITHUB_OUTPUT"
             echo "sync_pr_number=$pr_number" >> "$GITHUB_OUTPUT"
             echo "Sync PR ready: $pr_url"
           else
-            echo "::warning::Sync branch ${SYNC_PR_BRANCH} pushed, but no PR into ${TARGET_BRANCH} could be opened or found. Ensure the token carries pull-requests: write."
+            echo "::warning::Sync branch ${SYNC_PR_BRANCH} pushed, but no PR into ${TARGET_BRANCH} could be opened or found. Ensure the token carries pull-requests: write and that the repository allows GitHub Actions to create pull requests."
           fi
           exit 0
         fi

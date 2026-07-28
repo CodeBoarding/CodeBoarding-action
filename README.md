@@ -240,6 +240,8 @@ Behavior worth knowing:
 
 If your default branch rejects direct pushes (branch protection), set `sync_strategy: pull_request`. Instead of committing the baseline straight to `target_branch`, the action commits it to a machine-owned branch (`sync_pr_branch`, default `codeboarding/sync`) and opens — then keeps force-updating — a **single rolling PR** into `target_branch`. Merge that PR to land the baseline; your protection rules stay fully intact (no bypass actor), and the PR diff is always just the generated files.
 
+This builds on the sync workflow above — same `on:` (with the `paths-ignore` list) and the same `concurrency` block, which is **required** here (see the note on concurrency below). Only the job changes:
+
 ```yaml
 jobs:
   sync:
@@ -247,16 +249,19 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: write        # push the sync branch
-      pull-requests: write    # open/update the rolling PR
+      pull-requests: write   # open/update the rolling PR
+      id-token: write        # free hosted tier (omit if you set llm_api_key/license_key)
     steps:
       - uses: CodeBoarding/CodeBoarding-action@v1
         with:
           mode: sync
           sync_strategy: pull_request
           # push_token must carry pull-requests: write. The default github.token
-          # does when the job grants it (above). A GitHub App token also works and
-          # attributes the PR to your app — but note a github.token-opened PR does
-          # NOT trigger other workflows, while an App/PAT-opened PR does.
+          # does when the job grants it (above) AND the repo/org setting "Allow
+          # GitHub Actions to create and approve pull requests" is enabled — see the
+          # note below. A GitHub App token or PAT also works, attributes the PR to
+          # that identity, and (unlike github.token) lets the PR trigger other
+          # workflows.
           # push_token: ${{ steps.app-token.outputs.token }}
 ```
 
@@ -264,7 +269,9 @@ Operational requirements and behavior:
 
 - **Merge the rolling PR on a cadence.** The baseline reaches `target_branch` only when this PR is merged. That is what keeps review-mode diffs fast (review reads the baseline from the PR's base branch) *and* keeps incremental sync warm: each sync run seeds its incremental analysis from the baseline committed on `target_branch`, and re-detects **every** change since that last-merged baseline (change detection is whole-tree content-based, so no commits in between are ever missed — just larger diffs the longer you wait to merge). The action never seeds from the unmerged sync branch, so a poisoned or half-written baseline on that branch can never influence an analysis.
 - **Merging the PR does not re-trigger a full analysis.** A merge of a baseline-only PR changes only generated files, which the `paths-ignore` above already excludes — so the workflow never starts. Keep that list complete and generated-only: your own `.codeboardingignore` / `.healthignore` / `health_config.json` are deliberately left out so editing analysis scope still regenerates. (If you drop a generated path from the list, the merge triggers one run that then no-ops at the "nothing to commit" step — a single wasted run, never a loop.)
-- **Exclude the sync branch from your other PR workflows.** The rolling PR would otherwise trigger your review workflow, tests, and lint on a baseline-only diff. Add a head-branch guard to each — e.g. `if: github.head_ref != 'codeboarding/sync'` on the review job, and `branches-ignore: [codeboarding/sync]` (or the same `if:`) on test/lint workflows.
+- **Exclude the sync branch from your other PR workflows.** The rolling PR would otherwise trigger your review workflow, tests, and lint on a baseline-only diff. Use a **job-level head-branch guard** on each — `if: github.head_ref != 'codeboarding/sync'`. Note that `on.pull_request.branches-ignore` filters the PR's *base* branch, not its head, so it will **not** exclude the rolling PR (which targets `main`) — the `if:` guard is the correct tool.
+- **Allow Actions to create PRs.** With the default `github.token`, `pull-requests: write` alone is not enough if your repo or org has disabled *Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests"*. In that configuration the branch is pushed but every PR-create fails open (no PR). Enable that setting, or set `push_token` to a GitHub App token / PAT with `pull-requests: write`.
+- **Keep the serializing `concurrency` block.** It is required, not optional: it makes sync runs execute one at a time so the newest commit's baseline wins the rolling PR. The action leases its force-push (`--force-with-lease`) as a safety net, but without the concurrency group two runs can still race and one will fail open rather than land — so a run may be skipped until the next change.
 - **The sync branch is machine-owned.** It is reset to the current `target_branch` tip plus one baseline commit and force-pushed every run. Don't commit to it by hand. Closing the PR without merging is not sticky — the next push reopens it; use `workflow_dispatch` to pause.
 
 ### How the two modes work together
