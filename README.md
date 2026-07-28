@@ -113,7 +113,7 @@ Models are optional. Omit `agent_model` and `parsing_model` to use the defaults,
 <a id="more-usage"></a>
 ## More usage (your own key or a license)
 
-The free tier is metered per repository owner against a weekly cap. For more — or unmetered — usage, supply a credential. Both paths skip the proxy/OIDC and need no `id-token: write`:
+The free tier is metered per repository owner against a weekly cap. For more — or unmetered — usage, supply a credential. Option A (your own key) talks to the provider directly and needs no `id-token: write`; Option B (a license) still uses the hosted proxy, so it keeps `id-token: write` (the proxy verifies the OIDC identity, then the license skips the quota):
 
 ```yaml
         with:
@@ -210,7 +210,7 @@ on:
 
 permissions:
   contents: write   # commit the generated docs to the branch
-  id-token: write   # free hosted tier (omit if you set llm_api_key/license_key)
+  id-token: write   # hosted tiers, free + license (omit only if you set llm_api_key)
 
 concurrency:
   group: codeboarding-sync
@@ -250,7 +250,7 @@ jobs:
     permissions:
       contents: write        # push the sync branch
       pull-requests: write   # open/update the rolling PR
-      id-token: write        # free hosted tier (omit if you set llm_api_key/license_key)
+      id-token: write        # hosted tiers, free + license (omit only if you set llm_api_key)
     steps:
       - uses: CodeBoarding/CodeBoarding-action@v1
         with:

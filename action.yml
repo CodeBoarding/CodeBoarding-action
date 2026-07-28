@@ -1501,6 +1501,20 @@ runs:
             echo "::warning::Could not fetch ${TARGET_BRANCH} to rebuild ${SYNC_PR_BRANCH}; skipping this run. The next repository change can regenerate."
             exit 0
           fi
+          # If target_branch advanced PAST the commit we analyzed (a newer push
+          # landed during this run), the push that caused it has its OWN queued sync
+          # run. Publishing here would put a baseline describing ANALYZED_SHA on top
+          # of a newer tip — a rolling PR whose baseline doesn't match its base.
+          # Defer to the newer run instead. Gated on ANALYZED_SHA being a strict
+          # ANCESTOR of the tip (a genuine forward move on this branch), so a
+          # target_branch deliberately decoupled from the triggering ref still
+          # publishes rather than silently deferring on every run.
+          BASE_TIP="$(git rev-parse FETCH_HEAD)"
+          if [ -n "$ANALYZED_SHA" ] && [ "$BASE_TIP" != "$ANALYZED_SHA" ] \
+             && git merge-base --is-ancestor "$ANALYZED_SHA" "$BASE_TIP" 2>/dev/null; then
+            echo "::notice::${TARGET_BRANCH} advanced past the analyzed commit ${ANALYZED_SHA} (tip is now ${BASE_TIP}); deferring to the queued run for the newer commit."
+            exit 0
+          fi
           # Record the sync branch tip BEFORE we rebuild it, to lease the later
           # force-push against it (see the push below). Empty when the branch does
           # not exist yet (first run) — then the push plain-creates it.
@@ -1583,7 +1597,17 @@ runs:
         # Fail-open; a no-op in push strategy or when no sync branch exists.
         reconcile_stale_sync_pr() {
           [ "$SYNC_STRATEGY" = "pull_request" ] || return 0
-          git ls-remote --exit-code --heads "$AUTH_URL" "$SYNC_PR_BRANCH" >/dev/null 2>&1 || return 0
+          # Only remove the branch as we OBSERVED it at the start of this run
+          # (SYNC_TIP). If the remote tip has since changed, a concurrent newer run
+          # (when the caller omits the required concurrency group) already pushed a
+          # valid baseline — leave it and its PR alone rather than closing it.
+          local current
+          current="$(git ls-remote "$AUTH_URL" "refs/heads/${SYNC_PR_BRANCH}" 2>/dev/null | awk '{print $1; exit}')"
+          [ -n "$current" ] || return 0
+          if [ "$current" != "$SYNC_TIP" ]; then
+            echo "Skipping reconcile: ${SYNC_PR_BRANCH} advanced since this run started; a newer run owns it."
+            return 0
+          fi
           if git push "$AUTH_URL" --delete "refs/heads/${SYNC_PR_BRANCH}" >/dev/null 2>&1; then
             echo "Reconciled: deleted ${SYNC_PR_BRANCH} to close a now-obsolete sync PR (${TARGET_BRANCH} already current)."
           else
@@ -1613,20 +1637,22 @@ runs:
         # ensure exactly one open PR into target_branch. ----
         if [ "$SYNC_STRATEGY" = "pull_request" ]; then
           NEW_SHA="$(git rev-parse HEAD)"
-          # Force-push the machine-owned rolling branch: its history is reset to the
-          # live target_branch tip each run, so the push is never a fast-forward.
-          # Lease against the tip observed at the start of this step (SYNC_TIP): with
-          # the required serializing concurrency group this never triggers, but if a
-          # caller omits it, a concurrent run that already pushed a newer baseline is
-          # NOT silently clobbered — our lease fails and we fail open, letting the
-          # next change reconcile, instead of overwriting it. Plain --force when the
-          # branch did not exist yet (first run).
+          # Push the machine-owned rolling branch, leased so a concurrent run (when
+          # the caller omits the required serializing concurrency group) is never
+          # silently clobbered — the losing push fails and we fail open, letting the
+          # next change reconcile. If the branch existed at the start of this step
+          # (SYNC_TIP), force-with-lease against that exact tip. If it did NOT exist,
+          # a plain (non-force) create is itself a lease: it fails if a concurrent
+          # first run created the branch first.
           if [ -n "$SYNC_TIP" ]; then
-            force_opt="--force-with-lease=refs/heads/${SYNC_PR_BRANCH}:${SYNC_TIP}"
+            push_args=(--force-with-lease="refs/heads/${SYNC_PR_BRANCH}:${SYNC_TIP}")
           else
-            force_opt="--force"
+            push_args=()
           fi
-          if ! git push "$force_opt" "$AUTH_URL" "HEAD:refs/heads/${SYNC_PR_BRANCH}"; then
+          # `${push_args[@]+...}` guards the empty-array case: a bare "${push_args[@]}"
+          # aborts under `set -u` on bash < 4.4 (macOS-hosted / minimal-container
+          # runners), which would break the fail-open contract on a first run.
+          if ! git push ${push_args[@]+"${push_args[@]}"} "$AUTH_URL" "HEAD:refs/heads/${SYNC_PR_BRANCH}"; then
             echo "::warning::Could not update ${SYNC_PR_BRANCH} (a concurrent run may have pushed a newer baseline, or contents: write is missing). The next repository change can regenerate."
             echo "files_written=${#new_md[@]}" >> "$GITHUB_OUTPUT"
             exit 0
@@ -1645,7 +1671,15 @@ runs:
           # Ensure ONE open PR from the sync branch into target_branch. Every gh call
           # fails open: an under-scoped token (no pull-requests: write) or an API
           # error degrades to "branch pushed, no PR" with a warning, never a red job.
-          pr_number="$(gh pr list --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+          # `gh pr list --head` is a bare branch-NAME filter (no owner:branch), so a
+          # fork PR that happens to use the same head branch name could match; the
+          # isCrossRepository==false filter keeps this to OUR own sync branch's PR so
+          # we never edit a contributor's PR body.
+          own_open_sync_pr() {
+            gh pr list --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --state open \
+              --json number,isCrossRepository --jq 'map(select(.isCrossRepository == false))[0].number // empty' 2>/dev/null || true
+          }
+          pr_number="$(own_open_sync_pr)"
           if [ -n "$pr_number" ]; then
             # Existing rolling PR — refresh its body to the current source revision.
             gh pr edit "$pr_number" --repo "$REPOSITORY" --body "$PR_BODY" >/dev/null 2>&1 || true
@@ -1654,7 +1688,7 @@ runs:
             # No open PR yet — create one. A dedup error from an eventually-consistent
             # replica ("already exists" / 422) is success: re-query for the open PR.
             pr_url="$(gh pr create --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --title "$SYNC_PR_TITLE" --body "$PR_BODY" 2>/dev/null || true)"
-            pr_number="$(gh pr list --repo "$REPOSITORY" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --state open --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+            pr_number="$(own_open_sync_pr)"
             if [ -z "$pr_url" ] && [ -n "$pr_number" ]; then
               pr_url="$(gh pr view "$pr_number" --repo "$REPOSITORY" --json url --jq '.url' 2>/dev/null || true)"
             fi
