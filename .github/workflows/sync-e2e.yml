@@ -1,0 +1,55 @@
+# TEMPORARY end-to-end test harness for PR #60 (sync_strategy: pull_request).
+# Lives only on the throwaway `sync-e2e-test` branch; never merged to main.
+# Runs the action from the checked-out ref (uses: ./) so it exercises PR #60's code.
+name: sync-e2e (PR #60 test)
+
+on:
+  push:
+    branches: [sync-e2e-test]
+    # Same loop guard as the real sync workflow: a merged/committed baseline
+    # touches only generated files, all listed here.
+    paths-ignore:
+      - '.codeboarding/*.md'
+      - '.codeboarding/analysis.json'
+      - '.codeboarding/fingerprint.json'
+      - '.codeboarding/static_analysis.pkl'
+      - '.codeboarding/static_analysis.sha'
+      - '.codeboarding/codeboarding_version.json'
+      - '.codeboarding/health/health_report.json'
+      - 'docs/development/architecture.md'
+  workflow_dispatch:
+    inputs:
+      strategy:
+        description: 'sync_strategy to test'
+        type: choice
+        options: [pull_request, push]
+        default: pull_request
+
+concurrency:
+  # Static group + no cancel = strict serialization. This is what makes two
+  # near-simultaneous pushes run one-after-another into the SAME rolling PR.
+  group: sync-e2e-writers
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          mode: sync
+          sync_strategy: ${{ github.event.inputs.strategy || 'pull_request' }}
+          target_branch: sync-e2e-test
+          sync_pr_branch: codeboarding/sync-e2e
+          # github.token is enough here (job grants both scopes). The real dogfood
+          # uses the App token; its contents:write + pull_requests:write are
+          # already confirmed separately.
+          push_token: ${{ github.token }}
+          llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
