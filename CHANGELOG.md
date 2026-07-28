@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.8.1...v1.9.0) (2026-07-28)
+
+
+### Features
+
+* **sync:** pull_request delivery strategy for protected branches ([#60](https://github.com/CodeBoarding/CodeBoarding-action/issues/60)) ([0540a47](https://github.com/CodeBoarding/CodeBoarding-action/commit/0540a47a6e243ece6b8c3de50bbafc749a392ce8))
+
 ## [1.8.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.8.0...v1.8.1) (2026-07-15)
 
 
