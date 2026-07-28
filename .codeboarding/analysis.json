@@ -1,12 +1,12 @@
 {
   "metadata": {
-    "generated_at": "2026-07-15T21:01:11.753824+00:00",
-    "source_tree_hash": "91cb52b60803e355538740ffa10839c03c064d55782ee856b735690c07c0aea0",
+    "generated_at": "2026-07-28T11:43:50.131328+00:00",
+    "source_tree_hash": "249bb2d40ec1524e8ee02631f40bd3c8bb12326427ec6e757ae3a66138085bd4",
     "repo_name": "CodeBoarding-action",
     "depth_level": 2,
     "file_coverage_summary": {
-      "total_files": 20,
-      "analyzed": 5,
+      "total_files": 21,
+      "analyzed": 6,
       "not_analyzed": 15,
       "not_analyzed_by_reason": {
         "other": 9,
@@ -128,6 +128,15 @@
         "scripts/submit_feedback.py|scripts.submit_feedback.main"
       ],
       "content_hash": "71ccef667b21feda"
+    },
+    "scripts/e2e_probe.py": {
+      "method_keys": [
+        "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+        "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.__init__",
+        "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.describe",
+        "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.summary"
+      ],
+      "content_hash": "6feb1d84a056115c"
     }
   },
   "methods_index": {
@@ -834,6 +843,38 @@
       "end_line": 172,
       "type": "FUNCTION",
       "content_hash": "43d11ddcfec41b9c"
+    },
+    "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe": {
+      "file_path": "scripts/e2e_probe.py",
+      "qualified_name": "scripts.e2e_probe.SyncE2EProbe",
+      "start_line": 4,
+      "end_line": 15,
+      "type": "CLASS",
+      "content_hash": "4fa07df60d7d4711"
+    },
+    "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.__init__": {
+      "file_path": "scripts/e2e_probe.py",
+      "qualified_name": "scripts.e2e_probe.SyncE2EProbe.__init__",
+      "start_line": 7,
+      "end_line": 8,
+      "type": "METHOD",
+      "content_hash": "dc4887fe977a7ebf"
+    },
+    "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.describe": {
+      "file_path": "scripts/e2e_probe.py",
+      "qualified_name": "scripts.e2e_probe.SyncE2EProbe.describe",
+      "start_line": 10,
+      "end_line": 11,
+      "type": "METHOD",
+      "content_hash": "a919067040b901bb"
+    },
+    "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.summary": {
+      "file_path": "scripts/e2e_probe.py",
+      "qualified_name": "scripts.e2e_probe.SyncE2EProbe.summary",
+      "start_line": 13,
+      "end_line": 15,
+      "type": "METHOD",
+      "content_hash": "5a98d3ce1505fea3"
     }
   },
   "components": [
@@ -3059,20 +3100,275 @@
           ]
         }
       ]
+    },
+    {
+      "name": "E2E Validation Probe",
+      "description": "A diagnostic component designed to verify the integrity of the synchronization process. It performs end-to-end checks to ensure that the generated architectural metadata and documentation accurately reflect the codebase state after a sync operation.",
+      "key_entities": [
+        {
+          "qualified_name": "scripts.e2e_probe.SyncE2EProbe",
+          "reference_file": "scripts/e2e_probe.py",
+          "reference_start_line": 4,
+          "reference_end_line": 15
+        },
+        {
+          "qualified_name": "scripts.e2e_probe.SyncE2EProbe.describe",
+          "reference_file": "scripts/e2e_probe.py",
+          "reference_start_line": 10,
+          "reference_end_line": 11
+        },
+        {
+          "qualified_name": "scripts.e2e_probe.SyncE2EProbe.summary",
+          "reference_file": "scripts/e2e_probe.py",
+          "reference_start_line": 13,
+          "reference_end_line": 15
+        }
+      ],
+      "source_cluster_ids": [
+        "11",
+        "12"
+      ],
+      "file_methods": [
+        {
+          "file_path": "scripts/e2e_probe.py",
+          "methods": [
+            "scripts.e2e_probe.SyncE2EProbe",
+            "scripts.e2e_probe.SyncE2EProbe.__init__",
+            "scripts.e2e_probe.SyncE2EProbe.describe",
+            "scripts.e2e_probe.SyncE2EProbe.summary"
+          ]
+        }
+      ],
+      "component_id": "5",
+      "can_expand": true,
+      "components": [
+        {
+          "name": "Validation Orchestrator",
+          "description": "The central controller of the diagnostic process that manages the lifecycle of a validation run and produces the final integrity report for CI/CD integration.",
+          "key_entities": [],
+          "source_cluster_ids": [
+            "5.0"
+          ],
+          "file_methods": [
+            {
+              "file_path": "scripts/e2e_probe.py",
+              "methods": [
+                "scripts.e2e_probe.SyncE2EProbe.__init__"
+              ]
+            }
+          ],
+          "component_id": "5.1",
+          "can_expand": true,
+          "components": [],
+          "components_relations": []
+        },
+        {
+          "name": "State Comparison Engine",
+          "description": "Responsible for the low-level analysis of changes between the current codebase and the persisted architectural baseline to identify file drift.",
+          "key_entities": [],
+          "source_cluster_ids": [
+            "5.1"
+          ],
+          "file_methods": [
+            {
+              "file_path": "scripts/e2e_probe.py",
+              "methods": [
+                "scripts.e2e_probe.SyncE2EProbe.describe"
+              ]
+            }
+          ],
+          "component_id": "5.2",
+          "can_expand": true,
+          "components": [],
+          "components_relations": []
+        },
+        {
+          "name": "Architectural Artifact Generator",
+          "description": "Translates identified code changes into high-level architectural representations, including Mermaid.js diagrams and Markdown documentation.",
+          "key_entities": [],
+          "source_cluster_ids": [
+            "5.2"
+          ],
+          "file_methods": [
+            {
+              "file_path": "scripts/e2e_probe.py",
+              "methods": [
+                "scripts.e2e_probe.SyncE2EProbe.summary"
+              ]
+            }
+          ],
+          "component_id": "5.3",
+          "can_expand": true,
+          "components": [],
+          "components_relations": []
+        },
+        {
+          "name": "Developer Feedback Bridge",
+          "description": "Converts validation results into actionable insights by detecting user environments and generating deep links to architectural components.",
+          "key_entities": [],
+          "source_cluster_ids": [
+            "5.3"
+          ],
+          "file_methods": [
+            {
+              "file_path": "scripts/e2e_probe.py",
+              "methods": [
+                "scripts.e2e_probe.SyncE2EProbe"
+              ]
+            }
+          ],
+          "component_id": "5.4",
+          "can_expand": true,
+          "components": [],
+          "components_relations": []
+        }
+      ],
+      "components_relations": [
+        {
+          "relation": "Triggers baseline drift analysis",
+          "src_name": "Validation Orchestrator",
+          "dst_name": "State Comparison Engine",
+          "evidence": "The orchestrator initiates the comparison between the current file system state and the persisted analysis.json baseline.",
+          "key_edges": [
+            {
+              "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+              "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.describe",
+              "call_sites": [],
+              "description": ""
+            }
+          ],
+          "src_id": "5.1",
+          "dst_id": "5.2",
+          "is_static": false,
+          "all_edges": [
+            {
+              "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+              "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.describe",
+              "call_sites": [],
+              "description": ""
+            }
+          ]
+        },
+        {
+          "relation": "Delegates report generation",
+          "src_name": "Validation Orchestrator",
+          "dst_name": "Architectural Artifact Generator",
+          "evidence": "The orchestrator passes the results of the validation run to the generator to produce human-readable documentation.",
+          "key_edges": [
+            {
+              "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+              "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.summary",
+              "call_sites": [],
+              "description": ""
+            }
+          ],
+          "src_id": "5.1",
+          "dst_id": "5.3",
+          "is_static": false,
+          "all_edges": [
+            {
+              "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+              "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.summary",
+              "call_sites": [],
+              "description": ""
+            }
+          ]
+        },
+        {
+          "relation": "Enriches documentation with context-aware CTAs",
+          "src_name": "Architectural Artifact Generator",
+          "dst_name": "Developer Feedback Bridge",
+          "evidence": "The generator calls the feedback bridge to inject environment-specific deep links and call-to-action metadata into the final Markdown/Mermaid output.",
+          "key_edges": [
+            {
+              "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.summary",
+              "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+              "call_sites": [
+                {
+                  "line": 15,
+                  "column": 31
+                }
+              ],
+              "description": ""
+            }
+          ],
+          "src_id": "5.3",
+          "dst_id": "5.4",
+          "is_static": true,
+          "all_edges": [
+            {
+              "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.summary",
+              "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+              "call_sites": [
+                {
+                  "line": 15,
+                  "column": 31
+                }
+              ],
+              "description": ""
+            }
+          ]
+        },
+        {
+          "relation": "Provides stateful delta updates",
+          "src_name": "State Comparison Engine",
+          "dst_name": "Validation Orchestrator",
+          "evidence": "The engine returns the calculated differences between the live codebase and the architectural baseline to the orchestrator for lifecycle management.",
+          "key_edges": [],
+          "src_id": "5.2",
+          "dst_id": "5.1",
+          "is_static": false,
+          "all_edges": []
+        },
+        {
+          "relation": "Supplies runtime environment metadata",
+          "src_name": "Developer Feedback Bridge",
+          "dst_name": "Validation Orchestrator",
+          "evidence": "The bridge provides environment-specific context (e.g., GitHub OIDC, local vs. CI detection) that influences the orchestrator's execution strategy.",
+          "key_edges": [],
+          "src_id": "5.4",
+          "dst_id": "5.1",
+          "is_static": false,
+          "all_edges": []
+        },
+        {
+          "relation": "calls",
+          "src_name": "Architectural Artifact Generator",
+          "dst_name": "State Comparison Engine",
+          "evidence": "",
+          "key_edges": [],
+          "src_id": "5.3",
+          "dst_id": "5.2",
+          "is_static": true,
+          "all_edges": [
+            {
+              "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.summary",
+              "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.describe",
+              "call_sites": [
+                {
+                  "line": 15,
+                  "column": 31
+                }
+              ],
+              "description": ""
+            }
+          ]
+        }
+      ]
     }
   ],
   "components_relations": [
     {
-      "relation": "Orchestrates structural comparison and visualization",
+      "relation": "Triggers structural diffing and visualization",
       "src_name": "Analysis Orchestrator",
       "dst_name": "Visual Diffing & Rendering Engine",
-      "evidence": "The Orchestrator executes the analysis engine to produce the analysis.json file, which serves as the primary data input for the Rendering Engine's diffing logic.",
+      "evidence": "The Orchestrator manages the lifecycle of the analysis. While often invoked as separate steps in a GitHub Action YAML, engine_adapter.py prepares the analysis.json state that diff_to_mermaid.py consumes to generate visual outputs.",
       "key_edges": [
         {
-          "source": "scripts/engine_adapter.py|scripts.engine_adapter.run_analyze",
-          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.read_analysis_json",
+          "source": "scripts/engine_adapter.py|scripts.engine_adapter.main",
+          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main",
           "call_sites": [],
-          "description": "Orchestrator produces the structural analysis consumed by the rendering engine."
+          "description": "Orchestration of the diffing phase following analysis."
         }
       ],
       "src_id": "1",
@@ -3080,24 +3376,24 @@
       "is_static": false,
       "all_edges": [
         {
-          "source": "scripts/engine_adapter.py|scripts.engine_adapter.run_analyze",
-          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.read_analysis_json",
+          "source": "scripts/engine_adapter.py|scripts.engine_adapter.main",
+          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main",
           "call_sites": [],
-          "description": "Orchestrator produces the structural analysis consumed by the rendering engine."
+          "description": "Orchestration of the diffing phase following analysis."
         }
       ]
     },
     {
-      "relation": "Provides health metrics for navigation context",
+      "relation": "Orchestrates documentation and navigation build",
       "src_name": "Analysis Orchestrator",
       "dst_name": "Documentation & CTA Generator",
-      "evidence": "The Orchestrator manages the environment variables and metadata (like project health and analysis status) that the CTA generator uses to determine which documentation links to prioritize.",
+      "evidence": "The Orchestrator ensures the environment is ready for the documentation phase, where file-to-component mappings are finalized and CTA links are injected into the repository.",
       "key_edges": [
         {
-          "source": "scripts/engine_adapter.py|scripts.engine_adapter._load_metadata",
+          "source": "scripts/engine_adapter.py|scripts.engine_adapter.main",
           "target": "scripts/build_cta.py|scripts.build_cta.build_cta",
           "call_sites": [],
-          "description": "Metadata loaded by the orchestrator informs the generation of Call-to-Action links."
+          "description": "Orchestration of the navigation link generation."
         }
       ],
       "src_id": "1",
@@ -3105,24 +3401,24 @@
       "is_static": false,
       "all_edges": [
         {
-          "source": "scripts/engine_adapter.py|scripts.engine_adapter._load_metadata",
+          "source": "scripts/engine_adapter.py|scripts.engine_adapter.main",
           "target": "scripts/build_cta.py|scripts.build_cta.build_cta",
           "call_sites": [],
-          "description": "Metadata loaded by the orchestrator informs the generation of Call-to-Action links."
+          "description": "Orchestration of the navigation link generation."
         }
       ]
     },
     {
-      "relation": "Reports execution status and quota metrics",
+      "relation": "Forwards execution metrics and logs",
       "src_name": "Analysis Orchestrator",
       "dst_name": "Telemetry & Feedback Provider",
-      "evidence": "The Orchestrator captures the final exit codes, execution duration, and quota usage from the analysis run to be bundled into the telemetry payload.",
+      "evidence": "At the conclusion of the analysis or sync lifecycle, the Orchestrator triggers the telemetry component to report success/failure metrics and anonymized usage data.",
       "key_edges": [
         {
           "source": "scripts/engine_adapter.py|scripts.engine_adapter.main",
           "target": "scripts/submit_feedback.py|scripts.submit_feedback.main",
           "call_sites": [],
-          "description": "Orchestrator lifecycle completion triggers the telemetry submission process."
+          "description": "Finalization step for reporting execution telemetry."
         }
       ],
       "src_id": "1",
@@ -3133,7 +3429,32 @@
           "source": "scripts/engine_adapter.py|scripts.engine_adapter.main",
           "target": "scripts/submit_feedback.py|scripts.submit_feedback.main",
           "call_sites": [],
-          "description": "Orchestrator lifecycle completion triggers the telemetry submission process."
+          "description": "Finalization step for reporting execution telemetry."
+        }
+      ]
+    },
+    {
+      "relation": "Invokes post-sync integrity checks",
+      "src_name": "Analysis Orchestrator",
+      "dst_name": "E2E Validation Probe",
+      "evidence": "The Orchestrator triggers the E2E probe to validate that the generated metadata and documentation are consistent with the actual codebase state.",
+      "key_edges": [
+        {
+          "source": "scripts/engine_adapter.py|scripts.engine_adapter.main",
+          "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+          "call_sites": [],
+          "description": "Post-execution validation of the sync process."
+        }
+      ],
+      "src_id": "1",
+      "dst_id": "5",
+      "is_static": false,
+      "all_edges": [
+        {
+          "source": "scripts/engine_adapter.py|scripts.engine_adapter.main",
+          "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+          "call_sites": [],
+          "description": "Post-execution validation of the sync process."
         }
       ]
     },
@@ -3733,11 +4054,23 @@
       ]
     },
     {
-      "relation": "Supplies visual context for component documentation",
+      "relation": "Provides change-set data for documentation",
       "src_name": "Diff Analysis & Change Detection",
       "dst_name": "Documentation Workflow Orchestrator",
-      "evidence": "The Rendering Engine provides the Mermaid.js diagrams and method-level diffs that are embedded into the markdown files generated for each component.",
-      "key_edges": [],
+      "evidence": "The rendering engine identifies which components have changed; the Documentation generator uses this structural diff data to determine which markdown files need updating or \"changed\" badges.",
+      "key_edges": [
+        {
+          "source": "scripts/build_component_files.py|scripts.build_component_files.render_component_files",
+          "target": "scripts/build_component_files.py|scripts.build_component_files._changed_files_for",
+          "call_sites": [
+            {
+              "line": 142,
+              "column": 17
+            }
+          ],
+          "description": "Passing change-set context to the file generator."
+        }
+      ],
       "src_id": "2.1",
       "dst_id": "3.1",
       "is_static": true,
@@ -3752,6 +4085,17 @@
             }
           ],
           "description": ""
+        },
+        {
+          "source": "scripts/build_component_files.py|scripts.build_component_files.render_component_files",
+          "target": "scripts/build_component_files.py|scripts.build_component_files._changed_files_for",
+          "call_sites": [
+            {
+              "line": 142,
+              "column": 17
+            }
+          ],
+          "description": "Passing change-set context to the file generator."
         }
       ]
     },
@@ -4355,10 +4699,10 @@
       "all_edges": []
     },
     {
-      "relation": "Resolves symbol-to-file mappings for deep-linking",
+      "relation": "Resolves code symbols for deep-linking",
       "src_name": "Architectural Diff Engine",
       "dst_name": "Rendering Orchestration",
-      "evidence": "The Documentation generator maps logical symbols back to physical file paths, allowing the Rendering Engine to create interactive links within the Mermaid diagrams.",
+      "evidence": "The CTA generator relies on the symbol resolution logic (mapping methods to files) maintained by the rendering engine's analysis of the project structure.",
       "key_edges": [
         {
           "source": "scripts/build_component_files.py|scripts.build_component_files._subtree_methods",
@@ -4369,7 +4713,7 @@
               "column": 29
             }
           ],
-          "description": "Documentation logic provides the file-to-method mapping required for visual diffing."
+          "description": "Resolution of method locations for documentation links."
         }
       ],
       "src_id": "3.2",
@@ -4396,7 +4740,7 @@
               "column": 29
             }
           ],
-          "description": "Documentation logic provides the file-to-method mapping required for visual diffing."
+          "description": "Resolution of method locations for documentation links."
         }
       ]
     },
@@ -4883,6 +5227,147 @@
           "description": ""
         }
       ]
+    },
+    {
+      "relation": "Triggers baseline drift analysis",
+      "src_name": "Validation Orchestrator",
+      "dst_name": "State Comparison Engine",
+      "evidence": "The orchestrator initiates the comparison between the current file system state and the persisted analysis.json baseline.",
+      "key_edges": [
+        {
+          "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+          "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.describe",
+          "call_sites": [],
+          "description": ""
+        }
+      ],
+      "src_id": "5.1",
+      "dst_id": "5.2",
+      "is_static": false,
+      "all_edges": [
+        {
+          "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+          "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.describe",
+          "call_sites": [],
+          "description": ""
+        }
+      ]
+    },
+    {
+      "relation": "Delegates report generation",
+      "src_name": "Validation Orchestrator",
+      "dst_name": "Architectural Artifact Generator",
+      "evidence": "The orchestrator passes the results of the validation run to the generator to produce human-readable documentation.",
+      "key_edges": [
+        {
+          "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+          "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.summary",
+          "call_sites": [],
+          "description": ""
+        }
+      ],
+      "src_id": "5.1",
+      "dst_id": "5.3",
+      "is_static": false,
+      "all_edges": [
+        {
+          "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+          "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.summary",
+          "call_sites": [],
+          "description": ""
+        }
+      ]
+    },
+    {
+      "relation": "Provides stateful delta updates",
+      "src_name": "State Comparison Engine",
+      "dst_name": "Validation Orchestrator",
+      "evidence": "The engine returns the calculated differences between the live codebase and the architectural baseline to the orchestrator for lifecycle management.",
+      "key_edges": [],
+      "src_id": "5.2",
+      "dst_id": "5.1",
+      "is_static": false,
+      "all_edges": []
+    },
+    {
+      "relation": "calls",
+      "src_name": "Architectural Artifact Generator",
+      "dst_name": "State Comparison Engine",
+      "evidence": "",
+      "key_edges": [],
+      "src_id": "5.3",
+      "dst_id": "5.2",
+      "is_static": true,
+      "all_edges": [
+        {
+          "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.summary",
+          "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.describe",
+          "call_sites": [
+            {
+              "line": 15,
+              "column": 31
+            }
+          ],
+          "description": ""
+        }
+      ]
+    },
+    {
+      "relation": "Enriches documentation with context-aware CTAs",
+      "src_name": "Architectural Artifact Generator",
+      "dst_name": "Developer Feedback Bridge",
+      "evidence": "The generator calls the feedback bridge to inject environment-specific deep links and call-to-action metadata into the final Markdown/Mermaid output.",
+      "key_edges": [
+        {
+          "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.summary",
+          "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+          "call_sites": [
+            {
+              "line": 15,
+              "column": 31
+            }
+          ],
+          "description": ""
+        }
+      ],
+      "src_id": "5.3",
+      "dst_id": "5.4",
+      "is_static": true,
+      "all_edges": [
+        {
+          "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.summary",
+          "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+          "call_sites": [
+            {
+              "line": 15,
+              "column": 31
+            }
+          ],
+          "description": ""
+        },
+        {
+          "source": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe.summary",
+          "target": "scripts/e2e_probe.py|scripts.e2e_probe.SyncE2EProbe",
+          "call_sites": [
+            {
+              "line": 15,
+              "column": 31
+            }
+          ],
+          "description": ""
+        }
+      ]
+    },
+    {
+      "relation": "Supplies runtime environment metadata",
+      "src_name": "Developer Feedback Bridge",
+      "dst_name": "Validation Orchestrator",
+      "evidence": "The bridge provides environment-specific context (e.g., GitHub OIDC, local vs. CI detection) that influences the orchestrator's execution strategy.",
+      "key_edges": [],
+      "src_id": "5.4",
+      "dst_id": "5.1",
+      "is_static": false,
+      "all_edges": []
     }
   ]
 }
