@@ -1,17 +1,17 @@
 {
   "metadata": {
-    "generated_at": "2026-07-28T17:39:25.607725+00:00",
-    "source_tree_hash": "3eae3543efa185f49ecf8b9270b67f7493c108cfecc6474ae8154cad4cc8f937",
+    "generated_at": "2026-08-01T18:25:17.571466+00:00",
+    "source_tree_hash": "c5f233a0f78bf4357916c7321ef2d7e035014d16c643a3cd84b3bb19d7dbe9c8",
     "repo_name": "CodeBoarding-action",
     "depth_level": 1,
     "depth_cap": 2,
     "file_coverage_summary": {
-      "total_files": 20,
-      "analyzed": 5,
-      "not_analyzed": 15,
+      "total_files": 22,
+      "analyzed": 6,
+      "not_analyzed": 16,
       "not_analyzed_by_reason": {
         "other": 9,
-        "codeboardingignore": 6
+        "codeboardingignore": 7
       }
     }
   },
@@ -134,6 +134,26 @@
       ],
       "content_hash": "8b2953156606caab",
       "module_hash": "ece0241a15adac56"
+    },
+    "scripts/oidc_relay.py": {
+      "method_keys": [
+        "scripts/oidc_relay.py|scripts.oidc_relay.RelayConfig",
+        "scripts/oidc_relay.py|scripts.oidc_relay._with_audience",
+        "scripts/oidc_relay.py|scripts.oidc_relay._mint_oidc_token",
+        "scripts/oidc_relay.py|scripts.oidc_relay._authorization",
+        "scripts/oidc_relay.py|scripts.oidc_relay._upstream_url",
+        "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler",
+        "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler.log_message",
+        "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler.config",
+        "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler._request_body",
+        "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler._send",
+        "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler._handle",
+        "scripts/oidc_relay.py|scripts.oidc_relay.RelayServer",
+        "scripts/oidc_relay.py|scripts.oidc_relay.RelayServer.__init__",
+        "scripts/oidc_relay.py|scripts.oidc_relay.main"
+      ],
+      "content_hash": "5af0d8557c0af6e0",
+      "module_hash": "581a285c4c8aad4a"
     }
   },
   "methods_index": {
@@ -840,6 +860,118 @@
       "end_line": 189,
       "type": "FUNCTION",
       "content_hash": "01d3957be0275043"
+    },
+    "scripts/oidc_relay.py|scripts.oidc_relay.RelayConfig": {
+      "file_path": "scripts/oidc_relay.py",
+      "qualified_name": "scripts.oidc_relay.RelayConfig",
+      "start_line": 46,
+      "end_line": 50,
+      "type": "CLASS",
+      "content_hash": "3632668559c52e65"
+    },
+    "scripts/oidc_relay.py|scripts.oidc_relay._with_audience": {
+      "file_path": "scripts/oidc_relay.py",
+      "qualified_name": "scripts.oidc_relay._with_audience",
+      "start_line": 53,
+      "end_line": 58,
+      "type": "FUNCTION",
+      "content_hash": "971a5179aa4ad7f2"
+    },
+    "scripts/oidc_relay.py|scripts.oidc_relay._mint_oidc_token": {
+      "file_path": "scripts/oidc_relay.py",
+      "qualified_name": "scripts.oidc_relay._mint_oidc_token",
+      "start_line": 61,
+      "end_line": 76,
+      "type": "FUNCTION",
+      "content_hash": "0e565e1dbadd52a8"
+    },
+    "scripts/oidc_relay.py|scripts.oidc_relay._authorization": {
+      "file_path": "scripts/oidc_relay.py",
+      "qualified_name": "scripts.oidc_relay._authorization",
+      "start_line": 79,
+      "end_line": 89,
+      "type": "FUNCTION",
+      "content_hash": "4813e4016de16e56"
+    },
+    "scripts/oidc_relay.py|scripts.oidc_relay._upstream_url": {
+      "file_path": "scripts/oidc_relay.py",
+      "qualified_name": "scripts.oidc_relay._upstream_url",
+      "start_line": 92,
+      "end_line": 93,
+      "type": "FUNCTION",
+      "content_hash": "cc1da2077840b7da"
+    },
+    "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler": {
+      "file_path": "scripts/oidc_relay.py",
+      "qualified_name": "scripts.oidc_relay._RelayHandler",
+      "start_line": 96,
+      "end_line": 152,
+      "type": "CLASS",
+      "content_hash": "7b7f0a8029fdbbfb"
+    },
+    "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler.log_message": {
+      "file_path": "scripts/oidc_relay.py",
+      "qualified_name": "scripts.oidc_relay._RelayHandler.log_message",
+      "start_line": 99,
+      "end_line": 101,
+      "type": "METHOD",
+      "content_hash": "5582f5e792c4f233"
+    },
+    "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler.config": {
+      "file_path": "scripts/oidc_relay.py",
+      "qualified_name": "scripts.oidc_relay._RelayHandler.config",
+      "start_line": 104,
+      "end_line": 105,
+      "type": "METHOD",
+      "content_hash": "3e013376a8b08e9e"
+    },
+    "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler._request_body": {
+      "file_path": "scripts/oidc_relay.py",
+      "qualified_name": "scripts.oidc_relay._RelayHandler._request_body",
+      "start_line": 107,
+      "end_line": 112,
+      "type": "METHOD",
+      "content_hash": "241957adb1e5b9e1"
+    },
+    "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler._send": {
+      "file_path": "scripts/oidc_relay.py",
+      "qualified_name": "scripts.oidc_relay._RelayHandler._send",
+      "start_line": 114,
+      "end_line": 122,
+      "type": "METHOD",
+      "content_hash": "9053ff5f576377c8"
+    },
+    "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler._handle": {
+      "file_path": "scripts/oidc_relay.py",
+      "qualified_name": "scripts.oidc_relay._RelayHandler._handle",
+      "start_line": 124,
+      "end_line": 146,
+      "type": "METHOD",
+      "content_hash": "3fca0973865e684e"
+    },
+    "scripts/oidc_relay.py|scripts.oidc_relay.RelayServer": {
+      "file_path": "scripts/oidc_relay.py",
+      "qualified_name": "scripts.oidc_relay.RelayServer",
+      "start_line": 155,
+      "end_line": 161,
+      "type": "CLASS",
+      "content_hash": "4109cd854afbdd28"
+    },
+    "scripts/oidc_relay.py|scripts.oidc_relay.RelayServer.__init__": {
+      "file_path": "scripts/oidc_relay.py",
+      "qualified_name": "scripts.oidc_relay.RelayServer.__init__",
+      "start_line": 159,
+      "end_line": 161,
+      "type": "METHOD",
+      "content_hash": "f203daaca01af199"
+    },
+    "scripts/oidc_relay.py|scripts.oidc_relay.main": {
+      "file_path": "scripts/oidc_relay.py",
+      "qualified_name": "scripts.oidc_relay.main",
+      "start_line": 164,
+      "end_line": 183,
+      "type": "FUNCTION",
+      "content_hash": "32cb887f244d21dd"
     }
   },
   "components": [
@@ -1144,7 +1276,9 @@
         }
       ],
       "source_cluster_ids": [
-        "6"
+        "6",
+        "9",
+        "10"
       ],
       "file_methods": [
         {
@@ -1157,6 +1291,25 @@
             "scripts.build_cta.build_cta.link",
             "scripts.build_cta.main"
           ]
+        },
+        {
+          "file_path": "scripts/oidc_relay.py",
+          "methods": [
+            "scripts.oidc_relay.RelayConfig",
+            "scripts.oidc_relay._with_audience",
+            "scripts.oidc_relay._mint_oidc_token",
+            "scripts.oidc_relay._authorization",
+            "scripts.oidc_relay._upstream_url",
+            "scripts.oidc_relay._RelayHandler",
+            "scripts.oidc_relay._RelayHandler.log_message",
+            "scripts.oidc_relay._RelayHandler.config",
+            "scripts.oidc_relay._RelayHandler._request_body",
+            "scripts.oidc_relay._RelayHandler._send",
+            "scripts.oidc_relay._RelayHandler._handle",
+            "scripts.oidc_relay.RelayServer",
+            "scripts.oidc_relay.RelayServer.__init__",
+            "scripts.oidc_relay.main"
+          ]
         }
       ],
       "component_id": "5",
@@ -1167,27 +1320,27 @@
   ],
   "components_relations": [
     {
-      "relation": "Orchestrates documentation generation",
+      "relation": "Passes repository context for CTA generation",
       "src_name": "Analysis Engine Adapter",
-      "dst_name": "Visual Rendering Engine",
-      "evidence": "The adapter's `render` subcommand invokes the rendering logic to produce component-level markdown files.",
+      "dst_name": "Interaction Orchestrator",
+      "evidence": "The adapter extracts GitHub environment variables and repository metadata required by the Orchestrator to construct valid deep-links.",
       "key_edges": [
         {
-          "source": "scripts/engine_adapter.py|scripts.engine_adapter.render",
-          "target": "scripts/build_component_files.py|scripts.build_component_files.render_component_files",
+          "source": "scripts/engine_adapter.py|scripts.engine_adapter.main",
+          "target": "scripts/build_cta.py|scripts.build_cta.main",
           "call_sites": [],
-          "description": ""
+          "description": "Environment Variables"
         }
       ],
       "src_id": "1",
-      "dst_id": "2",
+      "dst_id": "5",
       "is_static": false,
       "all_edges": [
         {
-          "source": "scripts/engine_adapter.py|scripts.engine_adapter.render",
-          "target": "scripts/build_component_files.py|scripts.build_component_files.render_component_files",
+          "source": "scripts/engine_adapter.py|scripts.engine_adapter.main",
+          "target": "scripts/build_cta.py|scripts.build_cta.main",
           "call_sites": [],
-          "description": ""
+          "description": "Environment Variables"
         }
       ]
     },
@@ -1305,17 +1458,6 @@
           "description": ""
         }
       ]
-    },
-    {
-      "relation": "Captures user intent from UI",
-      "src_name": "Telemetry & Feedback Handler",
-      "dst_name": "Interaction Orchestrator",
-      "evidence": "Runtime interaction via GitHub PR comments; the CTA links generated by the Orchestrator provide the UI affordance for the feedback captured by the Handler.",
-      "key_edges": [],
-      "src_id": "4",
-      "dst_id": "5",
-      "is_static": false,
-      "all_edges": []
     },
     {
       "relation": "Consumes issue counts for UI",

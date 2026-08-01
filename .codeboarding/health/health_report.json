@@ -1,13 +1,13 @@
 {
   "repository_name": "CodeBoarding-action",
-  "timestamp": "2026-07-28T17:39:25.456253+00:00",
-  "overall_score": 0.9954716981132076,
+  "timestamp": "2026-08-01T18:24:57.540609+00:00",
+  "overall_score": 0.9952145214521453,
   "check_summaries": [
     {
       "check_name": "function_size",
       "description": "Checks that functions/methods do not exceed line count thresholds",
       "check_type": "standard",
-      "total_entities_checked": 87,
+      "total_entities_checked": 98,
       "findings_count": 0,
       "warning_count": 0,
       "score": 1.0,
@@ -17,10 +17,10 @@
       "check_name": "fan_out",
       "description": "Checks efferent coupling: how many other functions each function calls",
       "check_type": "standard",
-      "total_entities_checked": 87,
+      "total_entities_checked": 98,
       "findings_count": 1,
       "warning_count": 1,
-      "score": 0.9885057471264368,
+      "score": 0.9897959183673469,
       "finding_groups": [
         {
           "severity": "warning",
@@ -42,7 +42,7 @@
       "check_name": "fan_in",
       "description": "Checks afferent coupling: how many other functions call each function",
       "check_type": "standard",
-      "total_entities_checked": 87,
+      "total_entities_checked": 98,
       "findings_count": 0,
       "warning_count": 0,
       "score": 1.0,
@@ -52,7 +52,7 @@
       "check_name": "god_class",
       "description": "Detects classes with too many methods, too much code, or too many outgoing dependencies",
       "check_type": "standard",
-      "total_entities_checked": 1,
+      "total_entities_checked": 2,
       "findings_count": 0,
       "warning_count": 0,
       "score": 1.0,
@@ -62,7 +62,7 @@
       "check_name": "inheritance_depth",
       "description": "Checks that class inheritance hierarchies do not exceed depth thresholds",
       "check_type": "standard",
-      "total_entities_checked": 1,
+      "total_entities_checked": 4,
       "findings_count": 0,
       "warning_count": 0,
       "score": 1.0,
@@ -72,10 +72,10 @@
       "check_name": "unused_code_diagnostics",
       "description": "Detects unused imports, variables, functions, and dead code via LSP diagnostics",
       "check_type": "standard",
-      "total_entities_checked": 2,
-      "findings_count": 2,
+      "total_entities_checked": 3,
+      "findings_count": 3,
       "warning_count": 0,
-      "score": 0.9,
+      "score": 0.85,
       "finding_groups": [
         {
           "severity": "info",
@@ -102,6 +102,13 @@
               "line_start": 85,
               "line_end": 85,
               "metric_value": 0.0
+            },
+            {
+              "entity_name": "[unused_variable] \"_format\" is not accessed",
+              "file_path": "scripts/oidc_relay.py",
+              "line_start": 99,
+              "line_end": 99,
+              "metric_value": 0.0
             }
           ]
         }
@@ -114,6 +121,12 @@
       "total_findings": 3,
       "warning_findings": 1,
       "composite_risk_score": 35.0
+    },
+    {
+      "file_path": "scripts/oidc_relay.py",
+      "total_findings": 1,
+      "warning_findings": 0,
+      "composite_risk_score": 10.0
     }
   ]
 }

@@ -5,10 +5,9 @@ graph LR
     Structural_Diff_Engine["Structural Diff Engine"]
     Telemetry_Feedback_Handler["Telemetry & Feedback Handler"]
     Interaction_Orchestrator["Interaction Orchestrator"]
-    Analysis_Engine_Adapter -- "Orchestrates documentation generation" --> Visual_Rendering_Engine
+    Analysis_Engine_Adapter -- "Passes repository context for CTA generation" --> Interaction_Orchestrator
     Visual_Rendering_Engine -- "Queries for architectural changes" --> Structural_Diff_Engine
     Structural_Diff_Engine -- "Provides change-set data" --> Visual_Rendering_Engine
-    Telemetry_Feedback_Handler -- "Captures user intent from UI" --> Interaction_Orchestrator
     Interaction_Orchestrator -- "Consumes issue counts for UI" --> Visual_Rendering_Engine
 ```
 
@@ -196,6 +195,21 @@ Generates interactive Call-to-Action (CTA) links and webview URLs to facilitate 
   - `scripts.build_cta.build_cta` ([L93-L152](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/build_cta.py#L93-L152)) - Function
   - `scripts.build_cta.build_cta.link` ([L126-L127](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/build_cta.py#L126-L127)) - Function
   - `scripts.build_cta.main` ([L155-L189](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/build_cta.py#L155-L189)) - Function
+- [`scripts/oidc_relay.py`](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py)
+  - `scripts.oidc_relay.RelayConfig` ([L46-L50](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py#L46-L50)) - Class
+  - `scripts.oidc_relay._with_audience` ([L53-L58](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py#L53-L58)) - Function
+  - `scripts.oidc_relay._mint_oidc_token` ([L61-L76](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py#L61-L76)) - Function
+  - `scripts.oidc_relay._authorization` ([L79-L89](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py#L79-L89)) - Function
+  - `scripts.oidc_relay._upstream_url` ([L92-L93](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py#L92-L93)) - Function
+  - `scripts.oidc_relay._RelayHandler` ([L96-L152](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py#L96-L152)) - Class
+  - `scripts.oidc_relay._RelayHandler.log_message` ([L99-L101](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py#L99-L101)) - Method
+  - `scripts.oidc_relay._RelayHandler.config` ([L104-L105](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py#L104-L105)) - Method
+  - `scripts.oidc_relay._RelayHandler._request_body` ([L107-L112](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py#L107-L112)) - Method
+  - `scripts.oidc_relay._RelayHandler._send` ([L114-L122](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py#L114-L122)) - Method
+  - `scripts.oidc_relay._RelayHandler._handle` ([L124-L146](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py#L124-L146)) - Method
+  - `scripts.oidc_relay.RelayServer` ([L155-L161](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py#L155-L161)) - Class
+  - `scripts.oidc_relay.RelayServer.__init__` ([L159-L161](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py#L159-L161)) - Method
+  - `scripts.oidc_relay.main` ([L164-L183](https://github.com/CodeBoarding/CodeBoarding-action/blob/main/.codeboardingscripts/oidc_relay.py#L164-L183)) - Function
 
 
 
