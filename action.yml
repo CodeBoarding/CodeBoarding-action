@@ -1406,7 +1406,11 @@ runs:
 
         echo "body_file=$BODY_FILE" >> "$GITHUB_OUTPUT"
 
+    # `id` so the failure paths below can tell "the review never got posted" from
+    # "the review posted fine and something after it broke". They share this step's
+    # sticky header, so without that distinction they REPLACE a good review.
     - name: Post sticky PR comment
+      id: review_comment
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       uses: marocchino/sticky-pull-request-comment@v2
       with:
@@ -1795,7 +1799,7 @@ runs:
         fi
 
     - name: Post quota-exhausted comment
-      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.quota.outputs.exhausted == 'true'
+      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.quota.outputs.exhausted == 'true' && steps.review_comment.outcome != 'success'
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:
@@ -1815,8 +1819,12 @@ runs:
           <sub>codeboarding-action · run ${{ github.run_id }}</sub>
         GITHUB_TOKEN: ${{ inputs.github_token }}
 
+    # Not posted when the review itself already went out: these comments reuse the
+    # review's sticky header, so posting one REPLACES the architecture diff the user
+    # came for. A step failing after the review has been published (the walkthrough
+    # add-on, an artifact upload) cannot un-publish it, and must not erase it either.
     - name: Post failure comment
-      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.quota.outputs.exhausted != 'true'
+      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.quota.outputs.exhausted != 'true' && steps.review_comment.outcome != 'success'
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:
