@@ -573,6 +573,7 @@ runs:
         RAW_PARSING_MODEL: ${{ inputs.parsing_model }}
         RAW_LICENSE: ${{ inputs.license_key }}
         RAW_PROXY_URL: ${{ inputs.proxy_url }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
         AUTH_FILE="${RUNNER_TEMP}/openrouter-auth.json"
@@ -608,11 +609,10 @@ runs:
         echo "Credential mode: $MODE"
 
         # ── Hosted modes (license / oidc): provider is always OpenRouter via proxy ──
-        # The hosted tiers run on CodeBoarding's OpenRouter account, so the engine
-        # always talks OpenRouter here. The bearer is the OIDC JWT (free) or the OIDC
-        # JWT packed with the license (license mode); the proxy verifies the OIDC,
-        # applies the license, and swaps in the real OpenRouter key. To use a DIFFERENT
-        # provider, set llm_api_key for that provider (that's BYO-key mode, below).
+        # The hosted tiers run on CodeBoarding's OpenRouter account. A loopback relay
+        # mints a fresh GitHub OIDC JWT for every engine request, then forwards it to
+        # the hosted proxy. This matters because an analysis can outlive a single OIDC
+        # JWT. To use a DIFFERENT provider, set llm_api_key (BYO-key mode, below).
         if [ "$MODE" != "byokey" ]; then
           if [ -z "$PROXY_URL" ]; then
             echo "::error::proxy_url is empty but no llm_api_key was provided. Set llm_api_key, or restore proxy_url."
@@ -628,46 +628,50 @@ runs:
           AGENT_MODEL="${AGENT_MODEL:-google/gemini-3-flash-preview}"
           PARSING_MODEL="${PARSING_MODEL:-google/gemini-3.1-flash-lite-preview}"
 
-          # Both hosted tiers (free + license) authenticate to the proxy with a
-          # GitHub OIDC JWT — it's the unforgeable per-repo identity the proxy meters
-          # and abuse-checks on, so it is mandatory even when a license is present.
-          # The engine (ChatOpenAI) can only set the bearer, not a custom header, so a
-          # license rides the bearer alongside the OIDC token as `<jwt>~codeboarding-license~<license>`;
-          # the proxy splits on that separator (KEEP IN SYNC with gha_proxy handler).
-          # ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN are injected into the runner process env
-          # (NOT the `env` context) only when the job grants `id-token: write`; read them
-          # directly from the shell env.
+          # ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN are injected into the runner process
+          # env (NOT the `env` context) only when the job grants `id-token: write`.
+          # Pass them to the local relay through its inherited environment; it requests
+          # a new JWT per forwarded request instead of freezing one into the engine.
           if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
             echo "::error::No GitHub OIDC token available. Add \`permissions: id-token: write\` to the job (the hosted tier — free and license — needs the OIDC token to identify your repository; an llm_api_key avoids the proxy entirely)."
             exit 1
           fi
-          OIDC_RESP="$(curl -sS --max-time 15 \
-            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
-            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=codeboarding-proxy" || true)"
-          OIDC_JWT="$(printf '%s' "$OIDC_RESP" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("value",""))' 2>/dev/null || true)"
-          if [ -z "$OIDC_JWT" ]; then
-            echo "::error::Failed to mint a GitHub OIDC token (is \`permissions: id-token: write\` granted?)."
+          RELAY_READY="${RUNNER_TEMP}/cb-oidc-relay-port"
+          RELAY_PID_FILE="${RUNNER_TEMP}/cb-oidc-relay.pid"
+          RELAY_LICENSE_FILE="${RUNNER_TEMP}/cb-oidc-relay-license"
+          RELAY_LOG="${RUNNER_TEMP}/cb-oidc-relay.log"
+          rm -f "$RELAY_READY" "$RELAY_PID_FILE" "$RELAY_LICENSE_FILE" "$RELAY_LOG"
+          relay_args=(--upstream-base-url "$PROXY_URL" --ready-file "$RELAY_READY")
+          if [ "$MODE" = "license" ]; then
+            echo "::add-mask::$LICENSE"
+            printf '%s' "$LICENSE" > "$RELAY_LICENSE_FILE"
+            relay_args+=(--license-file "$RELAY_LICENSE_FILE")
+          fi
+          python3 "$ACTION_PATH/scripts/oidc_relay.py" "${relay_args[@]}" >"$RELAY_LOG" 2>&1 &
+          RELAY_PID=$!
+          printf '%s' "$RELAY_PID" > "$RELAY_PID_FILE"
+          for _ in $(seq 1 50); do
+            [ -s "$RELAY_READY" ] && break
+            kill -0 "$RELAY_PID" 2>/dev/null || break
+            sleep 0.1
+          done
+          if [ ! -s "$RELAY_READY" ]; then
+            echo "::error::Failed to start the GitHub OIDC relay."
+            sed -n '1,20p' "$RELAY_LOG" || true
             exit 1
           fi
-          echo "::add-mask::$OIDC_JWT"
-
-          if [ "$MODE" = "license" ]; then
-            # Pack the license after the OIDC JWT; the proxy verifies the JWT (identity)
-            # and validates the license (skips the free quota). Mask both halves.
-            echo "::add-mask::$LICENSE"
-            BEARER="${OIDC_JWT}~codeboarding-license~${LICENSE}"
-            echo "Using CodeBoarding license via hosted proxy (OIDC-identified)."
-          else
-            BEARER="$OIDC_JWT"
-            echo "Using the free hosted tier via a GitHub OIDC token (metered per repository owner)."
-          fi
-
-          echo "::add-mask::$BEARER"
-          printf '%s' "$BEARER" > "${RUNNER_TEMP}/cb-llm-key"
+          RELAY_PORT="$(cat "$RELAY_READY")"
+          case "$RELAY_PORT" in *[!0-9]*|'') echo "::error::OIDC relay returned an invalid port."; exit 1 ;; esac
+          printf '%s' 'github-actions-oidc-relay' > "${RUNNER_TEMP}/cb-llm-key"
           printf '%s' "$PROVIDER_ENV" > "${RUNNER_TEMP}/cb-provider-env"
-          printf '%s' "$PROXY_URL" > "${RUNNER_TEMP}/cb-base-url"
+          printf '%s' "http://127.0.0.1:${RELAY_PORT}" > "${RUNNER_TEMP}/cb-base-url"
           printf '%s' "$AGENT_MODEL" > "${RUNNER_TEMP}/cb-agent-model"
           printf '%s' "$PARSING_MODEL" > "${RUNNER_TEMP}/cb-parsing-model"
+          if [ "$MODE" = "license" ]; then
+            echo "Using CodeBoarding license via a GitHub OIDC relay (token refreshed per request)."
+          else
+            echo "Using the free hosted tier via a GitHub OIDC relay (token refreshed per request)."
+          fi
           exit 0
         fi
 
@@ -1202,11 +1206,18 @@ runs:
       if: always() && steps.guard.outputs.skip != 'true'
       shell: bash
       run: |
+        if [ -f "${RUNNER_TEMP}/cb-oidc-relay.pid" ]; then
+          kill "$(cat "${RUNNER_TEMP}/cb-oidc-relay.pid")" 2>/dev/null || true
+        fi
         rm -f "${RUNNER_TEMP}/cb-llm-key" \
               "${RUNNER_TEMP}/cb-provider-env" \
               "${RUNNER_TEMP}/cb-base-url" \
               "${RUNNER_TEMP}/cb-agent-model" \
-              "${RUNNER_TEMP}/cb-parsing-model"
+              "${RUNNER_TEMP}/cb-parsing-model" \
+              "${RUNNER_TEMP}/cb-oidc-relay.pid" \
+              "${RUNNER_TEMP}/cb-oidc-relay-port" \
+              "${RUNNER_TEMP}/cb-oidc-relay-license" \
+              "${RUNNER_TEMP}/cb-oidc-relay.log"
 
     - name: Diff analyses → Mermaid
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
