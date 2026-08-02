@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.9.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.9.0...v1.9.1) (2026-08-02)
+
+
+### Bug Fixes
+
+* don't let a late failure erase a review that already posted ([#66](https://github.com/CodeBoarding/CodeBoarding-action/issues/66)) ([4606c1a](https://github.com/CodeBoarding/CodeBoarding-action/commit/4606c1a06dd5810bb88fcbff28a6572ef903a577))
+* refresh GitHub OIDC tokens per request ([#65](https://github.com/CodeBoarding/CodeBoarding-action/issues/65)) ([b90704c](https://github.com/CodeBoarding/CodeBoarding-action/commit/b90704c3089d172ded115601b0664f25b8d17530))
+
 ## [1.9.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.8.1...v1.9.0) (2026-07-28)
 
 
