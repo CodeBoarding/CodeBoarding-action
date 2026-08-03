@@ -51,7 +51,16 @@ def _parse_cli_response(raw: str, output_dir: str) -> tuple[bool, Path | None, d
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise AnalysisError(f"Invalid CodeBoarding JSON response: {exc}") from exc
+        payload = None
+        lines = raw.splitlines()
+        for index, line in enumerate(lines):
+            if line.lstrip().startswith("{"):
+                try:
+                    payload = json.loads("\n".join(lines[index:]))
+                except json.JSONDecodeError:
+                    continue
+        if payload is None:
+            raise AnalysisError(f"Invalid CodeBoarding JSON response: {exc}") from exc
 
     if not isinstance(payload, dict):
         raise AnalysisError("CodeBoarding JSON response is not an object")

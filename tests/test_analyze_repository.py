@@ -46,6 +46,14 @@ class AnalyzeRepositoryTests(unittest.TestCase):
         self.assertTrue(requires_full)
         self.assertIsNone(path)
 
+    def test_parse_cli_response_accepts_logs_before_json(self) -> None:
+        raw = "Analyzing repository...\n" + json.dumps(
+            {"error": "baseline unavailable", "requiresFullAnalysis": True}, indent=2
+        )
+        requires_full, path, _ = ar._parse_cli_response(raw, "/tmp/output")
+        self.assertTrue(requires_full)
+        self.assertIsNone(path)
+
     def test_parse_main_incremental_success(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
