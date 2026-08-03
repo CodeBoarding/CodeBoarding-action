@@ -148,5 +148,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except AnalysisError as exc:
-        print(f"::error::{exc}")
+        print(f"::error::{exc}", file=sys.stderr)
         raise SystemExit(1)
