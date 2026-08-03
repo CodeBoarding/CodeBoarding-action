@@ -701,10 +701,6 @@ runs:
           exit 1
         fi
 
-        if [ -n "$BASE_DIR" ] && git worktree list | awk '{print $1}' | grep -q "$BASE_DIR"; then
-          git worktree remove --force "$BASE_DIR" >/dev/null 2>&1 || true
-        fi
-
         echo "analysis_mode=$MODE" >> "$GITHUB_OUTPUT"
         echo "analysis_path=$HEAD_PATH" >> "$GITHUB_OUTPUT"
         echo "analysis_depth=$DEPTH" >> "$GITHUB_OUTPUT"
