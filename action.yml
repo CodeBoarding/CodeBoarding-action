@@ -731,7 +731,7 @@ runs:
         printf '%s' "$DIFF" > "$META"
 
         N_CHANGED="$(jq -r '.n_changed' "$META")"
-        TRUNCATED="$(jq -r '.truncated | ascii_downcase' "$META")"
+        TRUNCATED="$(jq -r '.truncated' "$META")"
         echo "diagram_md=$DIAGRAM_OUT" >> "$GITHUB_OUTPUT"
         echo "n_changed=$N_CHANGED" >> "$GITHUB_OUTPUT"
         echo "truncated=$TRUNCATED" >> "$GITHUB_OUTPUT"
