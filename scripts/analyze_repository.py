@@ -44,7 +44,7 @@ def _normalize_analysis_path(payload: dict, output_dir: str) -> Path:
     return candidate
 
 
-def _parse_cli_response(raw: str, output_dir: str) -> tuple[bool, Path, dict]:
+def _parse_cli_response(raw: str, output_dir: str) -> tuple[bool, Path | None, dict]:
     if not raw.strip():
         raise AnalysisError("CodeBoarding command produced no JSON output")
 
@@ -57,6 +57,9 @@ def _parse_cli_response(raw: str, output_dir: str) -> tuple[bool, Path, dict]:
         raise AnalysisError("CodeBoarding JSON response is not an object")
 
     requires_full = _parse_bool(payload.get("requiresFullAnalysis"), field="requiresFullAnalysis")
+    if requires_full and not payload.get("analysis_path"):
+        return True, None, payload
+
     analysis_path = _normalize_analysis_path(payload, output_dir)
 
     if not analysis_path.is_file():
@@ -84,15 +87,15 @@ def _run_command(args: list[str], output_dir: Path) -> str:
     return completed.stdout
 
 
-def run_incremental(checkout: Path, output_dir: Path) -> tuple[bool, Path, dict]:
+def run_incremental(checkout: Path, output_dir: Path) -> tuple[bool, Path | None, dict]:
     output_dir.mkdir(parents=True, exist_ok=True)
     raw = _run_command([PROG, "incremental", "--local", str(checkout), "--output-dir", str(output_dir)], output_dir)
     return _parse_cli_response(raw, str(output_dir))
 
 
-def run_full(checkout: Path, output_dir: Path, depth_level: str) -> tuple[bool, Path, dict]:
+def run_full(checkout: Path, output_dir: Path, depth_level: str) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
-    raw = _run_command(
+    _run_command(
         [
             PROG,
             "full",
@@ -106,7 +109,10 @@ def run_full(checkout: Path, output_dir: Path, depth_level: str) -> tuple[bool, 
         ],
         output_dir,
     )
-    return _parse_cli_response(raw, str(output_dir))
+    analysis_path = output_dir / "analysis.json"
+    if not analysis_path.is_file():
+        raise AnalysisError(f"Full analysis did not produce: {analysis_path}")
+    return analysis_path
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -126,12 +132,12 @@ def main(argv: list[str] | None = None) -> int:
         requires_full, analysis_path, _ = run_incremental(checkout, output_dir)
         print(f"analysis_mode=incremental")
         print(f"requires_full_analysis={str(requires_full).lower()}")
-        print(f"analysis_path={analysis_path}")
+        print(f"analysis_path={analysis_path or ''}")
         return 0
 
     if not args.depth_level:
         raise SystemExit("--depth-level is required for mode=full")
-    requires_full, analysis_path, _ = run_full(checkout, output_dir, args.depth_level)
+    analysis_path = run_full(checkout, output_dir, args.depth_level)
     print(f"analysis_mode=full")
     print("requires_full_analysis=false")
     print(f"analysis_path={analysis_path}")

@@ -40,6 +40,12 @@ class AnalyzeRepositoryTests(unittest.TestCase):
             with self.assertRaises(ar.AnalysisError):
                 ar._parse_cli_response(payload, str(root))
 
+    def test_parse_cli_response_accepts_full_fallback_without_analysis_path(self) -> None:
+        payload = json.dumps({"error": "baseline unavailable", "requiresFullAnalysis": True})
+        requires_full, path, _ = ar._parse_cli_response(payload, "/tmp/output")
+        self.assertTrue(requires_full)
+        self.assertIsNone(path)
+
     def test_parse_main_incremental_success(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -93,6 +99,33 @@ class AnalyzeRepositoryTests(unittest.TestCase):
                         str(out_dir),
                     ]
                 )
+
+    def test_main_full_uses_generated_analysis_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "repo"
+            out_dir = root / "out"
+            checkout.mkdir()
+
+            def fake_run(_args, output_dir):
+                (output_dir / "analysis.json").write_text("ok", encoding="utf-8")
+                return "human-readable CLI output"
+
+            stdout = io.StringIO()
+            with patch("sys.stdout", stdout), patch.object(ar, "_run_command", side_effect=fake_run):
+                ar.main(
+                    [
+                        "full",
+                        "--checkout",
+                        str(checkout),
+                        "--output-dir",
+                        str(out_dir),
+                        "--depth-level",
+                        "1",
+                    ]
+                )
+
+            self.assertIn(f"analysis_path={out_dir / 'analysis.json'}", stdout.getvalue())
 
     def test_main_rejects_bad_cli_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

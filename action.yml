@@ -378,7 +378,7 @@ runs:
         NEED_FULL="$(parse_value requires_full_analysis "$OUT")"
         ANALYSIS_PATH="$(parse_value analysis_path "$OUT")"
 
-        if [ -z "$MODE" ] || [ -z "$ANALYSIS_PATH" ] || [ "$MODE" != "incremental" ] && [ "$MODE" != "full" ]; then
+        if [ -z "$MODE" ] || { [ "$NEED_FULL" != "true" ] && [ -z "$ANALYSIS_PATH" ]; } || [ "$MODE" != "incremental" ] && [ "$MODE" != "full" ]; then
           echo "$OUT"
           echo "::error::Could not parse incremental output contract." && exit 1
         fi
@@ -645,7 +645,7 @@ runs:
         NEED_FULL="$(parse_value requires_full_analysis "$OUT")"
         HEAD_PATH="$(parse_value analysis_path "$OUT")"
 
-        if [ -z "$MODE" ] || [ -z "$HEAD_PATH" ] || [ "$MODE" != "incremental" ] && [ "$MODE" != "full" ]; then
+        if [ -z "$MODE" ] || { [ "$NEED_FULL" != "true" ] && [ -z "$HEAD_PATH" ]; } || [ "$MODE" != "incremental" ] && [ "$MODE" != "full" ]; then
           echo "$OUT"
           echo "::error::Could not parse incremental output contract." && exit 1
         fi
@@ -667,7 +667,7 @@ runs:
             MODE="$(parse_value analysis_mode "$OUT")"
             NEED_FULL="$(parse_value requires_full_analysis "$OUT")"
             HEAD_PATH="$(parse_value analysis_path "$OUT")"
-            if [ -z "$MODE" ] || [ -z "$HEAD_PATH" ]; then
+            if [ -z "$MODE" ] || { [ "$NEED_FULL" != "true" ] && [ -z "$HEAD_PATH" ]; }; then
               echo "$OUT"
               echo "::error::Could not parse head retry output contract." && exit 1
             fi
