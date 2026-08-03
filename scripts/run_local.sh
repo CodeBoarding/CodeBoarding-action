@@ -100,8 +100,8 @@ else
 
   REPO="$(cd "$REPO" && pwd)"
 
-  git -C "$REPO" rev-parse -q --verify "$BASE_REF"^{commit} >/dev/null 2>&1 || git -C "$REPO" fetch origin "$BASE_REF" --depth=1
-  git -C "$REPO" rev-parse -q --verify "$HEAD_REF"^{commit} >/dev/null 2>&1 || git -C "$REPO" fetch origin "$HEAD_REF" --depth=1
+  git -C "$REPO" rev-parse -q --verify "$BASE_REF^{commit}" >/dev/null 2>&1 || git -C "$REPO" fetch origin "$BASE_REF" --depth=1
+  git -C "$REPO" rev-parse -q --verify "$HEAD_REF^{commit}" >/dev/null 2>&1 || git -C "$REPO" fetch origin "$HEAD_REF" --depth=1
   BASE_SHA="$(git -C "$REPO" rev-parse "$BASE_REF^{commit}")"
   HEAD_SHA="$(git -C "$REPO" rev-parse "$HEAD_REF^{commit}")"
 
@@ -117,13 +117,7 @@ else
 
   BASELINE_DEPTH=""
   if [ -f "$BASE_DIR/.codeboarding/analysis.json" ]; then
-    BASELINE_DEPTH="$(python3 - "$BASE_DIR/.codeboarding/analysis.json" <<'PY'
-import json, sys
-try:
-  print(json.loads(open(sys.argv[1]).read()).get("metadata", {}).get("depth_level", ""))
-except Exception:
-  print("")
-PY)"
+    BASELINE_DEPTH="$(python3 -c 'import json, sys; data = json.load(open(sys.argv[1])); print(data.get("metadata", {}).get("depth_level", ""))' "$BASE_DIR/.codeboarding/analysis.json" 2>/dev/null || true)"
   fi
 
   if [ -n "$BASELINE_DEPTH" ] && [[ "$BASELINE_DEPTH" =~ ^[0-9]+$ ]]; then
