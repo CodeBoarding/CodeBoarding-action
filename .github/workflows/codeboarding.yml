@@ -31,6 +31,7 @@ jobs:
       contents: read
       pull-requests: write  # post / update the architecture-diff PR comment
       issues: write         # the /codeboarding issue_comment trigger + comment API
+      id-token: write       # mint per-request OIDC credentials for the relay
     # Never auto-review the sync mode's own baseline PR (head branch
     # 'codeboarding/sync', the sync_pr_branch default): it only changes generated
     # files, so a diff comment would be noise. Scoped to THIS repo's head so a fork
@@ -123,4 +124,3 @@ jobs:
       - uses: ./
         with:
           github_token: ${{ steps.codeboarding-app-token-client.outputs.token || steps.codeboarding-app-token-app.outputs.token || github.token }}
-          llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
