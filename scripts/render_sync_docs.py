@@ -24,7 +24,7 @@ def concat_overview(docs_dir: Path, out_path: Path) -> None:
     out_path.write_text("\n\n".join(p.read_text(encoding="utf-8").rstrip() for p in files) + "\n", encoding="utf-8")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Render markdown docs from an analysis JSON.")
     parser.add_argument("--analysis", required=True, type=Path, help="Path to analysis.json")
     parser.add_argument("--output-dir", required=True, type=Path, help="Directory to write docs")
@@ -32,7 +32,7 @@ def main() -> int:
     parser.add_argument("--repo-ref", required=True)
     parser.add_argument("--format", default=".md")
     parser.add_argument("--architecture-file", required=False, type=Path)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     render_docs(
         args.analysis,

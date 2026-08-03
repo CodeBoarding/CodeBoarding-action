@@ -342,15 +342,7 @@ runs:
 
         BASELINE_DEPTH=""
         if [ -f "${GITHUB_WORKSPACE}/.codeboarding/analysis.json" ]; then
-          BASELINE_DEPTH="$(python3 - <<'PY' "${GITHUB_WORKSPACE}/.codeboarding/analysis.json")
-import json, sys
-try:
-    data = json.loads(open(sys.argv[1]).read())
-    print(data.get('metadata', {}).get('depth_level', ''))
-except Exception:
-    print('')
-PY
-"
+          BASELINE_DEPTH="$(python3 -c 'import json, sys; data = json.load(open(sys.argv[1])); print(data.get("metadata", {}).get("depth_level", ""))' "${GITHUB_WORKSPACE}/.codeboarding/analysis.json" 2>/dev/null || true)"
         fi
 
         DEPTH="${BASELINE_DEPTH:-$DEPTH_INPUT}"
@@ -609,15 +601,7 @@ PY
 
         BASELINE_DEPTH=""
         if [ -n "$BASE_SHA" ] && [ -f "$BASE_DIR/.codeboarding/analysis.json" ]; then
-          BASELINE_DEPTH="$(python3 - <<'PY' "$BASE_DIR/.codeboarding/analysis.json")
-import json, sys
-try:
-    data = json.loads(open(sys.argv[1]).read())
-    print(data.get('metadata', {}).get('depth_level', ''))
-except Exception:
-    print('')
-PY
-"
+          BASELINE_DEPTH="$(python3 -c 'import json, sys; data = json.load(open(sys.argv[1])); print(data.get("metadata", {}).get("depth_level", ""))' "$BASE_DIR/.codeboarding/analysis.json" 2>/dev/null || true)"
         fi
 
         DEPTH="${BASELINE_DEPTH:-$DEPTH_INPUT}"
@@ -749,15 +733,14 @@ PY
         set -euo pipefail
         mkdir -p "${RUNNER_TEMP}/cb-review-artifact"
         cp "${{ steps.review_analyze.outputs.analysis_path }}" "${RUNNER_TEMP}/cb-review-artifact/analysis.json"
-        cat > "${RUNNER_TEMP}/cb-review-artifact/metadata.json" <<EOF
-{
-  "mode": "${{ steps.review_analyze.outputs.analysis_mode }}",
-  "analysis_depth": "${{ steps.review_analyze.outputs.analysis_depth }}",
-  "base_sha": "${{ steps.guard.outputs.base_sha }}",
-  "head_sha": "${{ steps.guard.outputs.head_sha }}",
-  "pr_number": "${{ steps.guard.outputs.pr_number }}"
-}
-EOF
+        jq -n \
+          --arg mode "${{ steps.review_analyze.outputs.analysis_mode }}" \
+          --arg analysis_depth "${{ steps.review_analyze.outputs.analysis_depth }}" \
+          --arg base_sha "${{ steps.guard.outputs.base_sha }}" \
+          --arg head_sha "${{ steps.guard.outputs.head_sha }}" \
+          --arg pr_number "${{ steps.guard.outputs.pr_number }}" \
+          '{mode: $mode, analysis_depth: $analysis_depth, base_sha: $base_sha, head_sha: $head_sha, pr_number: $pr_number}' \
+          > "${RUNNER_TEMP}/cb-review-artifact/metadata.json"
         echo "artifact_dir=${RUNNER_TEMP}/cb-review-artifact" >> "$GITHUB_OUTPUT"
 
     - name: Upload review artifact

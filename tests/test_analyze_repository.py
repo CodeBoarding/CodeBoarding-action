@@ -2,10 +2,13 @@
 
 import io
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import analyze_repository as ar
 
@@ -13,7 +16,10 @@ import analyze_repository as ar
 class AnalyzeRepositoryTests(unittest.TestCase):
     def _analysis_json(self, base: Path) -> Path:
         path = base / "analysis.json"
-        path.write_text(json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 2}}, encoding="utf-8") )
+        path.write_text(
+            json.dumps({"metadata": {"commit_hash": "abc123", "depth_level": 2}}),
+            encoding="utf-8",
+        )
         return path
 
     def test_parse_cli_response_accepts_contract_json(self) -> None:
@@ -51,12 +57,20 @@ class AnalyzeRepositoryTests(unittest.TestCase):
                     "_run_command",
                     return_value=json.dumps(
                         {
-                            "analysis_path": str(analysis_path.relative_to(root)),
+                            "analysis_path": str(analysis_path.relative_to(out_dir)),
                             "requiresFullAnalysis": False,
                         }
                     ),
                 ) as _mock:
-                    ar.main(["incremental", "--checkout", str(checkout), "--output-dir", str(out_dir)])
+                    ar.main(
+                        [
+                            "incremental",
+                            "--checkout",
+                            str(checkout),
+                            "--output-dir",
+                            str(out_dir),
+                        ]
+                    )
             lines = dict(line.split("=", 1) for line in stdout.getvalue().splitlines() if "=" in line)
             self.assertEqual(lines.get("analysis_mode"), "incremental")
             self.assertEqual(lines.get("requires_full_analysis"), "false")
@@ -70,7 +84,15 @@ class AnalyzeRepositoryTests(unittest.TestCase):
             checkout.mkdir()
             out_dir.mkdir()
             with self.assertRaises(SystemExit):
-                ar.main(["full", "--checkout", str(checkout), "--output-dir", str(out_dir)])
+                ar.main(
+                    [
+                        "full",
+                        "--checkout",
+                        str(checkout),
+                        "--output-dir",
+                        str(out_dir),
+                    ]
+                )
 
     def test_main_rejects_bad_cli_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -79,9 +101,17 @@ class AnalyzeRepositoryTests(unittest.TestCase):
             out_dir = root / "out"
             checkout.mkdir()
             out_dir.mkdir()
-            with self.assertRaises(SystemExit):
+            with self.assertRaises(ar.AnalysisError):
                 with patch.object(ar, "_run_command", return_value="not-json"):
-                    ar.main(["incremental", "--checkout", str(checkout), "--output-dir", str(out_dir)])
+                    ar.main(
+                        [
+                            "incremental",
+                            "--checkout",
+                            str(checkout),
+                            "--output-dir",
+                            str(out_dir),
+                        ]
+                    )
 
 
 if __name__ == "__main__":
