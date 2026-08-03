@@ -287,6 +287,9 @@ runs:
 
         if [ -n "${LLM_API_KEY:-}" ]; then
           echo "::add-mask::$LLM_API_KEY"
+          LLM_API_KEY="$(printf '%s' "$LLM_API_KEY" | tr -d '[:space:]' | sed -e 's/^"//;s/"$//' -e "s/^'//;s/'\$//")"
+          LLM_API_KEY="${LLM_API_KEY#OPENROUTER_API_KEY=}"
+          echo "::add-mask::$LLM_API_KEY"
           echo "OPENROUTER_API_KEY=$LLM_API_KEY" >> "$GITHUB_ENV"
           exit 0
         fi
