@@ -7,6 +7,10 @@ branding:
   color: 'blue'
 
 inputs:
+  llm_api_key:
+    description: 'Optional OpenRouter API key. When empty, the action uses the hosted tier via GitHub OIDC.'
+    required: false
+    default: ''
   mode:
     description: |
       review: analyze pull requests and post a single sticky comment
@@ -104,6 +108,7 @@ runs:
       id: guard
       shell: bash
       env:
+        GH_TOKEN: ${{ inputs.github_token }}
         MODE: ${{ inputs.mode }}
         EVENT: ${{ github.event_name }}
         REPO: ${{ github.repository }}
@@ -274,10 +279,18 @@ runs:
       if: always() && steps.guard.outputs.skip != 'true'
       shell: bash
       env:
+        LLM_API_KEY: ${{ inputs.llm_api_key }}
         LICENSE_KEY: ${{ inputs.license_key }}
         ACTION_PATH: ${{ github.action_path }}
       run: |
         set -euo pipefail
+
+        if [ -n "${LLM_API_KEY:-}" ]; then
+          echo "::add-mask::$LLM_API_KEY"
+          echo "OPENROUTER_API_KEY=$LLM_API_KEY" >> "$GITHUB_ENV"
+          exit 0
+        fi
+
         if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
           echo "::error::Missing OIDC token. Add permissions: id-token: write." && exit 1
         fi
