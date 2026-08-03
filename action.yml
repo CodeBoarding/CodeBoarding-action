@@ -764,6 +764,28 @@ runs:
         path: ${{ steps.review_artifact_inputs.outputs.artifact_dir }}
         if-no-files-found: error
 
+    - name: Build review comment
+      id: review_body
+      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_render.outputs.rendered == 'true'
+      shell: bash
+      env:
+        HEADER: ${{ inputs.comment_header }}
+        DIAGRAM: ${{ steps.review_render.outputs.diagram_md }}
+        N_CHANGED: ${{ steps.review_render.outputs.n_changed }}
+        ANALYSIS_MODE: ${{ steps.review_analyze.outputs.analysis_mode }}
+        TRUNCATED: ${{ steps.review_render.outputs.truncated }}
+        ARTIFACT_URL: ${{ steps.upload_review_artifact.outputs.artifact-url }}
+      run: |
+        RENDER="full top-level"
+        if [ "$TRUNCATED" = "true" ]; then
+          RENDER="changed-only (auto-trimmed)"
+        fi
+        BODY="${RUNNER_TEMP}/review-comment.md"
+        printf '### %s\n\n**Status:** %s changed component(s)\n**Mode:** `%s`\n**Render:** `%s`\n\n' "$HEADER" "$N_CHANGED" "$ANALYSIS_MODE" "$RENDER" > "$BODY"
+        cat "$DIAGRAM" >> "$BODY"
+        printf '\n\n**Hosted webview:** [open artifact](%s)\n\n<sub>run %s · attempt %s</sub>\n' "$ARTIFACT_URL" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$BODY"
+        echo "path=$BODY" >> "$GITHUB_OUTPUT"
+
     - name: Post review comment
       if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_render.outputs.rendered == 'true'
       uses: marocchino/sticky-pull-request-comment@v2
@@ -771,20 +793,7 @@ runs:
         header: ${{ steps.guard.outputs.sticky_header }}
         number: ${{ steps.guard.outputs.pr_number }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
-        message: |
-          ### ${{ inputs.comment_header }}
-
-          **Status:** ${{ steps.review_render.outputs.n_changed }} changed component(s)
-          **Mode:** `${{ steps.review_analyze.outputs.analysis_mode }}`
-          **Render:** `${{ steps.review_render.outputs.truncated == 'true' && 'changed-only (auto-trimmed)' || 'full top-level' }}`
-
-          ```mermaid
-          $(cat "${{ steps.review_render.outputs.diagram_md }}")
-          ```
-
-          **Hosted webview:** [open artifact](${{ steps.upload_review_artifact.outputs.artifact-url }})
-
-          <sub>run ${{ github.run_id }} · attempt ${{ github.run_attempt }}</sub>
+        path: ${{ steps.review_body.outputs.path }}
 
     - name: Post review failure comment
       if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_render.outcome != 'success'
