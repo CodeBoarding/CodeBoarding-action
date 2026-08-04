@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-08-02T19:55:30.856524+00:00",
-    "source_tree_hash": "5dccc031e326deeed53cff1fc3ded71e4989fc10d9e17681694c81830340b872",
+    "generated_at": "2026-08-04T08:09:39.896940+00:00",
+    "source_tree_hash": "215c295464123bb466e1120afd8753170fb9c9e6f34f6c253faa149db5605c0c",
     "repo_name": "CodeBoarding-action",
     "depth_level": 1,
     "depth_cap": 2,
@@ -49,8 +49,8 @@
         "scripts/engine_adapter.py|scripts.engine_adapter.run_health",
         "scripts/engine_adapter.py|scripts.engine_adapter.main"
       ],
-      "content_hash": "b84ea0daacfb2846",
-      "module_hash": "a8917ac75ea9eb87"
+      "content_hash": "0b868c4b1690db55",
+      "module_hash": "be6787eec8f7d957"
     },
     "scripts/build_component_files.py": {
       "method_keys": [
@@ -160,234 +160,234 @@
     "scripts/engine_adapter.py|scripts.engine_adapter._require_engine": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._require_engine",
-      "start_line": 113,
-      "end_line": 129,
+      "start_line": 115,
+      "end_line": 131,
       "type": "FUNCTION",
       "content_hash": "67f250e5ab6ae27e"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._max_depth": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._max_depth",
-      "start_line": 146,
-      "end_line": 147,
+      "start_line": 148,
+      "end_line": 149,
       "type": "FUNCTION",
       "content_hash": "7928255374526eff"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._is_quota_exhausted": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._is_quota_exhausted",
-      "start_line": 156,
-      "end_line": 171,
+      "start_line": 158,
+      "end_line": 173,
       "type": "FUNCTION",
       "content_hash": "4218c79434f3e787"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._flag_quota_exhausted": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._flag_quota_exhausted",
-      "start_line": 174,
-      "end_line": 183,
+      "start_line": 176,
+      "end_line": 185,
       "type": "FUNCTION",
       "content_hash": "43d8c4e42fd31301"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._log_path": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._log_path",
-      "start_line": 186,
-      "end_line": 187,
+      "start_line": 188,
+      "end_line": 189,
       "type": "FUNCTION",
       "content_hash": "ab1e0f9f06e3f8fc"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._run_ctx": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._run_ctx",
-      "start_line": 190,
-      "end_line": 195,
+      "start_line": 192,
+      "end_line": 197,
       "type": "FUNCTION",
       "content_hash": "476ce556c6108aab"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._clear_dir": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._clear_dir",
-      "start_line": 198,
-      "end_line": 204,
+      "start_line": 200,
+      "end_line": 206,
       "type": "FUNCTION",
       "content_hash": "3ccc93572a4f5e17"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._load_analysis": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._load_analysis",
-      "start_line": 207,
-      "end_line": 214,
+      "start_line": 209,
+      "end_line": 216,
       "type": "FUNCTION",
       "content_hash": "709d0f1926d64785"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._load_metadata": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._load_metadata",
-      "start_line": 217,
-      "end_line": 222,
+      "start_line": 219,
+      "end_line": 224,
       "type": "FUNCTION",
       "content_hash": "13d91df46ff3d941"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._metadata_depth": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._metadata_depth",
-      "start_line": 225,
-      "end_line": 229,
+      "start_line": 227,
+      "end_line": 231,
       "type": "FUNCTION",
       "content_hash": "7f0af5c7089d835c"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._resolve_depth": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._resolve_depth",
-      "start_line": 232,
-      "end_line": 261,
+      "start_line": 234,
+      "end_line": 263,
       "type": "FUNCTION",
       "content_hash": "28d3ae111af1d01f"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._analysis_depth_or_default": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._analysis_depth_or_default",
-      "start_line": 264,
-      "end_line": 268,
+      "start_line": 266,
+      "end_line": 270,
       "type": "FUNCTION",
       "content_hash": "a48c7ce51a7d5843"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._metadata_commit": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._metadata_commit",
-      "start_line": 271,
-      "end_line": 273,
+      "start_line": 273,
+      "end_line": 275,
       "type": "FUNCTION",
       "content_hash": "01f7f66935a67d70"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._analysis_model_error": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._analysis_model_error",
-      "start_line": 276,
-      "end_line": 296,
+      "start_line": 278,
+      "end_line": 298,
       "type": "FUNCTION",
       "content_hash": "a87bfd98ba1b0448"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.baseline_info": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.baseline_info",
-      "start_line": 299,
-      "end_line": 309,
+      "start_line": 301,
+      "end_line": 311,
       "type": "FUNCTION",
       "content_hash": "ed1687bc5cceccd4"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.baseline_depth": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.baseline_depth",
-      "start_line": 312,
-      "end_line": 327,
+      "start_line": 314,
+      "end_line": 329,
       "type": "FUNCTION",
       "content_hash": "eae8eeeb0d24b446"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.validate_base_analysis": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.validate_base_analysis",
-      "start_line": 330,
-      "end_line": 395,
+      "start_line": 332,
+      "end_line": 397,
       "type": "FUNCTION",
       "content_hash": "18d4bc45222c1ed2"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_base": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_base",
-      "start_line": 398,
-      "end_line": 401,
+      "start_line": 400,
+      "end_line": 403,
       "type": "FUNCTION",
       "content_hash": "acc6408e677bc1d3"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_seed": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_seed",
-      "start_line": 404,
-      "end_line": 433,
+      "start_line": 406,
+      "end_line": 435,
       "type": "FUNCTION",
       "content_hash": "456e4a5d346ed496"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._incremental_or_full": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._incremental_or_full",
-      "start_line": 436,
-      "end_line": 480,
+      "start_line": 438,
+      "end_line": 482,
       "type": "FUNCTION",
       "content_hash": "ae147bc42b45ae96"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_head": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_head",
-      "start_line": 483,
-      "end_line": 517,
+      "start_line": 485,
+      "end_line": 519,
       "type": "FUNCTION",
       "content_hash": "830547a05d7c267b"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_analyze": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_analyze",
-      "start_line": 520,
-      "end_line": 569,
+      "start_line": 522,
+      "end_line": 571,
       "type": "FUNCTION",
       "content_hash": "f4ece643f2a3f884"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_analyze.full": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_analyze.full",
-      "start_line": 541,
-      "end_line": 548,
+      "start_line": 543,
+      "end_line": 550,
       "type": "FUNCTION",
       "content_hash": "86c70cb9aefcfa67"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_render": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_render",
-      "start_line": 572,
-      "end_line": 583,
+      "start_line": 574,
+      "end_line": 585,
       "type": "FUNCTION",
       "content_hash": "913dd45aa0feca3c"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_concat": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_concat",
-      "start_line": 586,
-      "end_line": 599,
+      "start_line": 588,
+      "end_line": 601,
       "type": "FUNCTION",
       "content_hash": "8a43dd8ed2d7d864"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._count_report_issues": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._count_report_issues",
-      "start_line": 602,
-      "end_line": 615,
+      "start_line": 604,
+      "end_line": 617,
       "type": "FUNCTION",
       "content_hash": "e658e9b8d50aaa9d"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter._count_health_report": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter._count_health_report",
-      "start_line": 618,
-      "end_line": 626,
+      "start_line": 620,
+      "end_line": 628,
       "type": "FUNCTION",
       "content_hash": "76010258b59599f2"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.run_health": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.run_health",
-      "start_line": 629,
-      "end_line": 655,
+      "start_line": 631,
+      "end_line": 657,
       "type": "FUNCTION",
       "content_hash": "f89f5ca8b0822701"
     },
     "scripts/engine_adapter.py|scripts.engine_adapter.main": {
       "file_path": "scripts/engine_adapter.py",
       "qualified_name": "scripts.engine_adapter.main",
-      "start_line": 658,
-      "end_line": 764,
+      "start_line": 660,
+      "end_line": 767,
       "type": "FUNCTION",
-      "content_hash": "4fb798ecdce88ab0"
+      "content_hash": "584736ad42ae33bc"
     },
     "scripts/build_component_files.py|scripts.build_component_files._walk": {
       "file_path": "scripts/build_component_files.py",

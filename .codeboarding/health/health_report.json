@@ -1,6 +1,6 @@
 {
   "repository_name": "CodeBoarding-action",
-  "timestamp": "2026-08-02T19:55:30.674806+00:00",
+  "timestamp": "2026-08-04T08:09:39.618877+00:00",
   "overall_score": 0.9952145214521453,
   "check_summaries": [
     {
@@ -30,8 +30,8 @@
             {
               "entity_name": "scripts.engine_adapter.main",
               "file_path": "scripts/engine_adapter.py",
-              "line_start": 658,
-              "line_end": 764,
+              "line_start": 660,
+              "line_end": 767,
               "metric_value": 13
             }
           ]
@@ -80,13 +80,20 @@
         {
           "severity": "info",
           "threshold": 0,
-          "description": "Code that cannot be reached during execution",
+          "description": "Variables declared but never used",
           "entities": [
             {
-              "entity_name": "[unreachable_code] Type analysis indicates code is unreachable",
+              "entity_name": "[unused_variable] \"_format\" is not accessed",
+              "file_path": "scripts/oidc_relay.py",
+              "line_start": 99,
+              "line_end": 99,
+              "metric_value": 0.0
+            },
+            {
+              "entity_name": "[unused_variable] \"_MissingEngine\" is not accessed",
               "file_path": "scripts/engine_adapter.py",
-              "line_start": 605,
-              "line_end": 605,
+              "line_start": 86,
+              "line_end": 86,
               "metric_value": 0.0
             }
           ]
@@ -94,20 +101,13 @@
         {
           "severity": "info",
           "threshold": 0,
-          "description": "Variables declared but never used",
+          "description": "Code that cannot be reached during execution",
           "entities": [
             {
-              "entity_name": "[unused_variable] \"_MissingEngine\" is not accessed",
+              "entity_name": "[unreachable_code] Type analysis indicates code is unreachable",
               "file_path": "scripts/engine_adapter.py",
-              "line_start": 85,
-              "line_end": 85,
-              "metric_value": 0.0
-            },
-            {
-              "entity_name": "[unused_variable] \"_format\" is not accessed",
-              "file_path": "scripts/oidc_relay.py",
-              "line_start": 99,
-              "line_end": 99,
+              "line_start": 607,
+              "line_end": 607,
               "metric_value": 0.0
             }
           ]
