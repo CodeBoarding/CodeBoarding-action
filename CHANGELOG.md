@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.9.1...v1.10.0) (2026-08-04)
+
+
+### Features
+
+* add manual release trigger ([#71](https://github.com/CodeBoarding/CodeBoarding-action/issues/71)) ([52b4bc3](https://github.com/CodeBoarding/CodeBoarding-action/commit/52b4bc3f0e029a681165769e4ee6ee150ba01c74))
+
 ## [1.9.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.9.0...v1.9.1) (2026-08-02)
 
 
