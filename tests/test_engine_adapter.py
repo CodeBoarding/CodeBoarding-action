@@ -91,6 +91,7 @@ da = _preload("diagram_analysis", RunPaths=_RunPaths, RunContext=_RunContext)
 da.exceptions = exc
 _preload("diagram_analysis.analysis_json", UnifiedAnalysisJson=_InitialUnifiedAnalysisJson)
 _preload("diagram_analysis.io_utils", write_fingerprint=lambda *a, **k: None)
+_preload("logging_config", setup_logging=lambda **kwargs: None)
 _preload("agents.content_hash", hash_repo_source_files=lambda *a, **k: {})
 _preload("agents")
 _preload("codeboarding_workflows.rendering", render_docs=lambda *args, **kwargs: None)
@@ -113,6 +114,7 @@ _STUBBED = [
     "diagram_analysis.analysis_json",
     "diagram_analysis.exceptions",
     "diagram_analysis.io_utils",
+    "logging_config",
     "health",
     "health.models",
     "health.runner",
@@ -218,6 +220,33 @@ class TestAnalysis(_Base):
             ]
         )
         self.assertEqual(rf.calls[0]["depth_level"], 2)
+
+    def test_main_enables_engine_console_logging(self):
+        self._install()
+        setup_logging = _Rec()
+        with (
+            patch.object(engine_adapter, "setup_logging", setup_logging),
+            patch.dict(os.environ, {"CODEBOARDING_LOG_LEVEL": "DEBUG"}),
+        ):
+            engine_adapter.main(
+                [
+                    "base",
+                    "--repo",
+                    "/repo",
+                    "--out",
+                    "/out",
+                    "--name",
+                    "myrepo",
+                    "--run-id",
+                    "rid-base",
+                    "--depth",
+                    "2",
+                    "--source-sha",
+                    "abc123",
+                ]
+            )
+
+        self.assertEqual(setup_logging.calls, [{"default_level": "DEBUG"}])
 
     def test_main_sets_github_action_source(self):
         rf = _Rec()

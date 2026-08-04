@@ -89,6 +89,7 @@ da = _preload("diagram_analysis", RunPaths=_RunPaths, RunContext=_RunContext)
 da.exceptions = exc
 _preload("diagram_analysis.analysis_json", UnifiedAnalysisJson=_InitialUnifiedAnalysisJson)
 _preload("diagram_analysis.io_utils", write_fingerprint=lambda *a, **k: None)
+_preload("logging_config", setup_logging=lambda **kwargs: None)
 _preload("agents.content_hash", hash_repo_source_files=lambda *a, **k: {})
 _preload("agents")
 _preload("health.models", Severity=_InitialSeverity)
@@ -111,6 +112,7 @@ _STUBBED = [
     "diagram_analysis.analysis_json",
     "diagram_analysis.exceptions",
     "diagram_analysis.io_utils",
+    "logging_config",
     "static_analyzer",
     "static_analyzer.analysis_cache",
     "static_analyzer.cluster_helpers",
