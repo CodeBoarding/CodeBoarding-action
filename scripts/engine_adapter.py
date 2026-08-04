@@ -78,6 +78,7 @@ try:
     from diagram_analysis import RunContext, RunPaths
     from diagram_analysis.exceptions import IncrementalCacheMissingError
     from diagram_analysis.io_utils import write_fingerprint
+    from logging_config import setup_logging
     from static_analyzer import get_static_analysis
     from static_analyzer.analysis_cache import StaticAnalysisCache
     from static_analyzer.cluster_helpers import build_all_cluster_results
@@ -85,6 +86,7 @@ except Exception:  # engine package not installed (metadata-only subcommands don
     BaselineUnavailableError = IncrementalCacheMissingError = _MissingEngine = type("_MissingEngine", (Exception,), {})
     run_full = run_incremental = render_docs = None
     RunContext = RunPaths = None
+    setup_logging = None
     get_static_analysis = StaticAnalysisCache = build_all_cluster_results = None
     hash_repo_source_files = write_fingerprint = None
 
@@ -718,6 +720,7 @@ def main(argv=None) -> int:
     os.environ.setdefault("CODEBOARDING_SOURCE", source)
     if args.cmd in _ENGINE_COMMANDS:
         _require_engine(args.cmd)
+        setup_logging(default_level=os.getenv("CODEBOARDING_LOG_LEVEL", "INFO"))
     try:
         if args.cmd == "base":
             run_base(args.repo, args.out, args.name, args.run_id, args.depth, args.source_sha)
