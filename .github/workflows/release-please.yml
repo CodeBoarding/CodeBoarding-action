@@ -8,6 +8,12 @@ name: release-please
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      release_as:
+        description: 'Optional version to force, for example 1.10.0. Leave empty to use Conventional Commits.'
+        type: string
+        required: false
 
 permissions:
   contents: write
@@ -21,6 +27,7 @@ jobs:
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          release-as: ${{ inputs.release_as || '' }}
 
       # Move the moving major tag here rather than in release-major-tag.yml: a
       # release created with GITHUB_TOKEN does NOT trigger other workflows, so the
