@@ -13,7 +13,7 @@ inputs:
     default: ''
   mode:
     description: |
-      review: analyze pull requests and post a single sticky comment
+      review: analyze pull requests and post architecture review comments
       sync: sync baseline artifacts on push/workflow_dispatch/schedule
     required: false
     default: 'review'
@@ -45,6 +45,10 @@ inputs:
     description: 'Mermaid direction: LR, TD, TB, RL, or BT.'
     required: false
     default: 'LR'
+  trigger_command:
+    description: 'Review-mode slash command that triggers an on-demand run from a pull request comment.'
+    required: false
+    default: '/codeboarding'
   sync_strategy:
     description: 'Sync delivery strategy: push or pull_request.'
     required: false
@@ -121,6 +125,7 @@ runs:
 
         COMMENT_BODY: ${{ github.event.comment.body }}
         AUTHOR_ASSOC: ${{ github.event.comment.author_association }}
+        TRIGGER_COMMAND: ${{ inputs.trigger_command }}
         ISSUE_PR_URL: ${{ github.event.issue.pull_request.url }}
         PR_NUMBER_PULL: ${{ github.event.pull_request.number }}
         PULL_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -204,10 +209,11 @@ runs:
         else
           [ -n "$COMMENT_BODY" ] || skip "Issue comment body is empty."
           FIRST_WORD="$(printf '%s' "$COMMENT_BODY" | tr -d '\r' | awk 'NR==1 {print $1}' || true)"
-          [ "$FIRST_WORD" = "/codeboarding" ] || skip "Issue comment is not /codeboarding."
+          [ -n "$TRIGGER_COMMAND" ] || fail "trigger_command must not be empty."
+          [ "$FIRST_WORD" = "$TRIGGER_COMMAND" ] || skip "Issue comment does not start with '$TRIGGER_COMMAND'."
           case "${AUTHOR_ASSOC:-}" in
             OWNER|MEMBER|COLLABORATOR|MAINTAINER) ;;
-            *) skip "Untrusted actor association for /codeboarding trigger (${AUTHOR_ASSOC:-})." ;;
+            *) skip "Untrusted actor association for $TRIGGER_COMMAND trigger (${AUTHOR_ASSOC:-})." ;;
           esac
           [ -n "$ISSUE_PR_URL" ] || skip "Not a pull request comment."
 
@@ -245,7 +251,39 @@ runs:
         echo "head_ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
         echo "checkout_ref=$HEAD_SHA" >> "$GITHUB_OUTPUT"
         echo "baseline_exists=$BASELINE_EXISTS" >> "$GITHUB_OUTPUT"
-        echo "sticky_header=codeboarding-architecture-diff" >> "$GITHUB_OUTPUT"
+        if [ "$EVENT" = "issue_comment" ]; then
+          # Each slash-command invocation gets its own visible response. Steps
+          # within the same run still update one comment through this header.
+          echo "sticky_header=codeboarding-architecture-diff-run-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+        else
+          echo "sticky_header=codeboarding-architecture-diff" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Acknowledge review command
+      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.guard.outputs.event == 'issue_comment'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        REPOSITORY: ${{ github.repository }}
+        COMMENT_ID: ${{ github.event.comment.id }}
+      run: |
+        gh api -X POST "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" \
+          -f content=eyes >/dev/null 2>&1 || true
+
+    - name: Post review in-progress comment
+      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      continue-on-error: true
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: ${{ steps.guard.outputs.sticky_header }}
+        number: ${{ steps.guard.outputs.pr_number }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        message: |
+          ### ${{ inputs.comment_header }} · analyzing…
+
+          ⏳ CodeBoarding is analyzing the architecture changes in this PR. This usually takes a few minutes.
+
+          <sub>run ${{ github.run_id }} · attempt ${{ github.run_attempt }}</sub>
 
     - name: Checkout
       uses: actions/checkout@v4
