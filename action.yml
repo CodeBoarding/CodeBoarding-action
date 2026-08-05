@@ -468,6 +468,7 @@ runs:
       if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
       shell: bash
       env:
+        ACTION_PATH: ${{ github.action_path }}
         ANALYSIS_PATH: ${{ steps.sync_analyze.outputs.analysis_path }}
         ANALYSIS_DIR: ${{ steps.sync_analyze.outputs.analysis_dir }}
         DOC_DIR: ${{ steps.sync_render.outputs.docs_dir }}
@@ -480,22 +481,30 @@ runs:
         set -euo pipefail
 
         OUTPUT_DIR="${GITHUB_WORKSPACE}/.codeboarding"
+        GENERATED_PATHS="${RUNNER_TEMP}/cb-sync-generated-paths"
         push_token="${{ inputs.push_token }}"
         REPO="${{ github.repository }}"
 
-        rm -rf "$OUTPUT_DIR"
-        mkdir -p "$OUTPUT_DIR" "$OUTPUT_DIR/health"
-
-        cp -a "$DOC_DIR"/*.md "$OUTPUT_DIR/" 2>/dev/null || true
-        cp "$ANALYSIS_PATH" "$OUTPUT_DIR/analysis.json"
-        [ -f "$ANALYSIS_DIR/fingerprint.json" ] && cp "$ANALYSIS_DIR/fingerprint.json" "$OUTPUT_DIR/fingerprint.json"
-        [ -f "$ANALYSIS_DIR/static_analysis.pkl" ] && cp "$ANALYSIS_DIR/static_analysis.pkl" "$OUTPUT_DIR/static_analysis.pkl"
-        [ -f "$ANALYSIS_DIR/static_analysis.sha" ] && cp "$ANALYSIS_DIR/static_analysis.sha" "$OUTPUT_DIR/static_analysis.sha"
-        [ -f "$ANALYSIS_DIR/health/health_report.json" ] && cp "$ANALYSIS_DIR/health/health_report.json" "$OUTPUT_DIR/health/health_report.json"
+        python3 "$ACTION_PATH/scripts/install_sync_artifacts.py" \
+          --output-dir "$OUTPUT_DIR" \
+          --docs-dir "$DOC_DIR" \
+          --analysis "$ANALYSIS_PATH" \
+          --analysis-dir "$ANALYSIS_DIR" \
+          > "$GENERATED_PATHS"
 
         git config user.name "codeboarding-review[bot]"
         git config user.email "codeboarding-review[bot]@users.noreply.github.com"
-        git add "$OUTPUT_DIR" 2>/dev/null || true
+        STAGE_PATHS=()
+        while IFS= read -r path; do
+          if [ -e "$path" ] || git ls-files --error-unmatch "$path" >/dev/null 2>&1; then
+            STAGE_PATHS+=("$path")
+          fi
+        done < "$GENERATED_PATHS"
+        if [ "${#STAGE_PATHS[@]}" -eq 0 ]; then
+          echo "::error::No generated sync artifacts were installed."
+          exit 1
+        fi
+        git add -f -A -- "${STAGE_PATHS[@]}"
 
         if git diff --cached --quiet; then
           echo "::notice::Generated architecture is unchanged."
