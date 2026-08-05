@@ -40,7 +40,7 @@ inputs:
   comment_header:
     description: 'Header text for the review comment.'
     required: false
-    default: 'Architecture review'
+    default: 'CodeBoarding review'
   diagram_direction:
     description: 'Mermaid direction: LR, TD, TB, RL, or BT.'
     required: false
@@ -49,6 +49,10 @@ inputs:
     description: 'Review-mode slash command that triggers an on-demand run from a pull request comment.'
     required: false
     default: '/codeboarding'
+  webview_base_url:
+    description: 'Hosted CodeBoarding webview base URL. Set empty to omit the full-change link.'
+    required: false
+    default: 'https://app.codeboarding.org'
   sync_strategy:
     description: 'Sync delivery strategy: push or pull_request.'
     required: false
@@ -810,18 +814,33 @@ runs:
         HEADER: ${{ inputs.comment_header }}
         DIAGRAM: ${{ steps.review_render.outputs.diagram_md }}
         N_CHANGED: ${{ steps.review_render.outputs.n_changed }}
-        ANALYSIS_MODE: ${{ steps.review_analyze.outputs.analysis_mode }}
-        TRUNCATED: ${{ steps.review_render.outputs.truncated }}
         ARTIFACT_URL: ${{ steps.upload_review_artifact.outputs.artifact-url }}
+        WEBVIEW_BASE_URL: ${{ inputs.webview_base_url }}
+        PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
       run: |
-        RENDER="full top-level"
-        if [ "$TRUNCATED" = "true" ]; then
-          RENDER="changed-only (auto-trimmed)"
+        COMPONENT_NOUN="components"
+        if [ "$N_CHANGED" = "1" ]; then
+          COMPONENT_NOUN="component"
         fi
+
+        RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+        WEBVIEW_URL=""
+        if [ -n "$WEBVIEW_BASE_URL" ]; then
+          WEBVIEW_URL="${WEBVIEW_BASE_URL%/}/${GITHUB_REPOSITORY}/pull/${PR_NUMBER}?run=${GITHUB_RUN_ID}"
+        fi
+
         BODY="${RUNNER_TEMP}/review-comment.md"
-        printf '### %s\n\n**Status:** %s changed component(s)\n**Mode:** `%s`\n**Render:** `%s`\n\n' "$HEADER" "$N_CHANGED" "$ANALYSIS_MODE" "$RENDER" > "$BODY"
+        printf '### %s\n\n**Status:** %s changed %s\n' "$HEADER" "$N_CHANGED" "$COMPONENT_NOUN" > "$BODY"
+        if [ -n "$WEBVIEW_URL" ]; then
+          printf '\nSee the full change in [CodeBoarding](%s).\n' "$WEBVIEW_URL" >> "$BODY"
+        fi
+        printf '\n' >> "$BODY"
         cat "$DIAGRAM" >> "$BODY"
-        printf '\n\n**Hosted webview:** [open artifact](%s)\n\n<sub>run %s · attempt %s</sub>\n' "$ARTIFACT_URL" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >> "$BODY"
+        printf '\n\n<sub>' >> "$BODY"
+        if [ -n "$ARTIFACT_URL" ]; then
+          printf '[download artifacts](%s) · ' "$ARTIFACT_URL" >> "$BODY"
+        fi
+        printf 'run [%s](%s)</sub>\n' "$GITHUB_RUN_ID" "$RUN_URL" >> "$BODY"
         echo "path=$BODY" >> "$GITHUB_OUTPUT"
 
     - name: Post review comment

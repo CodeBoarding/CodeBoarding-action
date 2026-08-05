@@ -313,7 +313,7 @@ Review mode does not need `contents: write`: PR-specific generated files are sto
 | `changed_only` | review | `false` | Render only changed components and incident edges. |
 | `agent_model` | both | `google/gemini-3-flash-preview` | Analysis model. OpenRouter default shown; other providers use their own engine default. |
 | `parsing_model` | both | `google/gemini-3.1-flash-lite-preview` | Parsing model. OpenRouter default shown; other providers use their own engine default. |
-| `comment_header` | review | `Architecture review` | Heading for the PR comment. |
+| `comment_header` | review | `CodeBoarding review` | Heading for the PR comment. |
 | `trigger_command` | review | `/codeboarding` | Slash command for trusted on-demand runs. |
 | `cta_base_url` | review | empty | Click-proxy base URL: deep-links the editor link into VS Code/Cursor and adds a "get the extension" link (tracks owner/repo/pr). Empty links to the extension listing instead (GitHub strips `vscode:`/`cursor:` from comments). |
 | `webview_base_url` | review | `https://app.codeboarding.org` | Hosted webview base URL. The PR comment links to an artifact-backed head-vs-comparison-branch architecture diff. Set empty to disable the browser link. |
