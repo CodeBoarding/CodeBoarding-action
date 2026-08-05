@@ -78,22 +78,31 @@ def _parse_cli_response(raw: str, output_dir: str) -> tuple[bool, Path | None, d
 
 
 def _run_command(args: list[str], output_dir: Path) -> str:
-    try:
-        completed = subprocess.run(
-            args,
-            check=True,
-            capture_output=True,
-            text=True,
-            cwd=str(output_dir.parent),
-            env=None,
-        )
-    except subprocess.CalledProcessError as exc:
-        stdout = (exc.stdout or "").strip()
-        stderr = (exc.stderr or "").strip()
-        details = (stderr or stdout or "no command output").strip()
-        raise AnalysisError(f"Command failed ({' '.join(args)}): {details}") from exc
+    process = subprocess.Popen(
+        args,
+        stdout=subprocess.PIPE,
+        text=True,
+        bufsize=1,
+        cwd=str(output_dir.parent),
+        env=None,
+    )
+    if process.stdout is None:  # pragma: no cover - guaranteed by stdout=PIPE
+        raise AnalysisError(f"Unable to read command output ({' '.join(args)})")
 
-    return completed.stdout
+    stdout_lines: list[str] = []
+    for line in process.stdout:
+        stdout_lines.append(line)
+        # The shell captures this helper's stdout as its result contract. Mirror
+        # CLI stdout to stderr so engine progress remains visible in Actions.
+        print(line, end="", file=sys.stderr, flush=True)
+
+    return_code = process.wait()
+    stdout = "".join(stdout_lines)
+    if return_code != 0:
+        details = stdout.strip() or f"exit code {return_code}; see command logs above"
+        raise AnalysisError(f"Command failed ({' '.join(args)}): {details}")
+
+    return stdout
 
 
 def run_incremental(checkout: Path, output_dir: Path) -> tuple[bool, Path | None, dict]:

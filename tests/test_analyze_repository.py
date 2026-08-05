@@ -54,6 +54,22 @@ class AnalyzeRepositoryTests(unittest.TestCase):
         self.assertTrue(requires_full)
         self.assertIsNone(path)
 
+    def test_run_command_streams_stdout_to_action_logs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            stderr = io.StringIO()
+            command = [
+                sys.executable,
+                "-c",
+                "print('Analyzing repository...'); print('{\"requiresFullAnalysis\": true}')",
+            ]
+
+            with patch("sys.stderr", stderr):
+                stdout = ar._run_command(command, Path(tmp) / "out")
+
+            self.assertIn("Analyzing repository...", stderr.getvalue())
+            self.assertIn('{"requiresFullAnalysis": true}', stderr.getvalue())
+            self.assertEqual(stdout, 'Analyzing repository...\n{"requiresFullAnalysis": true}\n')
+
     def test_parse_main_incremental_success(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
