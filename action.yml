@@ -34,7 +34,7 @@ inputs:
   codeboarding_version:
     description: 'CodeBoarding PyPI package version used as the analysis engine. Pin for reproducibility; set to a newer released version to opt into newer engine releases.'
     required: false
-    default: '0.13.6'
+    default: '0.13.7'
   depth_level:
     description: 'Analysis depth for cold-start or force_full rebuilds. Max depends on tier: 3 on the free hosted tier, 10 with a CodeBoarding license or your own llm_api_key. Once .codeboarding/analysis.json exists, its metadata.depth_level is the source of truth: sync runs incremental at the baseline depth, and review analyzes the PR head at the committed baseline depth so the diff is apples-to-apples (clamped to the tier max). Empty (default): 2 for cold starts.'
     required: false
