@@ -306,7 +306,7 @@ Review mode does not need `contents: write`: PR-specific generated files are sto
 | `mode` | both | `review` | `review` posts the PR architecture-diff comment; `sync` analyzes on push and commits the architecture (`analysis.json` + rendered docs) to `target_branch`, keeping it versioned and current. |
 | `github_token` | both | `${{ github.token }}` | Token for GitHub API calls; in review mode it posts or updates the PR comment. |
 | `push_token` | sync | `${{ github.token }}` | Token for sync-mode delivery. The workflow token can push when the workflow grants `permissions: contents: write`. Separate from `github_token` so commenting can use a GitHub App token while the push uses the workflow token. In `sync_strategy: pull_request` it also opens/updates the rolling PR, so it must additionally carry `pull-requests: write`. |
-| `codeboarding_version` | both | `0.13.6` | CodeBoarding PyPI package version used as the analysis engine. Pin for reproducibility. |
+| `codeboarding_version` | both | `0.13.7` | CodeBoarding PyPI package version used as the analysis engine. Pin for reproducibility. |
 | `depth_level` | both | empty (`2` for cold starts) | Analysis depth for first analysis and `force_full` rebuilds. Max depends on tier: **3** on the free hosted tier, **10** with a CodeBoarding license or your own `llm_api_key`. Once `.codeboarding/analysis.json` exists, its `metadata.depth_level` is the source of truth: sync runs incremental at the baseline depth, and review analyzes the PR head at the committed baseline depth so the diff is apples-to-apples (clamped to the tier max). |
 | `render_depth` | review | `1` | Display depth for the PR diagram. Keep `1` for a clean top-level view. |
 | `diagram_direction` | review | `LR` | Mermaid direction: `LR`, `TD`, `TB`, `RL`, or `BT`. |
@@ -362,7 +362,7 @@ Full local pipeline:
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...
-python -m pip install codeboarding==0.13.6
+python -m pip install codeboarding==0.13.7
 codeboarding-setup --auto-install-npm
 scripts/run_local.sh --repo /path/to/repo --base <base-ref> --head <head-ref>
 ```
