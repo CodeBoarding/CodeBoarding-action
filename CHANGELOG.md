@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.2](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.10.1...v1.10.2) (2026-08-07)
+
+
+### Bug Fixes
+
+* **action:** force release-please via manual dispatch ([#77](https://github.com/CodeBoarding/CodeBoarding-action/issues/77)) ([2fe1d47](https://github.com/CodeBoarding/CodeBoarding-action/commit/2fe1d476e6bad4f55db1bd5e6c88c621d6ec5e2a))
+
 ## [1.10.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.10.0...v1.10.1) (2026-08-05)
 
 
