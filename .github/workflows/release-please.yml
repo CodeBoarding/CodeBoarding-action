@@ -14,6 +14,11 @@ on:
         description: 'Optional version to force, for example 1.10.0. Leave empty to use Conventional Commits.'
         type: string
         required: false
+      force_release:
+        description: 'Force a release workflow by creating one minimal fix commit when no release-worthy commits are detected.'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -28,6 +33,21 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           release-as: ${{ inputs.release_as || '' }}
+
+      - name: Create release trigger commit for manual forced release
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.force_release == true && steps.release.outputs.release_created == 'false' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${{ inputs.release_as }}" ]; then
+            echo "force_release requested, but release_as is required" >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout main
+          git reset --hard origin/main
+          git commit --allow-empty -m "fix(action): trigger manual release ${{ inputs.release_as }}"
+          git push origin HEAD:main
 
       # Move the moving major tag here rather than in release-major-tag.yml: a
       # release created with GITHUB_TOKEN does NOT trigger other workflows, so the
