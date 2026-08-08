@@ -47,6 +47,11 @@ on:
         options: [push, pull_request]
         required: false
         default: push
+      sync_pr_branch:
+        description: 'Machine-owned branch used when sync_strategy is pull_request.'
+        type: string
+        required: false
+        default: codeboarding/sync
 
 # No workflow-level permissions: the single job below requests only what it
 # needs (least privilege), so the default token starts with none.
@@ -142,7 +147,8 @@ jobs:
         with:
           mode: sync
           sync_strategy: ${{ inputs.sync_strategy || 'push' }}
+          sync_pr_branch: ${{ inputs.sync_pr_branch || 'codeboarding/sync' }}
           # App token authenticates the baseline push so the commit is attributed
           # to the CodeBoarding App (logo avatar). Falls back to the workflow token,
           # which can push because this job grants contents: write.
-          github_token: ${{ steps.codeboarding-app-token-client.outputs.token || steps.codeboarding-app-token-app.outputs.token || github.token }}
+          push_token: ${{ steps.codeboarding-app-token-client.outputs.token || steps.codeboarding-app-token-app.outputs.token || github.token }}
