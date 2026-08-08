@@ -313,11 +313,15 @@ def build_diff(base: dict, head: dict) -> dict:
     base_by_name = {_comp_name(component): component for component in base.get("components") or []}
     for component in components:
         base_component = base_by_name.get(_comp_name(component))
-        if base_component is not None and _owns_analysis_change(
-            base_component,
-            component,
-            changed_methods,
-            changed_files,
+        if (
+            component.get("diff_status") == "unchanged"
+            and base_component is not None
+            and _owns_analysis_change(
+                base_component,
+                component,
+                changed_methods,
+                changed_files,
+            )
         ):
             component["diff_status"] = "modified"
     return {
@@ -529,6 +533,7 @@ def render_mermaid(
     """
     all_components = diff.get("components") or []
     all_relations = diff.get("components_relations") or []
+    empty = not all_components
     n_changed = _count_changed_components(all_components)
     changed = n_changed > 0 or _has_changed_relations(all_components, all_relations)
     directive = _init_directive(font_size, node_padding, node_spacing, rank_spacing)
@@ -623,12 +628,13 @@ def render_mermaid(
         "changed": changed,
         "n_nodes": n_nodes if text is not None else 0,
         "n_edges": n_edges if text is not None else 0,
-        "truncated": bool(truncated or text is None),
+        "truncated": bool(truncated or (text is None and not empty)),
         "changed_only": bool(rendered_changed_only),
         "requested_changed_only": bool(changed_only),
+        "empty": empty,
     }
     if text is None or n_edges > MAX_EDGES or len(text) > MAX_TEXT:  # never trip GitHub's red error box
-        meta["truncated"] = True
+        meta["truncated"] = not empty
         return None, meta
     return text, meta
 

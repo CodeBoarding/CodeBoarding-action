@@ -273,6 +273,22 @@ class TestDiff(unittest.TestCase):
         status = {c["name"]: c["diff_status"] for c in dm.build_diff(base, head)["components"]}
         self.assertEqual(status, {"New": "added", "Old": "deleted"})
 
+    def test_removed_method_does_not_turn_deleted_component_into_modified(self):
+        base = {
+            "components": [comp("Gone", {"gone.py": ["Gone.run"]})],
+            "components_relations": [],
+            "methods_index": {
+                "gone.py|Gone.run": {
+                    "file_path": "gone.py",
+                    "qualified_name": "Gone.run",
+                    "content_hash": "before",
+                }
+            },
+        }
+        head = {"components": [], "components_relations": [], "methods_index": {}}
+
+        self.assertEqual(dm.build_diff(base, head)["components"][0]["diff_status"], "deleted")
+
     def test_relation_modified_on_label_change(self):
         base = {"components": [comp("A"), comp("B")], "components_relations": [rel("A", "B", "uses")]}
         head = {"components": [comp("A"), comp("B")], "components_relations": [rel("A", "B", "calls")]}
@@ -470,6 +486,8 @@ class TestRender(unittest.TestCase):
         text, meta = dm.render_mermaid({"components": [], "components_relations": []})
         self.assertIsNone(text)
         self.assertEqual(meta["n_nodes"], 0)
+        self.assertTrue(meta["empty"])
+        self.assertFalse(meta["truncated"])
 
     def test_no_edge_labels(self):
         text, _ = dm.render_mermaid(self._diff(), render_depth=1, edge_labels=False)

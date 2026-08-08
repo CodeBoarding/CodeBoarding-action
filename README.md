@@ -104,7 +104,7 @@ Sync mode commits only Core's persisted incremental-analysis state under `.codeb
 - `static_analysis.sha`
 - `codeboarding_version.json` when emitted by Core
 
-It does **not** render or commit architecture Markdown. Existing v1-generated `.codeboarding/*.md`, `.codeboarding/health/health_report.json`, and `docs/development/architecture.md` are removed on the first v2 sync; user-authored CodeBoarding configuration is preserved.
+It does **not** render or commit architecture Markdown. Existing v1-generated `.codeboarding/*.md` and `docs/development/architecture.md` files carrying CodeBoarding's generated badge, plus `.codeboarding/health/health_report.json`, are removed on the first v2 sync. Hand-written Markdown and user-authored CodeBoarding configuration are preserved.
 
 Create `.github/workflows/codeboarding-sync.yml`:
 

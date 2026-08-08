@@ -61,7 +61,7 @@ outputs:
     value: ${{ steps.review_render.outputs.truncated }}
   review_artifact_url:
     description: 'URL of the uploaded review analysis artifact.'
-    value: ${{ steps.upload_review_artifact_dotcom.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
+    value: ${{ steps.upload_review_artifact_dotcom.outputs.artifact-url }}
   analysis_mode:
     description: 'Whether sync used incremental or full analysis.'
     value: ${{ steps.sync_analyze.outputs.analysis_mode }}
@@ -266,7 +266,7 @@ runs:
       env:
         DIAGRAM: ${{ steps.review_render.outputs.diagram_md }}
         N_CHANGED: ${{ steps.review_render.outputs.n_changed }}
-        ARTIFACT_URL: ${{ steps.upload_review_artifact_dotcom.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
+        ARTIFACT_URL: ${{ steps.upload_review_artifact_dotcom.outputs.artifact-url }}
         PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-comment.sh"
 
