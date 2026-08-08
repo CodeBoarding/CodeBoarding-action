@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
-"""Thin helper to execute CodeBoarding CLI incremental/full commands.
-
-The action is intentionally logic-light: all analysis orchestration happens in
-shell through this script's small JSON contract parser, which only invokes
-CodeBoarding's own ``incremental`` and ``full`` commands.
-"""
+"""Execute CodeBoarding CLI commands and validate their JSON contract."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -31,17 +27,6 @@ def _parse_bool(value: object, *, field: str) -> bool:
         if lowered in {"false", "0", "no", "n"}:
             return False
     raise AnalysisError(f"Invalid contract field '{field}': {value!r}")
-
-
-def _normalize_analysis_path(payload: dict, output_dir: str) -> Path:
-    path = payload.get("analysis_path")
-    if not isinstance(path, str) or not path.strip():
-        raise AnalysisError("Missing or empty 'analysis_path' in CLI response")
-
-    candidate = Path(path)
-    if not candidate.is_absolute():
-        candidate = Path(output_dir) / candidate
-    return candidate
 
 
 def _parse_cli_response(raw: str, output_dir: str) -> tuple[bool, Path | None, dict]:
@@ -69,8 +54,12 @@ def _parse_cli_response(raw: str, output_dir: str) -> tuple[bool, Path | None, d
     if requires_full and not payload.get("analysis_path"):
         return True, None, payload
 
-    analysis_path = _normalize_analysis_path(payload, output_dir)
-
+    path = payload.get("analysis_path")
+    if not isinstance(path, str) or not path.strip():
+        raise AnalysisError("Missing or empty 'analysis_path' in CLI response")
+    analysis_path = Path(path)
+    if not analysis_path.is_absolute():
+        analysis_path = Path(output_dir) / analysis_path
     if not analysis_path.is_file():
         raise AnalysisError(f"analysis_path points to a non-file: {analysis_path}")
 
@@ -84,13 +73,9 @@ def _run_command(args: list[str], output_dir: Path) -> str:
         text=True,
         bufsize=1,
         cwd=str(output_dir.parent),
-        env=None,
     )
-    if process.stdout is None:  # pragma: no cover - guaranteed by stdout=PIPE
-        raise AnalysisError(f"Unable to read command output ({' '.join(args)})")
-
     stdout_lines: list[str] = []
-    for line in process.stdout:
+    for line in process.stdout or ():
         stdout_lines.append(line)
         # The shell captures this helper's stdout as its result contract. Mirror
         # CLI stdout to stderr so engine progress remains visible in Actions.
@@ -103,34 +88,6 @@ def _run_command(args: list[str], output_dir: Path) -> str:
         raise AnalysisError(f"Command failed ({' '.join(args)}): {details}")
 
     return stdout
-
-
-def run_incremental(checkout: Path, output_dir: Path) -> tuple[bool, Path | None, dict]:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    raw = _run_command([PROG, "incremental", "--local", str(checkout), "--output-dir", str(output_dir)], output_dir)
-    return _parse_cli_response(raw, str(output_dir))
-
-
-def run_full(checkout: Path, output_dir: Path, depth_level: str) -> Path:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    _run_command(
-        [
-            PROG,
-            "full",
-            "--local",
-            str(checkout),
-            "--output-dir",
-            str(output_dir),
-            "--depth-level",
-            str(depth_level),
-            "--force",
-        ],
-        output_dir,
-    )
-    analysis_path = output_dir / "analysis.json"
-    if not analysis_path.is_file():
-        raise AnalysisError(f"Full analysis did not produce: {analysis_path}")
-    return analysis_path
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -146,8 +103,10 @@ def main(argv: list[str] | None = None) -> int:
     if not checkout.is_dir():
         raise SystemExit(f"Missing checkout directory: {checkout}")
 
+    output_dir.mkdir(parents=True, exist_ok=True)
     if args.mode == "incremental":
-        requires_full, analysis_path, _ = run_incremental(checkout, output_dir)
+        command = [PROG, "incremental", "--local", str(checkout), "--output-dir", str(output_dir)]
+        requires_full, analysis_path, _ = _parse_cli_response(_run_command(command, output_dir), str(output_dir))
         print(f"analysis_mode=incremental")
         print(f"requires_full_analysis={str(requires_full).lower()}")
         print(f"analysis_path={analysis_path or ''}")
@@ -155,7 +114,23 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.depth_level:
         raise SystemExit("--depth-level is required for mode=full")
-    analysis_path = run_full(checkout, output_dir, args.depth_level)
+    shutil.rmtree(output_dir)
+    output_dir.mkdir(parents=True)
+    command = [
+        PROG,
+        "full",
+        "--local",
+        str(checkout),
+        "--output-dir",
+        str(output_dir),
+        "--depth-level",
+        args.depth_level,
+        "--force",
+    ]
+    _run_command(command, output_dir)
+    analysis_path = output_dir / "analysis.json"
+    if not analysis_path.is_file():
+        raise AnalysisError(f"Full analysis did not produce: {analysis_path}")
     print(f"analysis_mode=full")
     print("requires_full_analysis=false")
     print(f"analysis_path={analysis_path}")

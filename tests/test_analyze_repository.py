@@ -130,6 +130,9 @@ class AnalyzeRepositoryTests(unittest.TestCase):
             checkout = root / "repo"
             out_dir = root / "out"
             checkout.mkdir()
+            out_dir.mkdir()
+            stale_artifact = out_dir / "fingerprint.json"
+            stale_artifact.write_text("stale", encoding="utf-8")
 
             def fake_run(_args, output_dir):
                 (output_dir / "analysis.json").write_text("ok", encoding="utf-8")
@@ -150,6 +153,7 @@ class AnalyzeRepositoryTests(unittest.TestCase):
                 )
 
             self.assertIn(f"analysis_path={out_dir / 'analysis.json'}", stdout.getvalue())
+            self.assertFalse(stale_artifact.exists())
 
     def test_main_rejects_bad_cli_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

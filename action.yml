@@ -1,886 +1,301 @@
 name: 'CodeBoarding Action'
-description: 'CodeBoarding architecture sync and review via the CodeBoarding CLI incremental/full contract.'
+description: 'Review pull request architecture changes or sync a versioned CodeBoarding baseline.'
 author: 'CodeBoarding'
-
 branding:
   icon: 'git-pull-request'
   color: 'blue'
-
 inputs:
-  llm_api_key:
-    description: 'Optional OpenRouter API key. When empty, the action uses the hosted tier via GitHub OIDC.'
-    required: false
-    default: ''
   mode:
-    description: |
-      review: analyze pull requests and post architecture review comments
-      sync: sync baseline artifacts on push/workflow_dispatch/schedule
+    description: 'review posts a PR architecture diff; sync updates the versioned analysis baseline.'
     required: false
     default: 'review'
+  llm_api_key:
+    description: 'Optional direct-provider key. With the default provider, empty selects hosted OIDC usage.'
+    required: false
+    default: ''
+  llm_provider:
+    description: 'Provider for llm_api_key, for example openrouter, anthropic, openai, google, or ollama.'
+    required: false
+    default: 'openrouter'
   license_key:
-    description: 'Optional CodeBoarding license key appended to the OIDC bearer token.'
+    description: 'Optional CodeBoarding license for unmetered hosted usage.'
+    required: false
+    default: ''
+  model:
+    description: 'Optional model used for both analysis and parsing.'
+    required: false
+    default: ''
+  agent_model:
+    description: 'Optional analysis-model override. Takes precedence over model.'
+    required: false
+    default: ''
+  parsing_model:
+    description: 'Optional parsing-model override. Takes precedence over model.'
     required: false
     default: ''
   github_token:
-    description: 'Token for comments, PR metadata, and rolling sync PR writes.'
+    description: 'Token used for comments and sync delivery.'
     required: false
     default: ${{ github.token }}
-  push_token:
-    description: 'Token used for sync branch push operations.'
-    required: false
-    default: ${{ github.token }}
-  codeboarding_version:
-    description: 'CodeBoarding package version.'
-    required: false
-    default: '0.13.5'
-  depth_level:
-    description: 'Full-analysis depth fallback when no committed baseline depth is available.'
-    required: false
-    default: ''
-  comment_header:
-    description: 'Header text for the review comment.'
-    required: false
-    default: 'CodeBoarding review'
-  diagram_direction:
-    description: 'Mermaid direction: LR, TD, TB, RL, or BT.'
-    required: false
-    default: 'LR'
-  trigger_command:
-    description: 'Review-mode slash command that triggers an on-demand run from a pull request comment.'
-    required: false
-    default: '/codeboarding'
-  webview_base_url:
-    description: 'Hosted CodeBoarding webview base URL. Set empty to omit the full-change link.'
-    required: false
-    default: 'https://app.codeboarding.org'
   sync_strategy:
-    description: 'Sync delivery strategy: push or pull_request.'
+    description: 'Sync delivery method: push or pull_request.'
     required: false
     default: 'push'
-  sync_pr_branch:
-    description: 'Rolling sync branch used when sync_strategy=pull_request.'
+  target_branch:
+    description: 'Branch updated by sync mode. Defaults to the event branch.'
     required: false
-    default: 'codeboarding/sync'
-  sync_pr_title:
-    description: 'Rolling sync PR title prefix.'
-    required: false
-    default: '[CodeBoarding sync]'
-  commit_message:
-    description: 'Sync commit message.'
-    required: false
-    default: 'chore(codeboarding): sync architecture baseline'
-
-  # deprecated compatibility no-op inputs (kept for workflow compatibility)
-  changed_only:
-    description: 'Deprecated. Accepted for compatibility only.'
+    default: ''
+  force_full:
+    description: 'Run a full sync analysis instead of reusing the committed baseline.'
     required: false
     default: 'false'
-  render_depth:
-    description: 'Deprecated. Accepted for compatibility only.'
-    required: false
-    default: '1'
-
 outputs:
   diagram_md:
-    description: 'Rendered Mermaid payload (review mode).'
+    description: 'Path to the rendered Mermaid review diagram.'
     value: ${{ steps.review_render.outputs.diagram_md }}
   n_changed:
-    description: 'Change count in the review diff.'
+    description: 'Number of changed components in review mode.'
     value: ${{ steps.review_render.outputs.n_changed }}
   truncated:
-    description: 'True when review render switched to changed-only for GitHub limits.'
+    description: 'Whether the review graph was reduced to fit GitHub limits.'
     value: ${{ steps.review_render.outputs.truncated }}
+  review_artifact_url:
+    description: 'URL of the uploaded review analysis artifact.'
+    value: ${{ steps.upload_review_artifact_dotcom.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
   analysis_mode:
-    description: 'sync mode used: incremental or full.'
+    description: 'Whether sync used incremental or full analysis.'
     value: ${{ steps.sync_analyze.outputs.analysis_mode }}
   files_written:
-    description: 'Number of markdown files written on sync.'
+    description: 'Number of persisted analysis artifacts produced by sync.'
     value: ${{ steps.sync_commit.outputs.files_written }}
   committed:
-    description: 'Whether sync delivery happened.'
+    description: 'Whether sync delivered a baseline commit.'
     value: ${{ steps.sync_commit.outputs.committed }}
   sync_pr_url:
-    description: 'Rolling sync PR URL when strategy is pull_request.'
+    description: 'Rolling sync PR URL when sync_strategy is pull_request.'
     value: ${{ steps.sync_commit.outputs.sync_pr_url }}
   sync_pr_number:
-    description: 'Rolling sync PR number when strategy is pull_request.'
+    description: 'Rolling sync PR number when sync_strategy is pull_request.'
     value: ${{ steps.sync_commit.outputs.sync_pr_number }}
-  review_artifact_url:
-    description: 'Artifact URL used by the hosted review webview.'
-    value: ${{ steps.upload_review_artifact.outputs.artifact-url }}
 
 runs:
   using: 'composite'
   steps:
-    - name: Guard + resolve mode
+    - name: Resolve event
       id: guard
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github_token }}
+        GH_ENTERPRISE_TOKEN: ${{ inputs.github_token }}
+        GH_HOST: ${{ github.server_url }}
         MODE: ${{ inputs.mode }}
         EVENT: ${{ github.event_name }}
-        REPO: ${{ github.repository }}
         REF_NAME: ${{ github.ref_name }}
         REF_TYPE: ${{ github.ref_type }}
-        GITHUB_SHA: ${{ github.sha }}
+        EVENT_SHA: ${{ github.sha }}
         HEAD_AUTHOR_EMAIL: ${{ github.event.head_commit.author.email }}
+        TARGET_BRANCH_INPUT: ${{ inputs.target_branch }}
         SYNC_STRATEGY: ${{ inputs.sync_strategy }}
-        SYNC_PR_BRANCH: ${{ inputs.sync_pr_branch }}
-
         COMMENT_BODY: ${{ github.event.comment.body }}
-        AUTHOR_ASSOC: ${{ github.event.comment.author_association }}
-        TRIGGER_COMMAND: ${{ inputs.trigger_command }}
+        AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
         ISSUE_PR_URL: ${{ github.event.issue.pull_request.url }}
-        PR_NUMBER_PULL: ${{ github.event.pull_request.number }}
+        EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         PULL_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         PULL_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         PULL_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         PULL_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
-        PULL_HEAD_REF: ${{ github.event.pull_request.head.ref }}
-        PULL_BASE_REF: ${{ github.event.pull_request.base.ref }}
-      run: |
-        set -euo pipefail
-
-        fail() { echo "::error::$1"; exit 1; }
-        skip() { echo "::notice::$1"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
-
-        [ "$MODE" = "review" ] || [ "$MODE" = "sync" ] || fail "Unsupported mode '$MODE'."
-        echo "mode=$MODE" >> "$GITHUB_OUTPUT"
-        echo "skip=false" >> "$GITHUB_OUTPUT"
-        echo "event=$EVENT" >> "$GITHUB_OUTPUT"
-        echo "sync_strategy=$SYNC_STRATEGY" >> "$GITHUB_OUTPUT"
-        echo "sync_pr_branch=$SYNC_PR_BRANCH" >> "$GITHUB_OUTPUT"
-
-        if [ "$MODE" = "sync" ]; then
-          if [ "$EVENT" != "push" ] && [ "$EVENT" != "workflow_dispatch" ] && [ "$EVENT" != "schedule" ]; then
-            skip "Sync mode supports only push, workflow_dispatch, and schedule events."
-          fi
-          if [ "$EVENT" = "push" ] && [ "$REF_TYPE" = "tag" ]; then
-            skip "Sync mode ignores tag pushes."
-          fi
-
-          case "$SYNC_STRATEGY" in
-            push|pull_request) ;;
-            *) fail "sync_strategy must be push or pull_request." ;;
-          esac
-          if [ "$SYNC_STRATEGY" = "pull_request" ] && [ "$SYNC_PR_BRANCH" = "$REF_NAME" ]; then
-            fail "sync_pr_branch must differ from the target branch."
-          fi
-
-          case "$HEAD_AUTHOR_EMAIL" in
-            "" ) ;;
-            "codeboarding-review[bot]@users.noreply.github.com"|"codeboarding[bot]@users.noreply.github.com")
-              if [ "$EVENT" = "push" ]; then
-                skip "Skipping loop-guarded bot-owned head commit."
-              fi
-              ;;
-          esac
-
-          echo "target_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-          echo "target_branch=$REF_NAME" >> "$GITHUB_OUTPUT"
-          echo "checkout_ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
-          echo "commit_message=${{ inputs.commit_message }}" >> "$GITHUB_OUTPUT"
-          echo "start_ts=$(date +%s)" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-
-        if [ "$EVENT" != "pull_request" ] && [ "$EVENT" != "issue_comment" ]; then
-          skip "Review mode supports pull_request and issue_comment only."
-        fi
-
-        if [ "$EVENT" = "issue_comment" ] && [ "$REF_TYPE" != "" ] && [ "$REF_TYPE" != "branch" ]; then
-          skip "Issue comment on non-PR context is not supported."
-        fi
-
-        PR_NUMBER=""
-        BASE_SHA=""
-        HEAD_SHA=""
-        BASE_REPO=""
-        HEAD_REPO=""
-        BASE_REF=""
-        HEAD_REF=""
-        BASELINE_EXISTS="false"
-
-        if [ "$EVENT" = "pull_request" ]; then
-          PR_NUMBER="$PR_NUMBER_PULL"
-          BASE_SHA="$PULL_BASE_SHA"
-          HEAD_SHA="$PULL_HEAD_SHA"
-          BASE_REPO="$PULL_BASE_REPO"
-          HEAD_REPO="$PULL_HEAD_REPO"
-          BASE_REF="$PULL_BASE_REF"
-          HEAD_REF="$PULL_HEAD_REF"
-          [ -n "$PR_NUMBER" ] && [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ] || skip "Could not parse pull_request payload."
-        else
-          [ -n "$COMMENT_BODY" ] || skip "Issue comment body is empty."
-          FIRST_WORD="$(printf '%s' "$COMMENT_BODY" | tr -d '\r' | awk 'NR==1 {print $1}' || true)"
-          [ -n "$TRIGGER_COMMAND" ] || fail "trigger_command must not be empty."
-          [ "$FIRST_WORD" = "$TRIGGER_COMMAND" ] || skip "Issue comment does not start with '$TRIGGER_COMMAND'."
-          case "${AUTHOR_ASSOC:-}" in
-            OWNER|MEMBER|COLLABORATOR|MAINTAINER) ;;
-            *) skip "Untrusted actor association for $TRIGGER_COMMAND trigger (${AUTHOR_ASSOC:-})." ;;
-          esac
-          [ -n "$ISSUE_PR_URL" ] || skip "Not a pull request comment."
-
-          PR_JSON="$(gh api "$ISSUE_PR_URL")"
-          PR_NUMBER="$(printf '%s' "$PR_JSON" | jq -r '.number // empty')"
-          BASE_SHA="$(printf '%s' "$PR_JSON" | jq -r '.base.sha // empty')"
-          HEAD_SHA="$(printf '%s' "$PR_JSON" | jq -r '.head.sha // empty')"
-          BASE_REPO="$(printf '%s' "$PR_JSON" | jq -r '.base.repo.full_name // empty')"
-          HEAD_REPO="$(printf '%s' "$PR_JSON" | jq -r '.head.repo.full_name // empty')"
-          BASE_REF="$(printf '%s' "$PR_JSON" | jq -r '.base.ref // empty')"
-          HEAD_REF="$(printf '%s' "$PR_JSON" | jq -r '.head.ref // empty')"
-          [ -n "$PR_NUMBER" ] && [ -n "$BASE_SHA" ] && [ -n "$HEAD_SHA" ] || skip "Failed to read pull request fields."
-        fi
-
-        if [ "$HEAD_REPO" != "$BASE_REPO" ]; then
-          FORK_BASE_SHA="$(git ls-remote "https://github.com/${HEAD_REPO}.git" "refs/heads/${BASE_REF}" | awk '{print $1; exit}')"
-          if [ -n "$FORK_BASE_SHA" ]; then
-            BASE_SHA="$FORK_BASE_SHA"
-            BASE_REPO="$HEAD_REPO"
-          else
-            BASE_SHA=""
-          fi
-        fi
-
-        if [ -n "$BASE_SHA" ]; then
-          BASELINE_EXISTS="true"
-        fi
-
-        echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-        echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
-        echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-        echo "base_repo=$BASE_REPO" >> "$GITHUB_OUTPUT"
-        echo "head_repo=$HEAD_REPO" >> "$GITHUB_OUTPUT"
-        echo "base_ref=$BASE_REF" >> "$GITHUB_OUTPUT"
-        echo "head_ref=$HEAD_REF" >> "$GITHUB_OUTPUT"
-        echo "checkout_ref=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-        echo "baseline_exists=$BASELINE_EXISTS" >> "$GITHUB_OUTPUT"
-        if [ "$EVENT" = "issue_comment" ]; then
-          # Each slash-command invocation gets its own visible response. Steps
-          # within the same run still update one comment through this header.
-          echo "sticky_header=codeboarding-architecture-diff-run-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
-        else
-          echo "sticky_header=codeboarding-architecture-diff" >> "$GITHUB_OUTPUT"
-        fi
+        REPOSITORY: ${{ github.repository }}
+      run: "$GITHUB_ACTION_PATH/scripts/action/guard.sh"
 
     - name: Acknowledge review command
-      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.guard.outputs.event == 'issue_comment'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.event == 'issue_comment'
+      continue-on-error: true
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github_token }}
+        GH_ENTERPRISE_TOKEN: ${{ inputs.github_token }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
         REPOSITORY: ${{ github.repository }}
         COMMENT_ID: ${{ github.event.comment.id }}
-      run: |
-        gh api -X POST "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" \
-          -f content=eyes >/dev/null 2>&1 || true
+      run: GH_HOST="${GITHUB_SERVER_URL#*://}" gh api -X POST "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" -f content=eyes >/dev/null
 
-    - name: Post review in-progress comment
-      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+    - name: Post review progress
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:
-        header: ${{ steps.guard.outputs.sticky_header }}
+        header: ${{ steps.guard.outputs.comment_id }}
         number: ${{ steps.guard.outputs.pr_number }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         message: |
-          ### ${{ inputs.comment_header }} · analyzing…
+          ### CodeBoarding review · analyzing…
 
-          ⏳ CodeBoarding is analyzing the architecture changes in this PR. This usually takes a few minutes.
+          ⏳ CodeBoarding is analyzing this pull request's architecture changes.
 
           <sub>run ${{ github.run_id }} · attempt ${{ github.run_attempt }}</sub>
 
-    - name: Checkout
+    - name: Checkout analysis target
+      if: steps.guard.outputs.skip != 'true'
       uses: actions/checkout@v4
       with:
+        repository: ${{ steps.guard.outputs.checkout_repo }}
+        ref: ${{ steps.guard.outputs.checkout_ref }}
         token: ${{ inputs.github_token }}
-        ref: ${{ steps.guard.outputs.checkout_ref || github.sha }}
-        fetch-depth: 0
+        fetch-depth: 1
         persist-credentials: false
-
-    - name: Prepare review head for issue_comment
-      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.guard.outputs.event == 'issue_comment'
-      shell: bash
-      run: |
-        set -euo pipefail
-        git fetch "https://github.com/${{ steps.guard.outputs.head_repo }}.git" "${{ steps.guard.outputs.head_sha }}" --depth=1
-        git checkout -f "${{ steps.guard.outputs.head_sha }}"
+        path: .codeboarding-target
 
     - name: Setup Python
+      if: steps.guard.outputs.skip != 'true'
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
-    - name: Install CodeBoarding CLI
+    - name: Install CodeBoarding
+      if: steps.guard.outputs.skip != 'true'
       shell: bash
-      run: |
-        python -m pip install --disable-pip-version-check --upgrade pip
-        python -m pip install --disable-pip-version-check "codeboarding==${{ inputs.codeboarding_version }}"
+      run: python -m pip install --disable-pip-version-check 'codeboarding==0.13.5'
 
-    - name: Start OIDC relay
-      id: relay
-      if: always() && steps.guard.outputs.skip != 'true'
+    - name: Configure analysis authentication
+      if: steps.guard.outputs.skip != 'true'
       shell: bash
       env:
+        ACTION_PATH: ${{ github.action_path }}
         LLM_API_KEY: ${{ inputs.llm_api_key }}
+        LLM_PROVIDER: ${{ inputs.llm_provider }}
         LICENSE_KEY: ${{ inputs.license_key }}
-        ACTION_PATH: ${{ github.action_path }}
-      run: |
-        set -euo pipefail
+      run: "$GITHUB_ACTION_PATH/scripts/action/configure-auth.sh"
 
-        if [ -n "${LLM_API_KEY:-}" ]; then
-          echo "::add-mask::$LLM_API_KEY"
-          LLM_API_KEY="$(printf '%s' "$LLM_API_KEY" | tr -d '[:space:]' | sed -e 's/^"//;s/"$//' -e "s/^'//;s/'\$//")"
-          LLM_API_KEY="${LLM_API_KEY#OPENROUTER_API_KEY=}"
-          echo "::add-mask::$LLM_API_KEY"
-          echo "OPENROUTER_API_KEY=$LLM_API_KEY" >> "$GITHUB_ENV"
-          exit 0
-        fi
-
-        if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
-          echo "::error::Missing OIDC token. Add permissions: id-token: write." && exit 1
-        fi
-
-        RELAY_DIR="${RUNNER_TEMP}/codeboarding-relay"
-        mkdir -p "$RELAY_DIR"
-        READY="$RELAY_DIR/ready-port"
-        PID="$RELAY_DIR/relay.pid"
-        LOG="$RELAY_DIR/relay.log"
-        LICENSE_FILE="$RELAY_DIR/license.txt"
-        : > "$LICENSE_FILE"
-        if [ -n "${LICENSE_KEY:-}" ]; then
-          printf '%s' "$LICENSE_KEY" > "$LICENSE_FILE"
-        fi
-
-        RELAY_ARGS=(--upstream-base-url https://openrouter.ai/api/v1 --ready-file "$READY")
-        if [ -s "$LICENSE_FILE" ]; then
-          RELAY_ARGS+=(--license-file "$LICENSE_FILE")
-        fi
-
-        python3 "$ACTION_PATH/scripts/oidc_relay.py" "${RELAY_ARGS[@]}" > "$LOG" 2>&1 &
-        echo $! > "$PID"
-
-        for _ in {1..60}; do
-          [ -s "$READY" ] && break
-          sleep 0.25
-        done
-
-        if [ ! -s "$READY" ]; then
-          echo "::error::OIDC relay did not start." >&2
-          cat "$LOG" >&2 || true
-          exit 1
-        fi
-
-        PORT="$(cat "$READY")"
-        echo "OPENROUTER_BASE_URL=http://127.0.0.1:$PORT" >> "$GITHUB_ENV"
-        echo "OPENROUTER_API_KEY=github-actions-oidc-relay" >> "$GITHUB_ENV"
-        echo "relay_pid=$(/bin/cat "$PID")" >> "$GITHUB_OUTPUT"
-
-    - name: Analyze (sync)
+    - name: Analyze baseline
       id: sync_analyze
-      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
-      shell: bash
-      run: |
-        set -euo pipefail
-
-        parse_value() {
-          local key="$1"
-          local text="$2"
-          printf '%s\n' "$text" | awk -F= -v key="$key" '$1 == key {print $2; exit}'
-        }
-
-        DEPTH_INPUT='${{ inputs.depth_level }}'
-        if [ -n "$DEPTH_INPUT" ] && ! [[ "$DEPTH_INPUT" =~ ^[0-9]+$ ]]; then
-          echo "::error::depth_level must be an integer." && exit 1
-        fi
-
-        ACTION_PATH="${{ github.action_path }}"
-        WORK="${RUNNER_TEMP}/cb-sync"
-        ANALYSIS_DIR="$WORK/analysis"
-        rm -rf "$WORK" && mkdir -p "$ANALYSIS_DIR"
-
-        BASELINE_DEPTH=""
-        if [ -f "${GITHUB_WORKSPACE}/.codeboarding/analysis.json" ]; then
-          BASELINE_DEPTH="$(python3 -c 'import json, sys; data = json.load(open(sys.argv[1])); print(data.get("metadata", {}).get("depth_level", ""))' "${GITHUB_WORKSPACE}/.codeboarding/analysis.json" 2>/dev/null || true)"
-        fi
-
-        DEPTH="${BASELINE_DEPTH:-$DEPTH_INPUT}"
-        DEPTH="${DEPTH:-2}"
-
-        if [ -d "${GITHUB_WORKSPACE}/.codeboarding" ]; then
-          cp -a "${GITHUB_WORKSPACE}/.codeboarding/." "$ANALYSIS_DIR/" 2>/dev/null || true
-        fi
-
-        run_inc() {
-          python3 "$ACTION_PATH/scripts/analyze_repository.py" incremental --checkout "$GITHUB_WORKSPACE" --output-dir "$ANALYSIS_DIR"
-        }
-
-        run_full() {
-          python3 "$ACTION_PATH/scripts/analyze_repository.py" full --checkout "$GITHUB_WORKSPACE" --output-dir "$ANALYSIS_DIR" --depth-level "$DEPTH"
-        }
-
-        OUT="$(run_inc)"
-        MODE="$(parse_value analysis_mode "$OUT")"
-        NEED_FULL="$(parse_value requires_full_analysis "$OUT")"
-        ANALYSIS_PATH="$(parse_value analysis_path "$OUT")"
-
-        if [ -z "$MODE" ] || { [ "$NEED_FULL" != "true" ] && [ -z "$ANALYSIS_PATH" ]; } || [ "$MODE" != "incremental" ] && [ "$MODE" != "full" ]; then
-          echo "$OUT"
-          echo "::error::Could not parse incremental output contract." && exit 1
-        fi
-
-        if [ "$NEED_FULL" = "true" ]; then
-          rm -rf "$ANALYSIS_DIR" && mkdir -p "$ANALYSIS_DIR"
-          OUT="$(run_full)"
-          MODE="$(parse_value analysis_mode "$OUT")"
-          NEED_FULL="$(parse_value requires_full_analysis "$OUT")"
-          ANALYSIS_PATH="$(parse_value analysis_path "$OUT")"
-          if [ -z "$MODE" ] || [ -z "$ANALYSIS_PATH" ] || [ "$MODE" != "full" ]; then
-            echo "$OUT"
-            echo "::error::Could not parse full output contract." && exit 1
-          fi
-        fi
-
-        echo "analysis_mode=$MODE" >> "$GITHUB_OUTPUT"
-        echo "analysis_path=$ANALYSIS_PATH" >> "$GITHUB_OUTPUT"
-        echo "analysis_depth=$DEPTH" >> "$GITHUB_OUTPUT"
-        echo "analysis_dir=$ANALYSIS_DIR" >> "$GITHUB_OUTPUT"
-
-    - name: Render sync docs
-      id: sync_render
-      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
-      shell: bash
-      run: |
-        set -euo pipefail
-        ACTION_PATH="${{ github.action_path }}"
-        DOC_DIR="${RUNNER_TEMP}/cb-sync-docs"
-        rm -rf "$DOC_DIR"
-        python3 "$ACTION_PATH/scripts/render_sync_docs.py" \
-          --analysis "${{ steps.sync_analyze.outputs.analysis_path }}" \
-          --output-dir "$DOC_DIR" \
-          --repo-name "${{ github.repository }}" \
-          --repo-ref "${{ steps.guard.outputs.target_sha }}" \
-          --format ".md" \
-          --architecture-file "${GITHUB_WORKSPACE}/docs/development/architecture.md"
-        echo "docs_dir=$DOC_DIR" >> "$GITHUB_OUTPUT"
-
-    - name: Commit sync artifacts
-      id: sync_commit
-      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        ANALYSIS_PATH: ${{ steps.sync_analyze.outputs.analysis_path }}
+        ANALYSIS_KIND: sync
+        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
+        FORCE_FULL: ${{ inputs.force_full }}
+        MODEL: ${{ inputs.model }}
+        AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
+        PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
+      run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/analyze.sh"'
+
+    - name: Deliver baseline
+      id: sync_commit
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
         ANALYSIS_DIR: ${{ steps.sync_analyze.outputs.analysis_dir }}
-        DOC_DIR: ${{ steps.sync_render.outputs.docs_dir }}
+        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
         TARGET_BRANCH: ${{ steps.guard.outputs.target_branch }}
-        STRATEGY: ${{ steps.guard.outputs.sync_strategy }}
-        SYNC_PR_BRANCH: ${{ inputs.sync_pr_branch }}
-        TARGET_SHA: ${{ steps.guard.outputs.target_sha }}
-        COMMIT_MESSAGE: ${{ steps.guard.outputs.commit_message }}
-      run: |
-        set -euo pipefail
-
-        OUTPUT_DIR="${GITHUB_WORKSPACE}/.codeboarding"
-        GENERATED_PATHS="${RUNNER_TEMP}/cb-sync-generated-paths"
-        push_token="${{ inputs.push_token }}"
-        REPO="${{ github.repository }}"
-
-        python3 "$ACTION_PATH/scripts/install_sync_artifacts.py" \
-          --output-dir "$OUTPUT_DIR" \
-          --docs-dir "$DOC_DIR" \
-          --analysis "$ANALYSIS_PATH" \
-          --analysis-dir "$ANALYSIS_DIR" \
-          > "$GENERATED_PATHS"
-
-        git config user.name "codeboarding-review[bot]"
-        git config user.email "codeboarding-review[bot]@users.noreply.github.com"
-        STAGE_PATHS=()
-        while IFS= read -r path; do
-          if [ -e "$path" ] || git ls-files --error-unmatch "$path" >/dev/null 2>&1; then
-            STAGE_PATHS+=("$path")
-          fi
-        done < "$GENERATED_PATHS"
-        if [ "${#STAGE_PATHS[@]}" -eq 0 ]; then
-          echo "::error::No generated sync artifacts were installed."
-          exit 1
-        fi
-        git add -f -A -- "${STAGE_PATHS[@]}"
-
-        if git diff --cached --quiet; then
-          echo "::notice::Generated architecture is unchanged."
-          echo "files_written=0" >> "$GITHUB_OUTPUT"
-          echo "committed=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-
-        if git diff --cached --quiet -I '"generated_at"' -I '"timestamp"'; then
-          git reset -q
-          echo "::notice::Only timestamp-only changes were detected."
-          echo "files_written=0" >> "$GITHUB_OUTPUT"
-          echo "committed=false" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-
-        shopt -s nullglob
-        FILES=("$OUTPUT_DIR"/*.md)
-        N_FILES="${#FILES[@]}"
-
-        if [ "$STRATEGY" = "pull_request" ]; then
-          AUTH_URL="https://x-access-token:${push_token}@github.com/${REPO}.git"
-          if ! git fetch "$AUTH_URL" "$TARGET_BRANCH"; then
-            echo "::warning::Could not fetch $TARGET_BRANCH."
-            echo "files_written=$N_FILES" >> "$GITHUB_OUTPUT"
-            echo "committed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          BASE_TIP="$(git rev-parse FETCH_HEAD)"
-          if [ -n "$TARGET_SHA" ] && [ "$BASE_TIP" != "$TARGET_SHA" ] && git merge-base --is-ancestor "$TARGET_SHA" "$BASE_TIP" 2>/dev/null; then
-            echo "::notice::Target branch advanced; skipping to newer run."
-            echo "files_written=$N_FILES" >> "$GITHUB_OUTPUT"
-            echo "committed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          SYNC_TIP="$(git ls-remote "$AUTH_URL" "refs/heads/${SYNC_PR_BRANCH}" | awk '{print $1; exit}')"
-          git checkout -B "$SYNC_PR_BRANCH" FETCH_HEAD
-
-          if [ -n "$SYNC_TIP" ]; then
-            PUSH_ARGS=(--force-with-lease="refs/heads/${SYNC_PR_BRANCH}:${SYNC_TIP}")
-          else
-            PUSH_ARGS=()
-          fi
-
-          git commit -m "$COMMIT_MESSAGE" >/dev/null
-          if ! git push ${PUSH_ARGS[@]+"${PUSH_ARGS[@]}"} "$AUTH_URL" "HEAD:refs/heads/${SYNC_PR_BRANCH}"; then
-            echo "::warning::Could not update ${SYNC_PR_BRANCH}."
-            echo "files_written=$N_FILES" >> "$GITHUB_OUTPUT"
-            echo "committed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          PR_TITLE="${{ inputs.sync_pr_title }} $(git rev-parse --short "$TARGET_SHA")"
-          PR_URL="$(gh pr list --repo "$REPO" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --state open --json url --jq '.[0].url // empty' || true)"
-          if [ -z "$PR_URL" ]; then
-            gh pr create --repo "$REPO" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --title "$PR_TITLE" --body "CodeBoarding sync PR for ${TARGET_BRANCH}." >/dev/null 2>&1 || true
-            PR_URL="$(gh pr list --repo "$REPO" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --state open --json url --jq '.[0].url // empty' || true)"
-          fi
-          PR_NUM="$(gh pr list --repo "$REPO" --head "$SYNC_PR_BRANCH" --base "$TARGET_BRANCH" --state open --json number --jq '.[0].number // empty' || true)"
-
-          echo "files_written=$N_FILES" >> "$GITHUB_OUTPUT"
-          echo "committed=true" >> "$GITHUB_OUTPUT"
-          [ -n "$PR_URL" ] && echo "sync_pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
-          [ -n "$PR_NUM" ] && echo "sync_pr_number=$PR_NUM" >> "$GITHUB_OUTPUT"
-          exit 0
-        fi
-
-        git commit -m "$COMMIT_MESSAGE" >/dev/null
-        AUTH_URL="https://x-access-token:${push_token}@github.com/${REPO}.git"
-
-        for attempt in 1 2 3; do
-          if git push "$AUTH_URL" "HEAD:refs/heads/${TARGET_BRANCH}"; then
-            echo "files_written=$N_FILES" >> "$GITHUB_OUTPUT"
-            echo "committed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ "$attempt" -eq 3 ]; then
-            echo "::warning::Could not push sync artifacts to ${TARGET_BRANCH}."
-            echo "files_written=$N_FILES" >> "$GITHUB_OUTPUT"
-            echo "committed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          git fetch "$AUTH_URL" "$TARGET_BRANCH"
-          git rebase --ff-only FETCH_HEAD || true
-        done
+        SYNC_BRANCH_START_SHA: ${{ steps.guard.outputs.sync_branch_start_sha }}
+        SYNC_STRATEGY: ${{ inputs.sync_strategy }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        GH_TOKEN: ${{ inputs.github_token }}
+        GH_ENTERPRISE_TOKEN: ${{ inputs.github_token }}
+        GH_HOST: ${{ github.server_url }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        REPOSITORY: ${{ github.repository }}
+      run: "$GITHUB_ACTION_PATH/scripts/action/deliver-sync.sh"
 
     - name: Write sync summary
       if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
       shell: bash
       env:
-        START_TS: ${{ steps.guard.outputs.start_ts }}
         MODE: ${{ steps.sync_analyze.outputs.analysis_mode }}
-        DEPTH: ${{ steps.sync_analyze.outputs.analysis_depth }}
         COMMITTED: ${{ steps.sync_commit.outputs.committed }}
         FILES: ${{ steps.sync_commit.outputs.files_written }}
-        STRATEGY: ${{ steps.guard.outputs.sync_strategy }}
+        STRATEGY: ${{ inputs.sync_strategy }}
         PR_URL: ${{ steps.sync_commit.outputs.sync_pr_url }}
-      run: |
-        set -euo pipefail
-        NOW=$(date +%s)
-        DUR=0
-        if [ -n "${START_TS:-}" ]; then DUR=$((NOW - START_TS)); fi
-        {
-          echo "### CodeBoarding Sync"
-          echo "- Analysis: ${MODE}"
-          echo "- Depth: ${DEPTH}"
-          echo "- Rendered markdown files: ${FILES:-0}"
-          echo "- Delivered: ${COMMITTED:-false}"
-          echo "- Duration: ${DUR}s"
-          echo "- Strategy: ${STRATEGY}"
-          if [ -n "${PR_URL:-}" ]; then
-            echo "- Sync PR: ${PR_URL}"
-          fi
-        } >> "$GITHUB_STEP_SUMMARY"
+      run: "$GITHUB_ACTION_PATH/scripts/action/sync-summary.sh"
 
-    - name: Analyze (review with fallback)
+    - name: Analyze pull request
       id: review_analyze
-      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       shell: bash
-      run: |
-        set -euo pipefail
-
-        parse_value() {
-          local key="$1"
-          local text="$2"
-          printf '%s\n' "$text" | awk -F= -v key="$key" '$1 == key {print $2; exit}'
-        }
-
-        ACTION_PATH="${{ github.action_path }}"
-        BASE_SHA="${{ steps.guard.outputs.base_sha }}"
-        HEAD_SHA="${{ steps.guard.outputs.head_sha }}"
-        BASE_REPO="${{ steps.guard.outputs.base_repo }}"
-        HEAD_REPO="${{ steps.guard.outputs.head_repo }}"
-        BASELINE_EXISTS="${{ steps.guard.outputs.baseline_exists }}"
-        DEPTH_INPUT='${{ inputs.depth_level }}'
-
-        if [ -n "$DEPTH_INPUT" ] && ! [[ "$DEPTH_INPUT" =~ ^[0-9]+$ ]]; then
-          echo "::error::depth_level must be an integer." && exit 1
-        fi
-
-        WORK="${RUNNER_TEMP}/cb-review"
-        BASE_DIR="$WORK/base"
-        HEAD_DIR="$WORK/head"
-        mkdir -p "$BASE_DIR" "$HEAD_DIR"
-
-        ensure_commit() {
-          local repo="$1"
-          local sha="$2"
-          git cat-file -e "$sha^{commit}" 2>/dev/null && return 0
-          git fetch "https://github.com/${repo}.git" "$sha" --depth=1
-        }
-
-        if [ -n "$BASE_SHA" ]; then
-          ensure_commit "$BASE_REPO" "$BASE_SHA"
-          git worktree add --detach "$BASE_DIR" "$BASE_SHA" >/dev/null
-        fi
-        ensure_commit "${{ github.repository }}" "$HEAD_SHA" || true
-        ensure_commit "$HEAD_REPO" "$HEAD_SHA"
-
-        BASELINE_DEPTH=""
-        if [ -n "$BASE_SHA" ] && [ -f "$BASE_DIR/.codeboarding/analysis.json" ]; then
-          BASELINE_DEPTH="$(python3 -c 'import json, sys; data = json.load(open(sys.argv[1])); print(data.get("metadata", {}).get("depth_level", ""))' "$BASE_DIR/.codeboarding/analysis.json" 2>/dev/null || true)"
-        fi
-
-        DEPTH="${BASELINE_DEPTH:-$DEPTH_INPUT}"
-        DEPTH="${DEPTH:-2}"
-
-        if [ -n "$BASE_SHA" ] && [ -d "$BASE_DIR/.codeboarding" ]; then
-          cp -a "$BASE_DIR/.codeboarding/." "$HEAD_DIR/"
-        fi
-
-        run_incremental() {
-          python3 "$ACTION_PATH/scripts/analyze_repository.py" incremental --checkout "$GITHUB_WORKSPACE" --output-dir "$HEAD_DIR"
-        }
-
-        run_full() {
-          local checkout="$1"
-          local out="$2"
-          python3 "$ACTION_PATH/scripts/analyze_repository.py" full --checkout "$checkout" --output-dir "$out" --depth-level "$DEPTH"
-        }
-
-        BASE_OUT="$WORK/base-full"
-        HAS_BASELINE="false"
-        if [ -n "$BASE_SHA" ] && [ -f "$BASE_DIR/.codeboarding/analysis.json" ]; then
-          HAS_BASELINE="true"
-        fi
-
-        OUT="$(run_incremental)"
-        MODE="$(parse_value analysis_mode "$OUT")"
-        NEED_FULL="$(parse_value requires_full_analysis "$OUT")"
-        HEAD_PATH="$(parse_value analysis_path "$OUT")"
-
-        if [ -z "$MODE" ] || { [ "$NEED_FULL" != "true" ] && [ -z "$HEAD_PATH" ]; } || [ "$MODE" != "incremental" ] && [ "$MODE" != "full" ]; then
-          echo "$OUT"
-          echo "::error::Could not parse incremental output contract." && exit 1
-        fi
-
-        if [ "$HAS_BASELINE" = "false" ] || [ "$NEED_FULL" = "true" ]; then
-          BASE_FULL_PATH=""
-          if [ -n "$BASE_SHA" ]; then
-            BASE_FULL="$(run_full "$BASE_DIR" "$BASE_OUT")"
-            BASE_FULL_PATH="$(parse_value analysis_path "$BASE_FULL")"
-            if [ -z "$BASE_FULL_PATH" ] || [ ! -f "$BASE_FULL_PATH" ]; then
-              echo "$BASE_FULL"
-              echo "::error::Base full analysis did not produce analysis_path."
-              exit 1
-            fi
-
-            rm -rf "$HEAD_DIR" && mkdir -p "$HEAD_DIR"
-            cp -a "$BASE_OUT/." "$HEAD_DIR/"
-            OUT="$(run_incremental)"
-            MODE="$(parse_value analysis_mode "$OUT")"
-            NEED_FULL="$(parse_value requires_full_analysis "$OUT")"
-            HEAD_PATH="$(parse_value analysis_path "$OUT")"
-            if [ -z "$MODE" ] || { [ "$NEED_FULL" != "true" ] && [ -z "$HEAD_PATH" ]; }; then
-              echo "$OUT"
-              echo "::error::Could not parse head retry output contract." && exit 1
-            fi
-
-            if [ "$NEED_FULL" = "true" ]; then
-              FULL_HEAD_OUT="$(run_full "$GITHUB_WORKSPACE" "$WORK/head-full")"
-              MODE="$(parse_value analysis_mode "$FULL_HEAD_OUT")"
-              HEAD_PATH="$(parse_value analysis_path "$FULL_HEAD_OUT")"
-              if [ -z "$MODE" ] || [ -z "$HEAD_PATH" ] || [ "$MODE" != "full" ]; then
-                echo "$FULL_HEAD_OUT"
-                echo "::error::Could not parse head full output contract." && exit 1
-              fi
-            fi
-          fi
-        fi
-
-        BASE_FOR_DIFF=""
-        if [ "$HAS_BASELINE" = "true" ]; then
-          BASE_FOR_DIFF="$BASE_DIR/.codeboarding/analysis.json"
-        elif [ -n "$BASE_FULL_PATH" ] && [ -f "$BASE_FULL_PATH" ]; then
-          BASE_FOR_DIFF="$BASE_FULL_PATH"
-        fi
-
-        if [ -n "${BASE_FOR_DIFF:-}" ] && [ -f "$BASE_FOR_DIFF" ]; then
-          :
-        elif [ -n "$BASE_SHA" ] && [ ! -f "$BASE_FOR_DIFF" ]; then
-          echo "::error::Review baseline still unavailable after fallback."
-          exit 1
-        fi
-
-        echo "analysis_mode=$MODE" >> "$GITHUB_OUTPUT"
-        echo "analysis_path=$HEAD_PATH" >> "$GITHUB_OUTPUT"
-        echo "analysis_depth=$DEPTH" >> "$GITHUB_OUTPUT"
-        echo "base_analysis_path=$BASE_FOR_DIFF" >> "$GITHUB_OUTPUT"
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        ANALYSIS_KIND: review
+        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
+        REVIEW_BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        REVIEW_HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
+        REVIEW_BASE_REPO: ${{ steps.guard.outputs.base_repo }}
+        GIT_TOKEN: ${{ inputs.github_token }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        MODEL: ${{ inputs.model }}
+        AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
+        PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
+      run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/analyze.sh"'
 
     - name: Render review diagram
       id: review_render
-      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       shell: bash
-      run: |
-        set -euo pipefail
-        ACTION_PATH="${{ github.action_path }}"
-        BASE_ANALYSIS="${{ steps.review_analyze.outputs.base_analysis_path }}"
-        HEAD_ANALYSIS="${{ steps.review_analyze.outputs.analysis_path }}"
-
-        if [ -z "$BASE_ANALYSIS" ] || [ ! -f "$BASE_ANALYSIS" ]; then
-          echo "::error::Review baseline missing."
-          exit 1
-        fi
-        if [ -z "$HEAD_ANALYSIS" ] || [ ! -f "$HEAD_ANALYSIS" ]; then
-          echo "::error::Review head analysis missing."
-          exit 1
-        fi
-
-        DIAGRAM_OUT="${RUNNER_TEMP}/diagram.md"
-        META="${RUNNER_TEMP}/diagram_meta.json"
-        DIFF="$(python3 "$ACTION_PATH/scripts/diff_to_mermaid.py" --base "$BASE_ANALYSIS" --head "$HEAD_ANALYSIS" --out "$DIAGRAM_OUT" --direction "${{ inputs.diagram_direction }}" --render-depth 1)"
-        printf '%s' "$DIFF" > "$META"
-
-        N_CHANGED="$(jq -r '.n_changed' "$META")"
-        TRUNCATED="$(jq -r '.truncated' "$META")"
-        echo "diagram_md=$DIAGRAM_OUT" >> "$GITHUB_OUTPUT"
-        echo "n_changed=$N_CHANGED" >> "$GITHUB_OUTPUT"
-        echo "truncated=$TRUNCATED" >> "$GITHUB_OUTPUT"
-        echo "rendered=true" >> "$GITHUB_OUTPUT"
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        BASE_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.base_analysis_path }}
+        HEAD_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
+      run: "$GITHUB_ACTION_PATH/scripts/action/render-review.sh"
 
     - name: Build review artifact
-      id: review_artifact_inputs
-      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      id: review_artifact
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       shell: bash
-      run: |
-        set -euo pipefail
-        mkdir -p "${RUNNER_TEMP}/cb-review-artifact"
-        cp "${{ steps.review_analyze.outputs.analysis_path }}" "${RUNNER_TEMP}/cb-review-artifact/analysis.json"
-        jq -n \
-          --arg mode "${{ steps.review_analyze.outputs.analysis_mode }}" \
-          --arg analysis_depth "${{ steps.review_analyze.outputs.analysis_depth }}" \
-          --arg base_sha "${{ steps.guard.outputs.base_sha }}" \
-          --arg head_sha "${{ steps.guard.outputs.head_sha }}" \
-          --arg pr_number "${{ steps.guard.outputs.pr_number }}" \
-          '{mode: $mode, analysis_depth: $analysis_depth, base_sha: $base_sha, head_sha: $head_sha, pr_number: $pr_number}' \
-          > "${RUNNER_TEMP}/cb-review-artifact/metadata.json"
-        echo "artifact_dir=${RUNNER_TEMP}/cb-review-artifact" >> "$GITHUB_OUTPUT"
+      env:
+        ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
+        ANALYSIS_MODE: ${{ steps.review_analyze.outputs.analysis_mode }}
+        BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
+        PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
+      run: "$GITHUB_ACTION_PATH/scripts/action/build-review-artifact.sh"
 
     - name: Upload review artifact
-      id: upload_review_artifact
-      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_render.outputs.rendered == 'true'
+      id: upload_review_artifact_dotcom
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && github.server_url == 'https://github.com'
       uses: actions/upload-artifact@v4
       with:
         name: codeboarding-review-${{ github.run_id }}-${{ github.run_attempt }}
-        path: ${{ steps.review_artifact_inputs.outputs.artifact_dir }}
+        path: ${{ steps.review_artifact.outputs.artifact_dir }}
+        if-no-files-found: error
+
+    - name: Upload review artifact (GitHub Enterprise Server)
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && github.server_url != 'https://github.com'
+      uses: actions/upload-artifact@v3.2.2-node20
+      with:
+        name: codeboarding-review-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ steps.review_artifact.outputs.artifact_dir }}
         if-no-files-found: error
 
     - name: Build review comment
       id: review_body
-      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_render.outputs.rendered == 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       shell: bash
       env:
-        HEADER: ${{ inputs.comment_header }}
         DIAGRAM: ${{ steps.review_render.outputs.diagram_md }}
         N_CHANGED: ${{ steps.review_render.outputs.n_changed }}
-        ARTIFACT_URL: ${{ steps.upload_review_artifact.outputs.artifact-url }}
-        WEBVIEW_BASE_URL: ${{ inputs.webview_base_url }}
+        ARTIFACT_URL: ${{ steps.upload_review_artifact_dotcom.outputs.artifact-url || format('{0}/{1}/actions/runs/{2}', github.server_url, github.repository, github.run_id) }}
         PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
-      run: |
-        COMPONENT_NOUN="components"
-        if [ "$N_CHANGED" = "1" ]; then
-          COMPONENT_NOUN="component"
-        fi
-
-        RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-        WEBVIEW_URL=""
-        if [ -n "$WEBVIEW_BASE_URL" ]; then
-          WEBVIEW_URL="${WEBVIEW_BASE_URL%/}/${GITHUB_REPOSITORY}/pull/${PR_NUMBER}?run=${GITHUB_RUN_ID}"
-        fi
-
-        BODY="${RUNNER_TEMP}/review-comment.md"
-        printf '### %s\n\n**Status:** %s changed %s\n' "$HEADER" "$N_CHANGED" "$COMPONENT_NOUN" > "$BODY"
-        if [ -n "$WEBVIEW_URL" ]; then
-          printf '\nSee the full change in [CodeBoarding](%s).\n' "$WEBVIEW_URL" >> "$BODY"
-        fi
-        printf '\n' >> "$BODY"
-        cat "$DIAGRAM" >> "$BODY"
-        printf '\n\n<sub>' >> "$BODY"
-        if [ -n "$ARTIFACT_URL" ]; then
-          printf '[download artifacts](%s) · ' "$ARTIFACT_URL" >> "$BODY"
-        fi
-        printf 'run [%s](%s)</sub>\n' "$GITHUB_RUN_ID" "$RUN_URL" >> "$BODY"
-        echo "path=$BODY" >> "$GITHUB_OUTPUT"
+      run: "$GITHUB_ACTION_PATH/scripts/action/build-review-comment.sh"
 
     - name: Post review comment
-      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_render.outputs.rendered == 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       uses: marocchino/sticky-pull-request-comment@v2
       with:
-        header: ${{ steps.guard.outputs.sticky_header }}
+        header: ${{ steps.guard.outputs.comment_id }}
         number: ${{ steps.guard.outputs.pr_number }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         path: ${{ steps.review_body.outputs.path }}
 
-    - name: Post review failure comment
-      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_render.outcome != 'success'
+    - name: Post review failure
+      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_body.outcome != 'success'
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:
-        header: ${{ steps.guard.outputs.sticky_header }}
+        header: ${{ steps.guard.outputs.comment_id }}
         number: ${{ steps.guard.outputs.pr_number }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         message: |
-          ### ${{ inputs.comment_header }} · failed
+          ### CodeBoarding review · failed
 
-          The review run could not generate a diagram. See workflow logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-
-          <sub>run ${{ github.run_id }}</sub>
-
-    - name: Stop OIDC relay and remove relay state
-      if: always() && steps.relay.outputs.relay_pid != ''
-      shell: bash
-      run: |
-        set -euo pipefail
-        PID="${{ steps.relay.outputs.relay_pid }}"
-        [ -n "$PID" ] && kill "$PID" 2>/dev/null || true
-        rm -rf "${RUNNER_TEMP}/codeboarding-relay"
+          See the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).

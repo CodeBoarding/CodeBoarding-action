@@ -3,11 +3,11 @@
 #
 # Three modes:
 #   1) FAST review preview (no repo analysis):
-#      scripts/run_local.sh --base-json BASE.json --head-json HEAD.json
+#      tests/run_local.sh --base-json BASE.json --head-json HEAD.json
 #   2) REVIEW LOCAL (full local pipeline):
-#      scripts/run_local.sh --repo /path/to/repo --base <base-ref> --head <head-ref>
+#      tests/run_local.sh --repo /path/to/repo --base <base-ref> --head <head-ref>
 #   3) REVIEW LOCAL against committed baseline only (if available):
-#      scripts/run_local.sh --repo /path/to/repo --base <base-ref> --head <head-ref> --depth 2
+#      tests/run_local.sh --repo /path/to/repo --base <base-ref> --head <head-ref> --depth 2
 #
 # Output:
 #   diagram.md   Mermaid payload posted by the action
