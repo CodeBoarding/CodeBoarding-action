@@ -144,6 +144,55 @@ def _has_method_changes(base: dict, current: dict) -> bool:
     )
 
 
+def _analysis_changes(base: dict, current: dict) -> tuple[set[str], set[str]]:
+    """Return changed method keys and changed files without method-level detail."""
+
+    def content_changed(before: dict | None, after: dict | None) -> bool:
+        if before is None or after is None:
+            return before != after
+        return before.get("content_hash") != after.get("content_hash")
+
+    base_index = base.get("methods_index") or {}
+    current_index = current.get("methods_index") or {}
+    changed_methods: set[str] = set()
+    member_files: set[str] = set()
+    for key in set(base_index) | set(current_index):
+        before = base_index.get(key)
+        after = current_index.get(key)
+        if not content_changed(before, after):
+            continue
+        record = after or before or {}
+        changed_methods.add(key)
+        member_files.add(record.get("file_path") or key.partition("|")[0])
+
+    base_files = base.get("files") or {}
+    current_files = current.get("files") or {}
+    changed_files = {
+        path
+        for path in set(base_files) | set(current_files)
+        if content_changed(base_files.get(path), current_files.get(path))
+    }
+    return changed_methods, changed_files - member_files
+
+
+def _owns_analysis_change(
+    base: dict,
+    current: dict,
+    changed_methods: set[str],
+    changed_files: set[str],
+) -> bool:
+    base_by_file = _methods_by_file(base)
+    current_by_file = _methods_by_file(current)
+    owned_methods = {
+        f"{path}|{method}"
+        for by_file in (base_by_file, current_by_file)
+        for path, methods in by_file.items()
+        for method in methods
+    }
+    owned_files = set(base_by_file) | set(current_by_file)
+    return bool(owned_methods & changed_methods or owned_files & changed_files)
+
+
 def _rel_key(r: dict) -> tuple:
     # Name is the stable join across two independent analyses; component ids are
     # positional and can be reshuffled on a full re-run, so prefer names.
@@ -259,8 +308,20 @@ def _diff_components(base_components: list, current_components: list) -> list:
 
 
 def build_diff(base: dict, head: dict) -> dict:
+    changed_methods, changed_files = _analysis_changes(base, head)
+    components = _diff_components(base.get("components") or [], head.get("components") or [])
+    base_by_name = {_comp_name(component): component for component in base.get("components") or []}
+    for component in components:
+        base_component = base_by_name.get(_comp_name(component))
+        if base_component is not None and _owns_analysis_change(
+            base_component,
+            component,
+            changed_methods,
+            changed_files,
+        ):
+            component["diff_status"] = "modified"
     return {
-        "components": _diff_components(base.get("components") or [], head.get("components") or []),
+        "components": components,
         "components_relations": _diff_relations(
             base.get("components_relations") or [],
             head.get("components_relations") or [],
