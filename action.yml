@@ -132,7 +132,7 @@ runs:
 
           ⏳ CodeBoarding is analyzing this pull request's architecture changes.
 
-          <sub>run ${{ github.run_id }} · attempt ${{ github.run_attempt }}</sub>
+          <sub>run [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) · attempt ${{ github.run_attempt }}</sub>
 
     - name: Checkout analysis target
       if: steps.guard.outputs.skip != 'true'
