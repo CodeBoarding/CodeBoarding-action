@@ -142,6 +142,7 @@ jobs:
         with:
           mode: sync
           sync_strategy: ${{ inputs.sync_strategy || 'push' }}
+          force_full: ${{ inputs.force_full || false }}
           # App token authenticates the baseline push so the commit is attributed
           # to the CodeBoarding App (logo avatar). Falls back to the workflow token,
           # which can push because this job grants contents: write.

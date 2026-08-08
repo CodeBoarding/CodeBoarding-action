@@ -15,8 +15,9 @@ if [ -n "${LLM_API_KEY:-}" ] || [ "$provider" != openrouter ]; then
   esac
   printf '%s' "$provider_env" > "$AUTH_DIR/provider-env"
   if [ -n "${LLM_API_KEY:-}" ]; then
-    echo "::add-mask::$LLM_API_KEY"
-    printf '%s' "$LLM_API_KEY" > "$AUTH_DIR/provider-key"
+    key="$(printf '%s' "$LLM_API_KEY" | tr -d '[:space:]' | sed -e 's/^"//;s/"$//' -e "s/^'//;s/'\$//" -e "s/^${provider_env}=//" -e 's/^"//;s/"$//' -e "s/^'//;s/'\$//")"
+    printf '::add-mask::%s\n::add-mask::%s\n' "$LLM_API_KEY" "$key"
+    printf '%s' "$key" > "$AUTH_DIR/provider-key"
   fi
   echo "Using direct $provider credentials."
   exit 0

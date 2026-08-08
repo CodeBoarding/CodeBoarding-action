@@ -271,6 +271,7 @@ runs:
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-comment.sh"
 
     - name: Post review comment
+      id: review_comment
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       uses: marocchino/sticky-pull-request-comment@v2
       with:
@@ -280,7 +281,7 @@ runs:
         path: ${{ steps.review_body.outputs.path }}
 
     - name: Post review failure
-      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_body.outcome != 'success'
+      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_comment.outcome != 'success'
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:

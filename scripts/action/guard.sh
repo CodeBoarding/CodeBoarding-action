@@ -70,7 +70,7 @@ esac
 if [ -z "$pr_number" ] || [ -z "$base_sha" ] || [ -z "$head_sha" ] || [ -z "$base_repo" ] || [ -z "$head_repo" ]; then
   fail "Could not resolve the pull request base and head."
 fi
-[ "$head_repo" = "$base_repo" ] || skip "Fork pull requests are not analyzed with repository credentials."
+[ "$head_repo" = "$base_repo" ] || [ "$EVENT" = issue_comment ] || skip "Fork pull requests require a trusted /codeboarding command."
 
 comment_id=codeboarding-review
 [ "$EVENT" != issue_comment ] || comment_id="codeboarding-review-${GITHUB_RUN_ID}"

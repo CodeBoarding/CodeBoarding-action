@@ -42,11 +42,11 @@ jobs:
       - uses: CodeBoarding/CodeBoarding-action@v2
 ```
 
-Automatic runs update one sticky **CodeBoarding review** comment. A trusted repository owner, member, or collaborator can comment `/codeboarding` to analyze the current PR head again; every command creates a new result comment.
+Automatic runs update one sticky **CodeBoarding review** comment. A trusted repository owner, member, or collaborator can comment `/codeboarding` to analyze the current PR head again, including on fork PRs; every command creates a new result comment.
 
 The action checks out and analyzes the exact PR head SHA, but compares it with the exact upstream base SHA from the event. It does not commit generated files to either branch.
 
-Fork PRs are rejected before authentication. Core language servers may execute repository-controlled build or plugin logic, so checking out a fork under `pull_request_target` or a privileged `/codeboarding` run would expose OIDC or provider credentials. Supporting forks safely requires an isolated Core analysis stage rather than more action configuration.
+Automatic fork runs are skipped because the `pull_request` event does not receive hosted OIDC credentials. A trusted `/codeboarding` command runs the released action code from the base repository and checks the fork's source into a separate analysis directory; it never executes an action definition from the fork with privileged credentials.
 
 ## Authentication and providers
 

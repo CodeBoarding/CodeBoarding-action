@@ -42,6 +42,46 @@ class ActionSyncTests(unittest.TestCase):
             self.assertTrue(values.endswith("skip=true\n"))
             self.assertNotIn("checkout_ref=", values)
 
+    def test_review_guard_accepts_trusted_fork_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            gh = fake_bin / "gh"
+            gh.write_text(
+                "#!/usr/bin/env bash\n"
+                "cat <<'JSON'\n"
+                '{"number":42,"base":{"sha":"base-sha","repo":{"full_name":"owner/repo"}},'
+                '"head":{"sha":"head-sha","repo":{"full_name":"contributor/repo"}}}\n'
+                "JSON\n",
+                encoding="utf-8",
+            )
+            gh.chmod(0o755)
+            output = root / "github-output"
+            result = subprocess.run(
+                [str(GUARD)],
+                env={
+                    "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                    "GITHUB_OUTPUT": str(output),
+                    "GITHUB_RUN_ID": "123",
+                    "MODE": "review",
+                    "EVENT": "issue_comment",
+                    "COMMENT_BODY": "/codeboarding",
+                    "AUTHOR_ASSOCIATION": "COLLABORATOR",
+                    "ISSUE_PR_URL": "repos/owner/repo/pulls/42",
+                    "GH_HOST": "github.com",
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            values = output.read_text(encoding="utf-8")
+            self.assertIn("skip=false\n", values)
+            self.assertIn("checkout_repo=contributor/repo\n", values)
+            self.assertIn("checkout_ref=head-sha\n", values)
+
     def test_installs_core_manifest_and_preserves_user_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

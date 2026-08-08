@@ -44,11 +44,11 @@ if [ -s "$AUTH_DIR/base-url" ]; then
 fi
 
 export CODEBOARDING_SOURCE=github_action
+unset ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN
 if [ -n "${MODEL:-}" ]; then
   export AGENT_MODEL="$MODEL"
   export PARSING_MODEL="$MODEL"
 fi
 [ -z "${AGENT_MODEL_INPUT:-}" ] || export AGENT_MODEL="$AGENT_MODEL_INPUT"
 [ -z "${PARSING_MODEL_INPUT:-}" ] || export PARSING_MODEL="$PARSING_MODEL_INPUT"
-
 "$@"

@@ -80,6 +80,12 @@ class ActionAuthTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
         self.assertEqual((auth_dir / "provider-env").read_text(), "ACME_AI_API_KEY")
 
+    def test_normalizes_pasted_provider_key_wrappers(self) -> None:
+        result, auth_dir = self._configure("openrouter", "  'OPENROUTER_API_KEY=\"fake-key\"'  \n")
+
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        self.assertEqual((auth_dir / "provider-key").read_text(), "fake-key")
+
     def test_ollama_and_litellm_keys_use_core_environment_names(self) -> None:
         for provider in ("ollama", "litellm"):
             with self.subTest(provider=provider):
@@ -176,6 +182,8 @@ done
             'test -z "${OPENAI_API_KEY:-}" && '
             'test -z "${OPENAI_BASE_URL:-}" && '
             'test -z "${OPENROUTER_API_KEY:-}" && '
+            'test -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" && '
+            'test -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" && '
             'test "$CODEBOARDING_SOURCE" = github_action && '
             'test "$AGENT_MODEL" = analysis-model && '
             'test "$PARSING_MODEL" = shared-model',
@@ -188,6 +196,8 @@ done
             "PARSING_MODEL_INPUT": "",
             "OPENAI_API_KEY": "inherited-key",
             "OPENAI_BASE_URL": "https://inherited.example",
+            "ACTIONS_ID_TOKEN_REQUEST_URL": "https://oidc.example/token",
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "request-token",
         }
         scoped = subprocess.run(command, env=env, capture_output=True, text=True, check=False)
         self.assertEqual(scoped.returncode, 0, scoped.stderr or scoped.stdout)

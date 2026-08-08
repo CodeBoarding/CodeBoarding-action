@@ -37,27 +37,18 @@ jobs:
     # this repository so a fork using the same branch name is still reviewed.
     if: >
       (github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.draft == false &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
        !(github.head_ref == 'codeboarding/sync' && github.event.pull_request.head.repo.full_name == github.repository)) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
        startsWith(github.event.comment.body, '/codeboarding') &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     steps:
-      # Dogfood: run the action from the checked-out repo (uses: ./) so each PR
-      # exercises the action code under review, not the last published release.
-      # The action reads its scripts via github.action_path and checks the engine
-      # and target repo into subdirectories, so this local checkout is untouched.
-      #
-      # On issue_comment events, checkout's default ref is the repo's DEFAULT
-      # BRANCH (the event isn't tied to a PR), so `uses: ./` would run main's
-      # action code, not this PR's — /codeboarding would silently test the wrong
-      # version. Check out the PR head explicitly for that event so the comment
-      # path dogfoods the PR under review too. pull_request events keep checkout's
-      # default (the PR merge ref), which already points at the PR. On-demand runs
-      # are restricted to same-repo PRs, so refs/pull/<n>/head resolves in this
-      # repo (no fork-repo override needed).
+      # Automatic same-repo reviews dogfood the PR action. Slash commands use the
+      # trusted default-branch action, which can safely analyze a fork's head
+      # without executing its action.yml with this job's OIDC permission.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || '' }}
+          ref: ${{ github.event_name == 'issue_comment' && github.event.repository.default_branch || '' }}
       - name: Detect CodeBoarding GitHub App credentials
         id: codeboarding-app-config
         shell: bash
