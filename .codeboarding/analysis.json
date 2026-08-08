@@ -1,70 +1,22 @@
 {
   "metadata": {
-    "generated_at": "2026-08-07T09:25:49.391279+00:00",
-    "source_tree_hash": "2947d5a45805380bf79f6b7d8a8768a1e78b8de7f0e7d7647d818d9fca8c4159",
-    "repo_name": "CodeBoarding-action",
+    "generated_at": "2026-08-08T17:02:41.353269+00:00",
+    "source_tree_hash": "f918e116913c2ee97ba7176c8c046e077eaf80bb972481cacb5a318ba7eb8b79",
+    "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
     "file_coverage_summary": {
-      "total_files": 22,
-      "analyzed": 6,
-      "not_analyzed": 16,
+      "total_files": 28,
+      "analyzed": 3,
+      "not_analyzed": 25,
       "not_analyzed_by_reason": {
-        "other": 9,
-        "codeboardingignore": 7
+        "other": 19,
+        "codeboardingignore": 6
       }
     }
   },
   "description": "The CodeBoarding-action is a CI/CD integration tool designed to automate the analysis of code changes and visualize their architectural impact within GitHub Pull Requests. The system operates as a pipeline: it first interfaces with an external analysis engine to retrieve structural metadata, then performs a differential analysis between the current state and the base branch. This diff is then transformed into visual representations (Mermaid.js diagrams) and interactive Call-to-Action (CTA) elements. Finally, the system handles telemetry and feedback loops to refine the analysis quality, ensuring that developers receive a concise, visual summary of how their changes affect the broader system architecture.",
   "files": {
-    "scripts/engine_adapter.py": {
-      "method_keys": [
-        "scripts/engine_adapter.py|scripts.engine_adapter._require_engine",
-        "scripts/engine_adapter.py|scripts.engine_adapter._max_depth",
-        "scripts/engine_adapter.py|scripts.engine_adapter._is_quota_exhausted",
-        "scripts/engine_adapter.py|scripts.engine_adapter._flag_quota_exhausted",
-        "scripts/engine_adapter.py|scripts.engine_adapter._log_path",
-        "scripts/engine_adapter.py|scripts.engine_adapter._run_ctx",
-        "scripts/engine_adapter.py|scripts.engine_adapter._clear_dir",
-        "scripts/engine_adapter.py|scripts.engine_adapter._load_analysis",
-        "scripts/engine_adapter.py|scripts.engine_adapter._load_metadata",
-        "scripts/engine_adapter.py|scripts.engine_adapter._metadata_depth",
-        "scripts/engine_adapter.py|scripts.engine_adapter._resolve_depth",
-        "scripts/engine_adapter.py|scripts.engine_adapter._analysis_depth_or_default",
-        "scripts/engine_adapter.py|scripts.engine_adapter._metadata_commit",
-        "scripts/engine_adapter.py|scripts.engine_adapter._analysis_model_error",
-        "scripts/engine_adapter.py|scripts.engine_adapter.baseline_info",
-        "scripts/engine_adapter.py|scripts.engine_adapter.baseline_depth",
-        "scripts/engine_adapter.py|scripts.engine_adapter.validate_base_analysis",
-        "scripts/engine_adapter.py|scripts.engine_adapter.run_base",
-        "scripts/engine_adapter.py|scripts.engine_adapter.run_seed",
-        "scripts/engine_adapter.py|scripts.engine_adapter._incremental_or_full",
-        "scripts/engine_adapter.py|scripts.engine_adapter.run_head",
-        "scripts/engine_adapter.py|scripts.engine_adapter.run_analyze",
-        "scripts/engine_adapter.py|scripts.engine_adapter.run_analyze.full",
-        "scripts/engine_adapter.py|scripts.engine_adapter.run_render",
-        "scripts/engine_adapter.py|scripts.engine_adapter.run_concat",
-        "scripts/engine_adapter.py|scripts.engine_adapter._count_report_issues",
-        "scripts/engine_adapter.py|scripts.engine_adapter._count_health_report",
-        "scripts/engine_adapter.py|scripts.engine_adapter.run_health",
-        "scripts/engine_adapter.py|scripts.engine_adapter.main"
-      ],
-      "content_hash": "0b868c4b1690db55",
-      "module_hash": "be6787eec8f7d957"
-    },
-    "scripts/build_component_files.py": {
-      "method_keys": [
-        "scripts/build_component_files.py|scripts.build_component_files._walk",
-        "scripts/build_component_files.py|scripts.build_component_files._subtree_files",
-        "scripts/build_component_files.py|scripts.build_component_files._subtree_methods",
-        "scripts/build_component_files.py|scripts.build_component_files._changed_files_for",
-        "scripts/build_component_files.py|scripts.build_component_files._block",
-        "scripts/build_component_files.py|scripts.build_component_files.render_component_files",
-        "scripts/build_component_files.py|scripts.build_component_files.main"
-      ],
-      "content_hash": "aec54432fc8adf81",
-      "module_hash": "965c24aafcb191a4"
-    },
     "scripts/diff_to_mermaid.py": {
       "method_keys": [
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._relation_dict",
@@ -78,6 +30,9 @@
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._methods_by_file",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_structural_changes",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_method_changes",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._analysis_changes",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._analysis_changes.content_changed",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._owns_analysis_change",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._rel_key",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_relations",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changes",
@@ -101,39 +56,19 @@
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_level",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main"
       ],
-      "content_hash": "5ce398438ebca41e",
-      "module_hash": "bffccaa0e4c9a71a"
+      "content_hash": "385a552dc44b4871",
+      "module_hash": "76cbae741d0dd615"
     },
-    "scripts/submit_feedback.py": {
+    "scripts/analyze_repository.py": {
       "method_keys": [
-        "scripts/submit_feedback.py|scripts.submit_feedback.telemetry_disabled",
-        "scripts/submit_feedback.py|scripts.submit_feedback.resolve_key",
-        "scripts/submit_feedback.py|scripts.submit_feedback.resolve_host",
-        "scripts/submit_feedback.py|scripts.submit_feedback.resolve_command",
-        "scripts/submit_feedback.py|scripts.submit_feedback.resolve_max_chars",
-        "scripts/submit_feedback.py|scripts.submit_feedback.extract_feedback",
-        "scripts/submit_feedback.py|scripts.submit_feedback.cap_feedback",
-        "scripts/submit_feedback.py|scripts.submit_feedback._first",
-        "scripts/submit_feedback.py|scripts.submit_feedback.distinct_id",
-        "scripts/submit_feedback.py|scripts.submit_feedback.build_properties",
-        "scripts/submit_feedback.py|scripts.submit_feedback.build_payload",
-        "scripts/submit_feedback.py|scripts.submit_feedback.post",
-        "scripts/submit_feedback.py|scripts.submit_feedback.main"
+        "scripts/analyze_repository.py|scripts.analyze_repository.AnalysisError",
+        "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool",
+        "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response",
+        "scripts/analyze_repository.py|scripts.analyze_repository._run_command",
+        "scripts/analyze_repository.py|scripts.analyze_repository.main"
       ],
-      "content_hash": "71ccef667b21feda",
-      "module_hash": "a45384a4b629d0a1"
-    },
-    "scripts/build_cta.py": {
-      "method_keys": [
-        "scripts/build_cta.py|scripts.build_cta.detect_editors",
-        "scripts/build_cta.py|scripts.build_cta.webview_url",
-        "scripts/build_cta.py|scripts.build_cta._join_or",
-        "scripts/build_cta.py|scripts.build_cta.build_cta",
-        "scripts/build_cta.py|scripts.build_cta.build_cta.link",
-        "scripts/build_cta.py|scripts.build_cta.main"
-      ],
-      "content_hash": "8b2953156606caab",
-      "module_hash": "ece0241a15adac56"
+      "content_hash": "03f39d1ac2f146ec",
+      "module_hash": "621ccc2626ad8f2a"
     },
     "scripts/oidc_relay.py": {
       "method_keys": [
@@ -157,294 +92,6 @@
     }
   },
   "methods_index": {
-    "scripts/engine_adapter.py|scripts.engine_adapter._require_engine": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._require_engine",
-      "start_line": 115,
-      "end_line": 131,
-      "type": "FUNCTION",
-      "content_hash": "67f250e5ab6ae27e"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._max_depth": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._max_depth",
-      "start_line": 148,
-      "end_line": 149,
-      "type": "FUNCTION",
-      "content_hash": "7928255374526eff"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._is_quota_exhausted": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._is_quota_exhausted",
-      "start_line": 158,
-      "end_line": 173,
-      "type": "FUNCTION",
-      "content_hash": "4218c79434f3e787"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._flag_quota_exhausted": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._flag_quota_exhausted",
-      "start_line": 176,
-      "end_line": 185,
-      "type": "FUNCTION",
-      "content_hash": "43d8c4e42fd31301"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._log_path": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._log_path",
-      "start_line": 188,
-      "end_line": 189,
-      "type": "FUNCTION",
-      "content_hash": "ab1e0f9f06e3f8fc"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._run_ctx": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._run_ctx",
-      "start_line": 192,
-      "end_line": 197,
-      "type": "FUNCTION",
-      "content_hash": "476ce556c6108aab"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._clear_dir": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._clear_dir",
-      "start_line": 200,
-      "end_line": 206,
-      "type": "FUNCTION",
-      "content_hash": "3ccc93572a4f5e17"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._load_analysis": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._load_analysis",
-      "start_line": 209,
-      "end_line": 216,
-      "type": "FUNCTION",
-      "content_hash": "709d0f1926d64785"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._load_metadata": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._load_metadata",
-      "start_line": 219,
-      "end_line": 224,
-      "type": "FUNCTION",
-      "content_hash": "13d91df46ff3d941"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._metadata_depth": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._metadata_depth",
-      "start_line": 227,
-      "end_line": 231,
-      "type": "FUNCTION",
-      "content_hash": "7f0af5c7089d835c"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._resolve_depth": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._resolve_depth",
-      "start_line": 234,
-      "end_line": 263,
-      "type": "FUNCTION",
-      "content_hash": "28d3ae111af1d01f"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._analysis_depth_or_default": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._analysis_depth_or_default",
-      "start_line": 266,
-      "end_line": 270,
-      "type": "FUNCTION",
-      "content_hash": "a48c7ce51a7d5843"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._metadata_commit": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._metadata_commit",
-      "start_line": 273,
-      "end_line": 275,
-      "type": "FUNCTION",
-      "content_hash": "01f7f66935a67d70"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._analysis_model_error": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._analysis_model_error",
-      "start_line": 278,
-      "end_line": 298,
-      "type": "FUNCTION",
-      "content_hash": "a87bfd98ba1b0448"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter.baseline_info": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter.baseline_info",
-      "start_line": 301,
-      "end_line": 311,
-      "type": "FUNCTION",
-      "content_hash": "ed1687bc5cceccd4"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter.baseline_depth": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter.baseline_depth",
-      "start_line": 314,
-      "end_line": 329,
-      "type": "FUNCTION",
-      "content_hash": "eae8eeeb0d24b446"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter.validate_base_analysis": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter.validate_base_analysis",
-      "start_line": 332,
-      "end_line": 397,
-      "type": "FUNCTION",
-      "content_hash": "18d4bc45222c1ed2"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter.run_base": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter.run_base",
-      "start_line": 400,
-      "end_line": 403,
-      "type": "FUNCTION",
-      "content_hash": "acc6408e677bc1d3"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter.run_seed": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter.run_seed",
-      "start_line": 406,
-      "end_line": 435,
-      "type": "FUNCTION",
-      "content_hash": "456e4a5d346ed496"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._incremental_or_full": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._incremental_or_full",
-      "start_line": 438,
-      "end_line": 482,
-      "type": "FUNCTION",
-      "content_hash": "ae147bc42b45ae96"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter.run_head": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter.run_head",
-      "start_line": 485,
-      "end_line": 519,
-      "type": "FUNCTION",
-      "content_hash": "830547a05d7c267b"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter.run_analyze": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter.run_analyze",
-      "start_line": 522,
-      "end_line": 571,
-      "type": "FUNCTION",
-      "content_hash": "f4ece643f2a3f884"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter.run_analyze.full": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter.run_analyze.full",
-      "start_line": 543,
-      "end_line": 550,
-      "type": "FUNCTION",
-      "content_hash": "86c70cb9aefcfa67"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter.run_render": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter.run_render",
-      "start_line": 574,
-      "end_line": 585,
-      "type": "FUNCTION",
-      "content_hash": "913dd45aa0feca3c"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter.run_concat": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter.run_concat",
-      "start_line": 588,
-      "end_line": 601,
-      "type": "FUNCTION",
-      "content_hash": "8a43dd8ed2d7d864"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._count_report_issues": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._count_report_issues",
-      "start_line": 604,
-      "end_line": 617,
-      "type": "FUNCTION",
-      "content_hash": "e658e9b8d50aaa9d"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter._count_health_report": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter._count_health_report",
-      "start_line": 620,
-      "end_line": 628,
-      "type": "FUNCTION",
-      "content_hash": "76010258b59599f2"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter.run_health": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter.run_health",
-      "start_line": 631,
-      "end_line": 657,
-      "type": "FUNCTION",
-      "content_hash": "f89f5ca8b0822701"
-    },
-    "scripts/engine_adapter.py|scripts.engine_adapter.main": {
-      "file_path": "scripts/engine_adapter.py",
-      "qualified_name": "scripts.engine_adapter.main",
-      "start_line": 660,
-      "end_line": 767,
-      "type": "FUNCTION",
-      "content_hash": "584736ad42ae33bc"
-    },
-    "scripts/build_component_files.py|scripts.build_component_files._walk": {
-      "file_path": "scripts/build_component_files.py",
-      "qualified_name": "scripts.build_component_files._walk",
-      "start_line": 56,
-      "end_line": 62,
-      "type": "FUNCTION",
-      "content_hash": "17cbb7a6a94cc928"
-    },
-    "scripts/build_component_files.py|scripts.build_component_files._subtree_files": {
-      "file_path": "scripts/build_component_files.py",
-      "qualified_name": "scripts.build_component_files._subtree_files",
-      "start_line": 65,
-      "end_line": 74,
-      "type": "FUNCTION",
-      "content_hash": "81e82033e3a3e5de"
-    },
-    "scripts/build_component_files.py|scripts.build_component_files._subtree_methods": {
-      "file_path": "scripts/build_component_files.py",
-      "qualified_name": "scripts.build_component_files._subtree_methods",
-      "start_line": 77,
-      "end_line": 85,
-      "type": "FUNCTION",
-      "content_hash": "0e2aa157b6c03221"
-    },
-    "scripts/build_component_files.py|scripts.build_component_files._changed_files_for": {
-      "file_path": "scripts/build_component_files.py",
-      "qualified_name": "scripts.build_component_files._changed_files_for",
-      "start_line": 88,
-      "end_line": 101,
-      "type": "FUNCTION",
-      "content_hash": "736bc1c7bcc77ba9"
-    },
-    "scripts/build_component_files.py|scripts.build_component_files._block": {
-      "file_path": "scripts/build_component_files.py",
-      "qualified_name": "scripts.build_component_files._block",
-      "start_line": 104,
-      "end_line": 121,
-      "type": "FUNCTION",
-      "content_hash": "e24bfb4c6f12b4d2"
-    },
-    "scripts/build_component_files.py|scripts.build_component_files.render_component_files": {
-      "file_path": "scripts/build_component_files.py",
-      "qualified_name": "scripts.build_component_files.render_component_files",
-      "start_line": 124,
-      "end_line": 175,
-      "type": "FUNCTION",
-      "content_hash": "7b761b8feb779ffb"
-    },
-    "scripts/build_component_files.py|scripts.build_component_files.main": {
-      "file_path": "scripts/build_component_files.py",
-      "qualified_name": "scripts.build_component_files.main",
-      "start_line": 178,
-      "end_line": 216,
-      "type": "FUNCTION",
-      "content_hash": "8f90e70cd2eda68b"
-    },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._relation_dict": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._relation_dict",
@@ -533,333 +180,245 @@
       "type": "FUNCTION",
       "content_hash": "737fc9898cef0f98"
     },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._analysis_changes": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._analysis_changes",
+      "start_line": 147,
+      "end_line": 175,
+      "type": "FUNCTION",
+      "content_hash": "4e8c5293d5affc7a"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._analysis_changes.content_changed": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._analysis_changes.content_changed",
+      "start_line": 150,
+      "end_line": 153,
+      "type": "FUNCTION",
+      "content_hash": "400f66db1dad81fa"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._owns_analysis_change": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._owns_analysis_change",
+      "start_line": 178,
+      "end_line": 193,
+      "type": "FUNCTION",
+      "content_hash": "2517e5dff08a1eac"
+    },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._rel_key": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._rel_key",
-      "start_line": 147,
-      "end_line": 150,
+      "start_line": 196,
+      "end_line": 199,
       "type": "FUNCTION",
       "content_hash": "e8de4cfb9ef31082"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_relations": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._diff_relations",
-      "start_line": 153,
-      "end_line": 199,
+      "start_line": 202,
+      "end_line": 248,
       "type": "FUNCTION",
       "content_hash": "652dc3832988ab8d"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changes": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._has_changes",
-      "start_line": 202,
-      "end_line": 210,
+      "start_line": 251,
+      "end_line": 259,
       "type": "FUNCTION",
       "content_hash": "785661b1b374b761"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_components": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._diff_components",
-      "start_line": 213,
-      "end_line": 258,
+      "start_line": 262,
+      "end_line": 307,
       "type": "FUNCTION",
       "content_hash": "7f3d3b547750caa7"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.build_diff": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.build_diff",
-      "start_line": 261,
-      "end_line": 268,
+      "start_line": 310,
+      "end_line": 333,
       "type": "FUNCTION",
-      "content_hash": "0f236491c95f9869"
+      "content_hash": "03d7ac8c994d57db"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._sanitize": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._sanitize",
-      "start_line": 274,
-      "end_line": 276,
+      "start_line": 339,
+      "end_line": 341,
       "type": "FUNCTION",
       "content_hash": "0c4a83ab88d80bc0"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._esc": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._esc",
-      "start_line": 298,
-      "end_line": 304,
+      "start_line": 363,
+      "end_line": 369,
       "type": "FUNCTION",
       "content_hash": "e45c5105d8af2dc4"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._truncate": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._truncate",
-      "start_line": 307,
-      "end_line": 309,
+      "start_line": 372,
+      "end_line": 374,
       "type": "FUNCTION",
       "content_hash": "751d4ca80e5e5268"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._display_status": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._display_status",
-      "start_line": 312,
-      "end_line": 313,
+      "start_line": 377,
+      "end_line": 378,
       "type": "FUNCTION",
       "content_hash": "d5b585da051d6666"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._Scope",
-      "start_line": 316,
-      "end_line": 360,
+      "start_line": 381,
+      "end_line": 425,
       "type": "CLASS",
       "content_hash": "95389df8539e5091"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope.__init__": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._Scope.__init__",
-      "start_line": 327,
-      "end_line": 349,
+      "start_line": 392,
+      "end_line": 414,
       "type": "METHOD",
       "content_hash": "f1143a47440e417d"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope.resolve": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._Scope.resolve",
-      "start_line": 351,
-      "end_line": 360,
+      "start_line": 416,
+      "end_line": 425,
       "type": "METHOD",
       "content_hash": "5bfc527e15cdf1cd"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._filter_changed",
-      "start_line": 363,
-      "end_line": 405,
+      "start_line": 428,
+      "end_line": 470,
       "type": "FUNCTION",
       "content_hash": "91c6dccaa5a809e1"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed.touches": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._filter_changed.touches",
-      "start_line": 396,
-      "end_line": 398,
+      "start_line": 461,
+      "end_line": 463,
       "type": "FUNCTION",
       "content_hash": "e1a0c69dff6f9b3d"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._init_directive": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._init_directive",
-      "start_line": 408,
-      "end_line": 427,
+      "start_line": 473,
+      "end_line": 492,
       "type": "FUNCTION",
       "content_hash": "90d7c75c50f440b4"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._count_changed_components": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._count_changed_components",
-      "start_line": 430,
-      "end_line": 437,
+      "start_line": 495,
+      "end_line": 502,
       "type": "FUNCTION",
       "content_hash": "18a0b2e0cc0785cd"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changed_relations": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._has_changed_relations",
-      "start_line": 440,
-      "end_line": 444,
+      "start_line": 505,
+      "end_line": 509,
       "type": "FUNCTION",
       "content_hash": "06ad82ce29818493"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.render_mermaid",
-      "start_line": 447,
-      "end_line": 572,
+      "start_line": 512,
+      "end_line": 639,
       "type": "FUNCTION",
-      "content_hash": "a1aa62166cec10ac"
+      "content_hash": "8b7c6d2420ad9ae7"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build",
-      "start_line": 475,
-      "end_line": 548,
+      "start_line": 541,
+      "end_line": 614,
       "type": "FUNCTION",
       "content_hash": "938fa3c85e73367b"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_edges": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
-      "start_line": 486,
-      "end_line": 498,
+      "start_line": 552,
+      "end_line": 564,
       "type": "FUNCTION",
       "content_hash": "beb1d84227b5ecb3"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_level": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build.emit_level",
-      "start_line": 500,
-      "end_line": 517,
+      "start_line": 566,
+      "end_line": 583,
       "type": "FUNCTION",
       "content_hash": "bab2f4f0a975b7d6"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.main",
-      "start_line": 578,
-      "end_line": 619,
+      "start_line": 645,
+      "end_line": 686,
       "type": "FUNCTION",
       "content_hash": "fbbd7d2293c174c9"
     },
-    "scripts/submit_feedback.py|scripts.submit_feedback.telemetry_disabled": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.telemetry_disabled",
-      "start_line": 27,
-      "end_line": 31,
-      "type": "FUNCTION",
-      "content_hash": "3a9a506badc81e38"
+    "scripts/analyze_repository.py|scripts.analyze_repository.AnalysisError": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository.AnalysisError",
+      "start_line": 16,
+      "end_line": 17,
+      "type": "CLASS",
+      "content_hash": "e23f18bc0d32e21b"
     },
-    "scripts/submit_feedback.py|scripts.submit_feedback.resolve_key": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.resolve_key",
-      "start_line": 34,
-      "end_line": 35,
+    "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository._parse_bool",
+      "start_line": 20,
+      "end_line": 29,
       "type": "FUNCTION",
-      "content_hash": "580d60e3e5cea289"
+      "content_hash": "3de011b556fa2edb"
     },
-    "scripts/submit_feedback.py|scripts.submit_feedback.resolve_host": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.resolve_host",
-      "start_line": 38,
-      "end_line": 40,
+    "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository._parse_cli_response",
+      "start_line": 32,
+      "end_line": 66,
       "type": "FUNCTION",
-      "content_hash": "217c2af53b4a8790"
+      "content_hash": "064ec779cc59420b"
     },
-    "scripts/submit_feedback.py|scripts.submit_feedback.resolve_command": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.resolve_command",
-      "start_line": 43,
-      "end_line": 44,
-      "type": "FUNCTION",
-      "content_hash": "ccbe975f43c6a7d5"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.resolve_max_chars": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.resolve_max_chars",
-      "start_line": 47,
-      "end_line": 52,
-      "type": "FUNCTION",
-      "content_hash": "cd526bf667d9d7ae"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.extract_feedback": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.extract_feedback",
-      "start_line": 55,
-      "end_line": 69,
-      "type": "FUNCTION",
-      "content_hash": "1b3d89926bdd49a3"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.cap_feedback": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.cap_feedback",
-      "start_line": 72,
-      "end_line": 76,
-      "type": "FUNCTION",
-      "content_hash": "c876bfd5604af107"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback._first": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback._first",
-      "start_line": 79,
-      "end_line": 84,
-      "type": "FUNCTION",
-      "content_hash": "baa8fa2464a81037"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.distinct_id": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.distinct_id",
-      "start_line": 87,
-      "end_line": 91,
-      "type": "FUNCTION",
-      "content_hash": "02104780fcb31dfc"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.build_properties": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.build_properties",
-      "start_line": 94,
-      "end_line": 116,
-      "type": "FUNCTION",
-      "content_hash": "e9241d335ee6ec64"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.build_payload": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.build_payload",
-      "start_line": 119,
-      "end_line": 132,
-      "type": "FUNCTION",
-      "content_hash": "117a7a0505a84761"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.post": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.post",
-      "start_line": 135,
-      "end_line": 144,
-      "type": "FUNCTION",
-      "content_hash": "9bc8d39e055c9e11"
-    },
-    "scripts/submit_feedback.py|scripts.submit_feedback.main": {
-      "file_path": "scripts/submit_feedback.py",
-      "qualified_name": "scripts.submit_feedback.main",
-      "start_line": 147,
-      "end_line": 172,
-      "type": "FUNCTION",
-      "content_hash": "43d11ddcfec41b9c"
-    },
-    "scripts/build_cta.py|scripts.build_cta.detect_editors": {
-      "file_path": "scripts/build_cta.py",
-      "qualified_name": "scripts.build_cta.detect_editors",
-      "start_line": 37,
-      "end_line": 49,
-      "type": "FUNCTION",
-      "content_hash": "fe14c8fd463db78d"
-    },
-    "scripts/build_cta.py|scripts.build_cta.webview_url": {
-      "file_path": "scripts/build_cta.py",
-      "qualified_name": "scripts.build_cta.webview_url",
-      "start_line": 63,
-      "end_line": 81,
-      "type": "FUNCTION",
-      "content_hash": "2176a1e7cfb729b5"
-    },
-    "scripts/build_cta.py|scripts.build_cta._join_or": {
-      "file_path": "scripts/build_cta.py",
-      "qualified_name": "scripts.build_cta._join_or",
-      "start_line": 84,
+    "scripts/analyze_repository.py|scripts.analyze_repository._run_command": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository._run_command",
+      "start_line": 69,
       "end_line": 90,
       "type": "FUNCTION",
-      "content_hash": "a0c0b40b4c2adc89"
+      "content_hash": "001ae1f8af80eaf8"
     },
-    "scripts/build_cta.py|scripts.build_cta.build_cta": {
-      "file_path": "scripts/build_cta.py",
-      "qualified_name": "scripts.build_cta.build_cta",
+    "scripts/analyze_repository.py|scripts.analyze_repository.main": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository.main",
       "start_line": 93,
-      "end_line": 152,
+      "end_line": 137,
       "type": "FUNCTION",
-      "content_hash": "4a7e2ef5efd4b5ea"
-    },
-    "scripts/build_cta.py|scripts.build_cta.build_cta.link": {
-      "file_path": "scripts/build_cta.py",
-      "qualified_name": "scripts.build_cta.build_cta.link",
-      "start_line": 126,
-      "end_line": 127,
-      "type": "FUNCTION",
-      "content_hash": "023fa6697850117d"
-    },
-    "scripts/build_cta.py|scripts.build_cta.main": {
-      "file_path": "scripts/build_cta.py",
-      "qualified_name": "scripts.build_cta.main",
-      "start_line": 155,
-      "end_line": 189,
-      "type": "FUNCTION",
-      "content_hash": "01d3957be0275043"
+      "content_hash": "e807c9b057c463bf"
     },
     "scripts/oidc_relay.py|scripts.oidc_relay.RelayConfig": {
       "file_path": "scripts/oidc_relay.py",
@@ -976,106 +535,26 @@
   },
   "components": [
     {
-      "name": "Analysis Engine Adapter",
-      "description": "Manages the lifecycle of architectural analysis by interfacing with the core engine to load metadata, handle quotas, and manage incremental vs. full analysis states.",
-      "key_entities": [
-        {
-          "qualified_name": "scripts.engine_adapter._load_analysis",
-          "reference_file": "scripts/engine_adapter.py",
-          "reference_start_line": 207,
-          "reference_end_line": 214
-        },
-        {
-          "qualified_name": "scripts.engine_adapter._incremental_or_full",
-          "reference_file": "scripts/engine_adapter.py",
-          "reference_start_line": 436,
-          "reference_end_line": 480
-        },
-        {
-          "qualified_name": "scripts.engine_adapter._flag_quota_exhausted",
-          "reference_file": "scripts/engine_adapter.py",
-          "reference_start_line": 174,
-          "reference_end_line": 183
-        },
-        {
-          "qualified_name": "scripts.engine_adapter._count_health_report",
-          "reference_file": "scripts/engine_adapter.py",
-          "reference_start_line": 618,
-          "reference_end_line": 626
-        }
-      ],
-      "source_cluster_ids": [
-        "1",
-        "8"
-      ],
-      "file_methods": [
-        {
-          "file_path": "scripts/engine_adapter.py",
-          "methods": [
-            "scripts.engine_adapter._require_engine",
-            "scripts.engine_adapter._max_depth",
-            "scripts.engine_adapter._is_quota_exhausted",
-            "scripts.engine_adapter._flag_quota_exhausted",
-            "scripts.engine_adapter._log_path",
-            "scripts.engine_adapter._run_ctx",
-            "scripts.engine_adapter._clear_dir",
-            "scripts.engine_adapter._load_analysis",
-            "scripts.engine_adapter._load_metadata",
-            "scripts.engine_adapter._metadata_depth",
-            "scripts.engine_adapter._resolve_depth",
-            "scripts.engine_adapter._analysis_depth_or_default",
-            "scripts.engine_adapter._metadata_commit",
-            "scripts.engine_adapter._analysis_model_error",
-            "scripts.engine_adapter.baseline_info",
-            "scripts.engine_adapter.baseline_depth",
-            "scripts.engine_adapter.validate_base_analysis",
-            "scripts.engine_adapter.run_base",
-            "scripts.engine_adapter.run_seed",
-            "scripts.engine_adapter._incremental_or_full",
-            "scripts.engine_adapter.run_head",
-            "scripts.engine_adapter.run_analyze",
-            "scripts.engine_adapter.run_analyze.full",
-            "scripts.engine_adapter.run_render",
-            "scripts.engine_adapter.run_concat",
-            "scripts.engine_adapter._count_report_issues",
-            "scripts.engine_adapter._count_health_report",
-            "scripts.engine_adapter.run_health",
-            "scripts.engine_adapter.main"
-          ]
-        }
-      ],
-      "component_id": "1",
-      "can_expand": false,
-      "components": [],
-      "components_relations": []
-    },
-    {
       "name": "Visual Rendering Engine",
       "description": "Transforms raw architectural data and component definitions into formatted Mermaid.js diagrams and structured file representations for UI display.",
       "key_entities": [
         {
           "qualified_name": "scripts.diff_to_mermaid.render_mermaid",
           "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 447,
-          "reference_end_line": 572
-        },
-        {
-          "qualified_name": "scripts.build_component_files.render_component_files",
-          "reference_file": "scripts/build_component_files.py",
-          "reference_start_line": 124,
-          "reference_end_line": 175
+          "reference_start_line": 512,
+          "reference_end_line": 639
         },
         {
           "qualified_name": "scripts.diff_to_mermaid._display_status",
           "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 312,
-          "reference_end_line": 313
+          "reference_start_line": 377,
+          "reference_end_line": 378
         },
         {
           "qualified_name": "scripts.diff_to_mermaid._init_directive",
           "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 408,
-          "reference_end_line": 427
+          "reference_start_line": 473,
+          "reference_end_line": 492
         }
       ],
       "source_cluster_ids": [
@@ -1083,13 +562,6 @@
         "5"
       ],
       "file_methods": [
-        {
-          "file_path": "scripts/build_component_files.py",
-          "methods": [
-            "scripts.build_component_files._block",
-            "scripts.build_component_files.render_component_files"
-          ]
-        },
         {
           "file_path": "scripts/diff_to_mermaid.py",
           "methods": [
@@ -1108,10 +580,10 @@
             "scripts.diff_to_mermaid._init_directive",
             "scripts.diff_to_mermaid._count_changed_components",
             "scripts.diff_to_mermaid._has_changed_relations",
-            "scripts.diff_to_mermaid.render_mermaid",
             "scripts.diff_to_mermaid.render_mermaid.build",
             "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
-            "scripts.diff_to_mermaid.render_mermaid.build.emit_level"
+            "scripts.diff_to_mermaid.render_mermaid.build.emit_level",
+            "scripts.diff_to_mermaid.render_mermaid"
           ]
         }
       ],
@@ -1127,26 +599,14 @@
         {
           "qualified_name": "scripts.diff_to_mermaid._diff_components",
           "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 213,
-          "reference_end_line": 258
+          "reference_start_line": 262,
+          "reference_end_line": 307
         },
         {
           "qualified_name": "scripts.diff_to_mermaid._has_structural_changes",
           "reference_file": "scripts/diff_to_mermaid.py",
           "reference_start_line": 133,
           "reference_end_line": 136
-        },
-        {
-          "qualified_name": "scripts.build_component_files._changed_files_for",
-          "reference_file": "scripts/build_component_files.py",
-          "reference_start_line": 88,
-          "reference_end_line": 101
-        },
-        {
-          "qualified_name": "scripts.build_component_files._subtree_methods",
-          "reference_file": "scripts/build_component_files.py",
-          "reference_start_line": 77,
-          "reference_end_line": 85
         }
       ],
       "source_cluster_ids": [
@@ -1154,16 +614,6 @@
         "7"
       ],
       "file_methods": [
-        {
-          "file_path": "scripts/build_component_files.py",
-          "methods": [
-            "scripts.build_component_files._walk",
-            "scripts.build_component_files._subtree_files",
-            "scripts.build_component_files._subtree_methods",
-            "scripts.build_component_files._changed_files_for",
-            "scripts.build_component_files.main"
-          ]
-        },
         {
           "file_path": "scripts/diff_to_mermaid.py",
           "methods": [
@@ -1177,7 +627,10 @@
             "scripts.diff_to_mermaid._has_structural_changes",
             "scripts.diff_to_mermaid._has_method_changes",
             "scripts.diff_to_mermaid._rel_key",
+            "scripts.diff_to_mermaid._analysis_changes",
+            "scripts.diff_to_mermaid._analysis_changes.content_changed",
             "scripts.diff_to_mermaid._diff_relations",
+            "scripts.diff_to_mermaid._owns_analysis_change",
             "scripts.diff_to_mermaid._diff_components",
             "scripts.diff_to_mermaid.build_diff",
             "scripts.diff_to_mermaid.main"
@@ -1190,91 +643,9 @@
       "components_relations": []
     },
     {
-      "name": "Telemetry & Feedback Handler",
-      "description": "Collects execution metadata and user feedback to submit diagnostic payloads to a remote tracking service.",
-      "key_entities": [
-        {
-          "qualified_name": "scripts.submit_feedback.build_payload",
-          "reference_file": "scripts/submit_feedback.py",
-          "reference_start_line": 119,
-          "reference_end_line": 132
-        },
-        {
-          "qualified_name": "scripts.submit_feedback.post",
-          "reference_file": "scripts/submit_feedback.py",
-          "reference_start_line": 135,
-          "reference_end_line": 144
-        },
-        {
-          "qualified_name": "scripts.submit_feedback.extract_feedback",
-          "reference_file": "scripts/submit_feedback.py",
-          "reference_start_line": 55,
-          "reference_end_line": 69
-        },
-        {
-          "qualified_name": "scripts.submit_feedback.resolve_command",
-          "reference_file": "scripts/submit_feedback.py",
-          "reference_start_line": 43,
-          "reference_end_line": 44
-        }
-      ],
-      "source_cluster_ids": [
-        "3"
-      ],
-      "file_methods": [
-        {
-          "file_path": "scripts/submit_feedback.py",
-          "methods": [
-            "scripts.submit_feedback.telemetry_disabled",
-            "scripts.submit_feedback.resolve_key",
-            "scripts.submit_feedback.resolve_host",
-            "scripts.submit_feedback.resolve_command",
-            "scripts.submit_feedback.resolve_max_chars",
-            "scripts.submit_feedback.extract_feedback",
-            "scripts.submit_feedback.cap_feedback",
-            "scripts.submit_feedback._first",
-            "scripts.submit_feedback.distinct_id",
-            "scripts.submit_feedback.build_properties",
-            "scripts.submit_feedback.build_payload",
-            "scripts.submit_feedback.post",
-            "scripts.submit_feedback.main"
-          ]
-        }
-      ],
-      "component_id": "4",
-      "can_expand": false,
-      "components": [],
-      "components_relations": []
-    },
-    {
       "name": "Interaction Orchestrator",
       "description": "Generates interactive Call-to-Action (CTA) links and webview URLs to facilitate developer engagement with the analysis results.",
-      "key_entities": [
-        {
-          "qualified_name": "scripts.build_cta.build_cta",
-          "reference_file": "scripts/build_cta.py",
-          "reference_start_line": 93,
-          "reference_end_line": 152
-        },
-        {
-          "qualified_name": "scripts.build_cta.webview_url",
-          "reference_file": "scripts/build_cta.py",
-          "reference_start_line": 63,
-          "reference_end_line": 81
-        },
-        {
-          "qualified_name": "scripts.build_cta.detect_editors",
-          "reference_file": "scripts/build_cta.py",
-          "reference_start_line": 37,
-          "reference_end_line": 49
-        },
-        {
-          "qualified_name": "scripts.build_cta.main",
-          "reference_file": "scripts/build_cta.py",
-          "reference_start_line": 155,
-          "reference_end_line": 189
-        }
-      ],
+      "key_entities": [],
       "source_cluster_ids": [
         "6",
         "9",
@@ -1282,14 +653,13 @@
       ],
       "file_methods": [
         {
-          "file_path": "scripts/build_cta.py",
+          "file_path": "scripts/analyze_repository.py",
           "methods": [
-            "scripts.build_cta.detect_editors",
-            "scripts.build_cta.webview_url",
-            "scripts.build_cta._join_or",
-            "scripts.build_cta.build_cta",
-            "scripts.build_cta.build_cta.link",
-            "scripts.build_cta.main"
+            "scripts.analyze_repository.AnalysisError",
+            "scripts.analyze_repository._parse_bool",
+            "scripts.analyze_repository._parse_cli_response",
+            "scripts.analyze_repository._run_command",
+            "scripts.analyze_repository.main"
           ]
         },
         {
@@ -1320,70 +690,21 @@
   ],
   "components_relations": [
     {
-      "relation": "Passes repository context for CTA generation",
-      "src_name": "Analysis Engine Adapter",
+      "relation": "Returns rendering metadata and diagram artifacts",
+      "src_name": "Visual Rendering Engine",
       "dst_name": "Interaction Orchestrator",
-      "evidence": "The adapter extracts GitHub environment variables and repository metadata required by the Orchestrator to construct valid deep-links.",
-      "key_edges": [
-        {
-          "source": "scripts/engine_adapter.py|scripts.engine_adapter.main",
-          "target": "scripts/build_cta.py|scripts.build_cta.main",
-          "call_sites": [],
-          "description": "Environment Variables"
-        }
-      ],
-      "src_id": "1",
+      "evidence": "The rendering engine writes the Mermaid diagram to a file and prints a JSON metadata object to stdout, which the shell orchestrator captures for GitHub status updates.",
+      "key_edges": [],
+      "src_id": "2",
       "dst_id": "5",
       "is_static": false,
-      "all_edges": [
-        {
-          "source": "scripts/engine_adapter.py|scripts.engine_adapter.main",
-          "target": "scripts/build_cta.py|scripts.build_cta.main",
-          "call_sites": [],
-          "description": "Environment Variables"
-        }
-      ]
+      "all_edges": []
     },
     {
-      "relation": "Queries for architectural changes",
-      "src_name": "Visual Rendering Engine",
-      "dst_name": "Structural Diff Engine",
-      "evidence": "The rendering engine calls the diff engine to identify which files and components have changed to annotate the diagrams.",
-      "key_edges": [
-        {
-          "source": "scripts/build_component_files.py|scripts.build_component_files.render_component_files",
-          "target": "scripts/build_component_files.py|scripts.build_component_files._changed_files_for",
-          "call_sites": [
-            {
-              "line": 142,
-              "column": 17
-            }
-          ],
-          "description": ""
-        }
-      ],
-      "src_id": "2",
-      "dst_id": "3",
-      "is_static": true,
-      "all_edges": [
-        {
-          "source": "scripts/build_component_files.py|scripts.build_component_files.render_component_files",
-          "target": "scripts/build_component_files.py|scripts.build_component_files._changed_files_for",
-          "call_sites": [
-            {
-              "line": 142,
-              "column": 17
-            }
-          ],
-          "description": ""
-        }
-      ]
-    },
-    {
-      "relation": "Provides change-set data",
+      "relation": "Provides annotated diff model for visualization",
       "src_name": "Structural Diff Engine",
       "dst_name": "Visual Rendering Engine",
-      "evidence": "The diff engine's main entry point triggers the rendering of Mermaid diagrams based on the calculated structural delta.",
+      "evidence": "The main execution flow passes a structured 'diff' dictionary, containing component and relation changes, directly into the rendering logic.",
       "key_edges": [
         {
           "source": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main",
@@ -1402,12 +723,16 @@
       "is_static": true,
       "all_edges": [
         {
-          "source": "scripts/build_component_files.py|scripts.build_component_files.main",
-          "target": "scripts/build_component_files.py|scripts.build_component_files.render_component_files",
+          "source": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.build_diff",
+          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_name",
           "call_sites": [
             {
-              "line": 208,
-              "column": 18
+              "line": 313,
+              "column": 21
+            },
+            {
+              "line": 315,
+              "column": 43
             }
           ],
           "description": ""
@@ -1460,39 +785,15 @@
       ]
     },
     {
-      "relation": "Consumes issue counts for UI",
+      "relation": "Triggers structural comparison via CLI",
       "src_name": "Interaction Orchestrator",
-      "dst_name": "Visual Rendering Engine",
-      "evidence": "The orchestrator reads the health findings (issue counts) generated during analysis to determine if a warning banner should be rendered in the PR comment.",
-      "key_edges": [
-        {
-          "source": "scripts/build_cta.py|scripts.build_cta.main",
-          "target": "scripts/build_cta.py|scripts.build_cta.build_cta",
-          "call_sites": [
-            {
-              "line": 177,
-              "column": 9
-            }
-          ],
-          "description": ""
-        }
-      ],
+      "dst_name": "Structural Diff Engine",
+      "evidence": "Shell scripts in the action layer (e.g., render-review.sh) invoke the Python entry point with --base and --head analysis paths to initiate the diffing process.",
+      "key_edges": [],
       "src_id": "5",
-      "dst_id": "2",
+      "dst_id": "3",
       "is_static": false,
-      "all_edges": [
-        {
-          "source": "scripts/build_cta.py|scripts.build_cta.main",
-          "target": "scripts/build_cta.py|scripts.build_cta.build_cta",
-          "call_sites": [
-            {
-              "line": 177,
-              "column": 9
-            }
-          ],
-          "description": ""
-        }
-      ]
+      "all_edges": []
     }
   ]
 }
