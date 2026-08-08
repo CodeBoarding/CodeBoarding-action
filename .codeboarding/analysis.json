@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-08-08T17:02:41.353269+00:00",
-    "source_tree_hash": "f918e116913c2ee97ba7176c8c046e077eaf80bb972481cacb5a318ba7eb8b79",
+    "generated_at": "2026-08-08T23:13:52.521459+00:00",
+    "source_tree_hash": "23c990dfcd2f616ce3b97ee0630e6ba5780cd1ebc900044a7c57ee543ceb143d",
     "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
@@ -580,10 +580,10 @@
             "scripts.diff_to_mermaid._init_directive",
             "scripts.diff_to_mermaid._count_changed_components",
             "scripts.diff_to_mermaid._has_changed_relations",
+            "scripts.diff_to_mermaid.render_mermaid",
             "scripts.diff_to_mermaid.render_mermaid.build",
             "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
-            "scripts.diff_to_mermaid.render_mermaid.build.emit_level",
-            "scripts.diff_to_mermaid.render_mermaid"
+            "scripts.diff_to_mermaid.render_mermaid.build.emit_level"
           ]
         }
       ],
@@ -626,11 +626,11 @@
             "scripts.diff_to_mermaid._methods_by_file",
             "scripts.diff_to_mermaid._has_structural_changes",
             "scripts.diff_to_mermaid._has_method_changes",
-            "scripts.diff_to_mermaid._rel_key",
             "scripts.diff_to_mermaid._analysis_changes",
             "scripts.diff_to_mermaid._analysis_changes.content_changed",
-            "scripts.diff_to_mermaid._diff_relations",
             "scripts.diff_to_mermaid._owns_analysis_change",
+            "scripts.diff_to_mermaid._rel_key",
+            "scripts.diff_to_mermaid._diff_relations",
             "scripts.diff_to_mermaid._diff_components",
             "scripts.diff_to_mermaid.build_diff",
             "scripts.diff_to_mermaid.main"
