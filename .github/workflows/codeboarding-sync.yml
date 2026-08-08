@@ -47,11 +47,6 @@ on:
         options: [push, pull_request]
         required: false
         default: push
-      sync_pr_branch:
-        description: 'Machine-owned branch used when sync_strategy is pull_request.'
-        type: string
-        required: false
-        default: codeboarding/sync
 
 # No workflow-level permissions: the single job below requests only what it
 # needs (least privilege), so the default token starts with none.
@@ -70,6 +65,7 @@ jobs:
     permissions:
       contents: write       # push the generated baseline branch
       pull-requests: write  # workflow_dispatch may exercise pull_request delivery
+      id-token: write       # mint per-request OIDC credentials for the relay
     steps:
       # Dogfood: run the action from the checked-out repo (uses: ./) so pushes to
       # main exercise the action code on main, not the last published release.
@@ -145,15 +141,9 @@ jobs:
       - uses: ./
         with:
           mode: sync
-          force_full: ${{ inputs.force_full || false }}
-          # Push events retain direct delivery to their branch. A manual
-          # pull_request-strategy run targets main even though the workflow code
-          # itself is checked out from the feature ref being dogfooded.
-          target_branch: ${{ github.event_name == 'workflow_dispatch' && inputs.sync_strategy == 'pull_request' && 'main' || github.ref_name }}
           sync_strategy: ${{ inputs.sync_strategy || 'push' }}
-          sync_pr_branch: ${{ inputs.sync_pr_branch || 'codeboarding/sync' }}
+          force_full: ${{ inputs.force_full || false }}
           # App token authenticates the baseline push so the commit is attributed
           # to the CodeBoarding App (logo avatar). Falls back to the workflow token,
           # which can push because this job grants contents: write.
-          push_token: ${{ steps.codeboarding-app-token-client.outputs.token || steps.codeboarding-app-token-app.outputs.token || github.token }}
-          llm_api_key: ${{ secrets.OPENROUTER_API_KEY }}
+          github_token: ${{ steps.codeboarding-app-token-client.outputs.token || steps.codeboarding-app-token-app.outputs.token || github.token }}

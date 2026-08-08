@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Copies Core's persisted artifacts into .codeboarding and removes generated v1 files.
+set -euo pipefail
+output="$CHECKOUT_DIR/.codeboarding"
+mkdir -p "$output"
+# New Core releases expose one canonical manifest. The compatibility imports
+# keep the currently pinned 0.13.7 release usable without duplicating filenames.
+manifest="$(cd "$ACTION_PATH" && python3 - <<'PY'
+try:
+    from constants import ANALYSIS_FILENAME, PERSISTED_ANALYSIS_ARTIFACT_FILENAMES as artifacts
+except ImportError:
+    from static_analyzer.analysis_cache import STATIC_ANALYSIS_PKL, STATIC_ANALYSIS_SHA
+    from utils import ANALYSIS_FILENAME, FINGERPRINT_FILENAME
+    artifacts = (ANALYSIS_FILENAME, FINGERPRINT_FILENAME, STATIC_ANALYSIS_PKL, STATIC_ANALYSIS_SHA, "codeboarding_version.json")
+print(ANALYSIS_FILENAME)
+print(*artifacts, sep="\n")
+PY
+)" || { echo "::error::Could not read Core's persisted artifact manifest."; exit 1; }
+[ -n "$manifest" ] || { echo "::error::Core's persisted artifact manifest is empty."; exit 1; }
+mapfile -t manifest_entries <<< "$manifest"
+required="${manifest_entries[0]}"
+artifacts=("${manifest_entries[@]:1}")
+[ -f "$ANALYSIS_DIR/$required" ] || { echo "::error::Core did not produce $required."; exit 1; }
+
+installed=0
+for name in "${artifacts[@]}"; do
+  source="$ANALYSIS_DIR/$name"
+  target="$output/$name"
+  if [ -f "$source" ]; then
+    cp "$source" "$target"
+    installed=$((installed + 1))
+  elif [ -e "$target" ]; then
+    rm -f "$target"
+  fi
+  printf '%s\n' "$target"
+done
+
+# Remove identifiable v1 Markdown and its generated health report.
+marker='https://img.shields.io/badge/Generated%20by-CodeBoarding'
+for legacy in "$output"/*.md "$CHECKOUT_DIR/docs/development/architecture.md"; do
+  [ -f "$legacy" ] || continue
+  grep -Fq "$marker" "$legacy" || continue
+  rm -f "$legacy"
+  printf '%s\n' "$legacy"
+done
+legacy="$output/health/health_report.json"
+if [ -e "$legacy" ]; then
+  rm -f "$legacy"
+  printf '%s\n' "$legacy"
+fi
+
+echo "installed=$installed" >> "$GITHUB_OUTPUT"

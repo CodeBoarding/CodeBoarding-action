@@ -204,11 +204,90 @@ class TestDiff(unittest.TestCase):
         head = {"components": [comp("A", {"a.py": ["f"], "b.py": ["h"]})], "components_relations": []}
         self.assertEqual(dm.build_diff(base, head)["components"][0]["diff_status"], "modified")
 
+    def test_method_body_change_marks_owning_top_level_component(self):
+        base = {
+            "components": [
+                comp("Owner", {"shared.py": ["Owner.changed"]}, subs=[comp("Inner", {"shared.py": ["Owner.changed"]})]),
+                comp("Reference", {"shared.py": ["Reference.unchanged"]}),
+            ],
+            "components_relations": [],
+            "methods_index": {
+                "shared.py|Owner.changed": {
+                    "file_path": "shared.py",
+                    "qualified_name": "Owner.changed",
+                    "content_hash": "before",
+                }
+            },
+        }
+        head = {
+            **base,
+            "methods_index": {
+                "shared.py|Owner.changed": {
+                    "file_path": "shared.py",
+                    "qualified_name": "Owner.changed",
+                    "content_hash": "after",
+                }
+            },
+        }
+
+        diff = dm.build_diff(base, head)
+        statuses = {component["name"]: component["diff_status"] for component in diff["components"]}
+        text, meta = dm.render_mermaid(diff, render_depth=1)
+
+        self.assertEqual(statuses, {"Owner": "modified", "Reference": "unchanged"})
+        self.assertIn("class n_Owner modified;", text)
+        self.assertNotIn("class n_Reference modified;", text)
+        self.assertEqual(meta["n_changed"], 1)
+
+    def test_line_number_shift_does_not_mark_method_changed(self):
+        component = comp("Owner", {"shared.py": ["Owner.method"]})
+        base = {
+            "components": [component],
+            "components_relations": [],
+            "methods_index": {
+                "shared.py|Owner.method": {
+                    "file_path": "shared.py",
+                    "qualified_name": "Owner.method",
+                    "content_hash": "same",
+                    "start_line": 10,
+                }
+            },
+        }
+        head = {
+            **base,
+            "methods_index": {
+                "shared.py|Owner.method": {
+                    "file_path": "shared.py",
+                    "qualified_name": "Owner.method",
+                    "content_hash": "same",
+                    "start_line": 11,
+                }
+            },
+        }
+
+        self.assertEqual(dm.build_diff(base, head)["components"][0]["diff_status"], "unchanged")
+
     def test_rename_is_add_plus_delete(self):
         base = {"components": [comp("Old")], "components_relations": []}
         head = {"components": [comp("New")], "components_relations": []}
         status = {c["name"]: c["diff_status"] for c in dm.build_diff(base, head)["components"]}
         self.assertEqual(status, {"New": "added", "Old": "deleted"})
+
+    def test_removed_method_does_not_turn_deleted_component_into_modified(self):
+        base = {
+            "components": [comp("Gone", {"gone.py": ["Gone.run"]})],
+            "components_relations": [],
+            "methods_index": {
+                "gone.py|Gone.run": {
+                    "file_path": "gone.py",
+                    "qualified_name": "Gone.run",
+                    "content_hash": "before",
+                }
+            },
+        }
+        head = {"components": [], "components_relations": [], "methods_index": {}}
+
+        self.assertEqual(dm.build_diff(base, head)["components"][0]["diff_status"], "deleted")
 
     def test_relation_modified_on_label_change(self):
         base = {"components": [comp("A"), comp("B")], "components_relations": [rel("A", "B", "uses")]}
@@ -407,6 +486,8 @@ class TestRender(unittest.TestCase):
         text, meta = dm.render_mermaid({"components": [], "components_relations": []})
         self.assertIsNone(text)
         self.assertEqual(meta["n_nodes"], 0)
+        self.assertTrue(meta["empty"])
+        self.assertFalse(meta["truncated"])
 
     def test_no_edge_labels(self):
         text, _ = dm.render_mermaid(self._diff(), render_depth=1, edge_labels=False)
