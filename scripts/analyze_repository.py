@@ -29,7 +29,7 @@ def _parse_bool(value: object, *, field: str) -> bool:
     raise AnalysisError(f"Invalid contract field '{field}': {value!r}")
 
 
-def _parse_cli_response(raw: str, output_dir: str) -> tuple[bool, Path | None, dict]:
+def _parse_cli_response(raw: str, working_dir: str) -> tuple[bool, Path | None, dict]:
     if not raw.strip():
         raise AnalysisError("CodeBoarding command produced no JSON output")
 
@@ -59,7 +59,7 @@ def _parse_cli_response(raw: str, output_dir: str) -> tuple[bool, Path | None, d
         raise AnalysisError("Missing or empty 'analysis_path' in CLI response")
     analysis_path = Path(path)
     if not analysis_path.is_absolute():
-        analysis_path = Path(output_dir) / analysis_path
+        analysis_path = Path(working_dir) / analysis_path
     if not analysis_path.is_file():
         raise AnalysisError(f"analysis_path points to a non-file: {analysis_path}")
 
@@ -106,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     if args.mode == "incremental":
         command = [PROG, "incremental", "--local", str(checkout), "--output-dir", str(output_dir)]
-        requires_full, analysis_path, _ = _parse_cli_response(_run_command(command, output_dir), str(output_dir))
+        requires_full, analysis_path, _ = _parse_cli_response(_run_command(command, output_dir), str(output_dir.parent))
         print(f"analysis_mode=incremental")
         print(f"requires_full_analysis={str(requires_full).lower()}")
         print(f"analysis_path={analysis_path or ''}")

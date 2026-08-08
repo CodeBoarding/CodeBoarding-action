@@ -86,12 +86,8 @@ else
     exit 2
   fi
 
-  if [ -d "$OUT" ]; then
-    rm -rf "$OUT"
-    mkdir -p "$OUT"
-  fi
-
   WORK="$OUT/work"
+  rm -rf "$WORK"
   BASE_DIR="$WORK/base"
   HEAD_DIR="$WORK/head"
   BASE_FULL_DIR="$WORK/base-full"
@@ -151,12 +147,6 @@ else
   fi
 
   if [ "$NEED_FULL" = "true" ]; then
-    rm -rf "$HEAD_DIR" && mkdir -p "$HEAD_DIR"
-    if [ -n "${BASE_FULL_DIR:-}" ] && [ -d "$BASE_FULL_DIR" ]; then
-      cp -a "$BASE_FULL_DIR/." "$HEAD_DIR/." 2>/dev/null || true
-    else
-      cp -a "$BASE_DIR/." "$HEAD_DIR/." 2>/dev/null || true
-    fi
     HEAD_FULL_OUTPUT="$(run_full "$HEAD_DIR" "$HEAD_FULL_DIR")"
     HEAD_MODE="$(parse_value analysis_mode "$HEAD_FULL_OUTPUT")"
     HEAD_PATH="$(parse_value analysis_path "$HEAD_FULL_OUTPUT")"
@@ -215,7 +205,7 @@ open(dst, "w", encoding="utf-8").write(f"""<!doctype html><html><head><meta char
 </div>
 <pre class=\"mermaid\">\n{graph}\n</pre>
 <script type=\"module\">
-import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.js';
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
 mermaid.initialize({{ startOnLoad: true, securityLevel: 'strict' }});
 </script></body></html>""")
 print(f"  wrote {dst}")

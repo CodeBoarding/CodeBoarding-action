@@ -87,7 +87,7 @@ class AnalyzeRepositoryTests(unittest.TestCase):
                     "_run_command",
                     return_value=json.dumps(
                         {
-                            "analysis_path": str(analysis_path.relative_to(out_dir)),
+                            "analysis_path": str(analysis_path.relative_to(out_dir.parent)),
                             "requiresFullAnalysis": False,
                         }
                     ),
