@@ -32,13 +32,9 @@ jobs:
       pull-requests: write  # post / update the architecture-diff PR comment
       issues: write         # the /codeboarding issue_comment trigger + comment API
       id-token: write       # mint per-request OIDC credentials for the relay
-    # Never auto-review the sync mode's own baseline PR (head branch
-    # 'codeboarding/sync', the sync_pr_branch default): it only changes generated
-    # files, so a diff comment would be noise. Scoped to THIS repo's head so a fork
-    # PR that merely happens to name its branch 'codeboarding/sync' is still
-    # reviewed normally. Consumers using sync_strategy: pull_request should match
-    # this exclusion to their sync_pr_branch and, if they run other pull_request
-    # workflows (tests, lint), exclude the branch there too (via a head_ref guard).
+    # Never auto-review the fixed machine-owned 'codeboarding/sync' PR: it only
+    # changes generated files, so a diff comment would be noise. Scope this to
+    # this repository so a fork using the same branch name is still reviewed.
     if: >
       (github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.draft == false &&
        !(github.head_ref == 'codeboarding/sync' && github.event.pull_request.head.repo.full_name == github.repository)) ||

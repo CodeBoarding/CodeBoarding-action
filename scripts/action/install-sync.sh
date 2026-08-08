@@ -8,20 +8,20 @@ mkdir -p "$output"
 # keep the currently pinned 0.13.5 release usable without duplicating filenames.
 manifest="$(python3 - <<'PY'
 try:
-    from constants import PERSISTED_ANALYSIS_ARTIFACT_FILENAMES as artifacts
+    from constants import ANALYSIS_FILENAME, PERSISTED_ANALYSIS_ARTIFACT_FILENAMES as artifacts
 except ImportError:
     from static_analyzer.analysis_cache import STATIC_ANALYSIS_PKL, STATIC_ANALYSIS_SHA
     from utils import ANALYSIS_FILENAME, FINGERPRINT_FILENAME
-    artifacts = (ANALYSIS_FILENAME, FINGERPRINT_FILENAME, STATIC_ANALYSIS_PKL, STATIC_ANALYSIS_SHA)
+    artifacts = (ANALYSIS_FILENAME, FINGERPRINT_FILENAME, STATIC_ANALYSIS_PKL, STATIC_ANALYSIS_SHA, "codeboarding_version.json")
+print(ANALYSIS_FILENAME)
 print(*artifacts, sep="\n")
 PY
 )" || { echo "::error::Could not read Core's persisted artifact manifest."; exit 1; }
 [ -n "$manifest" ] || { echo "::error::Core's persisted artifact manifest is empty."; exit 1; }
-mapfile -t artifacts <<< "$manifest"
-
-for required in "${artifacts[@]:0:4}"; do
-  [ -f "$ANALYSIS_DIR/$required" ] || { echo "::error::Core did not produce $required."; exit 1; }
-done
+mapfile -t manifest_entries <<< "$manifest"
+required="${manifest_entries[0]}"
+artifacts=("${manifest_entries[@]:1}")
+[ -f "$ANALYSIS_DIR/$required" ] || { echo "::error::Core did not produce $required."; exit 1; }
 
 installed=0
 for name in "${artifacts[@]}"; do

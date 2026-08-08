@@ -51,6 +51,9 @@ done
 if [ ! -s "$READY" ]; then
   echo "::error::OIDC relay did not start." >&2
   cat "$LOG" >&2 || true
+  kill "$(cat "$PID")" 2>/dev/null || true
+  wait "$(cat "$PID")" 2>/dev/null || true
+  rm -rf "$AUTH_DIR"
   exit 1
 fi
 

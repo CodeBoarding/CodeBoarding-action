@@ -48,24 +48,25 @@ class ActionSyncTests(unittest.TestCase):
             output = checkout / ".codeboarding"
             analysis = root / "analysis"
             fake_core = root / "core"
-            for directory in (output / "health", analysis, fake_core, checkout / "docs" / "development"):
+            static_analyzer = fake_core / "static_analyzer"
+            for directory in (output / "health", analysis, static_analyzer, checkout / "docs" / "development"):
                 directory.mkdir(parents=True)
 
-            (fake_core / "constants.py").write_text(
-                "PERSISTED_ANALYSIS_ARTIFACT_FILENAMES = (\n"
-                "    'analysis.json', 'fingerprint.json', 'static_analysis.pkl',\n"
-                "    'static_analysis.sha', 'codeboarding_version.json',\n"
-                ")\n",
+            (fake_core / "utils.py").write_text(
+                "ANALYSIS_FILENAME = 'analysis.json'\nFINGERPRINT_FILENAME = 'fingerprint.json'\n",
                 encoding="utf-8",
             )
-            for name in (
-                "analysis.json",
-                "fingerprint.json",
-                "static_analysis.pkl",
-                "static_analysis.sha",
-                "codeboarding_version.json",
-            ):
+            (static_analyzer / "__init__.py").touch()
+            (static_analyzer / "analysis_cache.py").write_text(
+                "STATIC_ANALYSIS_PKL = 'static_analysis.pkl'\nSTATIC_ANALYSIS_SHA = 'static_analysis.sha'\n",
+                encoding="utf-8",
+            )
+            produced = ("analysis.json", "fingerprint.json", "static_analysis.pkl")
+            for name in produced:
                 (analysis / name).write_text(f"new {name}\n", encoding="utf-8")
+            missing_optional = ("static_analysis.sha", "codeboarding_version.json")
+            for name in missing_optional:
+                (output / name).write_text(f"stale {name}\n", encoding="utf-8")
 
             preserved = {
                 output / ".codeboardingignore": "ignore me\n",
@@ -98,19 +99,15 @@ class ActionSyncTests(unittest.TestCase):
             )
 
             self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-            for name in (
-                "analysis.json",
-                "fingerprint.json",
-                "static_analysis.pkl",
-                "static_analysis.sha",
-                "codeboarding_version.json",
-            ):
+            for name in produced:
                 self.assertEqual((output / name).read_text(encoding="utf-8"), f"new {name}\n")
+            for name in missing_optional:
+                self.assertFalse((output / name).exists())
             for path, content in preserved.items():
                 self.assertEqual(path.read_text(encoding="utf-8"), content)
             for path in legacy:
                 self.assertFalse(path.exists())
-            self.assertEqual(github_output.read_text(encoding="utf-8"), "installed=5\n")
+            self.assertEqual(github_output.read_text(encoding="utf-8"), "installed=3\n")
 
 
 if __name__ == "__main__":

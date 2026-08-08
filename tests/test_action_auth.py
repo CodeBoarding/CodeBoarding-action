@@ -137,6 +137,34 @@ done
         self.assertNotIn("https://openrouter.ai/api/v1", args)
         self.assertEqual((auth_dir / "provider-key").read_text(), "github-actions-oidc-relay")
 
+    def test_failed_relay_start_removes_credentials_and_process(self) -> None:
+        temp_dir = Path(self.temp_dir.name)
+        fake_bin = temp_dir / "bin"
+        fake_bin.mkdir()
+        relay_pid = temp_dir / "relay-pid"
+        (fake_bin / "python3").write_text(
+            '#!/usr/bin/env bash\nprintf \'%s\' "$$" > "$RELAY_PID"\nexec /bin/sleep 30\n',
+            encoding="utf-8",
+        )
+        (fake_bin / "sleep").write_text("#!/usr/bin/env bash\n/bin/sleep 0.01\n", encoding="utf-8")
+        for path in (fake_bin / "python3", fake_bin / "sleep"):
+            path.chmod(0o755)
+
+        result, auth_dir = self._configure(
+            "openrouter",
+            "",
+            ACTIONS_ID_TOKEN_REQUEST_URL="https://oidc.example/token",
+            ACTIONS_ID_TOKEN_REQUEST_TOKEN="request-token",
+            LICENSE_KEY="license",
+            RELAY_PID=str(relay_pid),
+            PATH=f"{fake_bin}:{os.environ['PATH']}",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(auth_dir.exists())
+        with self.assertRaises(ProcessLookupError):
+            os.kill(int(relay_pid.read_text(encoding="utf-8")), 0)
+
     def test_with_auth_scopes_credentials_source_and_model_precedence(self) -> None:
         result, auth_dir = self._configure("anthropic", "fake=key")
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)

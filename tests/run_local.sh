@@ -90,9 +90,9 @@ else
   rm -rf "$WORK"
   BASE_DIR="$WORK/base"
   HEAD_DIR="$WORK/head"
-  BASE_FULL_DIR="$WORK/base-full"
-  HEAD_FULL_DIR="$WORK/head-full"
-  mkdir -p "$BASE_DIR" "$HEAD_DIR" "$BASE_FULL_DIR" "$HEAD_FULL_DIR"
+  BASE_STATE="$WORK/base-state"
+  HEAD_STATE="$WORK/head-state"
+  mkdir -p "$BASE_DIR" "$HEAD_DIR" "$BASE_STATE" "$HEAD_STATE"
 
   REPO="$(cd "$REPO" && pwd)"
 
@@ -120,34 +120,45 @@ else
     DEPTH="$BASELINE_DEPTH"
   fi
 
-  if [ -d "$BASE_DIR/.codeboarding" ] && [ -f "$BASE_DIR/.codeboarding/analysis.json" ]; then
-    cp -a "$BASE_DIR/.codeboarding/." "$HEAD_DIR/."
-    BASE_FOR_DIFF="$BASE_DIR/.codeboarding/analysis.json"
-    BASE_FULL_PATH=""
+  if [ -f "$BASE_DIR/.codeboarding/analysis.json" ]; then
+    cp -a "$BASE_DIR/.codeboarding/." "$BASE_STATE/"
+    BASE_OUTPUT="$(run_inc "$BASE_DIR" "$BASE_STATE")"
+    BASE_MODE="$(parse_value analysis_mode "$BASE_OUTPUT")"
+    BASE_NEED_FULL="$(parse_value requires_full_analysis "$BASE_OUTPUT")"
+    BASE_PATH="$(parse_value analysis_path "$BASE_OUTPUT")"
+    if [ "$BASE_MODE" != incremental ] || { [ "$BASE_NEED_FULL" != true ] && [ -z "$BASE_PATH" ]; }; then
+      echo "::error::Could not parse base incremental output contract." >&2
+      exit 1
+    fi
   else
-    BASE_FULL_OUTPUT="$(run_full "$BASE_DIR" "$BASE_FULL_DIR")"
-    BASE_FULL_PATH="$(parse_value analysis_path "$BASE_FULL_OUTPUT")"
-    if [ -z "$BASE_FULL_PATH" ] || [ ! -f "$BASE_FULL_PATH" ]; then
+    BASE_NEED_FULL=true
+  fi
+  if [ "$BASE_NEED_FULL" = true ]; then
+    BASE_OUTPUT="$(run_full "$BASE_DIR" "$BASE_STATE")"
+    BASE_MODE="$(parse_value analysis_mode "$BASE_OUTPUT")"
+    BASE_PATH="$(parse_value analysis_path "$BASE_OUTPUT")"
+    if [ "$BASE_MODE" != full ] || [ -z "$BASE_PATH" ]; then
       echo "::error::Base full analysis did not produce analysis_path." >&2
       exit 1
     fi
-    BASE_FOR_DIFF="$BASE_FULL_PATH"
-    cp -a "$BASE_FULL_DIR/." "$HEAD_DIR/."
   fi
+  [ -f "$BASE_PATH" ] || { echo "::error::Missing generated base analysis.json." >&2; exit 1; }
+  BASE_FOR_DIFF="$BASE_PATH"
+  cp -a "$BASE_STATE/." "$HEAD_STATE/"
 
-  HEAD_OUTPUT="$(run_inc "$HEAD_DIR" "$HEAD_DIR")"
+  HEAD_OUTPUT="$(run_inc "$HEAD_DIR" "$HEAD_STATE")"
   HEAD_MODE="$(parse_value analysis_mode "$HEAD_OUTPUT")"
   NEED_FULL="$(parse_value requires_full_analysis "$HEAD_OUTPUT")"
   HEAD_PATH="$(parse_value analysis_path "$HEAD_OUTPUT")"
 
-  if [ "$HEAD_MODE" != "incremental" ] || [ -z "$HEAD_PATH" ]; then
+  if [ "$HEAD_MODE" != incremental ] || { [ "$NEED_FULL" != true ] && [ -z "$HEAD_PATH" ]; }; then
     echo "::error::Could not parse head incremental output contract." >&2
     echo "$HEAD_OUTPUT"
     exit 1
   fi
 
   if [ "$NEED_FULL" = "true" ]; then
-    HEAD_FULL_OUTPUT="$(run_full "$HEAD_DIR" "$HEAD_FULL_DIR")"
+    HEAD_FULL_OUTPUT="$(run_full "$HEAD_DIR" "$HEAD_STATE")"
     HEAD_MODE="$(parse_value analysis_mode "$HEAD_FULL_OUTPUT")"
     HEAD_PATH="$(parse_value analysis_path "$HEAD_FULL_OUTPUT")"
     if [ "$HEAD_MODE" != "full" ] || [ -z "$HEAD_PATH" ]; then
