@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Selects direct or hosted authentication and stores scoped credentials for analysis.
 set -euo pipefail
 AUTH_DIR="${RUNNER_TEMP}/codeboarding-auth"
 HOSTED_PROXY_URL="https://auduihjmm4b735zci7vyabuikq0hppqn.lambda-url.us-east-1.on.aws"
@@ -25,7 +26,6 @@ fi
 if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
   echo "::error::Missing OIDC token. Add permissions: id-token: write." && exit 1
 fi
-
 READY="$AUTH_DIR/ready-port"
 PID="$AUTH_DIR/relay.pid"
 LOG="$AUTH_DIR/relay.log"

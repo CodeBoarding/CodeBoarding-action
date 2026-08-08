@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Runs one command with scoped provider credentials, then removes those credentials.
 set -euo pipefail
 AUTH_DIR="${RUNNER_TEMP}/codeboarding-auth"
 PROVIDER_FILE="$AUTH_DIR/provider-name"
@@ -15,7 +16,6 @@ if [ ! -s "$PROVIDER_FILE" ] || [ ! -s "$PROVIDER_ENV_FILE" ]; then
   echo "::error::CodeBoarding analysis credentials are unavailable."
   exit 1
 fi
-
 PROVIDER="$(cat "$PROVIDER_FILE")"
 case "$PROVIDER" in
   ollama) [ -n "${OLLAMA_BASE_URL:-${OLLAMA_HOST:-}}" ] || { echo "::error::ollama requires OLLAMA_BASE_URL or OLLAMA_HOST." >&2; exit 1; } ;;

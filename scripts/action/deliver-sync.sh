@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Installs generated state and delivers it by direct push or a rolling sync PR.
 set -euo pipefail
 cd "$CHECKOUT_DIR"
 SYNC_BRANCH=codeboarding/sync
@@ -40,7 +41,6 @@ close_stale_pr() {
     echo "::notice::Closed obsolete CodeBoarding sync PR #$number."
   fi
 }
-
 classify_push_failure() {
   local expected="$1" branch="$2" current
   current="$(git ls-remote "$REMOTE" "refs/heads/$branch" | awk '{print $1; exit}')"

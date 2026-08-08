@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Validates the event and outputs the exact refs and metadata used by later steps.
 set -euo pipefail
 fail() { echo "::error::$1"; exit 1; }
 skip() { echo "::notice::$1"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
@@ -22,7 +23,6 @@ if [ "$MODE" = sync ]; then
       [ "$EVENT" != push ] || skip "Ignoring CodeBoarding's own baseline commit."
       ;;
   esac
-
   target_branch="${TARGET_BRANCH_INPUT:-$REF_NAME}"
   [ -n "$target_branch" ] || fail "target_branch is required for this event."
   [ "$SYNC_STRATEGY" != pull_request ] || [ "$target_branch" != codeboarding/sync ] || fail "target_branch must differ from codeboarding/sync."

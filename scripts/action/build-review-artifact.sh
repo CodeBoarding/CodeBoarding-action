@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Packages head analysis and PR metadata, then outputs the artifact upload directory.
 set -euo pipefail
 mkdir -p "${RUNNER_TEMP}/cb-review-artifact"
 cp "$ANALYSIS_PATH" "${RUNNER_TEMP}/cb-review-artifact/analysis.json"

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
+# Copies Core's persisted artifacts into .codeboarding and removes generated v1 files.
 set -euo pipefail
-
 output="$CHECKOUT_DIR/.codeboarding"
 mkdir -p "$output"
-
 # New Core releases expose one canonical manifest. The compatibility imports
 # keep the currently pinned 0.13.7 release usable without duplicating filenames.
 manifest="$(cd "$ACTION_PATH" && python3 - <<'PY'

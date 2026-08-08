@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Appends sync analysis and delivery results to the GitHub job summary.
 set -euo pipefail
 {
   echo "### CodeBoarding Sync"

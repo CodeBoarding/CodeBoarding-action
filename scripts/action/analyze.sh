@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Runs incremental/full Core analysis and outputs the selected analysis paths and mode.
 set -euo pipefail
 parse_output() {
   local output="$1"

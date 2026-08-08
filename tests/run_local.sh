@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Local test harness for the CodeBoarding Action.
-#
+# Runs fixture or repository review previews and writes diagram.md plus preview.html.
+set -euo pipefail
 # Three modes:
 #   1) FAST review preview (no repo analysis):
 #      tests/run_local.sh --base-json BASE.json --head-json HEAD.json
@@ -12,8 +12,6 @@
 # Output:
 #   diagram.md   Mermaid payload posted by the action
 #   preview.html browser preview
-
-set -euo pipefail
 
 ACTION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="${ACTION_DIR}/.cb-local"
