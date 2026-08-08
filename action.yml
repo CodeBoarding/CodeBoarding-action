@@ -259,14 +259,6 @@ runs:
         path: ${{ steps.review_artifact.outputs.artifact_dir }}
         if-no-files-found: error
 
-    - name: Upload review artifact (GitHub Enterprise Server)
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && github.server_url != 'https://github.com'
-      uses: actions/upload-artifact@v3.2.2-node20
-      with:
-        name: codeboarding-review-${{ github.run_id }}-${{ github.run_attempt }}
-        path: ${{ steps.review_artifact.outputs.artifact_dir }}
-        if-no-files-found: error
-
     - name: Build review comment
       id: review_body
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
