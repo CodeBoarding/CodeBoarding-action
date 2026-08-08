@@ -1,11 +1,11 @@
 {
   "files": {
-    "CHANGELOG.md": "b05adcbceb7d1fd1",
+    "CHANGELOG.md": "4120b88bd0c1e777",
     "pyproject.toml": "d2f78b9c7f0b5865",
     "AGENT.md": "6f89daa8e2f2a3b5",
-    "action.yml": "5cba0773bc4240e9",
+    "action.yml": "58f8ed24f2f43f7b",
     "LICENSE": "356a3402bd47e108",
-    "README.md": "f6e48fac1083b063",
+    "README.md": "6a51df4b0c06ec84",
     "release-please-config.json": "e1ea6dfc5a9fa8bd",
     "scripts/build_component_files.py": "aec54432fc8adf81",
     "scripts/engine_adapter.py": "0b868c4b1690db55",
