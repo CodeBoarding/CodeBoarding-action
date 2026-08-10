@@ -6,7 +6,9 @@ if [ "$N_CHANGED" = "1" ]; then
   COMPONENT_NOUN="component"
 fi
 RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-WEBVIEW_URL="https://app.codeboarding.org/${GITHUB_REPOSITORY}/pull/${PR_NUMBER}?run=${GITHUB_RUN_ID}"
+# Stable PR route: the webview resolves the repo/PR's latest artifact itself,
+# so the link stays valid across runs instead of pinning one run id.
+WEBVIEW_URL="https://app.codeboarding.org/${GITHUB_REPOSITORY}/pull/${PR_NUMBER}"
 BODY="${RUNNER_TEMP}/review-comment.md"
 printf '### CodeBoarding review\n\n**Status:** %s changed %s\n' "$N_CHANGED" "$COMPONENT_NOUN" > "$BODY"
 printf '\nSee the full change in [CodeBoarding](%s).\n' "$WEBVIEW_URL" >> "$BODY"
