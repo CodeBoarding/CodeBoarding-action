@@ -1,6 +1,6 @@
 {
   "files": {
-    "CHANGELOG.md": "4120b88bd0c1e777",
+    "CHANGELOG.md": "15638c19e8b7b4fe",
     "pyproject.toml": "d2f78b9c7f0b5865",
     "AGENT.md": "6f89daa8e2f2a3b5",
     "action.yml": "5682c0d5f8747408",
@@ -19,7 +19,7 @@
     "scripts/action/build-review-artifact.sh": "8b601afcb5d51dba",
     "scripts/action/configure-auth.sh": "e54312d076265dee",
     "scripts/action/render-review.sh": "2c37a3719c6ed860",
-    "scripts/action/build-review-comment.sh": "654c45220c463c32",
+    "scripts/action/build-review-comment.sh": "12e13d7ab7d67d51",
     "scripts/action/analyze.sh": "ecfab37f4f9f1f82",
     "docs/COMMIT_STRATEGY.md": "705ad60319f2c7fb",
     "assets/icon.svg": "1f5885e35bb4798e"
