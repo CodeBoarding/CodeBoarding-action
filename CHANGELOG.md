@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.3](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.10.2...v1.10.3) (2026-08-10)
+
+
+### Bug Fixes
+
+* use stable PR route for webview links ([#75](https://github.com/CodeBoarding/CodeBoarding-action/issues/75)) ([e2f8a71](https://github.com/CodeBoarding/CodeBoarding-action/commit/e2f8a71dcab199c037637cf556af4c155f1b4dbd))
+
 ## [1.10.2](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.10.1...v1.10.2) (2026-08-07)
 
 
