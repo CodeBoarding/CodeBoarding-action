@@ -80,7 +80,7 @@ All model inputs are optional and are passed directly to Core without action-sid
 
 ```yaml
         with:
-          model: google/gemini-3-flash-preview
+          model: google/gemini-3.7-flash
           agent_model: anthropic/claude-sonnet-4 # optional analysis-only override
           parsing_model: openai/gpt-5-mini       # optional parsing-only override
 ```
