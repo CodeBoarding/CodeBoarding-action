@@ -9,11 +9,13 @@ jq -n \
   --arg mode "$ANALYSIS_MODE" \
   --arg base_sha "$BASE_SHA" \
   --arg merge_base_sha "$MERGE_BASE_SHA" \
+  --arg merge_base_resolved "$MERGE_BASE_RESOLVED" \
   --arg head_sha "$HEAD_SHA" \
   --arg pr_number "$PR_NUMBER" \
   --arg seed_source "$SEED_SOURCE" \
   --arg chain_depth "$CHAIN_DEPTH" \
-  '{mode: $mode, base_sha: $base_sha, merge_base_sha: $merge_base_sha, head_sha: $head_sha,
+  '{mode: $mode, base_sha: $base_sha, merge_base_sha: $merge_base_sha,
+    merge_base_resolved: $merge_base_resolved, head_sha: $head_sha,
     pr_number: $pr_number, seed_source: $seed_source, chain_depth: $chain_depth}' \
   > "${RUNNER_TEMP}/cb-review-artifact/metadata.json"
 echo "artifact_dir=${RUNNER_TEMP}/cb-review-artifact" >> "$GITHUB_OUTPUT"

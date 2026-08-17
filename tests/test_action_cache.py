@@ -70,6 +70,13 @@ class CacheKeyTests(unittest.TestCase):
                 "HEAD_SHA": "head-sha",
                 "HEAD_REPO": "owner/repo",
                 "IS_FORK": "false",
+                "SEED_MODE": "chain",
+                "LLM_PROVIDER": "openrouter",
+                "MODEL": "",
+                "AGENT_MODEL_INPUT": "",
+                "PARSING_MODEL_INPUT": "",
+                "GITHUB_RUN_ID": "99",
+                "GITHUB_RUN_ATTEMPT": "1",
                 **extra,
             },
             capture_output=True,
@@ -109,6 +116,26 @@ class CacheKeyTests(unittest.TestCase):
 
         (self.checkout / ".codeboarding" / ".codeboardingignore").write_text("docs/\n", encoding="utf-8")
         self.assertNotEqual(baseline["cfg_hash"], self._run()["cfg_hash"])
+
+    def test_model_selection_changes_the_identity(self) -> None:
+        baseline = self._run()
+
+        self.assertNotEqual(baseline["cfg_hash"], self._run(MODEL="gpt-5")["cfg_hash"])
+        self.assertNotEqual(baseline["cfg_hash"], self._run(AGENT_MODEL_INPUT="gpt-5")["cfg_hash"])
+        self.assertNotEqual(baseline["cfg_hash"], self._run(PARSING_MODEL_INPUT="gpt-5")["cfg_hash"])
+        self.assertNotEqual(baseline["cfg_hash"], self._run(LLM_PROVIDER="anthropic")["cfg_hash"])
+
+    def test_a_forced_refresh_does_not_save_under_the_key_it_replaces(self) -> None:
+        chained = self._run()
+        refreshed = self._run(SEED_MODE="refresh")
+        full = self._run(SEED_MODE="full")
+
+        self.assertNotEqual(chained["chain_key"], refreshed["chain_key"])
+        self.assertNotEqual(refreshed["chain_key"], full["chain_key"])
+        # Still found by the prefix, so the next run picks the newest state.
+        for values in (refreshed, full):
+            self.assertTrue(values["chain_key"].startswith(values["chain_restore_keys"]))
+            self.assertEqual(values["chain_restore_keys"], chained["chain_restore_keys"])
 
     def test_unresolvable_engine_version_disables_caching_instead_of_failing(self) -> None:
         stub_bin = self.root / "bin"
@@ -247,6 +274,39 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(origin["head_sha"], "head-sha")
         self.assertEqual(origin["engine_version"], "0.13.8")
         self.assertFalse((self.cache_out / "base").exists(), "a cached base needs no re-save")
+
+
+class CachePathParityTests(unittest.TestCase):
+    """actions/cache derives its lookup version from the path strings, so a save
+    under a different path than the restore can never be found again."""
+
+    def _cache_steps(self) -> list[dict[str, str]]:
+        steps: list[dict[str, str]] = []
+        current: dict[str, str] | None = None
+        for line in (ROOT / "action.yml").read_text(encoding="utf-8").splitlines():
+            if line.startswith("    - name:"):
+                current = {"name": line.split(":", 1)[1].strip()}
+                steps.append(current)
+            elif current is not None:
+                stripped = line.strip()
+                for field in ("uses", "path", "key"):
+                    if stripped.startswith(f"{field}:"):
+                        current[field] = stripped.split(":", 1)[1].strip()
+        return [step for step in steps if step.get("uses", "").startswith("actions/cache/")]
+
+    def test_every_saved_path_is_a_restored_path(self) -> None:
+        steps = self._cache_steps()
+        self.assertTrue(steps, "no cache steps found in action.yml")
+        restored = {s["path"] for s in steps if s["uses"].startswith("actions/cache/restore")}
+        saved = {s["path"] for s in steps if s["uses"].startswith("actions/cache/save")}
+
+        self.assertTrue(restored, "no cache restore steps found")
+        self.assertTrue(saved, "no cache save steps found")
+        self.assertEqual(
+            saved - restored,
+            set(),
+            "these paths are saved but never restored, so the entries are unreachable",
+        )
 
 
 if __name__ == "__main__":

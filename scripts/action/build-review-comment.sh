@@ -15,7 +15,11 @@ printf '\nSee the full change in [CodeBoarding](%s).\n' "$WEBVIEW_URL" >> "$BODY
 # The diagram compares against the merge base, so commits landed on the base
 # branch since this PR forked are excluded. Say so rather than hide it.
 BEHIND="${BEHIND_BY:-0}"
-if [ "$BEHIND" -gt 0 ] 2>/dev/null; then
+if [ "${MERGE_BASE_RESOLVED:-true}" != true ]; then
+  # shellcheck disable=SC2016  # the backticks are Markdown, not a command
+  printf '\n> [!WARNING]\n> The merge base could not be resolved, so this compares against the tip of `%s`. Changes made on `%s` since this branch forked may appear here as this pull request'\''s changes.\n' \
+    "${BASE_REF:-the base branch}" "${BASE_REF:-the base branch}" >> "$BODY"
+elif [ "$BEHIND" -gt 0 ] 2>/dev/null; then
   COMMIT_NOUN="commits"
   [ "$BEHIND" != "1" ] || COMMIT_NOUN="commit"
   # shellcheck disable=SC2016  # the backticks are Markdown, not a command

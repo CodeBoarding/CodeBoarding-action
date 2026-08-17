@@ -89,12 +89,19 @@ merge_base_sha="$base_sha"
 behind_by=0
 basehead="$base_sha...$head_sha"
 [ "$head_repo" = "$base_repo" ] || basehead="$base_sha...${head_repo%%/*}:$head_sha"
-compare="$(gh api "repos/$base_repo/compare/$basehead" \
-  --jq '[.merge_base_commit.sha // "", .behind_by // 0] | @tsv' 2>/dev/null || true)"
-# Split on the tab explicitly. Field splitting would drop an empty merge base
-# and shift the distance into its place, which reads as a valid commit.
-compare_merge_base="${compare%%$'\t'*}"
-compare_behind="${compare#*$'\t'}"
+merge_base_resolved=false
+for attempt in 1 2; do
+  compare="$(gh api "repos/$base_repo/compare/$basehead" \
+    --jq '[.merge_base_commit.sha // "", .behind_by // 0] | @tsv' 2>/dev/null || true)"
+  # Split on the tab explicitly. Field splitting would drop an empty merge base
+  # and shift the distance into its place, which reads as a valid commit.
+  compare_merge_base="${compare%%$'\t'*}"
+  compare_behind="${compare#*$'\t'}"
+  # A transient failure of one API call should not decide how this pull request
+  # is measured, so try once more before giving up on the merge base.
+  [ -z "$compare_merge_base" ] && [ "$attempt" = 1 ] || break
+  sleep 2
+done
 case "$compare_behind" in
   ''|*[!0-9]*) compare_behind=0 ;;
 esac
@@ -102,10 +109,14 @@ esac
 # against, so take both or neither: reporting one while comparing against the
 # tip would describe a comparison this run did not make.
 if [ -n "$compare_merge_base" ]; then
+  merge_base_resolved=true
   merge_base_sha="$compare_merge_base"
   behind_by="$compare_behind"
 else
-  echo "::notice::Could not resolve the merge base; comparing against the base branch tip instead."
+  # Falling back keeps reviews working through an API outage, but the result is
+  # the comparison this change exists to avoid, so it is stated in the comment
+  # rather than left in the log.
+  echo "::warning::Could not resolve the merge base; comparing against the tip of $base_ref instead."
 fi
 
 comment_id=codeboarding-review
@@ -116,6 +127,7 @@ is_fork=false
   echo "pr_number=$pr_number"
   echo "base_sha=$base_sha"
   echo "merge_base_sha=$merge_base_sha"
+  echo "merge_base_resolved=$merge_base_resolved"
   echo "behind_by=$behind_by"
   echo "base_ref=$base_ref"
   echo "head_sha=$head_sha"

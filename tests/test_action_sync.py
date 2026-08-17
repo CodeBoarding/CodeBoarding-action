@@ -101,6 +101,8 @@ class ActionSyncTests(unittest.TestCase):
             values = output.read_text(encoding="utf-8")
             self.assertIn("merge_base_sha=base-sha\n", values)
             self.assertIn("behind_by=0\n", values)
+            # The fallback comparison is announced, not silently substituted.
+            self.assertIn("merge_base_resolved=false\n", values)
 
     def test_review_guard_accepts_trusted_fork_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
