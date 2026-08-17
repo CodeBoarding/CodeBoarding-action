@@ -204,13 +204,17 @@ runs:
         key: ${{ steps.cache_keys.outputs.base_key }}
         restore-keys: ${{ steps.cache_keys.outputs.base_restore_keys }}
 
+    # Looked up by prefix alone, because what a run must continue from is this
+    # pull request's newest analysis. An exact head-sha key would outrank a
+    # newer generation saved for the same head, so the entry a forced refresh
+    # replaced would win and undo the refresh.
     - name: Restore pull request analysis
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.guard.outputs.seed_mode == 'chain' && steps.cache_keys.outputs.chain_key != ''
       continue-on-error: true
       uses: actions/cache/restore@v4
       with:
         path: ${{ runner.temp }}/cb-cache/chain
-        key: ${{ steps.cache_keys.outputs.chain_key }}
+        key: ${{ steps.cache_keys.outputs.chain_restore_keys }}
         restore-keys: ${{ steps.cache_keys.outputs.chain_restore_keys }}
 
     - name: Analyze baseline

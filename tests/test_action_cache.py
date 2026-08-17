@@ -289,10 +289,23 @@ class CachePathParityTests(unittest.TestCase):
                 steps.append(current)
             elif current is not None:
                 stripped = line.strip()
-                for field in ("uses", "path", "key"):
+                for field in ("uses", "path", "key", "restore-keys"):
                     if stripped.startswith(f"{field}:"):
                         current[field] = stripped.split(":", 1)[1].strip()
         return [step for step in steps if step.get("uses", "").startswith("actions/cache/")]
+
+    def test_the_chain_is_restored_by_prefix_so_a_refresh_survives(self) -> None:
+        steps = {step["name"]: step for step in self._cache_steps()}
+        chain = steps["Restore pull request analysis"]
+        base = steps["Restore base analysis"]
+
+        # An exact key outranks every prefix match, so a head-sha key would
+        # return the entry a forced refresh replaced rather than its
+        # replacement, which is saved under a later generation of the same head.
+        self.assertEqual(chain["key"], chain["restore-keys"])
+        # The base lookup relies on the opposite: an exact hit is this merge
+        # base's own analysis, a prefix hit is only a warm seed.
+        self.assertNotEqual(base["key"], base["restore-keys"])
 
     def test_every_saved_path_is_a_restored_path(self) -> None:
         steps = self._cache_steps()
