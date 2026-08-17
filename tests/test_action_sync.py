@@ -42,6 +42,66 @@ class ActionSyncTests(unittest.TestCase):
             self.assertTrue(values.endswith("skip=true\n"))
             self.assertNotIn("checkout_ref=", values)
 
+    def test_review_guard_rejects_fork_pull_request_target_before_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "github-output"
+            result = subprocess.run(
+                [str(GUARD)],
+                env={
+                    "PATH": os.environ["PATH"],
+                    "GITHUB_OUTPUT": str(output),
+                    "MODE": "review",
+                    "EVENT": "pull_request_target",
+                    "EVENT_PR_NUMBER": "42",
+                    "PULL_BASE_SHA": "base-sha",
+                    "PULL_HEAD_SHA": "head-sha",
+                    "PULL_BASE_REPO": "owner/repo",
+                    "PULL_HEAD_REPO": "contributor/repo",
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            values = output.read_text(encoding="utf-8")
+            self.assertTrue(values.endswith("skip=true\n"))
+            self.assertNotIn("checkout_ref=", values)
+
+    def test_review_guard_ignores_a_distance_it_cannot_anchor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            gh = fake_bin / "gh"
+            # A comparison with no common ancestor still reports behind_by.
+            gh.write_text("#!/usr/bin/env bash\nprintf '\\t3\\n'\n", encoding="utf-8")
+            gh.chmod(0o755)
+            output = root / "github-output"
+            result = subprocess.run(
+                [str(GUARD)],
+                env={
+                    "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                    "GITHUB_OUTPUT": str(output),
+                    "GITHUB_RUN_ID": "123",
+                    "MODE": "review",
+                    "EVENT": "pull_request",
+                    "EVENT_PR_NUMBER": "42",
+                    "PULL_BASE_SHA": "base-sha",
+                    "PULL_HEAD_SHA": "head-sha",
+                    "PULL_BASE_REPO": "owner/repo",
+                    "PULL_HEAD_REPO": "owner/repo",
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            values = output.read_text(encoding="utf-8")
+            self.assertIn("merge_base_sha=base-sha\n", values)
+            self.assertIn("behind_by=0\n", values)
+
     def test_review_guard_accepts_trusted_fork_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -50,6 +110,9 @@ class ActionSyncTests(unittest.TestCase):
             gh = fake_bin / "gh"
             gh.write_text(
                 "#!/usr/bin/env bash\n"
+                'case "$2" in\n'
+                "  */compare/*) printf 'merge-base-sha\\t2\\n'; exit 0 ;;\n"
+                "esac\n"
                 "cat <<'JSON'\n"
                 '{"number":42,"base":{"sha":"base-sha","repo":{"full_name":"owner/repo"}},'
                 '"head":{"sha":"head-sha","repo":{"full_name":"contributor/repo"}}}\n'

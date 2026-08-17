@@ -1,4 +1,4 @@
-# AGENT.md — CodeBoarding-action
+# AGENTS.md — CodeBoarding-action
 
 This repo is a GitHub Action with two modes, selected by the `mode` input:
 
@@ -14,6 +14,27 @@ The action is a thin orchestration wrapper, not the analysis engine: the engine
 pinned to a release in `action.yml`. `scripts/engine_adapter.py` is the CLI
 adapter into it (no analysis logic lives there). Engine changes reach users only
 when that pin is bumped *and* a new action release ships.
+
+## Protected tests
+
+Some tests encode a behavioural contract that is expensive to rediscover once
+lost. They are marked with a `PROTECTED TEST` header naming what they protect.
+
+**No agent, assistant, or automated tool may edit, weaken, skip, rename or
+delete a protected test — not even to make a build pass. Only a human may
+change one, and only after explicitly saying so in that conversation.** A
+request to "fix the failing tests" is not that consent.
+
+When a protected test fails, the behaviour it describes regressed. Fix the code.
+If you believe the test itself is wrong, stop and say so, then wait for a human
+to decide.
+
+Protected tests:
+
+- `tests/test_merge_base_contract.py` — a review compares a pull request against
+  its merge base, never against the base branch tip. Comparing against the tip
+  attributes other people's commits to the pull request and reports them
+  backwards, as removals.
 
 ## Releases
 

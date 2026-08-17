@@ -22,7 +22,10 @@ The engine writes these under `.codeboarding/`:
 - ✅ `static_analysis.pkl` + `static_analysis.sha` — required for reliable warm-start incremental sync from the committed baseline.
 
 **Upload in review mode:**
-- ✅ PR-head `analysis.json` and metadata containing the PR base SHA plus the committed baseline SHA when one was found — stored as a GitHub Actions artifact.
+- ✅ PR-head `analysis.json` and metadata containing the PR base SHA, the merge base actually compared against, and how the head was seeded — stored as a GitHub Actions artifact.
+
+**Cache between runs (never committed):**
+- ✅ The whole analysis state directory, twice: once per pull request (its head state, so the next run only covers new commits) and once per base commit (the merge base's analysis, shared by every pull request that forked from it). Sync mode publishes the base entry as a by-product of the baseline it already computes.
 
 > **Principle:** sync mode is the only git writer. Review mode never commits generated files to PR branches, so generated artifacts cannot conflict with `main` during merge.
 
@@ -56,3 +59,17 @@ Either way the head analysis is seeded from that directory and runs incrementall
 | `health_report.json` | ✅ | sync commit on `main`; computed in review for comments, not uploaded | warnings |
 | `static_analysis.pkl` | ✅ | sync commit on `main` only | warm-start incremental baseline |
 | `static_analysis.sha` | ✅ | with `static_analysis.pkl` | warm-start gate |
+| whole state directory | ❌ | Actions cache, per PR and per base commit | reuse the previous run instead of re-deriving from the base |
+
+## Cache identity
+
+The cache key pins everything that makes prior state meaningful: the pinned
+CodeBoarding version, `.codeboardingignore`, and the merge base (which in turn
+pins the analysis depth, since depth is read from that commit's baseline).
+Anything else changing means no key matches, so the run re-derives from the base
+rather than reusing state that describes a different analysis.
+
+State produced while analyzing a fork's code lives under its own key namespace
+that trusted runs never restore from, and a fork run never writes a base entry:
+`static_analysis.pkl` is a pickle, so restoring one derived from untrusted code
+into a privileged run has to be impossible by construction, not by convention.

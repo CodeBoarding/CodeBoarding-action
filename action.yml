@@ -62,6 +62,12 @@ outputs:
   review_artifact_url:
     description: 'URL of the uploaded review analysis artifact.'
     value: ${{ steps.upload_review_artifact_dotcom.outputs.artifact-url }}
+  seed_source:
+    description: 'Which state the review head analysis grew from: pr-chain or base.'
+    value: ${{ steps.review_analyze.outputs.seed_source }}
+  merge_base_sha:
+    description: 'Commit the review compared the pull request head against.'
+    value: ${{ steps.guard.outputs.merge_base_sha }}
   analysis_mode:
     description: 'Whether sync used incremental or full analysis.'
     value: ${{ steps.sync_analyze.outputs.analysis_mode }}
@@ -102,6 +108,7 @@ runs:
         EVENT_PR_NUMBER: ${{ github.event.pull_request.number }}
         PULL_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         PULL_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PULL_BASE_REF: ${{ github.event.pull_request.base.ref }}
         PULL_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         PULL_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
         REPOSITORY: ${{ github.repository }}
@@ -166,6 +173,41 @@ runs:
         LICENSE_KEY: ${{ inputs.license_key }}
       run: "$GITHUB_ACTION_PATH/scripts/action/configure-auth.sh"
 
+    - name: Resolve analysis cache keys
+      id: cache_keys
+      if: steps.guard.outputs.skip != 'true'
+      continue-on-error: true
+      shell: bash
+      env:
+        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
+        MERGE_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
+        PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
+        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
+        HEAD_REPO: ${{ steps.guard.outputs.head_repo }}
+        IS_FORK: ${{ steps.guard.outputs.is_fork }}
+      run: "$GITHUB_ACTION_PATH/scripts/action/cache-keys.sh"
+
+    # An exact key is this merge base's own analysis; the prefix falls back to
+    # the newest baseline any run produced, which still warm-starts the catch-up.
+    - name: Restore base analysis
+      id: base_cache
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.cache_keys.outputs.base_key != ''
+      continue-on-error: true
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.temp }}/cb-cache/base
+        key: ${{ steps.cache_keys.outputs.base_key }}
+        restore-keys: ${{ steps.cache_keys.outputs.base_restore_keys }}
+
+    - name: Restore pull request analysis
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.guard.outputs.seed_mode == 'chain' && steps.cache_keys.outputs.chain_key != ''
+      continue-on-error: true
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.temp }}/cb-cache/chain
+        key: ${{ steps.cache_keys.outputs.chain_key }}
+        restore-keys: ${{ steps.cache_keys.outputs.chain_restore_keys }}
+
     - name: Analyze baseline
       id: sync_analyze
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
@@ -174,6 +216,7 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         ANALYSIS_KIND: sync
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
+        CACHE_OUT_DIR: ${{ runner.temp }}/cb-cache/out
         FORCE_FULL: ${{ inputs.force_full }}
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
@@ -199,6 +242,16 @@ runs:
         REPOSITORY: ${{ github.repository }}
       run: "$GITHUB_ACTION_PATH/scripts/action/deliver-sync.sh"
 
+    # Keyed by the commit pull requests will branch from, so their merge base
+    # hits this entry exactly and they skip the base analysis entirely.
+    - name: Save baseline analysis
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.sync_commit.outputs.baseline_sha != '' && steps.cache_keys.outputs.base_key_prefix != ''
+      continue-on-error: true
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/cb-cache/out/base
+        key: ${{ steps.cache_keys.outputs.base_key_prefix }}${{ steps.sync_commit.outputs.baseline_sha }}
+
     - name: Write sync summary
       if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
       shell: bash
@@ -218,15 +271,43 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         ANALYSIS_KIND: review
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
-        REVIEW_BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        REVIEW_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
         REVIEW_HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
         REVIEW_BASE_REPO: ${{ steps.guard.outputs.base_repo }}
+        PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
+        SEED_MODE: ${{ steps.guard.outputs.seed_mode }}
+        CACHE_BASE_DIR: ${{ runner.temp }}/cb-cache/base
+        CACHE_BASE_HIT: ${{ steps.base_cache.outputs.cache-hit }}
+        CACHE_CHAIN_DIR: ${{ runner.temp }}/cb-cache/chain
+        CACHE_OUT_DIR: ${{ runner.temp }}/cb-cache/out
+        ENGINE_VERSION: ${{ steps.cache_keys.outputs.engine_version }}
+        CFG_HASH: ${{ steps.cache_keys.outputs.cfg_hash }}
         GIT_TOKEN: ${{ inputs.github_token }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
       run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/analyze.sh"'
+
+    # Saved before the review is rendered: the analysis is the expensive part, so
+    # a later rendering or posting failure must not throw it away.
+    - name: Save pull request analysis
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.cache_keys.outputs.chain_key != ''
+      continue-on-error: true
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/cb-cache/out/chain
+        key: ${{ steps.cache_keys.outputs.chain_key }}
+
+    # Only trusted runs publish a base entry: it is restorable repository-wide,
+    # so a fork's run must never be able to place state there.
+    - name: Save base analysis
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_analyze.outputs.save_base == 'true' && steps.guard.outputs.is_fork != 'true' && steps.cache_keys.outputs.base_key != ''
+      continue-on-error: true
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/cb-cache/out/base
+        key: ${{ steps.cache_keys.outputs.base_key }}
 
     - name: Render review diagram
       id: review_render
@@ -246,8 +327,11 @@ runs:
         ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
         ANALYSIS_MODE: ${{ steps.review_analyze.outputs.analysis_mode }}
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
+        MERGE_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
         HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
         PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
+        SEED_SOURCE: ${{ steps.review_analyze.outputs.seed_source }}
+        CHAIN_DEPTH: ${{ steps.review_analyze.outputs.chain_depth }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-artifact.sh"
 
     - name: Upload review artifact
@@ -268,6 +352,8 @@ runs:
         N_CHANGED: ${{ steps.review_render.outputs.n_changed }}
         ARTIFACT_URL: ${{ steps.upload_review_artifact_dotcom.outputs.artifact-url }}
         PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
+        BEHIND_BY: ${{ steps.guard.outputs.behind_by }}
+        BASE_REF: ${{ steps.guard.outputs.base_ref }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-comment.sh"
 
     - name: Post review comment
