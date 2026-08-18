@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.11.0...v1.11.1) (2026-08-18)
+
+
+### Bug Fixes
+
+* **review:** stop attempting a cache save a comment run cannot make ([#86](https://github.com/CodeBoarding/CodeBoarding-action/issues/86)) ([6bd6951](https://github.com/CodeBoarding/CodeBoarding-action/commit/6bd6951061dfd06f2162e0c2dd50db5d7c791bd0))
+
 ## [1.11.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.10.3...v1.11.0) (2026-08-18)
 
 
