@@ -1,27 +1,28 @@
 {
   "files": {
-    "action.yml": "5682c0d5f8747408",
+    "AGENTS.md": "0315875f661e8206",
+    "action.yml": "a202915ce7630e64",
     "pyproject.toml": "d2f78b9c7f0b5865",
-    "README.md": "cadc1291d1f45d0f",
+    "README.md": "fd74100e8021a439",
     "LICENSE": "356a3402bd47e108",
-    "AGENT.md": "6f89daa8e2f2a3b5",
     "release-please-config.json": "e1ea6dfc5a9fa8bd",
     "CHANGELOG.md": "15638c19e8b7b4fe",
     "assets/icon.svg": "1f5885e35bb4798e",
-    "docs/COMMIT_STRATEGY.md": "705ad60319f2c7fb",
+    "docs/COMMIT_STRATEGY.md": "3d0151d9fca67672",
     "scripts/diff_to_mermaid.py": "385a552dc44b4871",
     "scripts/oidc_relay.py": "5af0d8557c0af6e0",
     "scripts/run_local.sh": "a2b94f83d28d6c63",
     "scripts/analyze_repository.py": "03f39d1ac2f146ec",
+    "scripts/action/cache-keys.sh": "4d8ef410dad81000",
     "scripts/action/configure-auth.sh": "e54312d076265dee",
-    "scripts/action/deliver-sync.sh": "f5eeb8486b287cba",
-    "scripts/action/install-sync.sh": "6e0cf71c8be04028",
+    "scripts/action/deliver-sync.sh": "794f536e42129d90",
+    "scripts/action/install-sync.sh": "1d2da1c1c825f2ab",
     "scripts/action/render-review.sh": "2c37a3719c6ed860",
-    "scripts/action/guard.sh": "5f64a14714c13cd6",
+    "scripts/action/guard.sh": "7b3e83f07c6c80ec",
     "scripts/action/sync-summary.sh": "24456ef53fe7b60c",
     "scripts/action/with-auth.sh": "7d92d8547db076c5",
-    "scripts/action/build-review-artifact.sh": "8b601afcb5d51dba",
-    "scripts/action/analyze.sh": "ecfab37f4f9f1f82",
-    "scripts/action/build-review-comment.sh": "12e13d7ab7d67d51"
+    "scripts/action/build-review-artifact.sh": "7d520e5b09063681",
+    "scripts/action/analyze.sh": "b256e71c512ed640",
+    "scripts/action/build-review-comment.sh": "949852579c3bbe45"
   }
 }
