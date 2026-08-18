@@ -8,6 +8,11 @@ cp "$ANALYSIS_PATH" "${RUNNER_TEMP}/cb-review-artifact/analysis.json"
 # branch's committed baseline instead would drift from the merge base exactly as
 # the review itself used to.
 cp "$BASE_ANALYSIS_PATH" "${RUNNER_TEMP}/cb-review-artifact/base_analysis.json"
+# The engine writes this next to the analysis it came from. Ship it when present
+# so a pull request's warnings are readable without rerunning the analysis.
+HEALTH_REPORT="$(dirname "$ANALYSIS_PATH")/health/health_report.json"
+[ ! -f "$HEALTH_REPORT" ] || cp "$HEALTH_REPORT" "${RUNNER_TEMP}/cb-review-artifact/health_report.json"
+
 # base_sha stays the event's base branch tip for consumers that key on it;
 # merge_base_sha records the commit the diagram actually compared against.
 # pr_base_sha carries the same value under the name the webview already reads:

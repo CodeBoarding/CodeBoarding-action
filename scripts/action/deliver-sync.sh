@@ -86,6 +86,9 @@ if [ "$remote_sha" != "$BASE_SHA" ]; then
   exit 0
 fi
 
+# The -I filters keep a run that changed nothing from committing: analysis.json
+# carries generated_at and health_report.json carries timestamp, both rewritten
+# every run. Dropping either filter turns every sync into a commit.
 if git diff --cached --quiet || git diff --cached --quiet -I '"generated_at"' -I '"timestamp"'; then
   git reset -q
   close_stale_pr

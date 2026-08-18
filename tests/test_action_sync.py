@@ -244,6 +244,50 @@ class ActionSyncTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
             self.assertEqual(architecture.read_text(encoding="utf-8"), "hand-written architecture\n")
 
+    def test_installs_the_health_report_the_engine_produced(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout = root / "checkout"
+            analysis = root / "analysis"
+            fake_core = root / "core"
+            static_analyzer = fake_core / "static_analyzer"
+            for directory in (checkout / ".codeboarding", analysis / "health", static_analyzer):
+                directory.mkdir(parents=True)
+            (fake_core / "utils.py").write_text(
+                "ANALYSIS_FILENAME = 'analysis.json'\nFINGERPRINT_FILENAME = 'fingerprint.json'\n",
+                encoding="utf-8",
+            )
+            (static_analyzer / "__init__.py").touch()
+            (static_analyzer / "analysis_cache.py").write_text(
+                "STATIC_ANALYSIS_PKL = 'static_analysis.pkl'\nSTATIC_ANALYSIS_SHA = 'static_analysis.sha'\n",
+                encoding="utf-8",
+            )
+            (analysis / "analysis.json").write_text("{}\n", encoding="utf-8")
+            (analysis / "health" / "health_report.json").write_text('{"overall_score": 1.0}', encoding="utf-8")
+
+            result = subprocess.run(
+                [str(INSTALL_SYNC)],
+                cwd=checkout,
+                env={
+                    "PATH": os.environ["PATH"],
+                    "PYTHONPATH": str(fake_core),
+                    "ACTION_PATH": str(ROOT),
+                    "ANALYSIS_DIR": str(analysis),
+                    "CHECKOUT_DIR": str(checkout),
+                    "GITHUB_OUTPUT": str(root / "github-output"),
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+            installed = checkout / ".codeboarding" / "health" / "health_report.json"
+            self.assertEqual(installed.read_text(encoding="utf-8"), '{"overall_score": 1.0}')
+            # Printed paths are what the delivery step stages, so an installed
+            # file that is never printed is silently left out of the commit.
+            self.assertIn(str(installed), result.stdout.splitlines())
+
     def test_empty_review_is_successful(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
