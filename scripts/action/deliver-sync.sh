@@ -18,10 +18,14 @@ chmod 700 "$ASKPASS"
 export GIT_ASKPASS="$ASKPASS" GIT_TERMINAL_PROMPT=0
 export GH_HOST="${GH_HOST#*://}"
 trap 'rm -f "$ASKPASS"' EXIT
-# baseline_sha names the commit later pull requests branch from, so their merge
-# base restores this run's analysis instead of recomputing it.
+# A pull request's merge base is whichever commit its author branched from, and
+# this run's analysis is valid for two of them: the commit it analyzed, and the
+# baseline commit it writes on top, which differs only in .codeboarding files
+# that the fingerprint ignores. Publishing both means a pull request opened
+# either side of a sync commit still gets an exact hit.
 emit_result() {
-  printf 'files_written=%s\ncommitted=%s\nbaseline_sha=%s\n' "$1" "$2" "$3" >> "$GITHUB_OUTPUT"
+  printf 'files_written=%s\ncommitted=%s\nbaseline_sha=%s\nanalyzed_sha=%s\n' \
+    "$1" "$2" "$3" "$BASE_SHA" >> "$GITHUB_OUTPUT"
 }
 close_stale_pr() {
   [ "$SYNC_STRATEGY" = pull_request ] || return 0

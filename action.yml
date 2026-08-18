@@ -261,6 +261,16 @@ runs:
         path: ${{ runner.temp }}/cb-cache/base
         key: ${{ steps.cache_keys.outputs.base_key_prefix }}${{ steps.sync_commit.outputs.baseline_sha }}
 
+    # The same state under the commit that was analyzed. A pull request branched
+    # before this run's baseline commit landed has that commit as its merge base.
+    - name: Save baseline analysis for the analyzed commit
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.sync_commit.outputs.analyzed_sha != '' && steps.sync_commit.outputs.analyzed_sha != steps.sync_commit.outputs.baseline_sha && steps.cache_keys.outputs.base_key_prefix != ''
+      continue-on-error: true
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/cb-cache/base
+        key: ${{ steps.cache_keys.outputs.base_key_prefix }}${{ steps.sync_commit.outputs.analyzed_sha }}
+
     - name: Write sync summary
       if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
       shell: bash

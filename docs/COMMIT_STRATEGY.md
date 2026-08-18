@@ -61,7 +61,10 @@ exact key. How far that reaches depends on where the run happened, because a
 cache entry is only visible to the ref that wrote it and to the default branch:
 
 - **sync**, on the base branch, writes an entry every pull request can restore.
-  This is what makes the first row common.
+  This is what makes the first row common. It publishes under two keys, the
+  commit it analyzed and the baseline commit it creates, because a pull request
+  branched just before that baseline landed has the earlier commit as its merge
+  base.
 - **`/codeboarding`**, which runs on the default branch, also writes a shared
   entry.
 - **an automatic `pull_request` run** writes into `refs/pull/<n>/merge`, so its

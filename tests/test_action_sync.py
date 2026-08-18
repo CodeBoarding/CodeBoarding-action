@@ -285,3 +285,84 @@ class ActionSyncTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SyncDeliveryTests(unittest.TestCase):
+    """deliver-sync.sh against a real local remote: no network, real git."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.remote = self.root / "owner" / "repo.git"
+        self.remote.mkdir(parents=True)
+        self._git(self.remote, "init", "--bare", "-b", "main")
+
+        self.checkout = self.root / "checkout"
+        self._git(self.root, "clone", "--quiet", str(self.remote), str(self.checkout))
+        for key, value in (("user.email", "t@example.com"), ("user.name", "T"), ("commit.gpgsign", "false")):
+            self._git(self.checkout, "config", key, value)
+        (self.checkout / "app.py").write_text("print('hi')\n", encoding="utf-8")
+        (self.checkout / ".codeboarding").mkdir()
+        self._git(self.checkout, "add", "-A")
+        self._git(self.checkout, "commit", "-m", "initial")
+        self._git(self.checkout, "push", "--quiet", "origin", "main")
+        self.analyzed_sha = self._git(self.checkout, "rev-parse", "HEAD")
+
+        # What the engine left behind for this run.
+        self.analysis = self.root / "analysis"
+        self.analysis.mkdir()
+        for name in ("analysis.json", "fingerprint.json", "static_analysis.pkl"):
+            (self.analysis / name).write_text(f"fresh {name}\n", encoding="utf-8")
+
+        self.core = self.root / "core"
+        (self.core / "static_analyzer").mkdir(parents=True)
+        (self.core / "utils.py").write_text(
+            "ANALYSIS_FILENAME = 'analysis.json'\nFINGERPRINT_FILENAME = 'fingerprint.json'\n",
+            encoding="utf-8",
+        )
+        (self.core / "static_analyzer" / "__init__.py").touch()
+        (self.core / "static_analyzer" / "analysis_cache.py").write_text(
+            "STATIC_ANALYSIS_PKL = 'static_analysis.pkl'\nSTATIC_ANALYSIS_SHA = 'static_analysis.sha'\n",
+            encoding="utf-8",
+        )
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _git(self, cwd: Path, *args: str) -> str:
+        return subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, check=True).stdout.strip()
+
+    def test_it_publishes_the_analysis_under_both_commits(self) -> None:
+        output = self.root / "github-output"
+        result = subprocess.run(
+            [str(ROOT / "scripts" / "action" / "deliver-sync.sh")],
+            env={
+                "PATH": os.environ["PATH"],
+                "PYTHONPATH": str(self.core),
+                "ACTION_PATH": str(ROOT),
+                "ANALYSIS_DIR": str(self.analysis),
+                "CHECKOUT_DIR": str(self.checkout),
+                "GITHUB_OUTPUT": str(output),
+                "RUNNER_TEMP": str(self.root),
+                "GITHUB_SERVER_URL": str(self.root),
+                "GITHUB_TOKEN": "unused",
+                "GH_HOST": "github.com",
+                "REPOSITORY": "owner/repo",
+                "TARGET_BRANCH": "main",
+                "SYNC_STRATEGY": "push",
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
+        values = dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines() if "=" in line)
+        self.assertEqual(values["committed"], "true")
+        baseline_sha = self._git(self.checkout, "rev-parse", "HEAD")
+        # The analysis describes the tree it ran on and the baseline commit
+        # written on top, which differs only in files the fingerprint ignores.
+        # A pull request branched either side of that commit must hit the cache.
+        self.assertEqual(values["baseline_sha"], baseline_sha)
+        self.assertEqual(values["analyzed_sha"], self.analyzed_sha)
+        self.assertNotEqual(values["baseline_sha"], values["analyzed_sha"])
