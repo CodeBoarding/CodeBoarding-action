@@ -154,7 +154,21 @@ runs:
     - name: Install CodeBoarding
       if: steps.guard.outputs.skip != 'true'
       shell: bash
-      run: python -m pip install --disable-pip-version-check 'codeboarding==0.13.8'
+      # tqdm is imported by the pinned CLI but missing from its dependencies. It
+      # used to arrive through openai, which dropped it in 3.3.0, so every fresh
+      # resolve since then installs a CLI that cannot start. Naming it here is a
+      # workaround for that packaging gap, not a dependency of this action;
+      # remove it once the engine declares its own.
+      run: |
+        python -m pip install --disable-pip-version-check 'codeboarding==0.13.8' tqdm
+        # Fail here, with the reason, rather than mid-analysis with a traceback:
+        # pinning a release does not pin what its dependencies resolve to. Run
+        # the console script, not `python -c`, which would put the analyzed
+        # repository's own main.py ahead of the CLI's on sys.path.
+        codeboarding --help >/dev/null || {
+          echo "::error::The installed CodeBoarding CLI cannot start; a dependency it imports is missing."
+          exit 1
+        }
 
     - name: Configure analysis authentication
       if: steps.guard.outputs.skip != 'true'
