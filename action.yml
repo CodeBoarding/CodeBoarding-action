@@ -324,8 +324,13 @@ runs:
 
     # Saved before the review is rendered: the analysis is the expensive part, so
     # a later rendering or posting failure must not throw it away.
+    #
+    # Skipped for issue_comment, where GitHub hands the run a read-only cache
+    # token: the save is refused with "token has no writable scopes" and the
+    # cache action reports it as a failure, so attempting it only prints a
+    # warning that suggests something is broken. Reads still work there.
     - name: Save pull request analysis
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.cache_keys.outputs.chain_key != ''
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && github.event_name != 'issue_comment' && steps.cache_keys.outputs.chain_key != ''
       continue-on-error: true
       uses: actions/cache/save@v4
       with:
@@ -335,7 +340,7 @@ runs:
     # Only trusted runs publish a base entry: it is restorable repository-wide,
     # so a fork's run must never be able to place state there.
     - name: Save base analysis
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_analyze.outputs.save_base == 'true' && steps.guard.outputs.is_fork != 'true' && steps.cache_keys.outputs.base_key != ''
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && github.event_name != 'issue_comment' && steps.review_analyze.outputs.save_base == 'true' && steps.guard.outputs.is_fork != 'true' && steps.cache_keys.outputs.base_key != ''
       continue-on-error: true
       uses: actions/cache/save@v4
       with:

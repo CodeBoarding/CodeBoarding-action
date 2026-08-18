@@ -416,7 +416,7 @@ class CachePathParityTests(unittest.TestCase):
                 steps.append(current)
             elif current is not None:
                 stripped = line.strip()
-                for field in ("uses", "path", "key", "restore-keys"):
+                for field in ("uses", "path", "key", "restore-keys", "if"):
                     if stripped.startswith(f"{field}:"):
                         current[field] = stripped.split(":", 1)[1].strip()
         return [step for step in steps if step.get("uses", "").startswith("actions/cache/")]
@@ -433,6 +433,21 @@ class CachePathParityTests(unittest.TestCase):
         # The base lookup relies on the opposite: an exact hit is this merge
         # base's own analysis, a prefix hit is only a warm seed.
         self.assertNotEqual(base["key"], base["restore-keys"])
+
+    def test_reviews_do_not_attempt_a_save_a_comment_run_cannot_make(self) -> None:
+        # GitHub hands an issue_comment run a read-only cache token, so the save
+        # is refused with "token has no writable scopes" and surfaces as a
+        # warning that reads like a broken action. Reads are unaffected.
+        for step in self._cache_steps():
+            if not step["uses"].startswith("actions/cache/save"):
+                continue
+            if "review" not in step.get("if", ""):
+                continue
+            self.assertIn(
+                "github.event_name != 'issue_comment'",
+                step.get("if", ""),
+                f"{step['name']} would attempt a save that a comment-triggered run cannot make",
+            )
 
     def test_every_saved_path_is_a_restored_path(self) -> None:
         steps = self._cache_steps()
