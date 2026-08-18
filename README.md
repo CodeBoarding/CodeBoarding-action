@@ -2,7 +2,7 @@
 
 One GitHub Action with two modes:
 
-- **`review`** (default) compares a pull request's exact base and head commits, posts an inline Mermaid architecture diff, and uploads the head `analysis.json` as a workflow artifact.
+- **`review`** (default) compares a pull request's head with its merge base, posts an inline Mermaid architecture diff, and uploads both analyses as a workflow artifact.
 - **`sync`** updates the versioned analysis state used by future incremental runs. It can push directly or open one rolling PR for protected branches.
 
 The action is a thin wrapper around the [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) CLI. Analysis logic and provider defaults live in Core, not in this repository.
@@ -44,9 +44,33 @@ jobs:
 
 Automatic runs update one sticky **CodeBoarding review** comment. A trusted repository owner, member, or collaborator can comment `/codeboarding` to analyze the current PR head again, including on fork PRs; every command creates a new result comment.
 
-The action checks out and analyzes the exact PR head SHA, but compares it with the exact upstream base SHA from the event. It does not commit generated files to either branch.
+| Command | What it does |
+|---|---|
+| `/codeboarding` | Analyzes the current head, reusing this PR's previous analysis when one is available. |
+| `/codeboarding refresh` | Ignores that previous analysis and re-derives the head from the merge base. |
+| `/codeboarding full` | Forces a from-scratch full analysis of the head. |
+
+The action checks out and analyzes the exact PR head SHA, and compares it with the PR's **merge base** — the commit the branch forked from, which is what GitHub's own "Files changed" tab uses. Commits pushed to the base branch after the fork point are therefore not reported as this PR's changes; the comment notes how far behind the branch is instead. It does not commit generated files to either branch.
 
 Automatic fork runs are skipped because the `pull_request` event does not receive hosted OIDC credentials. A trusted `/codeboarding` command runs the released action code from the base repository and checks the fork's source into a separate analysis directory; it never executes an action definition from the fork with privileged credentials.
+
+The uploaded artifact holds both sides of the comparison, so a reader can reproduce it without resolving the merge base again:
+
+| File | Contents |
+|---|---|
+| `analysis.json` | the head analysis, at `head_sha` |
+| `base_analysis.json` | the analysis it was compared against, at `merge_base_sha` |
+| `metadata.json` | both SHAs, `merge_base_resolved`, `seed_source`, `chain_depth`, PR number |
+
+Artifacts are kept 30 days. Reading the default branch's committed baseline instead of `base_analysis.json` would drift from the merge base in exactly the way described above.
+
+### Reused analysis
+
+Each review seeds the head analysis from this pull request's own previous run, so a run only covers the commits pushed since it. With no previous run, it seeds from the merge base's analysis. `sync` mode publishes that entry on the base branch, where every pull request can restore it; an entry a review run computes for itself is scoped to that pull request. Both live in the GitHub Actions cache, and state is re-derived from the merge base whenever the pinned CodeBoarding version, `.codeboardingignore`, the configured analysis depth, or the merge base itself changes. State produced while analyzing a fork is namespaced separately and is never restored by a run on this repository's own code.
+
+Caching is best-effort: a cache miss, an unavailable cache service, or a GitHub Enterprise Server without one falls back to analyzing the merge base directly, exactly as before.
+
+Actions cache entries are scoped to the ref that wrote them. Automatic `pull_request` runs therefore reuse each other's analysis and the shared base entry, while a `/codeboarding` command — which runs on the default branch ref — reuses the base entry but not a chain built by automatic runs, so it costs one base-seeded incremental. The action also accepts `pull_request_target`, which runs on the base branch ref and lets both share one chain; that trigger has its own trade-offs (a PR that adds this workflow will not run it until merged, and the fork gate becomes load-bearing), so `pull_request` remains the recommended default.
 
 ## Authentication and providers
 
@@ -197,6 +221,8 @@ The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted w
 | `n_changed` | review | Number of changed components. |
 | `truncated` | review | Whether the graph was reduced to fit GitHub limits. |
 | `review_artifact_url` | review | URL of the uploaded head analysis. |
+| `seed_source` | review | `pr-chain` when the head grew from this PR's previous analysis, `base` otherwise. |
+| `merge_base_sha` | review | Merge base used as the comparison baseline. |
 | `analysis_mode` | sync | `incremental` or `full`. |
 | `files_written` | sync | Number of persisted analysis artifacts produced. |
 | `committed` | sync | Whether a baseline commit was delivered. |

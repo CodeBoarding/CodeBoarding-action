@@ -18,6 +18,15 @@ chmod 700 "$ASKPASS"
 export GIT_ASKPASS="$ASKPASS" GIT_TERMINAL_PROMPT=0
 export GH_HOST="${GH_HOST#*://}"
 trap 'rm -f "$ASKPASS"' EXIT
+# A pull request's merge base is whichever commit its author branched from, and
+# this run's analysis is valid for two of them: the commit it analyzed, and the
+# baseline commit it writes on top, which differs only in .codeboarding files
+# that the fingerprint ignores. Publishing both means a pull request opened
+# either side of a sync commit still gets an exact hit.
+emit_result() {
+  printf 'files_written=%s\ncommitted=%s\nbaseline_sha=%s\nanalyzed_sha=%s\n' \
+    "$1" "$2" "$3" "$BASE_SHA" >> "$GITHUB_OUTPUT"
+}
 close_stale_pr() {
   [ "$SYNC_STRATEGY" = pull_request ] || return 0
   git fetch "$REMOTE" "$TARGET_BRANCH"
@@ -46,7 +55,7 @@ classify_push_failure() {
   current="$(git ls-remote "$REMOTE" "refs/heads/$branch" | awk '{print $1; exit}')"
   [ "$current" != "$(git rev-parse HEAD)" ] || return 0
   if [ "$current" != "$expected" ]; then
-    printf 'files_written=%s\ncommitted=false\n' "$files_written" >> "$GITHUB_OUTPUT"
+    emit_result "$files_written" false "$BASE_SHA"
     echo "::notice::A newer run updated $branch; leaving it untouched."
     exit 0
   fi
@@ -72,7 +81,7 @@ files_written="$(find "$CHECKOUT_DIR/.codeboarding" -maxdepth 1 -type f \
 git fetch "$REMOTE" "$TARGET_BRANCH"
 remote_sha="$(git rev-parse FETCH_HEAD)"
 if [ "$remote_sha" != "$BASE_SHA" ]; then
-  printf 'files_written=%s\ncommitted=false\n' "$files_written" >> "$GITHUB_OUTPUT"
+  emit_result "$files_written" false "$BASE_SHA"
   echo "::notice::$TARGET_BRANCH advanced during analysis; a newer run should update its baseline."
   exit 0
 fi
@@ -80,7 +89,7 @@ fi
 if git diff --cached --quiet || git diff --cached --quiet -I '"generated_at"' -I '"timestamp"'; then
   git reset -q
   close_stale_pr
-  printf 'files_written=%s\ncommitted=false\n' "$files_written" >> "$GITHUB_OUTPUT"
+  emit_result "$files_written" false "$BASE_SHA"
   echo "::notice::The CodeBoarding baseline is unchanged."
   exit 0
 fi
@@ -91,7 +100,7 @@ if [ "$SYNC_STRATEGY" = push ]; then
   if ! git push "$REMOTE" "HEAD:refs/heads/$TARGET_BRANCH"; then
     classify_push_failure "$BASE_SHA" "$TARGET_BRANCH"
   fi
-  printf 'files_written=%s\ncommitted=true\n' "$files_written" >> "$GITHUB_OUTPUT"
+  emit_result "$files_written" true "$(git rev-parse HEAD)"
   exit 0
 fi
 
@@ -119,9 +128,8 @@ fi
 
 pr_url="$(jq -r .html_url <<< "$pr_json")"
 pr_number="$(jq -r .number <<< "$pr_json")"
+emit_result "$files_written" true "$BASE_SHA"
 {
-  echo "files_written=$files_written"
-  echo "committed=true"
   echo "sync_pr_url=$pr_url"
   echo "sync_pr_number=$pr_number"
 } >> "$GITHUB_OUTPUT"

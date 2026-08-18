@@ -2,10 +2,10 @@ name: CodeBoarding review
 
 on:
   pull_request:
-    # Generate once, when the PR becomes reviewable, not on every push, so we
-    # don't spend an LLM job per commit. Add `synchronize` to re-run on each
-    # push, or refresh anytime with /codeboarding. 'closed' only cancels an
-    # in-flight review (see concurrency), it doesn't start one.
+    # Generate once, when the PR becomes reviewable. Reusing this PR's previous
+    # analysis makes per-push runs affordable, so `synchronize` is a reasonable
+    # addition now; /codeboarding still refreshes on demand. 'closed' only
+    # cancels an in-flight review (see concurrency), it doesn't start one.
     types: [opened, reopened, ready_for_review, closed]
   issue_comment:
     types: [created]

@@ -17,7 +17,12 @@ print(*artifacts, sep="\n")
 PY
 )" || { echo "::error::Could not read Core's persisted artifact manifest."; exit 1; }
 [ -n "$manifest" ] || { echo "::error::Core's persisted artifact manifest is empty."; exit 1; }
-mapfile -t manifest_entries <<< "$manifest"
+# Read into an array without mapfile, which needs bash 4: macOS ships bash 3.2,
+# so mapfile made this script, and its tests, unrunnable for local development.
+manifest_entries=()
+while IFS= read -r entry; do
+  manifest_entries+=("$entry")
+done <<< "$manifest"
 required="${manifest_entries[0]}"
 artifacts=("${manifest_entries[@]:1}")
 [ -f "$ANALYSIS_DIR/$required" ] || { echo "::error::Core did not produce $required."; exit 1; }
