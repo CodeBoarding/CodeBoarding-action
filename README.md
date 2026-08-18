@@ -212,7 +212,7 @@ The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted w
 | `truncated` | review | Whether the graph was reduced to fit GitHub limits. |
 | `review_artifact_url` | review | URL of the uploaded head analysis. |
 | `seed_source` | review | `pr-chain` when the head grew from this PR's previous analysis, `base` otherwise. |
-| `merge_base_sha` | review | Commit the head was compared against. |
+| `merge_base_sha` | review | Merge base used as the comparison baseline. |
 | `analysis_mode` | sync | `incremental` or `full`. |
 | `files_written` | sync | Number of persisted analysis artifacts produced. |
 | `committed` | sync | Whether a baseline commit was delivered. |

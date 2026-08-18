@@ -66,7 +66,7 @@ outputs:
     description: 'Which state the review head analysis grew from: pr-chain or base.'
     value: ${{ steps.review_analyze.outputs.seed_source }}
   merge_base_sha:
-    description: 'Commit the review compared the pull request head against.'
+    description: 'Merge base used as the review comparison baseline.'
     value: ${{ steps.guard.outputs.merge_base_sha }}
   analysis_mode:
     description: 'Whether sync used incremental or full analysis.'
