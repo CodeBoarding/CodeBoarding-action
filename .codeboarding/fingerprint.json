@@ -1,14 +1,14 @@
 {
   "files": {
     "AGENTS.md": "0315875f661e8206",
-    "action.yml": "a202915ce7630e64",
+    "action.yml": "9f6d1d8bd7e90773",
     "pyproject.toml": "d2f78b9c7f0b5865",
-    "README.md": "4f9072580d72766e",
+    "README.md": "1e8ff27904e0dfb0",
     "LICENSE": "356a3402bd47e108",
     "release-please-config.json": "e1ea6dfc5a9fa8bd",
     "CHANGELOG.md": "4f2a729dd9ceacbd",
     "assets/icon.svg": "1f5885e35bb4798e",
-    "docs/COMMIT_STRATEGY.md": "a322f1d4c0047a91",
+    "docs/COMMIT_STRATEGY.md": "dcc6f88b247a7063",
     "scripts/diff_to_mermaid.py": "385a552dc44b4871",
     "scripts/oidc_relay.py": "5af0d8557c0af6e0",
     "scripts/run_local.sh": "a2b94f83d28d6c63",
