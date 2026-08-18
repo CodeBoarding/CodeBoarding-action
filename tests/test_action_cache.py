@@ -325,6 +325,10 @@ class ReviewArtifactTests(unittest.TestCase):
         # is what base_analysis.json actually describes.
         self.assertEqual(metadata["base_sha"], "tip-sha")
         self.assertEqual(metadata["merge_base_sha"], "merge-base-sha")
+        # The webview resolves base_commit_sha || pr_base_sha || base_sha, so the
+        # merge base has to appear under a name it looks for or it silently uses
+        # the branch tip.
+        self.assertEqual(metadata["pr_base_sha"], "merge-base-sha")
         self.assertEqual(metadata["merge_base_resolved"], "true")
         self.assertEqual(metadata["seed_source"], "pr-chain")
 

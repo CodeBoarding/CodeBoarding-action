@@ -88,6 +88,12 @@ lists a pull request's artifacts and takes the newest.
       base_analysis.json   what it was compared against, at metadata.merge_base_sha
       metadata.json        both SHAs, merge_base_resolved, seed_source, chain_depth
 
+`metadata.json` reports the merge base twice, as `merge_base_sha` and
+`pr_base_sha`. The second is the name the webview already resolves
+(`base_commit_sha || pr_base_sha || base_sha`); without it that chain falls
+through to `base_sha`, the branch tip, and the webview compares against a base
+the review never used.
+
 Shipping the base graph too keeps the artifact self-contained: a reader can
 reproduce the comparison without resolving the merge base itself, and without
 falling back to the default branch's committed baseline, which is the branch tip

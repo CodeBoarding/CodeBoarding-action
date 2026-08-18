@@ -10,6 +10,10 @@ cp "$ANALYSIS_PATH" "${RUNNER_TEMP}/cb-review-artifact/analysis.json"
 cp "$BASE_ANALYSIS_PATH" "${RUNNER_TEMP}/cb-review-artifact/base_analysis.json"
 # base_sha stays the event's base branch tip for consumers that key on it;
 # merge_base_sha records the commit the diagram actually compared against.
+# pr_base_sha carries the same value under the name the webview already reads:
+# its lookup is base_commit_sha || pr_base_sha || base_sha, so without it the
+# webview silently falls through to the branch tip and compares against a base
+# this review never used.
 jq -n \
   --arg mode "$ANALYSIS_MODE" \
   --arg base_sha "$BASE_SHA" \
@@ -19,7 +23,7 @@ jq -n \
   --arg pr_number "$PR_NUMBER" \
   --arg seed_source "$SEED_SOURCE" \
   --arg chain_depth "$CHAIN_DEPTH" \
-  '{mode: $mode, base_sha: $base_sha, merge_base_sha: $merge_base_sha,
+  '{mode: $mode, base_sha: $base_sha, merge_base_sha: $merge_base_sha, pr_base_sha: $merge_base_sha,
     merge_base_resolved: $merge_base_resolved, head_sha: $head_sha,
     pr_number: $pr_number, seed_source: $seed_source, chain_depth: $chain_depth}' \
   > "${RUNNER_TEMP}/cb-review-artifact/metadata.json"
