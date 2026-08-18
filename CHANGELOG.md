@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.11.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.10.3...v1.11.0) (2026-08-18)
+
+
+### Features
+
+* **review:** compare against the merge base and reuse the PR's last analysis ([#81](https://github.com/CodeBoarding/CodeBoarding-action/issues/81)) ([5ea3fba](https://github.com/CodeBoarding/CodeBoarding-action/commit/5ea3fbae53392f2226a12c5c482b9901388a08f2))
+
+
+### Bug Fixes
+
+* install tqdm, which the pinned engine imports but does not require ([#84](https://github.com/CodeBoarding/CodeBoarding-action/issues/84)) ([d8853c4](https://github.com/CodeBoarding/CodeBoarding-action/commit/d8853c41588117e774316767fb577d062796f837))
+* stop discarding the health report ([#82](https://github.com/CodeBoarding/CodeBoarding-action/issues/82)) ([f3e0919](https://github.com/CodeBoarding/CodeBoarding-action/commit/f3e09192385dcef764abf17d2ca4ce43c7028d80))
+
 ## [1.10.3](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.10.2...v1.10.3) (2026-08-10)
 
 
