@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# Packages head analysis and PR metadata, then outputs the artifact upload directory.
+# Packages both analyses and PR metadata, then outputs the artifact upload directory.
 set -euo pipefail
 mkdir -p "${RUNNER_TEMP}/cb-review-artifact"
 cp "$ANALYSIS_PATH" "${RUNNER_TEMP}/cb-review-artifact/analysis.json"
+# Ship the graph the diagram was measured against, so a reader can reproduce the
+# comparison without guessing which commit it belongs to. Reading the default
+# branch's committed baseline instead would drift from the merge base exactly as
+# the review itself used to.
+cp "$BASE_ANALYSIS_PATH" "${RUNNER_TEMP}/cb-review-artifact/base_analysis.json"
 # base_sha stays the event's base branch tip for consumers that key on it;
 # merge_base_sha records the commit the diagram actually compared against.
 jq -n \

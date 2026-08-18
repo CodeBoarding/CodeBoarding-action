@@ -2,7 +2,7 @@
 
 One GitHub Action with two modes:
 
-- **`review`** (default) compares a pull request's head with its merge base, posts an inline Mermaid architecture diff, and uploads the head `analysis.json` as a workflow artifact.
+- **`review`** (default) compares a pull request's head with its merge base, posts an inline Mermaid architecture diff, and uploads both analyses as a workflow artifact.
 - **`sync`** updates the versioned analysis state used by future incremental runs. It can push directly or open one rolling PR for protected branches.
 
 The action is a thin wrapper around the [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) CLI. Analysis logic and provider defaults live in Core, not in this repository.
@@ -53,6 +53,16 @@ Automatic runs update one sticky **CodeBoarding review** comment. A trusted repo
 The action checks out and analyzes the exact PR head SHA, and compares it with the PR's **merge base** — the commit the branch forked from, which is what GitHub's own "Files changed" tab uses. Commits pushed to the base branch after the fork point are therefore not reported as this PR's changes; the comment notes how far behind the branch is instead. It does not commit generated files to either branch.
 
 Automatic fork runs are skipped because the `pull_request` event does not receive hosted OIDC credentials. A trusted `/codeboarding` command runs the released action code from the base repository and checks the fork's source into a separate analysis directory; it never executes an action definition from the fork with privileged credentials.
+
+The uploaded artifact holds both sides of the comparison, so a reader can reproduce it without resolving the merge base again:
+
+| File | Contents |
+|---|---|
+| `analysis.json` | the head analysis, at `head_sha` |
+| `base_analysis.json` | the analysis it was compared against, at `merge_base_sha` |
+| `metadata.json` | both SHAs, `merge_base_resolved`, `seed_source`, `chain_depth`, PR number |
+
+Artifacts are kept 30 days. Reading the default branch's committed baseline instead of `base_analysis.json` would drift from the merge base in exactly the way described above.
 
 ### Reused analysis
 

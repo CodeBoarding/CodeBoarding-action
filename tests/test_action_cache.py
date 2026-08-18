@@ -276,6 +276,59 @@ class ReviewChainTests(unittest.TestCase):
         self.assertFalse((self.cache_out / "base").exists(), "a cached base needs no re-save")
 
 
+class ReviewArtifactTests(unittest.TestCase):
+    """The artifact is the only channel a reader outside the run can use: cache
+    entries have no download API, so whatever the webview needs must ship here."""
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.head = self.root / "head.json"
+        self.head.write_text('{"components": ["head"]}', encoding="utf-8")
+        self.base = self.root / "base.json"
+        self.base.write_text('{"components": ["base"]}', encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_it_ships_both_graphs_and_the_commit_they_describe(self) -> None:
+        output = self.root / "github-output"
+        result = subprocess.run(
+            [str(ROOT / "scripts" / "action" / "build-review-artifact.sh")],
+            env={
+                "PATH": os.environ["PATH"],
+                "RUNNER_TEMP": str(self.root),
+                "GITHUB_OUTPUT": str(output),
+                "ANALYSIS_PATH": str(self.head),
+                "BASE_ANALYSIS_PATH": str(self.base),
+                "ANALYSIS_MODE": "incremental",
+                "BASE_SHA": "tip-sha",
+                "MERGE_BASE_SHA": "merge-base-sha",
+                "MERGE_BASE_RESOLVED": "true",
+                "HEAD_SHA": "head-sha",
+                "PR_NUMBER": "81",
+                "SEED_SOURCE": "pr-chain",
+                "CHAIN_DEPTH": "2",
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+
+        artifact = self.root / "cb-review-artifact"
+        self.assertEqual(json.loads((artifact / "analysis.json").read_text())["components"], ["head"])
+        self.assertEqual(json.loads((artifact / "base_analysis.json").read_text())["components"], ["base"])
+
+        metadata = json.loads((artifact / "metadata.json").read_text(encoding="utf-8"))
+        # base_sha stays the event tip for consumers keyed on it; the merge base
+        # is what base_analysis.json actually describes.
+        self.assertEqual(metadata["base_sha"], "tip-sha")
+        self.assertEqual(metadata["merge_base_sha"], "merge-base-sha")
+        self.assertEqual(metadata["merge_base_resolved"], "true")
+        self.assertEqual(metadata["seed_source"], "pr-chain")
+
+
 class CachePathParityTests(unittest.TestCase):
     """actions/cache derives its lookup version from the path strings, so a save
     under a different path than the restore can never be found again."""

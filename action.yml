@@ -334,6 +334,7 @@ runs:
       shell: bash
       env:
         ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
+        BASE_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.base_analysis_path }}
         ANALYSIS_MODE: ${{ steps.review_analyze.outputs.analysis_mode }}
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
         MERGE_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
@@ -352,6 +353,9 @@ runs:
         name: codeboarding-review-${{ github.run_id }}-${{ github.run_attempt }}
         path: ${{ steps.review_artifact.outputs.artifact_dir }}
         if-no-files-found: error
+        # Each run carries its own copy of the base graph, and the webview only
+        # ever reads a pull request's latest artifact, so value drops off fast.
+        retention-days: 30
 
     - name: Build review comment
       id: review_body

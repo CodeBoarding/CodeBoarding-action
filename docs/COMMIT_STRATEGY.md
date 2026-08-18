@@ -22,7 +22,9 @@ The engine writes these under `.codeboarding/`:
 - ✅ `static_analysis.pkl` + `static_analysis.sha` — required for reliable warm-start incremental sync from the committed baseline.
 
 **Upload in review mode:**
-- ✅ PR-head `analysis.json` and metadata containing the PR base SHA, the merge base actually compared against, and how the head was seeded — stored as a GitHub Actions artifact.
+- ✅ Both sides of the comparison — the PR-head `analysis.json` and the `base_analysis.json` it was measured against — plus metadata naming the base tip, the merge base, and how the head was seeded. Stored as a GitHub Actions artifact, kept 30 days.
+
+The artifact is the only one of these channels a reader outside the workflow can use: the Actions cache has no download API, so anything the webview needs has to ship here. Carrying the base graph per run duplicates a text file, but it keeps each artifact self-contained; the alternative is a reader walking back through older artifacts for a base that may already have expired.
 
 **Cache between runs (never committed):**
 - ✅ The whole analysis state directory, twice: once per pull request (its head state, so the next run only covers new commits) and once per base commit (the merge base's analysis, shared by every pull request that forked from it). Sync mode publishes the base entry as a by-product of the baseline it already computes.
