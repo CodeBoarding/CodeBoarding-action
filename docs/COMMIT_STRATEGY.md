@@ -86,13 +86,28 @@ lists a pull request's artifacts and takes the newest.
     codeboarding-review-<run_id>-<attempt>/
       analysis.json        the head analysis, at metadata.head_sha
       base_analysis.json   what it was compared against, at metadata.merge_base_sha
-      metadata.json        both SHAs, merge_base_resolved, seed_source, chain_depth
+      metadata.json        which commits those graphs describe
 
-`metadata.json` reports the merge base twice, as `merge_base_sha` and
-`pr_base_sha`. The second is the name the webview already resolves
-(`base_commit_sha || pr_base_sha || base_sha`); without it that chain falls
-through to `base_sha`, the branch tip, and the webview compares against a base
-the review never used.
+| `metadata.json` field | Meaning |
+|---|---|
+| `head_sha` | the commit `analysis.json` describes |
+| `pr_base_sha` | the merge base, under the name the webview resolves |
+| `merge_base_sha` | the same value under this action's own name |
+| `merge_base_resolved` | `false` means the merge base could not be resolved, so the comparison is against `base_sha` and may include commits this pull request never made |
+| `base_sha` | the base branch tip when the event fired — *not* what was compared against |
+| `pr_number` | the pull request |
+| `mode` | `incremental` or `full`, how the head graph was produced |
+| `seed_source` | `pr-chain` or `base`, which state the head analysis grew from |
+| `chain_depth` | how many incremental runs are stacked on the base |
+
+The merge base is reported twice on purpose. The webview resolves a pull
+request's base as `base_commit_sha || pr_base_sha || base_sha`, so a value
+published only as `merge_base_sha` never reaches it and the chain falls through
+to the branch tip — the drift this action stopped making, made again one layer
+up.
+
+The last three fields are diagnostics. They explain how a graph was produced,
+not what it means, and nothing rendering a diagram needs them.
 
 Shipping the base graph too keeps the artifact self-contained: a reader can
 reproduce the comparison without resolving the merge base itself, and without
