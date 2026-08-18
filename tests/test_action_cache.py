@@ -22,12 +22,23 @@ argv = sys.argv[1:]
 output = argv[argv.index("--output-dir") + 1]
 os.makedirs(output, exist_ok=True)
 with open(os.environ["CB_ENGINE_LOG"], "a") as log:
-    log.write(json.dumps({"mode": argv[0], "checkout": argv[argv.index("--local") + 1]}) + "\\n")
+    log.write(json.dumps({
+        "mode": argv[0],
+        "checkout": argv[argv.index("--local") + 1],
+        "depth": argv[argv.index("--depth-level") + 1] if "--depth-level" in argv else None,
+    }) + "\\n")
 analysis = os.path.join(output, "analysis.json")
 with open(analysis, "w") as handle:
     json.dump({"metadata": {"depth_level": 2}, "components": [], "components_relations": []}, handle)
 print(json.dumps({"requiresFullAnalysis": False, "analysis_path": analysis}))
 '''
+
+
+def _digest(path: Path) -> str:
+    """Mirrors analysis_digest in analyze.sh: sha256 of the file, first 16 hex chars."""
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
 
 
 def _state(directory: Path, depth: int = 2, cap: int | None = None, **origin: object) -> Path:
@@ -212,9 +223,13 @@ class ReviewChainTests(unittest.TestCase):
     def _engine_calls(self) -> list[dict[str, str]]:
         return [json.loads(line) for line in self.engine_log.read_text(encoding="utf-8").splitlines()]
 
+    def _bind(self, **origin: object) -> None:
+        """Chain fixture bound to the base it was derived from."""
+        _state(self.cache_chain, base_digest=_digest(self.cache_base / "analysis.json"), **origin)
+
     def test_warm_chain_analyzes_only_the_head(self) -> None:
         _state(self.cache_base)
-        _state(self.cache_chain, chain_depth=3, seed_source="pr-chain")
+        self._bind(chain_depth=3, seed_source="pr-chain")
 
         values = self._analyze()
 
@@ -236,7 +251,7 @@ class ReviewChainTests(unittest.TestCase):
 
     def test_refresh_ignores_the_pull_request_chain(self) -> None:
         _state(self.cache_base)
-        _state(self.cache_chain, chain_depth=3)
+        self._bind(chain_depth=3)
 
         values = self._analyze(SEED_MODE="refresh")
 
@@ -255,15 +270,45 @@ class ReviewChainTests(unittest.TestCase):
         # Core resolves incremental depth from depth_cap, so a realized
         # depth_level below the cap is not a scope change.
         _state(self.cache_base, depth=2, cap=2)
-        _state(self.cache_chain, depth=1, cap=2, chain_depth=3)
+        _state(self.cache_chain, depth=1, cap=2, chain_depth=3, base_digest=_digest(self.cache_base / "analysis.json"))
 
         values = self._analyze()
 
         self.assertEqual(values["seed_source"], "pr-chain")
 
+    def test_a_chain_from_a_different_base_is_discarded(self) -> None:
+        # Two runs of the engine over the same commit need not name components
+        # identically, so diffing a head grown from one against the other would
+        # report changes nobody made.
+        _state(self.cache_base)
+        _state(self.cache_chain, chain_depth=3, base_digest="0000000000000000")
+
+        values = self._analyze()
+
+        self.assertEqual(values["seed_source"], "base")
+
+    def test_a_chain_with_no_recorded_base_is_discarded(self) -> None:
+        _state(self.cache_base)
+        _state(self.cache_chain, chain_depth=3)
+
+        values = self._analyze()
+
+        self.assertEqual(values["seed_source"], "base")
+
+    def test_a_forced_full_rebuilds_at_the_configured_cap(self) -> None:
+        # The baseline stopped short of its cap. Rebuilding at the realized
+        # depth would ratchet the configured depth down for good.
+        _state(self.cache_base, depth=1, cap=2)
+
+        self._analyze(SEED_MODE="full")
+
+        calls = self._engine_calls()
+        self.assertEqual(calls[-1]["mode"], "full")
+        self.assertEqual(calls[-1]["depth"], "2")
+
     def test_analysis_is_staged_for_the_cache(self) -> None:
         _state(self.cache_base)
-        _state(self.cache_chain)
+        self._bind()
 
         self._analyze()
 
@@ -273,6 +318,7 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(origin["merge_base_sha"], "merge-base-sha")
         self.assertEqual(origin["head_sha"], "head-sha")
         self.assertEqual(origin["engine_version"], "0.13.8")
+        self.assertEqual(origin["base_digest"], _digest(self.cache_base / "analysis.json"))
         self.assertFalse((self.cache_out / "base").exists(), "a cached base needs no re-save")
 
 

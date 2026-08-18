@@ -57,7 +57,18 @@ diffs them, and posts the result. Each side takes the first source that applies.
 | No committed baseline either | full analysis |
 
 If the base was computed rather than restored, a trusted run saves it under its
-exact key, so the next pull request forked from that commit gets the first row.
+exact key. How far that reaches depends on where the run happened, because a
+cache entry is only visible to the ref that wrote it and to the default branch:
+
+- **sync**, on the base branch, writes an entry every pull request can restore.
+  This is what makes the first row common.
+- **`/codeboarding`**, which runs on the default branch, also writes a shared
+  entry.
+- **an automatic `pull_request` run** writes into `refs/pull/<n>/merge`, so its
+  entry serves only later runs of that same pull request. Another pull request
+  with the identical merge base still computes its own.
+
+So review runs warm themselves, and sync is what warms everybody.
 
 **Head**
 
@@ -130,6 +141,12 @@ depth is read from that commit's baseline. A run forced with `/codeboarding
 refresh` or `full` appends `-<mode><run_id>.<attempt>`: cache entries are
 immutable, so it must not save under the key holding the state it was told to
 discard.
+
+A restored chain is used only when it grew from the very base graph this run
+diffs against, which `origin.json` records as a digest. Two runs of the engine
+over one commit need not name components identically, so a head descended from
+one base and a diagram drawn against another would report additions and
+removals for code nobody touched.
 
 The head chain is restored **by prefix**, which selects the newest entry for the
 pull request — an exact head-sha lookup would outrank a newer generation and

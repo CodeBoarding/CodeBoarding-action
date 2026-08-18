@@ -27,16 +27,10 @@ full() {
     exit 1
   fi
 }
-depth_from() {
-  local analysis="$1"
-  [ -f "$analysis" ] || return 0
-  python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("metadata", {}).get("depth_level", ""))' \
-    "$analysis" 2>/dev/null || true
-}
-
-# Core resolves incremental depth from depth_cap, falling back to depth_level for
-# baselines predating it. Compare the same value, or a run that merely stopped
-# short of its cap reads as a scope change.
+# Core resolves depth from depth_cap, falling back to depth_level for baselines
+# predating it. Use the same value everywhere: a run that stopped short of its
+# cap must not be read as a scope change, and rebuilding at the realized depth
+# would ratchet the configured depth down every time a full run happens.
 depth_cap_from() {
   local analysis="$1"
   [ -f "$analysis" ] || return 0
@@ -71,7 +65,20 @@ json.dump({
     "cfg_hash": os.environ.get("CFG_HASH", ""),
     "seed_source": sys.argv[2],
     "chain_depth": int(sys.argv[3]),
-}, open(sys.argv[1], "w"), indent=2)' "$state/origin.json" "$2" "$3"
+    "base_digest": sys.argv[4],
+}, open(sys.argv[1], "w"), indent=2)' "$state/origin.json" "$2" "$3" "$4"
+}
+
+# Two independently generated analyses of the same commit need not name the same
+# components, so a head that grew from one base cannot be diffed against another.
+analysis_digest() {
+  local analysis="$1"
+  [ -f "$analysis" ] || return 0
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$analysis" | cut -c1-16
+  else
+    shasum -a 256 "$analysis" | cut -c1-16
+  fi
 }
 
 cache_out() {
@@ -87,7 +94,7 @@ analyze_sync() {
   rm -rf "$work"
   seed_state "$CHECKOUT_DIR" "$state"
   local depth
-  depth="$(depth_from "$state/analysis.json")"
+  depth="$(depth_cap_from "$state/analysis.json")"
   depth="${depth:-2}"
 
   if [ "${FORCE_FULL,,}" = true ]; then
@@ -126,6 +133,14 @@ chain_usable() {
     echo "::notice::Analysis depth changed since the last run; re-seeding from the base analysis."
     return 1
   fi
+  # The chain descends from one base graph and the diagram is drawn against
+  # another only if the base was regenerated in between. Their components need
+  # not match, so keeping the chain would report additions and removals for code
+  # nobody touched.
+  if [ "$(origin_field "$CACHE_CHAIN_DIR" base_digest)" != "$(analysis_digest "$base_analysis")" ]; then
+    echo "::notice::The base analysis is not the one this pull request's cached analysis grew from; re-seeding from it."
+    return 1
+  fi
 }
 
 analyze_review() {
@@ -150,7 +165,7 @@ analyze_review() {
       seed_state "$base_checkout" "$base_state"
     fi
     local base_depth
-    base_depth="$(depth_from "$base_state/analysis.json")"
+    base_depth="$(depth_cap_from "$base_state/analysis.json")"
     incremental "$base_checkout" "$base_state"
     if [ "$REQUIRES_FULL" = true ]; then
       full "$base_checkout" "$base_state" "${base_depth:-2}"
@@ -161,7 +176,7 @@ analyze_review() {
   local base_analysis="$base_state/analysis.json"
   [ -f "$base_analysis" ] || { echo "::error::Review baseline analysis is missing."; exit 1; }
   local depth
-  depth="$(depth_from "$base_analysis")"
+  depth="$(depth_cap_from "$base_analysis")"
   depth="${depth:-2}"
 
   # Seed the head from this pull request's own last analysis when there is one,
@@ -189,7 +204,7 @@ analyze_review() {
     fi
   fi
 
-  write_origin "$head_state" "$seed_source" "$chain_depth"
+  write_origin "$head_state" "$seed_source" "$chain_depth" "$(analysis_digest "$base_analysis")"
   cache_out "$head_state" chain
   local save_base=false
   if [ "$base_source" = computed ]; then

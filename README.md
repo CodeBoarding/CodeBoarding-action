@@ -66,7 +66,7 @@ Artifacts are kept 30 days. Reading the default branch's committed baseline inst
 
 ### Reused analysis
 
-Each review seeds the head analysis from this pull request's own previous run, so a run only covers the commits pushed since it. With no previous run, it seeds from the merge base's analysis, which `sync` mode publishes and every pull request in the repository shares. Both live in the GitHub Actions cache, and state is re-derived from the merge base whenever the pinned CodeBoarding version, `.codeboardingignore`, the configured analysis depth, or the merge base itself changes. State produced while analyzing a fork is namespaced separately and is never restored by a run on this repository's own code.
+Each review seeds the head analysis from this pull request's own previous run, so a run only covers the commits pushed since it. With no previous run, it seeds from the merge base's analysis. `sync` mode publishes that entry on the base branch, where every pull request can restore it; an entry a review run computes for itself is scoped to that pull request. Both live in the GitHub Actions cache, and state is re-derived from the merge base whenever the pinned CodeBoarding version, `.codeboardingignore`, the configured analysis depth, or the merge base itself changes. State produced while analyzing a fork is namespaced separately and is never restored by a run on this repository's own code.
 
 Caching is best-effort: a cache miss, an unavailable cache service, or a GitHub Enterprise Server without one falls back to analyzing the merge base directly, exactly as before.
 
