@@ -28,6 +28,16 @@ permissions:
   issues: write
   id-token: write
 
+# One review at a time per pull request. Two pushes in quick succession would
+# otherwise analyze concurrently, and both would start from the same older
+# analysis instead of the newer one continuing from its predecessor. They also
+# share one sticky comment, so whichever finishes last wins — which can be the
+# run for the older commit. Queue rather than cancel, so a /codeboarding command
+# waits for a running review instead of killing it.
+concurrency:
+  group: codeboarding-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
+
 jobs:
   review:
     if: >
@@ -45,6 +55,8 @@ jobs:
 Automatic runs update one sticky **CodeBoarding review** comment. A trusted repository owner, member, or collaborator can comment `/codeboarding` to analyze the current PR head again, including on fork PRs; every command creates a new result comment.
 
 `synchronize` re-runs the review on every push to the branch. Each of those runs covers only the commits pushed since the previous one, so a push costs a fraction of a first analysis — and a pushed commit is the only thing that builds the reusable analysis, since GitHub gives comment-triggered runs a read-only cache. Drop `synchronize` from the list if you would rather spend one analysis per pull request than one per push.
+
+Keep the `concurrency` block if you keep `synchronize`: it is what makes a push continue from the push before it, and what stops a slower run for an older commit from overwriting the review comment for a newer one. Set `cancel-in-progress: true` instead to abandon a superseded run rather than queue it, which costs less when branches are pushed to rapidly, at the price of no analysis for the commits in between.
 
 | Command | What it does |
 |---|---|
