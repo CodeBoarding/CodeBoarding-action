@@ -63,6 +63,40 @@ Either way the head analysis is seeded from that directory and runs incrementall
 | `static_analysis.sha` | ✅ | with `static_analysis.pkl` | warm-start gate |
 | whole state directory | ❌ | Actions cache, per PR and per base commit | reuse the previous run instead of re-deriving from the base |
 
+## Names
+
+The two stores have different lifetimes, so they are named for different jobs.
+
+**Artifact — one per workflow run, immutable once written.** GitHub scopes an
+artifact to its run and offers no way to append to or replace an earlier one, so
+the name only has to be unique, and a consumer finds it by listing a pull
+request's artifacts and taking the newest:
+
+    codeboarding-review-<run_id>-<attempt>/
+      analysis.json        the head analysis, at metadata.head_sha
+      base_analysis.json   what it was compared against, at metadata.merge_base_sha
+      metadata.json        both SHAs, merge_base_resolved, seed_source, chain_depth
+
+**Cache — shared across runs, found by key.** Here the name *is* the lookup, so
+it carries everything that decides whether prior state still applies:
+
+| Key | Scope | The question it answers |
+|---|---|---|
+| `cb-head-v1-<cfg>-pr<N>-mb<merge_base>-<head_sha>` | one pull request | what did this pull request's last run produce |
+| `cb-base-v1-<cfg>-<merge_base>` | one commit | what does this commit's architecture look like |
+| `cb-fork-v1-<cfg>-<fork_repo>-pr<N>-mb<merge_base>-<head_sha>` | one fork pull request | the same as `cb-head`, quarantined |
+
+`<cfg>` digests the cache schema version, the pinned CodeBoarding version,
+`.codeboardingignore`, and the model selection. A run forced with
+`/codeboarding refresh` or `full` appends `-<mode><run_id>.<attempt>`, because
+cache entries are immutable and it must not save under the key holding the state
+it was told to discard.
+
+The chain is restored **by prefix**, which selects the newest entry for that
+pull request. The base is restored **by exact key first**: an exact hit is that
+merge base's own analysis and needs no engine run, while a prefix hit is only
+another commit's baseline, usable as a warm seed for the catch-up.
+
 ## Cache identity
 
 The cache key pins everything that makes prior state meaningful: the pinned
