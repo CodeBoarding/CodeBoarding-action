@@ -27,10 +27,13 @@ branch, so generated files cannot conflict during a merge.
 | `static_analysis.pkl` | LSP/CFG cache and the cluster baseline incremental needs |
 | `static_analysis.sha` | the warm-start gate for the pickle |
 | `codeboarding_version.json` | when Core emits it |
+| `health/health_report.json` | the warnings, read without regenerating them |
 
-Everything else generated is removed on sync: v1 architecture Markdown and
-`health/health_report.json`. Hand-written Markdown and user configuration
-(`.codeboardingignore`, health config) are preserved.
+The engine writes a health report on every run, full or incremental, so sync
+installs the fresh one and drops a stale one when a run produced none. v1
+architecture Markdown is removed. Hand-written Markdown and user configuration
+(`.codeboardingignore`, `health/health_config.json`, `health/.healthignore`) are
+preserved.
 
 **Delivery (`sync_strategy`).** The committed set is identical either way; only
 how it reaches the branch differs. `push` fast-forwards it directly.
@@ -100,6 +103,7 @@ lists a pull request's artifacts and takes the newest.
     codeboarding-review-<run_id>-<attempt>/
       analysis.json        the head analysis, at metadata.head_sha
       base_analysis.json   what it was compared against, at metadata.merge_base_sha
+      health_report.json   the head's health findings, when the engine wrote one
       metadata.json        which commits those graphs describe
 
 | `metadata.json` field | Meaning |

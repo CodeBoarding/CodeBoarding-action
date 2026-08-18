@@ -60,9 +60,10 @@ The uploaded artifact holds both sides of the comparison, so a reader can reprod
 |---|---|
 | `analysis.json` | the head analysis, at `head_sha` |
 | `base_analysis.json` | the analysis it was compared against, at `merge_base_sha` |
-| `metadata.json` | both SHAs, `merge_base_resolved`, `seed_source`, `chain_depth`, PR number |
+| `health_report.json` | the head's health findings, when the engine produced any |
+| `metadata.json` | which commits those graphs describe — see [the field list](docs/COMMIT_STRATEGY.md#names) |
 
-Artifacts are kept 30 days. Reading the default branch's committed baseline instead of `base_analysis.json` would drift from the merge base in exactly the way described above.
+The action requests 30-day retention; a repository or organisation policy can shorten it, so treat an artifact's own `expired` flag as the truth rather than any fixed window. Reading the default branch's committed baseline instead of `base_analysis.json` would drift from the merge base in exactly the way described above.
 
 ### Reused analysis
 
@@ -127,8 +128,9 @@ Sync mode commits only Core's persisted incremental-analysis state under `.codeb
 - `static_analysis.pkl`
 - `static_analysis.sha`
 - `codeboarding_version.json` when emitted by Core
+- `health/health_report.json`
 
-It does **not** render or commit architecture Markdown. Existing v1-generated `.codeboarding/*.md` and `docs/development/architecture.md` files carrying CodeBoarding's generated badge, plus `.codeboarding/health/health_report.json`, are removed on the first v2 sync. Hand-written Markdown and user-authored CodeBoarding configuration are preserved.
+It does **not** render or commit architecture Markdown. Existing v1-generated `.codeboarding/*.md` and `docs/development/architecture.md` files carrying CodeBoarding's generated badge are removed on the first v2 sync. Hand-written Markdown and user-authored CodeBoarding configuration, including `health/health_config.json` and `health/.healthignore`, are preserved.
 
 Create `.github/workflows/codeboarding-sync.yml`:
 

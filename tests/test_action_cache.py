@@ -337,7 +337,7 @@ class ReviewArtifactTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def test_it_ships_both_graphs_and_the_commit_they_describe(self) -> None:
+    def _build(self) -> subprocess.CompletedProcess:
         output = self.root / "github-output"
         result = subprocess.run(
             [str(ROOT / "scripts" / "action" / "build-review-artifact.sh")],
@@ -361,6 +361,10 @@ class ReviewArtifactTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        return result
+
+    def test_it_ships_both_graphs_and_the_commit_they_describe(self) -> None:
+        self._build()
 
         artifact = self.root / "cb-review-artifact"
         self.assertEqual(json.loads((artifact / "analysis.json").read_text())["components"], ["head"])
@@ -377,6 +381,26 @@ class ReviewArtifactTests(unittest.TestCase):
         self.assertEqual(metadata["pr_base_sha"], "merge-base-sha")
         self.assertEqual(metadata["merge_base_resolved"], "true")
         self.assertEqual(metadata["seed_source"], "pr-chain")
+
+
+class ReviewHealthArtifactTests(ReviewArtifactTests):
+    """The engine writes a health report beside every analysis it produces."""
+
+    def test_it_ships_the_health_report_when_the_engine_wrote_one(self) -> None:
+        (self.root / "health").mkdir()
+        (self.root / "health" / "health_report.json").write_text('{"overall_score": 0.9}', encoding="utf-8")
+
+        self._build()
+
+        report = self.root / "cb-review-artifact" / "health_report.json"
+        self.assertEqual(report.read_text(encoding="utf-8"), '{"overall_score": 0.9}')
+
+    def test_it_still_builds_when_no_health_report_was_written(self) -> None:
+        self._build()
+
+        artifact = self.root / "cb-review-artifact"
+        self.assertTrue((artifact / "analysis.json").is_file())
+        self.assertFalse((artifact / "health_report.json").exists())
 
 
 class CachePathParityTests(unittest.TestCase):

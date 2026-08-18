@@ -40,7 +40,20 @@ for name in "${artifacts[@]}"; do
   printf '%s\n' "$target"
 done
 
-# Remove identifiable v1 Markdown and its generated health report.
+# The engine writes a health report on every run, full or incremental. Install it
+# beside the analysis so the extension and webview can read warnings without
+# regenerating, and remove a stale one when a run produced none.
+health_source="$ANALYSIS_DIR/health/health_report.json"
+health_target="$output/health/health_report.json"
+if [ -f "$health_source" ]; then
+  mkdir -p "$output/health"
+  cp "$health_source" "$health_target"
+elif [ -e "$health_target" ]; then
+  rm -f "$health_target"
+fi
+printf '%s\n' "$health_target"
+
+# Remove identifiable v1 Markdown.
 marker='https://img.shields.io/badge/Generated%20by-CodeBoarding'
 for legacy in "$output"/*.md "$CHECKOUT_DIR/docs/development/architecture.md"; do
   [ -f "$legacy" ] || continue
@@ -48,10 +61,4 @@ for legacy in "$output"/*.md "$CHECKOUT_DIR/docs/development/architecture.md"; d
   rm -f "$legacy"
   printf '%s\n' "$legacy"
 done
-legacy="$output/health/health_report.json"
-if [ -e "$legacy" ]; then
-  rm -f "$legacy"
-  printf '%s\n' "$legacy"
-fi
-
 echo "installed=$installed" >> "$GITHUB_OUTPUT"
