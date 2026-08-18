@@ -71,7 +71,7 @@ Each review seeds the head analysis from this pull request's own previous run, s
 
 Caching is best-effort: a cache miss, an unavailable cache service, or a GitHub Enterprise Server without one falls back to analyzing the merge base directly, exactly as before.
 
-Actions cache entries are scoped to the ref that wrote them. Automatic `pull_request` runs therefore reuse each other's analysis and the shared base entry, while a `/codeboarding` command — which runs on the default branch ref — reuses the base entry but not a chain built by automatic runs, so it costs one base-seeded incremental. The action also accepts `pull_request_target`, which runs on the base branch ref and lets both share one chain; that trigger has its own trade-offs (a PR that adds this workflow will not run it until merged, and the fork gate becomes load-bearing), so `pull_request` remains the recommended default.
+Actions cache entries are scoped to the ref that wrote them, and GitHub gives comment-triggered runs a read-only cache token. So automatic `pull_request` runs reuse each other's analysis and build the chain, `sync` publishes the base entry everyone shares, and a `/codeboarding` command reads both but writes neither — it costs one base-seeded incremental, and `/codeboarding refresh` improves the comment it posts rather than what later runs start from. The action also accepts `pull_request_target`, which runs on the base branch ref and lets both share one chain; that trigger has its own trade-offs (a PR that adds this workflow will not run it until merged, and the fork gate becomes load-bearing), so `pull_request` remains the recommended default.
 
 ## Authentication and providers
 

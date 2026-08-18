@@ -68,13 +68,20 @@ cache entry is only visible to the ref that wrote it and to the default branch:
   commit it analyzed and the baseline commit it creates, because a pull request
   branched just before that baseline landed has the earlier commit as its merge
   base.
-- **`/codeboarding`**, which runs on the default branch, also writes a shared
-  entry.
 - **an automatic `pull_request` run** writes into `refs/pull/<n>/merge`, so its
   entry serves only later runs of that same pull request. Another pull request
   with the identical merge base still computes its own.
+- **`/codeboarding` writes nothing.** GitHub gives a comment-triggered run a
+  read-only cache token, so a save is refused with "token has no writable
+  scopes" no matter what the workflow grants. Reads work normally: a slash
+  command restores sync's shared base entry like anything else.
 
-So review runs warm themselves, and sync is what warms everybody.
+So sync warms everybody, pull request runs warm themselves, and slash commands
+only consume. Two consequences follow. A repository reviewed exclusively through
+`/codeboarding` never builds a chain, so every command re-derives the head from
+the base. And `/codeboarding refresh` cannot persist what it recomputes: it
+fixes the comment it posts, while the next run still restores the analysis it
+was asked to replace.
 
 **Head**
 
