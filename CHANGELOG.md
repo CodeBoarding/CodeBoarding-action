@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.12.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.11.1...v1.12.0) (2026-08-19)
+
+
+### Features
+
+* **review:** keep reusable analyses in artifacts, not the cache ([#90](https://github.com/CodeBoarding/CodeBoarding-action/issues/90)) ([539e286](https://github.com/CodeBoarding/CodeBoarding-action/commit/539e286664c0299ecc9a5ecc9bd9c0fc71db9fbb))
+
+
+### Bug Fixes
+
+* **review:** keep reviews 14 days and base graphs 30 ([#93](https://github.com/CodeBoarding/CodeBoarding-action/issues/93)) ([6a43d14](https://github.com/CodeBoarding/CodeBoarding-action/commit/6a43d14ea33dd070f4d5876bbaedbab5fe26ce10))
+* **review:** let a base outlive the reviews that reference it ([#92](https://github.com/CodeBoarding/CodeBoarding-action/issues/92)) ([8ccac44](https://github.com/CodeBoarding/CodeBoarding-action/commit/8ccac440c276ae9d5f8a730f1ee10565751f1720))
+
 ## [1.11.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.11.0...v1.11.1) (2026-08-18)
 
 
