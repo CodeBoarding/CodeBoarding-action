@@ -671,3 +671,36 @@ class ArtifactProvenanceTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.root / "out").exists())
+
+
+class UnreadableArtifactsTests(unittest.TestCase):
+    """Listing needs actions: read; uploading does not. Without it a repository
+    publishes on every run and reads on none, which looks like a permanent miss."""
+
+    def test_it_says_why_when_the_listing_is_denied(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            gh = bin_dir / "gh"
+            gh.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")  # denied
+            gh.chmod(0o755)
+
+            result = subprocess.run(
+                [str(ROOT / "scripts" / "action" / "fetch-state.sh")],
+                env={
+                    "PATH": f"{bin_dir}:{os.environ['PATH']}",
+                    "RUNNER_TEMP": str(root),
+                    "REPOSITORY": "owner/repo",
+                    "GH_HOST": "https://github.com",
+                    "ARTIFACT_NAME": "codeboarding-base-cfg-sha",
+                    "DEST": str(root / "out"),
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("actions: read", result.stdout)
+            self.assertFalse((root / "out").exists())

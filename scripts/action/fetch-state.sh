@@ -32,7 +32,14 @@ trusted='[.artifacts[]?
   | sort_by(.created_at) | last'
 selected="" expires="" rejected=0 page=1
 while [ "$page" -le 10 ]; do
-  listing="$(api "repos/$REPOSITORY/actions/artifacts?name=$ARTIFACT_NAME&per_page=100&page=$page" 2>/dev/null || true)"
+  if ! listing="$(api "repos/$REPOSITORY/actions/artifacts?name=$ARTIFACT_NAME&per_page=100&page=$page" 2>/dev/null)"; then
+    # A denied listing and an empty one are the same silence otherwise, and the
+    # denial is permanent: the run publishes fine, since uploading needs no
+    # permission, so a repository can look like it is always cold and never
+    # learn why.
+    echo "::warning::Could not list artifacts in $REPOSITORY. Add 'actions: read' to the job's permissions to reuse previous analyses; deriving from the base for now."
+    exit 0
+  fi
   [ -n "$listing" ] || break
   returned="$(jq -r '.artifacts | length' <<< "$listing" 2>/dev/null || echo 0)"
   [ "${returned:-0}" -gt 0 ] || break
