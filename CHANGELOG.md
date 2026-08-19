@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.12.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.12.0...v1.12.1) (2026-08-19)
+
+
+### Bug Fixes
+
+* **review:** publish state, not scratch, and a boolean that is one ([#95](https://github.com/CodeBoarding/CodeBoarding-action/issues/95)) ([09757de](https://github.com/CodeBoarding/CodeBoarding-action/commit/09757de79e1413c71cabfab1ddadd89aac8f8f1e))
+* **review:** stop labelling a base with the run that computed it ([#94](https://github.com/CodeBoarding/CodeBoarding-action/issues/94)) ([f7630ce](https://github.com/CodeBoarding/CodeBoarding-action/commit/f7630ce818327732111f2088f846985be4989e22))
+
 ## [1.12.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.11.1...v1.12.0) (2026-08-19)
 
 
