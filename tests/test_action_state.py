@@ -181,7 +181,6 @@ class ReviewChainTests(unittest.TestCase):
                 "PR_NUMBER": "42",
                 "ENGINE_VERSION": "0.13.8",
                 "CFG_HASH": "cfg",
-                "SEED_MODE": "chain",
                 "BASE_DIR": str(self.base_dir),
                 "WARMSTART_DIR": str(self.warmstart_dir),
                 "STAGE_DIR": str(self.stage_dir),
@@ -227,15 +226,6 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(values["chain_depth"], "1")
         self.assertEqual(len(self._engine_calls()), 1)
 
-    def test_refresh_ignores_the_stored_analysis(self) -> None:
-        _state(self.base_dir)
-        self._bind(chain_depth=3)
-
-        values = self._analyze(SEED_MODE="refresh")
-
-        self.assertEqual(values["seed_source"], "base")
-        self.assertEqual(values["chain_depth"], "1")
-
     def test_depth_change_discards_the_stored_analysis(self) -> None:
         _state(self.base_dir, depth=2)
         _state(self.warmstart_dir, depth=1, chain_depth=3)
@@ -272,17 +262,6 @@ class ReviewChainTests(unittest.TestCase):
         values = self._analyze()
 
         self.assertEqual(values["seed_source"], "base")
-
-    def test_a_forced_full_rebuilds_at_the_configured_cap(self) -> None:
-        # The baseline stopped short of its cap. Rebuilding at the realized
-        # depth would ratchet the configured depth down for good.
-        _state(self.base_dir, depth=1, cap=2)
-
-        self._analyze(SEED_MODE="full")
-
-        calls = self._engine_calls()
-        self.assertEqual(calls[-1]["mode"], "full")
-        self.assertEqual(calls[-1]["depth"], "2")
 
     def test_each_bundle_says_what_it_is(self) -> None:
         # A base bundle is otherwise an analysis.json and nothing else, which

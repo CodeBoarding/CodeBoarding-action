@@ -142,7 +142,6 @@ fetch_commit() {
 # lineage are read from the bundle itself, so they are checked here.
 warmstart_usable() {
   local base_analysis="$1" bundle_cap base_cap
-  [ "${SEED_MODE:-chain}" = chain ] || return 1
   [ -f "${WARMSTART_DIR:-}/analysis.json" ] || return 1
   bundle_cap="$(depth_cap_from "$WARMSTART_DIR/analysis.json")"
   base_cap="$(depth_cap_from "$base_analysis")"
@@ -208,13 +207,9 @@ analyze_review() {
   fi
   rm -f "$head_state/origin.json"
 
-  if [ "${SEED_MODE:-chain}" = full ]; then
+  incremental "$CHECKOUT_DIR" "$head_state"
+  if [ "$REQUIRES_FULL" = true ]; then
     full "$CHECKOUT_DIR" "$head_state" "$depth"
-  else
-    incremental "$CHECKOUT_DIR" "$head_state"
-    if [ "$REQUIRES_FULL" = true ]; then
-      full "$CHECKOUT_DIR" "$head_state" "$depth"
-    fi
   fi
 
   write_origin "$head_state" "$seed_source" "$chain_depth" "$(analysis_digest "$base_analysis")"
