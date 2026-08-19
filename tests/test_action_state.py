@@ -497,6 +497,15 @@ class PublishedStateTests(unittest.TestCase):
                 f"{step['name']} does not outlive the reviews that reference it",
             )
 
+    def test_the_renewal_threshold_matches_the_review_retention(self) -> None:
+        # A review references a base by id for its whole life, so the threshold
+        # that triggers renewal has to be that same life. If the two drift apart,
+        # a review can outlive the base it names and nothing catches it.
+        text = (ROOT / "action.yml").read_text(encoding="utf-8")
+        renew = next(l for l in text.splitlines() if "RENEW_WITHIN_DAYS:" in l)
+        review = next(s for s in self._uploads() if "review_artifact.outputs.artifact_dir" in s.get("path", ""))
+        self.assertIn(f"'{review['retention-days']}'", renew)
+
     def test_the_reusable_analysis_honours_the_configured_retention(self) -> None:
         warmstart = [s for s in self._uploads() if "warmstart" in s.get("path", "")]
         self.assertTrue(warmstart, "no warm-start publication step found")

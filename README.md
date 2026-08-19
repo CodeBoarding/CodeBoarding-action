@@ -88,7 +88,7 @@ Every bundle the action publishes carries a `metadata.json` with a `kind` of
 `review`, `base` or `warmstart`. Check it rather than inferring from the
 payload: a base bundle is otherwise indistinguishable from a head one.
 
-The action requests 30-day retention; a repository or organisation policy can shorten it, so treat an artifact's own `expired` flag as the truth rather than any fixed window.
+The action requests 14-day retention for it; a repository or organisation policy can shorten that, so treat an artifact's own `expired` flag as the truth rather than any fixed window. When a pull request outlives its review artifact, `/codeboarding` regenerates it at the cost of one incremental over the pull request — the base graph is kept longer and does not need re-analyzing.
 
 ### Reused analysis
 

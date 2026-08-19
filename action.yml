@@ -222,7 +222,9 @@ runs:
         REPOSITORY: ${{ github.repository }}
         ARTIFACT_NAME: ${{ steps.state.outputs.base_name }}
         DEST: ${{ runner.temp }}/cb-state/${{ github.action }}/base
-        RENEW_WITHIN_DAYS: '30'
+        # Must match the review retention below: a review references a base by
+        # id for its whole life, so a base with less than that left is renewed.
+        RENEW_WITHIN_DAYS: '14'
       run: "$GITHUB_ACTION_PATH/scripts/action/fetch-state.sh"
 
     - name: Fetch this pull request's last analysis
@@ -283,14 +285,13 @@ runs:
       with:
         name: codeboarding-base-${{ steps.state.outputs.cfg_hash }}-${{ steps.sync_commit.outputs.baseline_sha }}
         path: ${{ runner.temp }}/cb-state/${{ github.action }}/out/base
-        # Longer than a review's 30 days on purpose, and the margin is the whole
+        # Longer than a review's 14 days on purpose, and the margin is the whole
         # point: correctness comes from the renewal check, which republishes any
         # base with less than a review's lifetime left, while this surplus
         # decides how often that fires. Equal lifetimes renew on every run and
         # publish a base per run rather than per merge base — more storage, not
-        # less. 60 leaves a 30-day reuse window, so a pull request open a month
-        # never triggers one.
-        retention-days: 60
+        # less. 30 leaves a 16-day reuse window.
+        retention-days: 30
         if-no-files-found: ignore
 
     - name: Publish baseline analysis for the analyzed commit
@@ -300,14 +301,13 @@ runs:
       with:
         name: codeboarding-base-${{ steps.state.outputs.cfg_hash }}-${{ steps.sync_commit.outputs.analyzed_sha }}
         path: ${{ runner.temp }}/cb-state/${{ github.action }}/out/base
-        # Longer than a review's 30 days on purpose, and the margin is the whole
+        # Longer than a review's 14 days on purpose, and the margin is the whole
         # point: correctness comes from the renewal check, which republishes any
         # base with less than a review's lifetime left, while this surplus
         # decides how often that fires. Equal lifetimes renew on every run and
         # publish a base per run rather than per merge base — more storage, not
-        # less. 60 leaves a 30-day reuse window, so a pull request open a month
-        # never triggers one.
-        retention-days: 60
+        # less. 30 leaves a 16-day reuse window.
+        retention-days: 30
         if-no-files-found: ignore
 
     - name: Write sync summary
@@ -371,14 +371,13 @@ runs:
       with:
         name: ${{ steps.state.outputs.base_name }}
         path: ${{ runner.temp }}/cb-state/${{ github.action }}/out/base
-        # Longer than a review's 30 days on purpose, and the margin is the whole
+        # Longer than a review's 14 days on purpose, and the margin is the whole
         # point: correctness comes from the renewal check, which republishes any
         # base with less than a review's lifetime left, while this surplus
         # decides how often that fires. Equal lifetimes renew on every run and
         # publish a base per run rather than per merge base — more storage, not
-        # less. 60 leaves a 30-day reuse window, so a pull request open a month
-        # never triggers one.
-        retention-days: 60
+        # less. 30 leaves a 16-day reuse window.
+        retention-days: 30
         if-no-files-found: ignore
 
     - name: Render review diagram
@@ -419,9 +418,11 @@ runs:
         name: codeboarding-review-${{ github.run_id }}-${{ github.run_attempt }}
         path: ${{ steps.review_artifact.outputs.artifact_dir }}
         if-no-files-found: error
-        # Each run carries its own copy of the base graph, and the webview only
-        # ever reads a pull request's latest artifact, so value drops off fast.
-        retention-days: 30
+        # The dominant storage cost, since it is the one kept for weeks. A pull
+        # request open longer than this loses its rendered analysis until someone
+        # asks for it again, which costs one incremental over the pull request:
+        # the base graph is still published and needs no re-analysis.
+        retention-days: 14
 
     - name: Build review comment
       id: review_body
