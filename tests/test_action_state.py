@@ -51,6 +51,12 @@ def _state(directory: Path, depth: int = 2, cap: int | None = None, **origin: ob
         encoding="utf-8",
     )
     (directory / "static_analysis.pkl").write_text("pickle", encoding="utf-8")
+    (directory / "static_analysis.lock").write_text("", encoding="utf-8")
+    (directory / "logs").mkdir(exist_ok=True)
+    (directory / "logs" / "run.log").write_text("noise\n", encoding="utf-8")
+    (directory / "static_analysis.lock").write_text("", encoding="utf-8")
+    (directory / "logs").mkdir(exist_ok=True)
+    (directory / "logs" / "run.log").write_text("noise\n", encoding="utf-8")
     if origin:
         (directory / "origin.json").write_text(json.dumps(origin), encoding="utf-8")
     return directory
@@ -305,6 +311,17 @@ class ReviewChainTests(unittest.TestCase):
 
         self.assertEqual(json.loads((self.stage_dir / "warmstart" / "metadata.json").read_text())["kind"], "warmstart")
 
+    def test_scratch_files_are_not_published(self) -> None:
+        # Run logs and lock files are the engine's working area. No reader
+        # inflates them and every fetch pays for them.
+        _state(self.base_dir)
+        self._analyze()
+
+        staged = self.stage_dir / "warmstart"
+        self.assertTrue((staged / "analysis.json").is_file())
+        self.assertFalse((staged / "logs").exists())
+        self.assertEqual(list(staged.glob("*.lock")), [])
+
     def test_analysis_is_staged_for_publication(self) -> None:
         _state(self.base_dir)
         self._bind()
@@ -390,7 +407,9 @@ class ReviewArtifactTests(unittest.TestCase):
         # merge base has to appear under a name it looks for or it silently uses
         # the branch tip.
         self.assertEqual(metadata["pr_base_sha"], "merge-base-sha")
-        self.assertEqual(metadata["merge_base_resolved"], "true")
+        # A JSON string, which "false" also is, is truthy in a consumer: this
+        # has to be a real boolean or a caveat banner never fires.
+        self.assertIs(metadata["merge_base_resolved"], True)
         self.assertEqual(metadata["seed_source"], "pr-chain")
 
 

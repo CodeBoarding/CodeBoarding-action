@@ -31,6 +31,11 @@ cache was free. Retention is the lever — see below.
 | `codeboarding-base-<cfg>-<merge_base>` | the merge base's own analysis | 30 days, renewed while still referenced | any later review forking from that commit |
 | `codeboarding-warmstart-<cfg>-pr<N>` | the working directory: graph, pickle, fingerprint, gate | **1 day**, configurable | only the next run of that pull request |
 
+Bundles carry analysis state, not the engine's scratch: run logs and lock files
+are stripped before publication, since no reader inflates them and every fetch
+pays for them. Health configuration stays, because a run seeded from a bundle
+reads it.
+
 The base graph is published only by the run that *computed* it, so it is written
 about once per merge base rather than once per run — with two exceptions. A
 review artifact references a base by id for its whole retention, so a base about
@@ -51,16 +56,21 @@ the payload.
 `metadata.json` in the review artifact names the base artifact so a reader can
 fetch it without reconstructing the name:
 
-| Field | Meaning |
-|---|---|
-| `head_sha` | the commit `analysis.json` describes |
-| `pr_base_sha` | the merge base, under the name the webview resolves |
-| `merge_base_sha` | the same value under this action's own name |
-| `base_artifact` | the artifact holding the graph that was compared against |
-| `base_artifact_id` | **which one**, since two artifacts can share that name and disagree: the engine is not deterministic, and a sync run publishes bases for the same commit |
-| `merge_base_resolved` | `false` means the merge base could not be resolved, so the comparison is against `base_sha` |
-| `base_sha` | the base branch tip when the event fired — *not* what was compared against |
-| `pr_number`, `mode`, `seed_source`, `chain_depth` | provenance; nothing rendering a diagram needs them |
+Types are part of the contract, not an accident of how the file is written:
+`merge_base_resolved` is a JSON **boolean**, everything else is a string. A
+string `"false"` is truthy in most consumers, so a caveat keyed on it silently
+never fires.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `head_sha` | string | the commit `analysis.json` describes |
+| `pr_base_sha` | string | the merge base, under the name the webview resolves |
+| `merge_base_sha` | string | the same value under this action's own name |
+| `base_artifact` | string | the artifact holding the graph that was compared against |
+| `base_artifact_id` | string | **which one**, since two artifacts can share that name and disagree: the engine is not deterministic, and a sync run publishes bases for the same commit |
+| `merge_base_resolved` | **boolean** | `false` means the merge base could not be resolved, so the comparison is against `base_sha` |
+| `base_sha` | string | the base branch tip when the event fired — *not* what was compared against |
+| `pr_number`, `mode`, `seed_source`, `chain_depth` | string | provenance; nothing rendering a diagram needs them |
 
 **A sync run** publishes the base graph under both the commit it analyzed and the
 baseline commit it writes on top, because a pull request opened either side of
