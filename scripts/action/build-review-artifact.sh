@@ -3,11 +3,9 @@
 set -euo pipefail
 mkdir -p "${RUNNER_TEMP}/cb-review-artifact"
 cp "$ANALYSIS_PATH" "${RUNNER_TEMP}/cb-review-artifact/analysis.json"
-# Ship the graph the diagram was measured against, so a reader can reproduce the
-# comparison without guessing which commit it belongs to. Reading the default
-# branch's committed baseline instead would drift from the merge base exactly as
-# the review itself used to.
-cp "$BASE_ANALYSIS_PATH" "${RUNNER_TEMP}/cb-review-artifact/base_analysis.json"
+# The base graph is published separately, named for the commit it describes, so
+# ten runs on one pull request store it once rather than ten times. metadata
+# carries the name to look it up by.
 # The engine writes this next to the analysis it came from. Ship it when present
 # so a pull request's warnings are readable without rerunning the analysis.
 HEALTH_REPORT="$(dirname "$ANALYSIS_PATH")/health/health_report.json"
@@ -28,8 +26,10 @@ jq -n \
   --arg pr_number "$PR_NUMBER" \
   --arg seed_source "$SEED_SOURCE" \
   --arg chain_depth "$CHAIN_DEPTH" \
+  --arg base_artifact "$BASE_ARTIFACT_NAME" \
   '{mode: $mode, base_sha: $base_sha, merge_base_sha: $merge_base_sha, pr_base_sha: $merge_base_sha,
     merge_base_resolved: $merge_base_resolved, head_sha: $head_sha,
-    pr_number: $pr_number, seed_source: $seed_source, chain_depth: $chain_depth}' \
+    pr_number: $pr_number, seed_source: $seed_source, chain_depth: $chain_depth,
+    base_artifact: $base_artifact}' \
   > "${RUNNER_TEMP}/cb-review-artifact/metadata.json"
 echo "artifact_dir=${RUNNER_TEMP}/cb-review-artifact" >> "$GITHUB_OUTPUT"

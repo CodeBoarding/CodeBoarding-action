@@ -29,6 +29,7 @@ jobs:
       # it does NOT commit generated files back to the branch (that is sync mode
       # only — see action.yml `mode` input). So contents stays read-only.
       contents: read
+      actions: read         # download the analysis an earlier run published
       pull-requests: write  # post / update the architecture-diff PR comment
       issues: write         # the /codeboarding issue_comment trigger + comment API
       id-token: write       # mint per-request OIDC credentials for the relay

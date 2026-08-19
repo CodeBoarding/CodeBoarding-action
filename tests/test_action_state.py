@@ -1,4 +1,4 @@
-"""Tests for the cached-analysis reuse boundary owned by the action."""
+"""Tests for the stored-analysis reuse boundary owned by the action."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-CACHE_KEYS = ROOT / "scripts" / "action" / "cache-keys.sh"
+STATE_NAMES = ROOT / "scripts" / "action" / "state-names.sh"
 ANALYZE = ROOT / "scripts" / "action" / "analyze.sh"
 
 ENGINE_STUB = '''#!/usr/bin/env python3
@@ -70,7 +70,7 @@ class CacheKeyTests(unittest.TestCase):
     def _run(self, **extra: str) -> dict[str, str]:
         self.output.write_text("", encoding="utf-8")
         result = subprocess.run(
-            [str(CACHE_KEYS)],
+            [str(STATE_NAMES)],
             env={
                 "PATH": os.environ["PATH"],
                 "GITHUB_OUTPUT": str(self.output),
@@ -78,16 +78,11 @@ class CacheKeyTests(unittest.TestCase):
                 "ENGINE_VERSION": "0.13.8",
                 "MERGE_BASE_SHA": "mergebasesha",
                 "PR_NUMBER": "42",
-                "HEAD_SHA": "head-sha",
-                "HEAD_REPO": "owner/repo",
                 "IS_FORK": "false",
-                "SEED_MODE": "chain",
                 "LLM_PROVIDER": "openrouter",
                 "MODEL": "",
                 "AGENT_MODEL_INPUT": "",
                 "PARSING_MODEL_INPUT": "",
-                "GITHUB_RUN_ID": "99",
-                "GITHUB_RUN_ATTEMPT": "1",
                 **extra,
             },
             capture_output=True,
@@ -101,23 +96,19 @@ class CacheKeyTests(unittest.TestCase):
             values[key] = value
         return values
 
-    def test_chain_key_pins_the_pull_request_and_its_merge_base(self) -> None:
+    def test_names_pin_the_pull_request_and_the_merge_base(self) -> None:
         values = self._run()
 
-        self.assertTrue(values["chain_key"].startswith("cb-head-v1-"))
-        self.assertIn("-pr42-mbmergebasesha-", values["chain_key"])
-        self.assertTrue(values["chain_key"].endswith("head-sha"))
-        self.assertEqual(values["chain_key"][: -len("head-sha")], values["chain_restore_keys"])
-        self.assertEqual(values["base_key"], values["base_key_prefix"] + "mergebasesha")
+        self.assertEqual(values["warmstart_name"], f"codeboarding-warmstart-{values['cfg_hash']}-pr42")
+        self.assertEqual(values["base_name"], f"codeboarding-base-{values['cfg_hash']}-mergebasesha")
 
-    def test_fork_state_cannot_be_restored_by_a_trusted_run(self) -> None:
-        trusted = self._run()
-        fork = self._run(IS_FORK="true", HEAD_REPO="contributor/repo")
+    def test_a_fork_never_gets_a_reusable_analysis(self) -> None:
+        # Untrusted code must not shape a pickle a later run loads, and there is
+        # no platform boundary here to lean on, so forks simply have no lineage.
+        fork = self._run(IS_FORK="true")
 
-        self.assertTrue(fork["chain_key"].startswith("cb-fork-v1-"))
-        self.assertIn("contributor-repo", fork["chain_key"])
-        self.assertFalse(fork["chain_key"].startswith(trusted["chain_restore_keys"]))
-        self.assertFalse(trusted["chain_key"].startswith(fork["chain_restore_keys"]))
+        self.assertNotIn("warmstart_name", fork)
+        self.assertIn("base_name", fork)
 
     def test_analysis_scope_and_engine_version_change_the_identity(self) -> None:
         baseline = self._run()
@@ -136,19 +127,7 @@ class CacheKeyTests(unittest.TestCase):
         self.assertNotEqual(baseline["cfg_hash"], self._run(PARSING_MODEL_INPUT="gpt-5")["cfg_hash"])
         self.assertNotEqual(baseline["cfg_hash"], self._run(LLM_PROVIDER="anthropic")["cfg_hash"])
 
-    def test_a_forced_refresh_does_not_save_under_the_key_it_replaces(self) -> None:
-        chained = self._run()
-        refreshed = self._run(SEED_MODE="refresh")
-        full = self._run(SEED_MODE="full")
-
-        self.assertNotEqual(chained["chain_key"], refreshed["chain_key"])
-        self.assertNotEqual(refreshed["chain_key"], full["chain_key"])
-        # Still found by the prefix, so the next run picks the newest state.
-        for values in (refreshed, full):
-            self.assertTrue(values["chain_key"].startswith(values["chain_restore_keys"]))
-            self.assertEqual(values["chain_restore_keys"], chained["chain_restore_keys"])
-
-    def test_unresolvable_engine_version_disables_caching_instead_of_failing(self) -> None:
+    def test_unresolvable_engine_version_disables_reuse_instead_of_failing(self) -> None:
         stub_bin = self.root / "bin"
         stub_bin.mkdir()
         python_stub = stub_bin / "python3"
@@ -176,9 +155,9 @@ class ReviewChainTests(unittest.TestCase):
         self.runner_temp.mkdir()
         self.checkout = self.root / "checkout"
         self.checkout.mkdir()
-        self.cache_base = self.root / "cache" / "base"
-        self.cache_chain = self.root / "cache" / "chain"
-        self.cache_out = self.root / "cache" / "out"
+        self.base_dir = self.root / "state" / "base"
+        self.warmstart_dir = self.root / "state" / "warmstart"
+        self.stage_dir = self.root / "state" / "out"
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -203,10 +182,9 @@ class ReviewChainTests(unittest.TestCase):
                 "ENGINE_VERSION": "0.13.8",
                 "CFG_HASH": "cfg",
                 "SEED_MODE": "chain",
-                "CACHE_BASE_DIR": str(self.cache_base),
-                "CACHE_BASE_HIT": "true",
-                "CACHE_CHAIN_DIR": str(self.cache_chain),
-                "CACHE_OUT_DIR": str(self.cache_out),
+                "BASE_DIR": str(self.base_dir),
+                "WARMSTART_DIR": str(self.warmstart_dir),
+                "STAGE_DIR": str(self.stage_dir),
                 **extra,
             },
             capture_output=True,
@@ -225,23 +203,23 @@ class ReviewChainTests(unittest.TestCase):
 
     def _bind(self, **origin: object) -> None:
         """Chain fixture bound to the base it was derived from."""
-        _state(self.cache_chain, base_digest=_digest(self.cache_base / "analysis.json"), **origin)
+        _state(self.warmstart_dir, base_digest=_digest(self.base_dir / "analysis.json"), **origin)
 
-    def test_warm_chain_analyzes_only_the_head(self) -> None:
-        _state(self.cache_base)
+    def test_a_stored_analysis_means_only_the_head_is_analyzed(self) -> None:
+        _state(self.base_dir)
         self._bind(chain_depth=3, seed_source="pr-chain")
 
         values = self._analyze()
 
         self.assertEqual(values["seed_source"], "pr-chain")
         self.assertEqual(values["chain_depth"], "4")
-        self.assertEqual(values["save_base"], "false")
+        self.assertEqual(values["publish_base"], "false")
         calls = self._engine_calls()
         self.assertEqual(len(calls), 1, f"only the head should be analyzed, got {calls}")
         self.assertEqual(calls[0]["checkout"], str(self.checkout))
 
-    def test_cached_base_without_a_chain_seeds_from_the_base(self) -> None:
-        _state(self.cache_base)
+    def test_a_published_base_without_a_stored_head_seeds_from_the_base(self) -> None:
+        _state(self.base_dir)
 
         values = self._analyze()
 
@@ -249,8 +227,8 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(values["chain_depth"], "1")
         self.assertEqual(len(self._engine_calls()), 1)
 
-    def test_refresh_ignores_the_pull_request_chain(self) -> None:
-        _state(self.cache_base)
+    def test_refresh_ignores_the_stored_analysis(self) -> None:
+        _state(self.base_dir)
         self._bind(chain_depth=3)
 
         values = self._analyze(SEED_MODE="refresh")
@@ -258,9 +236,9 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(values["seed_source"], "base")
         self.assertEqual(values["chain_depth"], "1")
 
-    def test_depth_change_discards_the_chain(self) -> None:
-        _state(self.cache_base, depth=2)
-        _state(self.cache_chain, depth=1, chain_depth=3)
+    def test_depth_change_discards_the_stored_analysis(self) -> None:
+        _state(self.base_dir, depth=2)
+        _state(self.warmstart_dir, depth=1, chain_depth=3)
 
         values = self._analyze()
 
@@ -269,27 +247,27 @@ class ReviewChainTests(unittest.TestCase):
     def test_a_run_that_stopped_short_of_its_cap_keeps_the_chain(self) -> None:
         # Core resolves incremental depth from depth_cap, so a realized
         # depth_level below the cap is not a scope change.
-        _state(self.cache_base, depth=2, cap=2)
-        _state(self.cache_chain, depth=1, cap=2, chain_depth=3, base_digest=_digest(self.cache_base / "analysis.json"))
+        _state(self.base_dir, depth=2, cap=2)
+        _state(self.warmstart_dir, depth=1, cap=2, chain_depth=3, base_digest=_digest(self.base_dir / "analysis.json"))
 
         values = self._analyze()
 
         self.assertEqual(values["seed_source"], "pr-chain")
 
-    def test_a_chain_from_a_different_base_is_discarded(self) -> None:
+    def test_a_stored_analysis_from_a_different_base_is_discarded(self) -> None:
         # Two runs of the engine over the same commit need not name components
         # identically, so diffing a head grown from one against the other would
         # report changes nobody made.
-        _state(self.cache_base)
-        _state(self.cache_chain, chain_depth=3, base_digest="0000000000000000")
+        _state(self.base_dir)
+        _state(self.warmstart_dir, chain_depth=3, base_digest="0000000000000000")
 
         values = self._analyze()
 
         self.assertEqual(values["seed_source"], "base")
 
-    def test_a_chain_with_no_recorded_base_is_discarded(self) -> None:
-        _state(self.cache_base)
-        _state(self.cache_chain, chain_depth=3)
+    def test_a_stored_analysis_with_no_recorded_base_is_discarded(self) -> None:
+        _state(self.base_dir)
+        _state(self.warmstart_dir, chain_depth=3)
 
         values = self._analyze()
 
@@ -298,7 +276,7 @@ class ReviewChainTests(unittest.TestCase):
     def test_a_forced_full_rebuilds_at_the_configured_cap(self) -> None:
         # The baseline stopped short of its cap. Rebuilding at the realized
         # depth would ratchet the configured depth down for good.
-        _state(self.cache_base, depth=1, cap=2)
+        _state(self.base_dir, depth=1, cap=2)
 
         self._analyze(SEED_MODE="full")
 
@@ -306,20 +284,20 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(calls[-1]["mode"], "full")
         self.assertEqual(calls[-1]["depth"], "2")
 
-    def test_analysis_is_staged_for_the_cache(self) -> None:
-        _state(self.cache_base)
+    def test_analysis_is_staged_for_publication(self) -> None:
+        _state(self.base_dir)
         self._bind()
 
         self._analyze()
 
-        staged = self.cache_out / "chain"
+        staged = self.stage_dir / "warmstart"
         self.assertTrue((staged / "analysis.json").is_file())
         origin = json.loads((staged / "origin.json").read_text(encoding="utf-8"))
         self.assertEqual(origin["merge_base_sha"], "merge-base-sha")
         self.assertEqual(origin["head_sha"], "head-sha")
         self.assertEqual(origin["engine_version"], "0.13.8")
-        self.assertEqual(origin["base_digest"], _digest(self.cache_base / "analysis.json"))
-        self.assertFalse((self.cache_out / "base").exists(), "a cached base needs no re-save")
+        self.assertEqual(origin["base_digest"], _digest(self.base_dir / "analysis.json"))
+        self.assertFalse((self.stage_dir / "base").exists(), "a published base needs no republishing")
 
 
 class ReviewArtifactTests(unittest.TestCase):
@@ -346,7 +324,7 @@ class ReviewArtifactTests(unittest.TestCase):
                 "RUNNER_TEMP": str(self.root),
                 "GITHUB_OUTPUT": str(output),
                 "ANALYSIS_PATH": str(self.head),
-                "BASE_ANALYSIS_PATH": str(self.base),
+                "BASE_ARTIFACT_NAME": "codeboarding-base-cfg-mergebasesha",
                 "ANALYSIS_MODE": "incremental",
                 "BASE_SHA": "tip-sha",
                 "MERGE_BASE_SHA": "merge-base-sha",
@@ -368,13 +346,16 @@ class ReviewArtifactTests(unittest.TestCase):
 
         artifact = self.root / "cb-review-artifact"
         self.assertEqual(json.loads((artifact / "analysis.json").read_text())["components"], ["head"])
-        self.assertEqual(json.loads((artifact / "base_analysis.json").read_text())["components"], ["base"])
+        # The base graph is published separately, so the artifact names it
+        # rather than carrying a copy per run.
+        self.assertFalse((artifact / "base_analysis.json").exists())
 
         metadata = json.loads((artifact / "metadata.json").read_text(encoding="utf-8"))
         # base_sha stays the event tip for consumers keyed on it; the merge base
         # is what base_analysis.json actually describes.
         self.assertEqual(metadata["base_sha"], "tip-sha")
         self.assertEqual(metadata["merge_base_sha"], "merge-base-sha")
+        self.assertEqual(metadata["base_artifact"], "codeboarding-base-cfg-mergebasesha")
         # The webview resolves base_commit_sha || pr_base_sha || base_sha, so the
         # merge base has to appear under a name it looks for or it silently uses
         # the branch tip.
@@ -403,11 +384,10 @@ class ReviewHealthArtifactTests(ReviewArtifactTests):
         self.assertFalse((artifact / "health_report.json").exists())
 
 
-class CachePathParityTests(unittest.TestCase):
-    """actions/cache derives its lookup version from the path strings, so a save
-    under a different path than the restore can never be found again."""
+class PublishedStateTests(unittest.TestCase):
+    """Static checks on action.yml: what gets published, from where, by whom."""
 
-    def _cache_steps(self) -> list[dict[str, str]]:
+    def _steps(self) -> list[dict[str, str]]:
         steps: list[dict[str, str]] = []
         current: dict[str, str] | None = None
         for line in (ROOT / "action.yml").read_text(encoding="utf-8").splitlines():
@@ -416,52 +396,42 @@ class CachePathParityTests(unittest.TestCase):
                 steps.append(current)
             elif current is not None:
                 stripped = line.strip()
-                for field in ("uses", "path", "key", "restore-keys", "if"):
-                    if stripped.startswith(f"{field}:"):
+                for field in ("uses", "path", "name", "if", "retention-days"):
+                    if stripped.startswith(f"{field}:") and field not in ("name",):
                         current[field] = stripped.split(":", 1)[1].strip()
-        return [step for step in steps if step.get("uses", "").startswith("actions/cache/")]
+        return steps
 
-    def test_the_chain_is_restored_by_prefix_so_a_refresh_survives(self) -> None:
-        steps = {step["name"]: step for step in self._cache_steps()}
-        chain = steps["Restore pull request analysis"]
-        base = steps["Restore base analysis"]
+    def _uploads(self) -> list[dict[str, str]]:
+        return [s for s in self._steps() if s.get("uses", "").startswith("actions/upload-artifact")]
 
-        # An exact key outranks every prefix match, so a head-sha key would
-        # return the entry a forced refresh replaced rather than its
-        # replacement, which is saved under a later generation of the same head.
-        self.assertEqual(chain["key"], chain["restore-keys"])
-        # The base lookup relies on the opposite: an exact hit is this merge
-        # base's own analysis, a prefix hit is only a warm seed.
-        self.assertNotEqual(base["key"], base["restore-keys"])
-
-    def test_reviews_do_not_attempt_a_save_a_comment_run_cannot_make(self) -> None:
-        # GitHub hands an issue_comment run a read-only cache token, so the save
-        # is refused with "token has no writable scopes" and surfaces as a
-        # warning that reads like a broken action. Reads are unaffected.
-        for step in self._cache_steps():
-            if not step["uses"].startswith("actions/cache/save"):
+    def test_state_is_published_from_the_directory_the_analysis_stages(self) -> None:
+        # analyze.sh writes STAGE_DIR/warmstart and STAGE_DIR/base. Publishing
+        # from anywhere else uploads nothing and reports success.
+        staged = {"warmstart", "base"}
+        for step in self._uploads():
+            path = step["path"]
+            if "cb-state/out" not in path:
                 continue
-            if "review" not in step.get("if", ""):
-                continue
-            self.assertIn(
-                "github.event_name != 'issue_comment'",
-                step.get("if", ""),
-                f"{step['name']} would attempt a save that a comment-triggered run cannot make",
-            )
+            self.assertIn(path.rsplit("/", 1)[-1], staged, f"{step['name']} publishes an unstaged path")
 
-    def test_every_saved_path_is_a_restored_path(self) -> None:
-        steps = self._cache_steps()
-        self.assertTrue(steps, "no cache steps found in action.yml")
-        restored = {s["path"] for s in steps if s["uses"].startswith("actions/cache/restore")}
-        saved = {s["path"] for s in steps if s["uses"].startswith("actions/cache/save")}
+    def test_a_fork_publishes_nothing_another_run_would_read(self) -> None:
+        # A base graph is named for a commit, so every pull request forking there
+        # reads it; a fork's analysis must never be what they read.
+        base_publish = [
+            s
+            for s in self._uploads()
+            if "outputs.base_name" in s.get("path", "") + s.get("name", "") or "base_name" in s.get("if", "")
+        ]
+        published_by_review = [s for s in self._uploads() if "review_analyze.outputs.publish_base" in s.get("if", "")]
+        self.assertTrue(published_by_review, "no base publication step found")
+        for step in published_by_review:
+            self.assertIn("is_fork != 'true'", step["if"], f"{step['name']} would let a fork publish a shared base")
 
-        self.assertTrue(restored, "no cache restore steps found")
-        self.assertTrue(saved, "no cache save steps found")
-        self.assertEqual(
-            saved - restored,
-            set(),
-            "these paths are saved but never restored, so the entries are unreachable",
-        )
+    def test_the_reusable_analysis_honours_the_configured_retention(self) -> None:
+        warmstart = [s for s in self._uploads() if "warmstart" in s.get("path", "")]
+        self.assertTrue(warmstart, "no warm-start publication step found")
+        for step in warmstart:
+            self.assertEqual(step.get("retention-days"), "${{ inputs.warmstart_retention_days }}")
 
 
 if __name__ == "__main__":
