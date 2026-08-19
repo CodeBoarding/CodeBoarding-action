@@ -283,7 +283,14 @@ runs:
       with:
         name: codeboarding-base-${{ steps.state.outputs.cfg_hash }}-${{ steps.sync_commit.outputs.baseline_sha }}
         path: ${{ runner.temp }}/cb-state/${{ github.action }}/out/base
-        retention-days: 30
+        # Longer than a review's 30 days on purpose, and the margin is the whole
+        # point: correctness comes from the renewal check, which republishes any
+        # base with less than a review's lifetime left, while this surplus
+        # decides how often that fires. Equal lifetimes renew on every run and
+        # publish a base per run rather than per merge base — more storage, not
+        # less. 60 leaves a 30-day reuse window, so a pull request open a month
+        # never triggers one.
+        retention-days: 60
         if-no-files-found: ignore
 
     - name: Publish baseline analysis for the analyzed commit
@@ -293,7 +300,14 @@ runs:
       with:
         name: codeboarding-base-${{ steps.state.outputs.cfg_hash }}-${{ steps.sync_commit.outputs.analyzed_sha }}
         path: ${{ runner.temp }}/cb-state/${{ github.action }}/out/base
-        retention-days: 30
+        # Longer than a review's 30 days on purpose, and the margin is the whole
+        # point: correctness comes from the renewal check, which republishes any
+        # base with less than a review's lifetime left, while this surplus
+        # decides how often that fires. Equal lifetimes renew on every run and
+        # publish a base per run rather than per merge base — more storage, not
+        # less. 60 leaves a 30-day reuse window, so a pull request open a month
+        # never triggers one.
+        retention-days: 60
         if-no-files-found: ignore
 
     - name: Write sync summary
@@ -357,7 +371,14 @@ runs:
       with:
         name: ${{ steps.state.outputs.base_name }}
         path: ${{ runner.temp }}/cb-state/${{ github.action }}/out/base
-        retention-days: 30
+        # Longer than a review's 30 days on purpose, and the margin is the whole
+        # point: correctness comes from the renewal check, which republishes any
+        # base with less than a review's lifetime left, while this surplus
+        # decides how often that fires. Equal lifetimes renew on every run and
+        # publish a base per run rather than per merge base — more storage, not
+        # less. 60 leaves a 30-day reuse window, so a pull request open a month
+        # never triggers one.
+        retention-days: 60
         if-no-files-found: ignore
 
     - name: Render review diagram
