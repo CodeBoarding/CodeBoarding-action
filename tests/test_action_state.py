@@ -315,7 +315,7 @@ class ReviewArtifactTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def _build(self) -> subprocess.CompletedProcess:
+    def _build(self, **extra: str) -> subprocess.CompletedProcess:
         output = self.root / "github-output"
         result = subprocess.run(
             [str(ROOT / "scripts" / "action" / "build-review-artifact.sh")],
@@ -325,6 +325,8 @@ class ReviewArtifactTests(unittest.TestCase):
                 "GITHUB_OUTPUT": str(output),
                 "ANALYSIS_PATH": str(self.head),
                 "BASE_ARTIFACT_NAME": "codeboarding-base-cfg-mergebasesha",
+                "BASE_ANALYSIS_PATH": str(self.base),
+                "INLINE_BASE": "false",
                 "ANALYSIS_MODE": "incremental",
                 "BASE_SHA": "tip-sha",
                 "MERGE_BASE_SHA": "merge-base-sha",
@@ -333,6 +335,7 @@ class ReviewArtifactTests(unittest.TestCase):
                 "PR_NUMBER": "81",
                 "SEED_SOURCE": "pr-chain",
                 "CHAIN_DEPTH": "2",
+                **extra,
             },
             capture_output=True,
             text=True,
@@ -366,6 +369,17 @@ class ReviewArtifactTests(unittest.TestCase):
 
 class ReviewHealthArtifactTests(ReviewArtifactTests):
     """The engine writes a health report beside every analysis it produces."""
+
+    def test_a_fork_review_carries_the_base_it_computed(self) -> None:
+        # A fork run publishes nothing another run reads, so if it had to compute
+        # the base itself, naming an artifact that does not exist would leave a
+        # reader unable to reproduce the comparison.
+        self._build(INLINE_BASE="true")
+
+        artifact = self.root / "cb-review-artifact"
+        self.assertEqual(json.loads((artifact / "base_analysis.json").read_text())["components"], ["base"])
+        metadata = json.loads((artifact / "metadata.json").read_text(encoding="utf-8"))
+        self.assertEqual(metadata["base_artifact"], "", "it must not name a base it never published")
 
     def test_it_ships_the_health_report_when_the_engine_wrote_one(self) -> None:
         (self.root / "health").mkdir()
@@ -436,3 +450,93 @@ class PublishedStateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ArtifactProvenanceTests(unittest.TestCase):
+    """These names are predictable, and a fork pull request can add a workflow
+    that uploads one into this repository's artifact store. Loading it would
+    hand a fork's bytes to a pickle loader in a privileged run."""
+
+    FETCH = ROOT / "scripts" / "action" / "fetch-state.sh"
+
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.bin_dir = self.root / "bin"
+        self.bin_dir.mkdir()
+        # A real zip, so the download path is exercised rather than short-circuited.
+        import zipfile
+
+        self.bundle = self.root / "bundle.zip"
+        with zipfile.ZipFile(self.bundle, "w") as archive:
+            archive.writestr("analysis.json", '{"components": []}')
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _run(self, listing: dict) -> subprocess.CompletedProcess:
+        gh = self.bin_dir / "gh"
+        gh.write_text(
+            "#!/usr/bin/env bash\n"
+            'case "$*" in\n'
+            f"  *artifacts?name=*) cat <<'JSON'\n{json.dumps(listing)}\nJSON\n    ;;\n"
+            f'  *"/zip"*) cat "{self.bundle}" ;;\n'
+            "esac\n",
+            encoding="utf-8",
+        )
+        gh.chmod(0o755)
+        return subprocess.run(
+            [str(self.FETCH)],
+            env={
+                "PATH": f"{self.bin_dir}:{os.environ['PATH']}",
+                "RUNNER_TEMP": str(self.root),
+                "REPOSITORY": "owner/repo",
+                "GH_HOST": "https://github.com",
+                "ARTIFACT_NAME": "codeboarding-warmstart-cfg-pr7",
+                "DEST": str(self.root / "out"),
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    @staticmethod
+    def _artifact(artifact_id: int, created: str, *, fork: bool) -> dict:
+        return {
+            "id": artifact_id,
+            "expired": False,
+            "created_at": created,
+            "workflow_run": {
+                "id": artifact_id,
+                "repository_id": 1,
+                "head_repository_id": 2 if fork else 1,
+            },
+        }
+
+    def test_it_refuses_state_produced_by_a_run_on_forked_code(self) -> None:
+        result = self._run({"artifacts": [self._artifact(1, "2026-08-19T10:00:00Z", fork=True)]})
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("does not control", result.stdout)
+        self.assertFalse((self.root / "out").exists(), "a fork's bundle was downloaded")
+
+    def test_a_newer_fork_artifact_cannot_displace_a_trusted_one(self) -> None:
+        # The attack is to upload a newer artifact under the same predictable
+        # name, so picking "newest" without checking provenance is the bug.
+        result = self._run(
+            {
+                "artifacts": [
+                    self._artifact(1, "2026-08-19T10:00:00Z", fork=False),
+                    self._artifact(2, "2026-08-19T11:00:00Z", fork=True),
+                ]
+            }
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root / "out").exists(), "the trusted bundle should still be used")
+
+    def test_it_uses_state_produced_by_this_repository(self) -> None:
+        result = self._run({"artifacts": [self._artifact(1, "2026-08-19T10:00:00Z", fork=False)]})
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root / "out").exists())

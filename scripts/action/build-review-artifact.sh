@@ -3,9 +3,16 @@
 set -euo pipefail
 mkdir -p "${RUNNER_TEMP}/cb-review-artifact"
 cp "$ANALYSIS_PATH" "${RUNNER_TEMP}/cb-review-artifact/analysis.json"
-# The base graph is published separately, named for the commit it describes, so
-# ten runs on one pull request store it once rather than ten times. metadata
-# carries the name to look it up by.
+# The base graph is normally published separately, named for the commit it
+# describes, so ten runs on one pull request store it once rather than ten times.
+# A fork review publishes nothing another run could read, so when it had to
+# compute the base itself it carries the graph here instead: otherwise the
+# artifact would name a base that does not exist and no reader could reproduce
+# the comparison.
+if [ "${INLINE_BASE:-false}" = true ]; then
+  cp "$BASE_ANALYSIS_PATH" "${RUNNER_TEMP}/cb-review-artifact/base_analysis.json"
+  BASE_ARTIFACT_NAME=""
+fi
 # The engine writes this next to the analysis it came from. Ship it when present
 # so a pull request's warnings are readable without rerunning the analysis.
 HEALTH_REPORT="$(dirname "$ANALYSIS_PATH")/health/health_report.json"

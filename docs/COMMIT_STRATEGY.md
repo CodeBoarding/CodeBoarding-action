@@ -100,6 +100,23 @@ rule is simply that **a fork pull request has no lineage**: it is reviewed on
 request, every review starts from the base, and it publishes no warm-start bundle
 and no base graph. Nothing it produces is ever read.
 
+Reading is guarded too, not just publishing. These artifact names are
+predictable, and a pull request from a fork can add a workflow that uploads one:
+its run is hosted here, so the artifact lands in this repository's store. A
+bundle is therefore only read when the run that produced it had the same head
+repository as the repository it ran in. Anything else is ignored, with a warning.
+
+One consequence for readers: a fork review that had to compute the base itself
+publishes nothing, so it carries `base_analysis.json` inside its own review
+artifact and leaves `base_artifact` empty. Prefer the inline copy when it is
+there, and fall back to the named artifact otherwise.
+
 Reuse is best effort throughout. A missing or expired artifact, or a token
 without `actions: read`, falls back to deriving the base directly — which is what
 every run did before any of this existed.
+
+**GitHub Enterprise Server.** `actions/upload-artifact@v4` is not supported
+there, which is why the review artifact has always been restricted to
+github.com. The stored analyses are restricted the same way, so a GHES review
+derives the base from the committed baseline on every run. That is the same work
+it did before, just without the reuse.

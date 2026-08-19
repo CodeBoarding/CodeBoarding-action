@@ -89,7 +89,7 @@ The action requests 30-day retention; a repository or organisation policy can sh
 
 Each review seeds the head analysis from this pull request's own previous run, so a run only covers the commits pushed since it. That analysis is published as a workflow artifact named for the pull request, and the next run fetches it by name. With nothing to fetch, the run seeds from the merge base's analysis instead, which `sync` publishes for every commit it processes.
 
-Everything here is best-effort. A missing artifact, an expired one, or a token without `actions: read` all mean the run derives from the base instead — which is what every run did before any of this existed.
+Everything here is best-effort. A missing artifact, an expired one, or a token without `actions: read` all mean the run derives from the base instead — which is what every run did before any of this existed. Stored analyses are read only when the run that produced them worked on this repository's own code, so a fork cannot leave one behind for a later run to load. On GitHub Enterprise Server, where `actions/upload-artifact@v4` is unsupported, nothing is stored or reused and every review derives from the committed baseline.
 
 Because artifacts are readable and writable from every trigger, all paths behave the same: an automatic run, a `/codeboarding` command and a manual dispatch each reuse the previous analysis and publish their own. A stored analysis is discarded, and the head re-derived from the base, whenever the pinned CodeBoarding version, `.codeboardingignore`, the model selection, the analysis depth or the merge base changes — or when the base graph it grew from is not the one this run compares against.
 

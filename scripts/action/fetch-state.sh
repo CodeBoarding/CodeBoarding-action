@@ -9,10 +9,23 @@ api() { gh api -H 'Accept: application/vnd.github+json' "$@"; }
 export GH_HOST="${GH_HOST#*://}"
 
 # Names repeat across runs, so ask for this one and take the newest that has not
-# expired. This is the whole lookup: no run id, no ref, no scope.
-selected="$(api "repos/$REPOSITORY/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" \
-  --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .id // empty' 2>/dev/null || true)"
+# expired AND was produced by a run on this repository's own code.
+#
+# That second condition is load-bearing. These names are predictable, and a pull
+# request from a fork can add a workflow that uploads an artifact under one of
+# them: its run is hosted here, so the artifact lands in this repository's store.
+# Loading it would hand a fork's bytes to a pickle loader inside a run holding
+# this repository's credentials. A run whose head repository differs from the
+# repository it ran in is exactly that case, and is never read.
+listing="$(api "repos/$REPOSITORY/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" 2>/dev/null || true)"
+selected="$(jq -r '[.artifacts[]?
+  | select(.expired == false)
+  | select(.workflow_run != null)
+  | select(.workflow_run.head_repository_id == .workflow_run.repository_id)]
+  | sort_by(.created_at) | last | .id // empty' <<< "${listing:-{\}}" 2>/dev/null || true)"
 if [ -z "$selected" ]; then
+  rejected="$(jq -r '[.artifacts[]? | select(.workflow_run.head_repository_id != .workflow_run.repository_id)] | length' <<< "${listing:-{\}}" 2>/dev/null || echo 0)"
+  [ "${rejected:-0}" -eq 0 ] 2>/dev/null || echo "::warning::Ignored $rejected artifact(s) named $ARTIFACT_NAME produced by a run on code this repository does not control."
   echo "::notice::No stored $ARTIFACT_NAME to reuse; deriving from the base analysis."
   exit 0
 fi

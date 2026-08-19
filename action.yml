@@ -211,7 +211,7 @@ runs:
     # the committed baseline and the head from the base, which is what every run
     # did before any of this existed.
     - name: Fetch published base analysis
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.base_name != ''
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.base_name != '' && github.server_url == 'https://github.com'
       continue-on-error: true
       shell: bash
       env:
@@ -224,7 +224,7 @@ runs:
       run: "$GITHUB_ACTION_PATH/scripts/action/fetch-state.sh"
 
     - name: Fetch this pull request's last analysis
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.guard.outputs.seed_mode == 'chain' && steps.state.outputs.warmstart_name != ''
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.guard.outputs.seed_mode == 'chain' && steps.state.outputs.warmstart_name != '' && github.server_url == 'https://github.com'
       continue-on-error: true
       shell: bash
       env:
@@ -275,7 +275,7 @@ runs:
     # the analyzed commit and the baseline commit written on top, because a pull
     # request opened either side of that commit has a different merge base.
     - name: Publish baseline analysis
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.sync_commit.outputs.baseline_sha != '' && steps.state.outputs.cfg_hash != ''
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.sync_commit.outputs.baseline_sha != '' && steps.state.outputs.cfg_hash != '' && github.server_url == 'https://github.com'
       continue-on-error: true
       uses: actions/upload-artifact@v4
       with:
@@ -284,7 +284,7 @@ runs:
         if-no-files-found: ignore
 
     - name: Publish baseline analysis for the analyzed commit
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.sync_commit.outputs.analyzed_sha != '' && steps.sync_commit.outputs.analyzed_sha != steps.sync_commit.outputs.baseline_sha && steps.state.outputs.cfg_hash != ''
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.sync_commit.outputs.analyzed_sha != '' && steps.sync_commit.outputs.analyzed_sha != steps.sync_commit.outputs.baseline_sha && steps.state.outputs.cfg_hash != '' && github.server_url == 'https://github.com'
       continue-on-error: true
       uses: actions/upload-artifact@v4
       with:
@@ -332,7 +332,7 @@ runs:
     # so a later rendering or posting failure must not throw it away. Only the
     # next run reads this, hence the short retention.
     - name: Publish this analysis for the next run
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.warmstart_name != ''
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.warmstart_name != '' && github.server_url == 'https://github.com'
       continue-on-error: true
       uses: actions/upload-artifact@v4
       with:
@@ -345,7 +345,7 @@ runs:
     # every pull request forking there would read it, and a fork's analysis must
     # never be what they read.
     - name: Publish base analysis
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_analyze.outputs.publish_base == 'true' && steps.guard.outputs.is_fork != 'true' && steps.state.outputs.base_name != ''
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_analyze.outputs.publish_base == 'true' && steps.guard.outputs.is_fork != 'true' && steps.state.outputs.base_name != '' && github.server_url == 'https://github.com'
       continue-on-error: true
       uses: actions/upload-artifact@v4
       with:
@@ -370,6 +370,8 @@ runs:
       env:
         ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
         BASE_ARTIFACT_NAME: ${{ steps.state.outputs.base_name }}
+        BASE_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.base_analysis_path }}
+        INLINE_BASE: ${{ steps.guard.outputs.is_fork == 'true' && steps.review_analyze.outputs.publish_base == 'true' }}
         ANALYSIS_MODE: ${{ steps.review_analyze.outputs.analysis_mode }}
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
         MERGE_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
