@@ -283,7 +283,11 @@ runs:
       with:
         name: codeboarding-base-${{ steps.state.outputs.cfg_hash }}-${{ steps.sync_commit.outputs.baseline_sha }}
         path: ${{ runner.temp }}/cb-state/${{ github.action }}/out/base
-        retention-days: 30
+        # Longer than a review's 30 days on purpose. Correctness comes from the
+        # renewal check, which republishes any base with less than a review's
+        # lifetime left; this margin is what decides how often that fires. Equal
+        # lifetimes would renew on every run and undo the deduplication.
+        retention-days: 90
         if-no-files-found: ignore
 
     - name: Publish baseline analysis for the analyzed commit
@@ -293,7 +297,11 @@ runs:
       with:
         name: codeboarding-base-${{ steps.state.outputs.cfg_hash }}-${{ steps.sync_commit.outputs.analyzed_sha }}
         path: ${{ runner.temp }}/cb-state/${{ github.action }}/out/base
-        retention-days: 30
+        # Longer than a review's 30 days on purpose. Correctness comes from the
+        # renewal check, which republishes any base with less than a review's
+        # lifetime left; this margin is what decides how often that fires. Equal
+        # lifetimes would renew on every run and undo the deduplication.
+        retention-days: 90
         if-no-files-found: ignore
 
     - name: Write sync summary
@@ -357,7 +365,11 @@ runs:
       with:
         name: ${{ steps.state.outputs.base_name }}
         path: ${{ runner.temp }}/cb-state/${{ github.action }}/out/base
-        retention-days: 30
+        # Longer than a review's 30 days on purpose. Correctness comes from the
+        # renewal check, which republishes any base with less than a review's
+        # lifetime left; this margin is what decides how often that fires. Equal
+        # lifetimes would renew on every run and undo the deduplication.
+        retention-days: 90
         if-no-files-found: ignore
 
     - name: Render review diagram
