@@ -27,7 +27,7 @@ cache was free. Retention is the lever — see below.
 
 | Artifact | Contents | Retention | Read by |
 |---|---|---|---|
-| `codeboarding-review-<run>-<attempt>` | `analysis.json`, `health_report.json`, `metadata.json` | 30 days | the webview, humans |
+| `codeboarding-review-<run>-<attempt>` | `analysis.json`, `health_report.json`, `metadata.json` | 14 days | the webview, humans |
 | `codeboarding-base-<cfg>-<merge_base>` | the merge base's own analysis | 30 days, renewed while still referenced | any later review forking from that commit |
 | `codeboarding-warmstart-<cfg>-pr<N>` | the working directory: graph, pickle, fingerprint, gate | **1 day**, configurable | only the next run of that pull request |
 
@@ -71,9 +71,13 @@ that commit has a different merge base.
 Artifacts are charged by size × time, so the three windows are set by what reads
 them:
 
-- **30 days** for the review artifact — a reader may come back to a pull request.
-- **Repository default** for a base graph — it must outlive every review artifact
-  that names it.
+- **14 days** for the review artifact — the dominant cost, since it is the one
+  kept for weeks. A pull request open longer loses its rendered analysis until
+  someone asks for it again, which costs one incremental over the pull request:
+  the base graph is still published, so nothing re-analyzes the base.
+- **30 days** for a base graph, which must outlive every review that names it.
+  The renewal threshold is the review's own retention, so the surplus — 16 days
+  here — is how long a base is reused before being republished.
 - **1 day** for the warm-start bundle, since only the next run reads it. This is
   `warmstart_retention_days` if a repository wants longer. It behaves like the
   old cache eviction: a pull request left alone longer than the window
