@@ -81,12 +81,29 @@ analysis_digest() {
   fi
 }
 
-cache_out() {
-  local state="$1" name="$2"
-  [ -n "${CACHE_OUT_DIR:-}" ] || return 0
-  mkdir -p "$CACHE_OUT_DIR"
-  rm -rf "${CACHE_OUT_DIR:?}/$name"
-  cp -a "$state" "$CACHE_OUT_DIR/$name"
+# Lays out what the upload steps publish. The warm-start bundle is a complete
+# working directory rather than the pickle alone, so restoring it needs one
+# lookup and no correlating of two artifacts.
+stage() {
+  local state="$1" kind="$2"
+  [ -n "${STAGE_DIR:-}" ] || return 0
+  rm -rf "${STAGE_DIR:?}/$kind"
+  mkdir -p "$STAGE_DIR"
+  cp -a "$state" "$STAGE_DIR/$kind"
+  # Say what this bundle is. Without it a base bundle is an analysis.json and
+  # nothing else, which unpacks exactly like a head artifact and would be
+  # rendered as one by a reader that fetched the wrong name. Written at staging
+  # time rather than carried in the state directory, so a bundle can never
+  # inherit the label of the one it was seeded from.
+  python3 -c 'import json,os,sys
+json.dump({
+    "kind": sys.argv[2],
+    "engine_version": os.environ.get("ENGINE_VERSION", ""),
+    "cfg_hash": os.environ.get("CFG_HASH", ""),
+    "merge_base_sha": os.environ.get("REVIEW_BASE_SHA", ""),
+    "head_sha": os.environ.get("REVIEW_HEAD_SHA", ""),
+    "pr_number": os.environ.get("PR_NUMBER", ""),
+}, open(sys.argv[1], "w"), indent=2)' "$STAGE_DIR/$kind/metadata.json" "$kind"
 }
 
 analyze_sync() {
@@ -105,9 +122,9 @@ analyze_sync() {
       full "$CHECKOUT_DIR" "$state" "$depth"
     fi
   fi
-  # Sync already computes the state every review of this branch needs, so leave
-  # a copy for them instead of making the first pull request recompute it.
-  cache_out "$state" base
+  # Sync already computes the graph every review of this branch compares against,
+  # so publish it instead of making the first pull request recompute it.
+  stage "$state" base
   printf 'analysis_mode=%s\nanalysis_path=%s\nanalysis_dir=%s\n' \
     "$ANALYSIS_MODE" "$ANALYSIS_PATH" "$state" >> "$GITHUB_OUTPUT"
 }
@@ -121,24 +138,23 @@ fetch_commit() {
     "${GITHUB_SERVER_URL%/}/${repository}.git" "$sha" --depth=1
 }
 
-# The restored chain already matches this engine, config and merge base: the
-# cache key pins all three. Depth is read from the baseline, so check it here.
-chain_usable() {
-  local base_analysis="$1" chain_cap base_cap
+# The artifact name pins the engine, the analysis scope and the models. Depth and
+# lineage are read from the bundle itself, so they are checked here.
+warmstart_usable() {
+  local base_analysis="$1" bundle_cap base_cap
   [ "${SEED_MODE:-chain}" = chain ] || return 1
-  [ -f "${CACHE_CHAIN_DIR:-}/analysis.json" ] || return 1
-  chain_cap="$(depth_cap_from "$CACHE_CHAIN_DIR/analysis.json")"
+  [ -f "${WARMSTART_DIR:-}/analysis.json" ] || return 1
+  bundle_cap="$(depth_cap_from "$WARMSTART_DIR/analysis.json")"
   base_cap="$(depth_cap_from "$base_analysis")"
-  if [ -n "$chain_cap" ] && [ -n "$base_cap" ] && [ "$chain_cap" != "$base_cap" ]; then
+  if [ -n "$bundle_cap" ] && [ -n "$base_cap" ] && [ "$bundle_cap" != "$base_cap" ]; then
     echo "::notice::Analysis depth changed since the last run; re-seeding from the base analysis."
     return 1
   fi
-  # The chain descends from one base graph and the diagram is drawn against
-  # another only if the base was regenerated in between. Their components need
-  # not match, so keeping the chain would report additions and removals for code
-  # nobody touched.
-  if [ "$(origin_field "$CACHE_CHAIN_DIR" base_digest)" != "$(analysis_digest "$base_analysis")" ]; then
-    echo "::notice::The base analysis is not the one this pull request's cached analysis grew from; re-seeding from it."
+  # A head that grew from one base graph cannot be diffed against another: two
+  # runs of the engine over one commit need not name components identically, so
+  # keeping it would report additions and removals for code nobody touched.
+  if [ "$(origin_field "$WARMSTART_DIR" base_digest)" != "$(analysis_digest "$base_analysis")" ]; then
+    echo "::notice::The base analysis is not the one this pull request's stored analysis grew from; re-seeding from it."
     return 1
   fi
 }
@@ -149,21 +165,18 @@ analyze_review() {
   rm -rf "$work"
   mkdir -p "$work"
 
-  # An exact base-cache hit is this merge base's own analysis, so it needs no
-  # engine run at all. A prefix hit is some other commit's baseline: useful as a
-  # warm seed, never usable as this comparison's baseline.
-  local base_source=cache
-  if [ "${CACHE_BASE_HIT:-}" = true ] && [ -f "${CACHE_BASE_DIR:-}/analysis.json" ]; then
-    cp -a "$CACHE_BASE_DIR" "$base_state"
+  # A published base graph is this merge base's own analysis, named for it, so it
+  # needs no engine run at all. Without one, the merge base is checked out and
+  # analyzed from whatever baseline the repository committed there.
+  local base_source=published
+  if [ -f "${BASE_DIR:-}/analysis.json" ]; then
+    mkdir -p "$base_state"
+    cp -a "$BASE_DIR/." "$base_state/"
   else
     base_source=computed
     fetch_commit "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA"
     git -C "$CHECKOUT_DIR" worktree add --detach "$base_checkout" "$REVIEW_BASE_SHA" >/dev/null
-    if [ -f "${CACHE_BASE_DIR:-}/analysis.json" ]; then
-      cp -a "$CACHE_BASE_DIR" "$base_state"
-    else
-      seed_state "$base_checkout" "$base_state"
-    fi
+    seed_state "$base_checkout" "$base_state"
     local base_depth
     base_depth="$(depth_cap_from "$base_state/analysis.json")"
     incremental "$base_checkout" "$base_state"
@@ -182,8 +195,8 @@ analyze_review() {
   # Seed the head from this pull request's own last analysis when there is one,
   # so the run only covers commits pushed since it.
   local seed_source=base chain_depth=1 previous_depth
-  if chain_usable "$base_analysis"; then
-    cp -a "$CACHE_CHAIN_DIR" "$head_state"
+  if warmstart_usable "$base_analysis"; then
+    cp -a "$WARMSTART_DIR" "$head_state"
     seed_source=pr-chain
     previous_depth="$(origin_field "$head_state" chain_depth)"
     case "$previous_depth" in
@@ -205,15 +218,20 @@ analyze_review() {
   fi
 
   write_origin "$head_state" "$seed_source" "$chain_depth" "$(analysis_digest "$base_analysis")"
-  cache_out "$head_state" chain
-  local save_base=false
-  if [ "$base_source" = computed ]; then
-    cache_out "$base_state" base
-    save_base=true
+  stage "$head_state" warmstart
+  # Republishing a base graph that was only read back would store the same bytes
+  # under the same name every run, so normally only a run that produced one
+  # publishes it. The exception is lifetime: a review artifact references a base
+  # by id for its whole retention, so one about to expire is renewed rather than
+  # left dangling under a review that outlives it.
+  local publish_base=false
+  if [ "$base_source" = computed ] || [ "${RENEW_BASE:-false}" = true ]; then
+    stage "$base_state" base
+    publish_base=true
   fi
 
-  printf 'analysis_mode=%s\nanalysis_path=%s\nbase_analysis_path=%s\nseed_source=%s\nchain_depth=%s\nsave_base=%s\n' \
-    "$ANALYSIS_MODE" "$ANALYSIS_PATH" "$base_analysis" "$seed_source" "$chain_depth" "$save_base" >> "$GITHUB_OUTPUT"
+  printf 'analysis_mode=%s\nanalysis_path=%s\nbase_analysis_path=%s\nseed_source=%s\nchain_depth=%s\npublish_base=%s\n' \
+    "$ANALYSIS_MODE" "$ANALYSIS_PATH" "$base_analysis" "$seed_source" "$chain_depth" "$publish_base" >> "$GITHUB_OUTPUT"
 }
 
 case "$ANALYSIS_KIND" in

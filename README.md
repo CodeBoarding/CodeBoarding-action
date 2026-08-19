@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: read
+  actions: read        # download the analysis an earlier run published
   pull-requests: write
   issues: write
   id-token: write
@@ -68,24 +69,36 @@ The action checks out and analyzes the exact PR head SHA, and compares it with t
 
 Automatic fork runs are skipped because the `pull_request` event does not receive hosted OIDC credentials. A trusted `/codeboarding` command runs the released action code from the base repository and checks the fork's source into a separate analysis directory; it never executes an action definition from the fork with privileged credentials.
 
-The uploaded artifact holds both sides of the comparison, so a reader can reproduce it without resolving the merge base again:
+A review run uploads `codeboarding-review-<run_id>-<attempt>`:
 
 | File | Contents |
 |---|---|
 | `analysis.json` | the head analysis, at `head_sha` |
-| `base_analysis.json` | the analysis it was compared against, at `merge_base_sha` |
 | `health_report.json` | the head's health findings, when the engine produced any |
-| `metadata.json` | which commits those graphs describe — see [the field list](docs/COMMIT_STRATEGY.md#names) |
+| `metadata.json` | which commits that graph describes, and the name of the base artifact — see [the field list](docs/COMMIT_STRATEGY.md#what-a-run-publishes) |
 
-The action requests 30-day retention; a repository or organisation policy can shorten it, so treat an artifact's own `expired` flag as the truth rather than any fixed window. Reading the default branch's committed baseline instead of `base_analysis.json` would drift from the merge base in exactly the way described above.
+The graph it was compared against is published separately, named for the commit
+it describes, because the merge base rarely changes during a pull request and a
+copy per run would store the same bytes over and over. Read
+`metadata.base_artifact` and fetch that artifact by name; the graph inside it is
+`analysis.json`, and `metadata.base_artifact_id` records exactly which artifact
+this review used, since two can share a name and disagree.
+
+Every bundle the action publishes carries a `metadata.json` with a `kind` of
+`review`, `base` or `warmstart`. Check it rather than inferring from the
+payload: a base bundle is otherwise indistinguishable from a head one.
+
+The action requests 30-day retention; a repository or organisation policy can shorten it, so treat an artifact's own `expired` flag as the truth rather than any fixed window.
 
 ### Reused analysis
 
-Each review seeds the head analysis from this pull request's own previous run, so a run only covers the commits pushed since it. With no previous run, it seeds from the merge base's analysis. `sync` mode publishes that entry on the base branch, where every pull request can restore it; an entry a review run computes for itself is scoped to that pull request. Both live in the GitHub Actions cache, and state is re-derived from the merge base whenever the pinned CodeBoarding version, `.codeboardingignore`, the configured analysis depth, or the merge base itself changes. State produced while analyzing a fork is namespaced separately and is never restored by a run on this repository's own code.
+Each review seeds the head analysis from this pull request's own previous run, so a run only covers the commits pushed since it. That analysis is published as a workflow artifact named for the pull request, and the next run fetches it by name. With nothing to fetch, the run seeds from the merge base's analysis instead, which `sync` publishes for every commit it processes.
 
-Caching is best-effort: a cache miss, an unavailable cache service, or a GitHub Enterprise Server without one falls back to analyzing the merge base directly, exactly as before.
+Everything here is best-effort. A missing artifact, an expired one, or a token without `actions: read` all mean the run derives from the base instead — which is what every run did before any of this existed. Stored analyses are read only when the run that produced them worked on this repository's own code, so a fork cannot leave one behind for a later run to load. On GitHub Enterprise Server, where `actions/upload-artifact@v4` is unsupported, nothing is stored or reused and every review derives from the committed baseline.
 
-Actions cache entries are scoped to the ref that wrote them, and GitHub gives comment-triggered runs a read-only cache token. So automatic `pull_request` runs reuse each other's analysis and build the chain, `sync` publishes the base entry everyone shares, and a `/codeboarding` command reads both but writes neither — it costs one base-seeded incremental, and `/codeboarding refresh` improves the comment it posts rather than what later runs start from. The action also accepts `pull_request_target`, which runs on the base branch ref and lets both share one chain; that trigger has its own trade-offs (a PR that adds this workflow will not run it until merged, and the fork gate becomes load-bearing), so `pull_request` remains the recommended default.
+Because artifacts are readable and writable from every trigger, all paths behave the same: an automatic run, a `/codeboarding` command and a manual dispatch each reuse the previous analysis and publish their own. A stored analysis is discarded, and the head re-derived from the base, whenever the pinned CodeBoarding version, `.codeboardingignore`, the model selection, the analysis depth or the merge base changes — or when the base graph it grew from is not the one this run compares against.
+
+Fork pull requests never carry an analysis forward. They are reviewed on request, each review starts from the base, and nothing they produce is read by a run on this repository's own code: untrusted code must not shape state that a later run loads. The action also accepts `pull_request_target`, which runs on the base branch ref and lets both share one chain; that trigger has its own trade-offs (a PR that adds this workflow will not run it until merged, and the fork gate becomes load-bearing), so `pull_request` remains the recommended default.
 
 ## Authentication and providers
 
@@ -226,6 +239,7 @@ With the default `github.token`, the repository or organization must allow GitHu
 | `sync_strategy` | sync | `push` | `push` or `pull_request`. |
 | `target_branch` | sync | event branch | Branch receiving the baseline or rolling PR. |
 | `force_full` | sync | `false` | Ignore the committed baseline for this run. |
+| `warmstart_retention_days` | review | `1` | Days to keep the reusable analysis. Only the next run reads it. |
 
 The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted webview URL, rolling sync branch, commit message, and CodeBoarding 0.13.8 version are intentionally fixed in v2 rather than exposed as configuration.
 

@@ -7,174 +7,129 @@ graphs it compares.
 
 | Store | Holds | Lifetime | Who can read it |
 |---|---|---|---|
-| **Git** (`sync` mode commits) | `.codeboarding/` on the target branch | forever | anyone — extension, webview, humans |
-| **Actions cache** | whole analysis state dirs, pickle included | 7-day idle, 10 GB LRU | only a workflow run |
-| **Workflow artifact** | the two graphs a review compared, plus metadata | 30 days | anyone with repo read, via the API |
+| **Git** (`sync` commits) | `.codeboarding/` on the target branch | forever | anyone with repo read |
+| **Workflow artifacts** | every analysis this action reuses or publishes | a retention window | any run with `actions: read`, plus humans |
+| ~~Actions cache~~ | — | — | not used |
 
-The split matters: the cache is a run's **input** (warm start) and has no download
-API, so nothing outside a run can ever read it. The artifact is a run's
-**output**, and is the only channel the webview has.
+The cache is deliberately not used. GitHub gives comment-triggered runs a
+read-only cache token, so a `/codeboarding` run — which is what a webview refresh
+posts — could never save what it computed, and cache entries written by a pull
+request run are invisible to every other ref. Artifacts are readable and writable
+from every trigger, so one store serves all of them.
 
-## What sync commits
+The cost of that choice: reading another run's artifact needs `actions: read` on
+the consumer's token, and artifact storage is billed past a plan allowance while
+cache was free. Retention is the lever — see below.
 
-Sync is the only git writer. Review mode never commits to a contributor's
-branch, so generated files cannot conflict during a merge.
+## What a run publishes
 
-| File | Why it is committed |
-|---|---|
-| `analysis.json` | the diagram, shown instantly with no API key |
-| `fingerprint.json` | whole-tree file hashes — how incremental detects change |
-| `static_analysis.pkl` | LSP/CFG cache and the cluster baseline incremental needs |
-| `static_analysis.sha` | the warm-start gate for the pickle |
-| `codeboarding_version.json` | when Core emits it |
-| `health/health_report.json` | the warnings, read without regenerating them |
+**A review run**
 
-The engine writes a health report on every run, full or incremental, so sync
-installs the fresh one and drops a stale one when a run produced none. v1
-architecture Markdown is removed. Hand-written Markdown and user configuration
-(`.codeboardingignore`, `health/health_config.json`, `health/.healthignore`) are
-preserved.
+| Artifact | Contents | Retention | Read by |
+|---|---|---|---|
+| `codeboarding-review-<run>-<attempt>` | `analysis.json`, `health_report.json`, `metadata.json` | 30 days | the webview, humans |
+| `codeboarding-base-<cfg>-<merge_base>` | the merge base's own analysis | 30 days, renewed while still referenced | any later review forking from that commit |
+| `codeboarding-warmstart-<cfg>-pr<N>` | the working directory: graph, pickle, fingerprint, gate | **1 day**, configurable | only the next run of that pull request |
 
-**Delivery (`sync_strategy`).** The committed set is identical either way; only
-how it reaches the branch differs. `push` fast-forwards it directly.
-`pull_request` commits the same files to the machine-owned `codeboarding/sync`
-branch and keeps one rolling PR open — the baseline lands only on merge, so that
-PR must be merged on a cadence to keep the baseline warm. Sync always seeds from
-the baseline committed on the target branch, never from the unmerged PR branch,
-which keeps an untrusted pickle off the runner. Nothing is missed between
-merges: `fingerprint.json` re-detects every change since the last merged
-baseline.
+The base graph is published only by the run that *computed* it, so it is written
+about once per merge base rather than once per run — with two exceptions. A
+review artifact references a base by id for its whole retention, so a base about
+to expire inside that window is republished rather than left dangling under a
+review that outlives it. And when no artifact holds the base at all, because the
+upload failed or because a fork review publishes nothing, the review artifact
+carries the graph inline and leaves `base_artifact` empty: a reader should prefer
+an inline `base_analysis.json` and fall back to the named artifact — ten runs on one pull request
+would otherwise store ten identical copies, which measured at exactly half the
+artifact.
 
-## How a review resolves its two graphs
+**Every bundle carries a `metadata.json` naming its `kind`** — `review`, `base`
+or `warmstart`. Without it a base bundle is an `analysis.json` and nothing else,
+which unpacks exactly like a head artifact and would be rendered as one by a
+reader that resolved the wrong name. Assert on `kind` rather than inferring from
+the payload.
 
-Every review builds **base** (at the merge base) and **head** (at the PR head),
-diffs them, and posts the result. Each side takes the first source that applies.
+`metadata.json` in the review artifact names the base artifact so a reader can
+fetch it without reconstructing the name:
 
-**Base**
-
-| Source | Engine cost |
-|---|---|
-| `cb-base-…-<merge_base>` exact cache hit | none |
-| `cb-base-…` prefix hit — another commit's baseline, used as a warm seed | one catch-up incremental |
-| No cache — seed from `.codeboarding/` committed at the merge base | one catch-up incremental, nothing to do if that baseline is current |
-| No committed baseline either | full analysis |
-
-If the base was computed rather than restored, a trusted run saves it under its
-exact key. How far that reaches depends on where the run happened, because a
-cache entry is only visible to the ref that wrote it and to the default branch:
-
-- **sync**, on the base branch, writes an entry every pull request can restore.
-  This is what makes the first row common. It publishes under two keys, the
-  commit it analyzed and the baseline commit it creates, because a pull request
-  branched just before that baseline landed has the earlier commit as its merge
-  base.
-- **an automatic `pull_request` run** writes into `refs/pull/<n>/merge`, so its
-  entry serves only later runs of that same pull request. Another pull request
-  with the identical merge base still computes its own.
-- **`/codeboarding` writes nothing.** GitHub gives a comment-triggered run a
-  read-only cache token, so a save is refused with "token has no writable
-  scopes" no matter what the workflow grants. Reads work normally: a slash
-  command restores sync's shared base entry like anything else.
-
-So sync warms everybody, pull request runs warm themselves, and slash commands
-only consume. Two consequences follow. A repository reviewed exclusively through
-`/codeboarding` never builds a chain, so every command re-derives the head from
-the base. And `/codeboarding refresh` cannot persist what it recomputes: it
-fixes the comment it posts, while the next run still restores the analysis it
-was asked to replace.
-
-**Head**
-
-| Source | Covers |
-|---|---|
-| `cb-head-…-pr<N>-mb<merge_base>-` prefix hit — this pull request's last analysis | only the commits pushed since that run |
-| No hit: first run, moved merge base, changed config, or `/codeboarding refresh` — copy the base state | the whole pull request |
-
-Then the head state is saved under `cb-head-…-<head_sha>`.
-
-**First run on a new pull request.** Nothing is cached. Base seeds from the
-committed baseline and catches up; head starts from that base and covers every
-file the pull request touches. Two engine passes, and both cache entries are
-written.
-
-**Every run after it.** Base is an exact hit and costs no engine work at all;
-head continues from the previous run and covers only the new commits. One
-engine pass.
-
-## Names
-
-**Artifact — one per run, immutable.** GitHub scopes an artifact to its run and
-cannot append to an earlier one, so the name only has to be unique; a consumer
-lists a pull request's artifacts and takes the newest.
-
-    codeboarding-review-<run_id>-<attempt>/
-      analysis.json        the head analysis, at metadata.head_sha
-      base_analysis.json   what it was compared against, at metadata.merge_base_sha
-      health_report.json   the head's health findings, when the engine wrote one
-      metadata.json        which commits those graphs describe
-
-| `metadata.json` field | Meaning |
+| Field | Meaning |
 |---|---|
 | `head_sha` | the commit `analysis.json` describes |
 | `pr_base_sha` | the merge base, under the name the webview resolves |
 | `merge_base_sha` | the same value under this action's own name |
-| `merge_base_resolved` | `false` means the merge base could not be resolved, so the comparison is against `base_sha` and may include commits this pull request never made |
+| `base_artifact` | the artifact holding the graph that was compared against |
+| `base_artifact_id` | **which one**, since two artifacts can share that name and disagree: the engine is not deterministic, and a sync run publishes bases for the same commit |
+| `merge_base_resolved` | `false` means the merge base could not be resolved, so the comparison is against `base_sha` |
 | `base_sha` | the base branch tip when the event fired — *not* what was compared against |
-| `pr_number` | the pull request |
-| `mode` | `incremental` or `full`, how the head graph was produced |
-| `seed_source` | `pr-chain` or `base`, which state the head analysis grew from |
-| `chain_depth` | how many incremental runs are stacked on the base |
+| `pr_number`, `mode`, `seed_source`, `chain_depth` | provenance; nothing rendering a diagram needs them |
 
-The merge base is reported twice on purpose. The webview resolves a pull
-request's base as `base_commit_sha || pr_base_sha || base_sha`, so a value
-published only as `merge_base_sha` never reaches it and the chain falls through
-to the branch tip — the drift this action stopped making, made again one layer
-up.
+**A sync run** publishes the base graph under both the commit it analyzed and the
+baseline commit it writes on top, because a pull request opened either side of
+that commit has a different merge base.
 
-The last three fields are diagnostics. They explain how a graph was produced,
-not what it means, and nothing rendering a diagram needs them.
+## Retention is what costs
 
-Shipping the base graph too keeps the artifact self-contained: a reader can
-reproduce the comparison without resolving the merge base itself, and without
-falling back to the default branch's committed baseline, which is the branch tip
-rather than the fork point and would drift exactly as the review used to.
+Artifacts are charged by size × time, so the three windows are set by what reads
+them:
 
-**Cache — shared across runs, found by key.** Here the name *is* the lookup, so
-it carries everything that decides whether prior state still applies.
+- **30 days** for the review artifact — a reader may come back to a pull request.
+- **Repository default** for a base graph — it must outlive every review artifact
+  that names it.
+- **1 day** for the warm-start bundle, since only the next run reads it. This is
+  `warmstart_retention_days` if a repository wants longer. It behaves like the
+  old cache eviction: a pull request left alone longer than the window
+  re-derives from the base.
 
-| Key | Scope | The question it answers |
-|---|---|---|
-| `cb-head-v1-<cfg>-pr<N>-mb<merge_base>-<head_sha>` | one pull request | what did its last run produce |
-| `cb-base-v1-<cfg>-<merge_base>` | one commit | what does this commit's architecture look like |
-| `cb-fork-v1-<cfg>-<fork_repo>-pr<N>-mb<merge_base>-<head_sha>` | one fork pull request | the same as `cb-head`, quarantined |
+## How a review resolves its two graphs
 
-`<cfg>` digests the cache schema version, the pinned CodeBoarding version,
-`.codeboardingignore`, and the model selection — everything that changes what an
-analysis says. The merge base in the key pins the analysis depth too, since
-depth is read from that commit's baseline. A run forced with `/codeboarding
-refresh` or `full` appends `-<mode><run_id>.<attempt>`: cache entries are
-immutable, so it must not save under the key holding the state it was told to
-discard.
+**Base**, first match wins:
 
-A restored chain is used only when it grew from the very base graph this run
-diffs against, which `origin.json` records as a digest. Two runs of the engine
-over one commit need not name components identically, so a head descended from
-one base and a diagram drawn against another would report additions and
-removals for code nobody touched.
+| Source | Engine cost |
+|---|---|
+| the published `codeboarding-base-<cfg>-<merge_base>` artifact | none |
+| no artifact — check out the merge base, seed from the baseline committed there, catch up | one incremental |
+| no committed baseline either | full analysis |
 
-The head chain is restored **by prefix**, which selects the newest entry for the
-pull request — an exact head-sha lookup would outrank a newer generation and
-undo a refresh. The base is restored **by exact key first**, because there an
-exact hit is that merge base's own analysis while a prefix hit is only a warm
-seed.
+A trusted run that computed the base publishes it, so the next pull request
+forking from that commit gets the first row.
+
+**Head**, first match wins:
+
+| Source | Covers |
+|---|---|
+| this pull request's warm-start bundle | only the commits pushed since that run |
+| nothing to fetch: first run, moved merge base, changed config, `refresh`, or a fork | the whole pull request |
+
+A restored bundle is used only when it grew from the very base graph this run
+diffs against, recorded as a digest in `origin.json`. Two runs of the engine over
+one commit need not name components identically, so a head descended from one
+base and a diagram drawn against another would report changes nobody made.
 
 ## Trust boundary
 
 `static_analysis.pkl` is a Python pickle, so state derived from code the
-repository does not control must never be restored into a privileged run. Fork
-analyses therefore live under their own `cb-fork-` namespace that no trusted run
-restores from, and a fork run never writes a base entry. That is enforced by key
-construction, not by convention.
+repository does not control must never be loaded by a privileged run. With the
+cache, GitHub enforced that. With artifacts there is no platform boundary, so the
+rule is simply that **a fork pull request has no lineage**: it is reviewed on
+request, every review starts from the base, and it publishes no warm-start bundle
+and no base graph. Nothing it produces is ever read.
 
-Caching is best effort throughout. A miss, an unavailable cache service, or a
-GitHub Enterprise Server without one falls back to deriving the base directly.
+Reading is guarded too, not just publishing. These artifact names are
+predictable, and a pull request from a fork can add a workflow that uploads one:
+its run is hosted here, so the artifact lands in this repository's store. A
+bundle is therefore only read when the run that produced it had the same head
+repository as the repository it ran in. Anything else is ignored, with a warning.
+
+One consequence for readers: a fork review that had to compute the base itself
+publishes nothing, so it carries `base_analysis.json` inside its own review
+artifact and leaves `base_artifact` empty. Prefer the inline copy when it is
+there, and fall back to the named artifact otherwise.
+
+Reuse is best effort throughout. A missing or expired artifact, or a token
+without `actions: read`, falls back to deriving the base directly — which is what
+every run did before any of this existed.
+
+**GitHub Enterprise Server.** `actions/upload-artifact@v4` is not supported
+there, which is why the review artifact has always been restricted to
+github.com. The stored analyses are restricted the same way, so a GHES review
+derives the base from the committed baseline on every run. That is the same work
+it did before, just without the reuse.
