@@ -293,6 +293,20 @@ class ReviewChainTests(unittest.TestCase):
         warmstart = json.loads((self.stage_dir / "warmstart" / "metadata.json").read_text())
         self.assertEqual(warmstart["kind"], "warmstart")
         self.assertEqual(warmstart["merge_base_sha"], "merge-base-sha")
+        # A warm-start bundle belongs to one pull request; a base does not.
+        self.assertEqual(warmstart["pr_number"], "42")
+
+    def test_a_base_is_not_labelled_with_the_run_that_computed_it(self) -> None:
+        # One base serves every pull request forking from that commit, so the
+        # run that happened to build it is not part of what the bundle is.
+        _state(self.base_dir)
+        self._analyze(RENEW_BASE="true")
+
+        base = json.loads((self.stage_dir / "base" / "metadata.json").read_text())
+        self.assertEqual(base["kind"], "base")
+        self.assertEqual(base["merge_base_sha"], "merge-base-sha")
+        self.assertNotIn("pr_number", base)
+        self.assertNotIn("head_sha", base)
 
     def test_a_bundle_never_inherits_the_label_of_its_seed(self) -> None:
         # A fetched base bundle carries kind=base, and the head is seeded by
