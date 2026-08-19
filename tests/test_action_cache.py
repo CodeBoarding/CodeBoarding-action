@@ -407,7 +407,7 @@ class CachePathParityTests(unittest.TestCase):
     """actions/cache derives its lookup version from the path strings, so a save
     under a different path than the restore can never be found again."""
 
-    def _cache_steps(self) -> list[dict[str, str]]:
+    def _steps(self) -> list[dict[str, str]]:
         steps: list[dict[str, str]] = []
         current: dict[str, str] | None = None
         for line in (ROOT / "action.yml").read_text(encoding="utf-8").splitlines():
@@ -419,7 +419,10 @@ class CachePathParityTests(unittest.TestCase):
                 for field in ("uses", "path", "key", "restore-keys", "if"):
                     if stripped.startswith(f"{field}:"):
                         current[field] = stripped.split(":", 1)[1].strip()
-        return [step for step in steps if step.get("uses", "").startswith("actions/cache/")]
+        return steps
+
+    def _cache_steps(self) -> list[dict[str, str]]:
+        return [step for step in self._steps() if step.get("uses", "").startswith("actions/cache/")]
 
     def test_the_chain_is_restored_by_prefix_so_a_refresh_survives(self) -> None:
         steps = {step["name"]: step for step in self._cache_steps()}
@@ -447,6 +450,18 @@ class CachePathParityTests(unittest.TestCase):
                 "github.event_name != 'issue_comment'",
                 step.get("if", ""),
                 f"{step['name']} would attempt a save that a comment-triggered run cannot make",
+            )
+
+    def test_every_comment_step_honours_post_comment(self) -> None:
+        # Analysis, artifact upload and outputs continue when posting is off;
+        # only the steps that write to the pull request are gated.
+        posting = [step for step in self._steps() if "sticky-pull-request-comment" in step.get("uses", "")]
+        self.assertEqual(len(posting), 3, "expected progress, result and failure comments")
+        for step in posting:
+            self.assertIn(
+                "steps.guard.outputs.post_comment != 'false'",
+                step.get("if", ""),
+                f"{step['name']} posts to the pull request regardless of post_comment",
             )
 
     def test_every_saved_path_is_a_restored_path(self) -> None:

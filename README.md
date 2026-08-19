@@ -87,6 +87,27 @@ Caching is best-effort: a cache miss, an unavailable cache service, or a GitHub 
 
 Actions cache entries are scoped to the ref that wrote them, and GitHub gives comment-triggered runs a read-only cache token. So automatic `pull_request` runs reuse each other's analysis and build the chain, `sync` publishes the base entry everyone shares, and a `/codeboarding` command reads both but writes neither — it costs one base-seeded incremental, and `/codeboarding refresh` improves the comment it posts rather than what later runs start from. The action also accepts `pull_request_target`, which runs on the base branch ref and lets both share one chain; that trigger has its own trade-offs (a PR that adds this workflow will not run it until merged, and the fork gate becomes load-bearing), so `pull_request` remains the recommended default.
 
+### Analyzing without commenting
+
+`post_comment: false` runs the analysis and uploads the artifact, but writes nothing to the pull request — no progress placeholder, no result, no failure notice. The webview still has everything it reads, so this is the setting for keeping a PR's analysis current without a bot comment on it. A `/codeboarding` command still gets its 👀 reaction, since with posting off that is the only sign it was picked up.
+
+The action's outputs are unaffected, so a workflow can decide for itself what to say and when:
+
+```yaml
+      - uses: CodeBoarding/CodeBoarding-action@v1
+        id: codeboarding
+        with:
+          post_comment: false
+      - if: steps.codeboarding.outputs.n_changed != '0'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: codeboarding-review
+          number: ${{ github.event.pull_request.number }}
+          path: ${{ steps.codeboarding.outputs.diagram_md }}
+```
+
+That example only comments when the architecture actually changed, which suits per-push reviews: most pushes change no components, and the comment stays put instead of being rewritten with the same content.
+
 ## Authentication and providers
 
 With no LLM inputs, the action uses CodeBoarding's hosted OpenRouter tier. It mints short-lived GitHub OIDC credentials per request, so the job needs `id-token: write` and no stored LLM secret.
@@ -226,6 +247,7 @@ With the default `github.token`, the repository or organization must allow GitHu
 | `sync_strategy` | sync | `push` | `push` or `pull_request`. |
 | `target_branch` | sync | event branch | Branch receiving the baseline or rolling PR. |
 | `force_full` | sync | `false` | Ignore the committed baseline for this run. |
+| `post_comment` | review | `true` | `false` analyzes and uploads the artifact without writing to the pull request. |
 
 The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted webview URL, rolling sync branch, commit message, and CodeBoarding 0.13.8 version are intentionally fixed in v2 rather than exposed as configuration.
 

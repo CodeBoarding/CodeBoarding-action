@@ -40,6 +40,16 @@ if [ "$MODE" = sync ]; then
   exit 0
 fi
 
+# Validated here rather than read straight from the input, so a typo fails the
+# run with a reason instead of silently posting when the author asked for
+# silence. The reaction on a /codeboarding comment is not a comment and stays:
+# with posting off it is the only sign the command was picked up.
+post_comment="${POST_COMMENT_INPUT:-true}"
+case "$post_comment" in
+  true|false) ;;
+  *) fail "post_comment must be true or false." ;;
+esac
+
 seed_mode=chain
 case "$EVENT" in
   pull_request|pull_request_target)
@@ -137,5 +147,6 @@ is_fork=false
   echo "checkout_ref=$head_sha"
   echo "comment_id=$comment_id"
   echo "seed_mode=$seed_mode"
+  echo "post_comment=$post_comment"
   echo "is_fork=$is_fork"
 } >> "$GITHUB_OUTPUT"

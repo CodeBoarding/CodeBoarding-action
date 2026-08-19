@@ -147,6 +147,33 @@ class ActionSyncTests(unittest.TestCase):
             self.assertIn("checkout_repo=contributor/repo\n", values)
             self.assertIn("checkout_ref=head-sha\n", values)
 
+    def test_review_guard_rejects_an_unusable_post_comment_value(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "github-output"
+            result = subprocess.run(
+                [str(GUARD)],
+                env={
+                    "PATH": os.environ["PATH"],
+                    "GITHUB_OUTPUT": str(output),
+                    "MODE": "review",
+                    "EVENT": "pull_request",
+                    "POST_COMMENT_INPUT": "no",
+                    "EVENT_PR_NUMBER": "42",
+                    "PULL_BASE_SHA": "base-sha",
+                    "PULL_HEAD_SHA": "head-sha",
+                    "PULL_BASE_REPO": "owner/repo",
+                    "PULL_HEAD_REPO": "owner/repo",
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            # Silently posting when the author asked for silence is worse than
+            # failing, so an unusable value stops the run.
+            self.assertEqual(result.returncode, 1, result.stdout)
+            self.assertIn("post_comment must be true or false", result.stdout)
+
     def test_installs_core_manifest_and_preserves_user_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

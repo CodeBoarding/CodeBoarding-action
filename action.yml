@@ -49,6 +49,10 @@ inputs:
     description: 'Run a full sync analysis instead of reusing the committed baseline.'
     required: false
     default: 'false'
+  post_comment:
+    description: 'Post the review to the pull request. false still analyzes and uploads the artifact.'
+    required: false
+    default: 'true'
 outputs:
   diagram_md:
     description: 'Path to the rendered Mermaid review diagram.'
@@ -102,6 +106,7 @@ runs:
         HEAD_AUTHOR_EMAIL: ${{ github.event.head_commit.author.email }}
         TARGET_BRANCH_INPUT: ${{ inputs.target_branch }}
         SYNC_STRATEGY: ${{ inputs.sync_strategy }}
+        POST_COMMENT_INPUT: ${{ inputs.post_comment }}
         COMMENT_BODY: ${{ github.event.comment.body }}
         AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
         ISSUE_PR_URL: ${{ github.event.issue.pull_request.url }}
@@ -127,7 +132,7 @@ runs:
       run: GH_HOST="${GITHUB_SERVER_URL#*://}" gh api -X POST "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" -f content=eyes >/dev/null
 
     - name: Post review progress
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.guard.outputs.post_comment != 'false'
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:
@@ -402,7 +407,7 @@ runs:
 
     - name: Post review comment
       id: review_comment
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.guard.outputs.post_comment != 'false'
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         header: ${{ steps.guard.outputs.comment_id }}
@@ -411,7 +416,7 @@ runs:
         path: ${{ steps.review_body.outputs.path }}
 
     - name: Post review failure
-      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_comment.outcome != 'success'
+      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.guard.outputs.post_comment != 'false' && steps.review_comment.outcome != 'success'
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:
