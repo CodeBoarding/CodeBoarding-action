@@ -111,7 +111,7 @@ forking from that commit gets the first row.
 | Source | Covers |
 |---|---|
 | this pull request's warm-start bundle | only the commits pushed since that run |
-| nothing to fetch: first run, moved merge base, changed config, `refresh`, or a fork | the whole pull request |
+| nothing to fetch: first run, moved merge base, changed config, or a fork | the whole pull request |
 
 A restored bundle is used only when it grew from the very base graph this run
 diffs against, recorded as a digest in `origin.json`. Two runs of the engine over

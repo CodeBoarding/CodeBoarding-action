@@ -40,7 +40,6 @@ if [ "$MODE" = sync ]; then
   exit 0
 fi
 
-seed_mode=chain
 case "$EVENT" in
   pull_request|pull_request_target)
     pr_number="$EVENT_PR_NUMBER"
@@ -51,20 +50,13 @@ case "$EVENT" in
     base_ref="${PULL_BASE_REF:-}"
     ;;
   issue_comment)
-    read -r first_word second_word <<< "$(printf '%s' "$COMMENT_BODY" | tr -d '\r' | awk 'NR == 1 {print $1, $2}')"
+    first_word="$(printf '%s' "$COMMENT_BODY" | tr -d '\r' | awk 'NR == 1 {print $1}')"
     [ "$first_word" = /codeboarding ] || skip "Comment is not a /codeboarding command."
     case "$AUTHOR_ASSOCIATION" in
       OWNER|MEMBER|COLLABORATOR) ;;
       *) skip "Only trusted collaborators may run /codeboarding." ;;
     esac
     [ -n "$ISSUE_PR_URL" ] || skip "The command was not posted on a pull request."
-    # refresh ignores the pull request's own cached analysis and re-seeds from
-    # the base; full additionally forces a from-scratch head analysis.
-    case "$second_word" in
-      "") ;;
-      refresh|full) seed_mode="$second_word" ;;
-      *) echo "::warning::Unknown /codeboarding argument '$second_word'; running the default incremental review." ;;
-    esac
     pr_json="$(gh api "$ISSUE_PR_URL")"
     pr_number="$(jq -r '.number // empty' <<< "$pr_json")"
     base_sha="$(jq -r '.base.sha // empty' <<< "$pr_json")"
@@ -136,6 +128,5 @@ is_fork=false
   echo "checkout_repo=$head_repo"
   echo "checkout_ref=$head_sha"
   echo "comment_id=$comment_id"
-  echo "seed_mode=$seed_mode"
   echo "is_fork=$is_fork"
 } >> "$GITHUB_OUTPUT"

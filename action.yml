@@ -228,7 +228,7 @@ runs:
       run: "$GITHUB_ACTION_PATH/scripts/action/fetch-state.sh"
 
     - name: Fetch this pull request's last analysis
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.guard.outputs.seed_mode == 'chain' && steps.state.outputs.warmstart_name != '' && github.server_url == 'https://github.com'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.warmstart_name != '' && github.server_url == 'https://github.com'
       continue-on-error: true
       shell: bash
       env:
@@ -333,7 +333,6 @@ runs:
         REVIEW_HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
         REVIEW_BASE_REPO: ${{ steps.guard.outputs.base_repo }}
         PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
-        SEED_MODE: ${{ steps.guard.outputs.seed_mode }}
         BASE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/base
         WARMSTART_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/warmstart
         RENEW_BASE: ${{ steps.fetch_base.outputs.renew }}

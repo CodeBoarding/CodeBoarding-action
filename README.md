@@ -59,11 +59,7 @@ Automatic runs update one sticky **CodeBoarding review** comment. A trusted repo
 
 Keep the `concurrency` block if you keep `synchronize`: it is what makes a push continue from the push before it, and what stops a slower run for an older commit from overwriting the review comment for a newer one. Set `cancel-in-progress: true` instead to abandon a superseded run rather than queue it, which costs less when branches are pushed to rapidly, at the price of no analysis for the commits in between.
 
-| Command | What it does |
-|---|---|
-| `/codeboarding` | Analyzes the current head, reusing this PR's previous analysis when one is available. |
-| `/codeboarding refresh` | Ignores that previous analysis and re-derives the head from the merge base. |
-| `/codeboarding full` | Forces a from-scratch full analysis of the head. |
+`/codeboarding` analyzes the current head, reusing this pull request's previous analysis when there is one. It takes no arguments.
 
 The action checks out and analyzes the exact PR head SHA, and compares it with the PR's **merge base** — the commit the branch forked from, which is what GitHub's own "Files changed" tab uses. Commits pushed to the base branch after the fork point are therefore not reported as this PR's changes; the comment notes how far behind the branch is instead. It does not commit generated files to either branch.
 
