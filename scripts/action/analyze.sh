@@ -90,6 +90,11 @@ stage() {
   rm -rf "${STAGE_DIR:?}/$kind"
   mkdir -p "$STAGE_DIR"
   cp -a "$state" "$STAGE_DIR/$kind"
+  # Run logs and lock files are the engine's scratch, not analysis state. Nobody
+  # inflates them, and every fetch pays for them: they were a fifth of a bundle.
+  # Health config stays, because a run seeded from this bundle reads it.
+  rm -rf "$STAGE_DIR/$kind/logs"
+  find "$STAGE_DIR/$kind" -name '*.lock' -delete
   # Say what this bundle is. Without it a base bundle is an analysis.json and
   # nothing else, which unpacks exactly like a head artifact and would be
   # rendered as one by a reader that fetched the wrong name. Written at staging

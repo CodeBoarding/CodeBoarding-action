@@ -29,7 +29,7 @@ jq -n \
   --arg mode "$ANALYSIS_MODE" \
   --arg base_sha "$BASE_SHA" \
   --arg merge_base_sha "$MERGE_BASE_SHA" \
-  --arg merge_base_resolved "$MERGE_BASE_RESOLVED" \
+  --argjson merge_base_resolved "${MERGE_BASE_RESOLVED:-false}" \
   --arg head_sha "$HEAD_SHA" \
   --arg pr_number "$PR_NUMBER" \
   --arg seed_source "$SEED_SOURCE" \
