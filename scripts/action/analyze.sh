@@ -220,9 +220,12 @@ analyze_review() {
   write_origin "$head_state" "$seed_source" "$chain_depth" "$(analysis_digest "$base_analysis")"
   stage "$head_state" warmstart
   # Republishing a base graph that was only read back would store the same bytes
-  # under the same name every run, so only a run that produced one publishes it.
+  # under the same name every run, so normally only a run that produced one
+  # publishes it. The exception is lifetime: a review artifact references a base
+  # by id for its whole retention, so one about to expire is renewed rather than
+  # left dangling under a review that outlives it.
   local publish_base=false
-  if [ "$base_source" = computed ]; then
+  if [ "$base_source" = computed ] || [ "${RENEW_BASE:-false}" = true ]; then
     stage "$base_state" base
     publish_base=true
   fi

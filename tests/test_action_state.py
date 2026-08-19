@@ -437,7 +437,7 @@ class PublishedStateTests(unittest.TestCase):
                 steps.append(current)
             elif current is not None:
                 stripped = line.strip()
-                for field in ("uses", "path", "name", "if", "retention-days"):
+                for field in ("uses", "path", "name", "if", "retention-days", "run"):
                     if stripped.startswith(f"{field}:") and field not in ("name",):
                         current[field] = stripped.split(":", 1)[1].strip()
         return steps
@@ -467,6 +467,28 @@ class PublishedStateTests(unittest.TestCase):
         self.assertTrue(published_by_review, "no base publication step found")
         for step in published_by_review:
             self.assertIn("is_fork != 'true'", step["if"], f"{step['name']} would let a fork publish a shared base")
+
+    def test_the_base_is_inlined_whenever_no_artifact_holds_it(self) -> None:
+        # Keying this on is_fork alone missed a same-repository review whose base
+        # upload failed: the artifact then named a base that was never created.
+        step = next(
+            s
+            for s in self._steps()
+            if s.get("name", "").startswith("Build review artifact") or "build-review-artifact" in s.get("run", "")
+        )
+        inline = [l for l in (ROOT / "action.yml").read_text().splitlines() if "INLINE_BASE:" in l]
+        self.assertEqual(len(inline), 1)
+        self.assertIn("publish_base.outputs.artifact-id == ''", inline[0])
+        self.assertIn("fetch_base.outputs.artifact_id == ''", inline[0])
+
+    def test_a_base_outlives_the_reviews_that_reference_it(self) -> None:
+        # A review artifact points at a base by id for 30 days, so a base kept
+        # for less leaves that review unusable for the rest of its life.
+        for step in self._uploads():
+            if "out/base" in step.get("path", ""):
+                self.assertEqual(
+                    step.get("retention-days"), "30", f"{step['name']} may expire before the reviews naming it"
+                )
 
     def test_the_reusable_analysis_honours_the_configured_retention(self) -> None:
         warmstart = [s for s in self._uploads() if "warmstart" in s.get("path", "")]
@@ -527,12 +549,40 @@ class ArtifactProvenanceTests(unittest.TestCase):
             check=False,
         )
 
+    def _run_paged(self, pages: dict) -> subprocess.CompletedProcess:
+        gh = self.bin_dir / "gh"
+        branches = "".join(
+            # anchored: "page=1" would also match "per_page=100"
+            f"  *\"&page={page}\") cat <<'JSON'\n{json.dumps(body)}\nJSON\n    ;;\n"
+            for page, body in pages.items()
+        )
+        gh.write_text(
+            "#!/usr/bin/env bash\n" 'case "$*" in\n' f'  *"/zip"*) cat "{self.bundle}" ;;\n' f"{branches}" "esac\n",
+            encoding="utf-8",
+        )
+        gh.chmod(0o755)
+        return subprocess.run(
+            [str(self.FETCH)],
+            env={
+                "PATH": f"{self.bin_dir}:{os.environ['PATH']}",
+                "RUNNER_TEMP": str(self.root),
+                "REPOSITORY": "owner/repo",
+                "GH_HOST": "https://github.com",
+                "ARTIFACT_NAME": "codeboarding-base-cfg-sha",
+                "DEST": str(self.root / "out"),
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
     @staticmethod
     def _artifact(artifact_id: int, created: str, *, fork: bool) -> dict:
         return {
             "id": artifact_id,
             "expired": False,
             "created_at": created,
+            "expires_at": "2027-01-01T00:00:00Z",
             "workflow_run": {
                 "id": artifact_id,
                 "repository_id": 1,
@@ -561,6 +611,32 @@ class ArtifactProvenanceTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.root / "out").exists(), "the trusted bundle should still be used")
+
+    def test_it_clears_a_previous_invocation_before_looking_up(self) -> None:
+        # The destinations are fixed, so a second use of the action in one job
+        # would otherwise inherit the first one's files as its own state.
+        stale = self.root / "out"
+        stale.mkdir()
+        (stale / "analysis.json").write_text('{"stale": true}', encoding="utf-8")
+
+        result = self._run({"artifacts": []})
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(stale.exists(), "state from a previous invocation survived a miss")
+
+    def test_a_flood_of_fork_artifacts_cannot_hide_a_trusted_one(self) -> None:
+        # Rejected entries still occupy the page, so a fork uploading repeatedly
+        # under the predictable name could push the trusted bundle out of reach.
+        page_one = [self._artifact(i, f"2026-08-19T{i:02d}:00:00Z", fork=True) for i in range(10, 100)]
+        page_one += [self._artifact(i, f"2026-08-18T{i - 100:02d}:00:00Z", fork=True) for i in range(100, 110)]
+        pages = {
+            "1": {"artifacts": page_one},
+            "2": {"artifacts": [self._artifact(1, "2026-08-01T10:00:00Z", fork=False)]},
+        }
+        result = self._run_paged(pages)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root / "out").exists(), "the trusted bundle on page 2 was never reached")
 
     def test_it_uses_state_produced_by_this_repository(self) -> None:
         result = self._run({"artifacts": [self._artifact(1, "2026-08-19T10:00:00Z", fork=False)]})

@@ -28,11 +28,17 @@ cache was free. Retention is the lever — see below.
 | Artifact | Contents | Retention | Read by |
 |---|---|---|---|
 | `codeboarding-review-<run>-<attempt>` | `analysis.json`, `health_report.json`, `metadata.json` | 30 days | the webview, humans |
-| `codeboarding-base-<cfg>-<merge_base>` | the merge base's own analysis | repository default | any later review forking from that commit |
+| `codeboarding-base-<cfg>-<merge_base>` | the merge base's own analysis | 30 days, renewed while still referenced | any later review forking from that commit |
 | `codeboarding-warmstart-<cfg>-pr<N>` | the working directory: graph, pickle, fingerprint, gate | **1 day**, configurable | only the next run of that pull request |
 
 The base graph is published only by the run that *computed* it, so it is written
-about once per merge base rather than once per run — ten runs on one pull request
+about once per merge base rather than once per run — with two exceptions. A
+review artifact references a base by id for its whole retention, so a base about
+to expire inside that window is republished rather than left dangling under a
+review that outlives it. And when no artifact holds the base at all, because the
+upload failed or because a fork review publishes nothing, the review artifact
+carries the graph inline and leaves `base_artifact` empty: a reader should prefer
+an inline `base_analysis.json` and fall back to the named artifact — ten runs on one pull request
 would otherwise store ten identical copies, which measured at exactly half the
 artifact.
 

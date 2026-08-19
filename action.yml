@@ -221,7 +221,8 @@ runs:
         GH_HOST: ${{ github.server_url }}
         REPOSITORY: ${{ github.repository }}
         ARTIFACT_NAME: ${{ steps.state.outputs.base_name }}
-        DEST: ${{ runner.temp }}/cb-state/base
+        DEST: ${{ runner.temp }}/cb-state/${{ github.action }}/base
+        RENEW_WITHIN_DAYS: '30'
       run: "$GITHUB_ACTION_PATH/scripts/action/fetch-state.sh"
 
     - name: Fetch this pull request's last analysis
@@ -234,7 +235,7 @@ runs:
         GH_HOST: ${{ github.server_url }}
         REPOSITORY: ${{ github.repository }}
         ARTIFACT_NAME: ${{ steps.state.outputs.warmstart_name }}
-        DEST: ${{ runner.temp }}/cb-state/warmstart
+        DEST: ${{ runner.temp }}/cb-state/${{ github.action }}/warmstart
       run: "$GITHUB_ACTION_PATH/scripts/action/fetch-state.sh"
 
     - name: Analyze baseline
@@ -245,7 +246,7 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         ANALYSIS_KIND: sync
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
-        STAGE_DIR: ${{ runner.temp }}/cb-state/out
+        STAGE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/out
         FORCE_FULL: ${{ inputs.force_full }}
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
@@ -281,7 +282,8 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: codeboarding-base-${{ steps.state.outputs.cfg_hash }}-${{ steps.sync_commit.outputs.baseline_sha }}
-        path: ${{ runner.temp }}/cb-state/out/base
+        path: ${{ runner.temp }}/cb-state/${{ github.action }}/out/base
+        retention-days: 30
         if-no-files-found: ignore
 
     - name: Publish baseline analysis for the analyzed commit
@@ -290,7 +292,8 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: codeboarding-base-${{ steps.state.outputs.cfg_hash }}-${{ steps.sync_commit.outputs.analyzed_sha }}
-        path: ${{ runner.temp }}/cb-state/out/base
+        path: ${{ runner.temp }}/cb-state/${{ github.action }}/out/base
+        retention-days: 30
         if-no-files-found: ignore
 
     - name: Write sync summary
@@ -317,9 +320,10 @@ runs:
         REVIEW_BASE_REPO: ${{ steps.guard.outputs.base_repo }}
         PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
         SEED_MODE: ${{ steps.guard.outputs.seed_mode }}
-        BASE_DIR: ${{ runner.temp }}/cb-state/base
-        WARMSTART_DIR: ${{ runner.temp }}/cb-state/warmstart
-        STAGE_DIR: ${{ runner.temp }}/cb-state/out
+        BASE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/base
+        WARMSTART_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/warmstart
+        RENEW_BASE: ${{ steps.fetch_base.outputs.renew }}
+        STAGE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/out
         ENGINE_VERSION: ${{ steps.state.outputs.engine_version }}
         CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
         GIT_TOKEN: ${{ inputs.github_token }}
@@ -338,7 +342,7 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.state.outputs.warmstart_name }}
-        path: ${{ runner.temp }}/cb-state/out/warmstart
+        path: ${{ runner.temp }}/cb-state/${{ github.action }}/out/warmstart
         retention-days: ${{ inputs.warmstart_retention_days }}
         if-no-files-found: ignore
 
@@ -352,7 +356,8 @@ runs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ steps.state.outputs.base_name }}
-        path: ${{ runner.temp }}/cb-state/out/base
+        path: ${{ runner.temp }}/cb-state/${{ github.action }}/out/base
+        retention-days: 30
         if-no-files-found: ignore
 
     - name: Render review diagram
@@ -374,7 +379,7 @@ runs:
         BASE_ARTIFACT_NAME: ${{ steps.state.outputs.base_name }}
         BASE_ARTIFACT_ID: ${{ steps.publish_base.outputs.artifact-id || steps.fetch_base.outputs.artifact_id }}
         BASE_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.base_analysis_path }}
-        INLINE_BASE: ${{ steps.guard.outputs.is_fork == 'true' && steps.review_analyze.outputs.publish_base == 'true' }}
+        INLINE_BASE: ${{ steps.publish_base.outputs.artifact-id == '' && steps.fetch_base.outputs.artifact_id == '' }}
         ANALYSIS_MODE: ${{ steps.review_analyze.outputs.analysis_mode }}
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
         MERGE_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}

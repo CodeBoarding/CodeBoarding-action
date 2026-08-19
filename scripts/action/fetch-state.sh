@@ -5,6 +5,11 @@
 set -euo pipefail
 [ -n "${ARTIFACT_NAME:-}" ] || exit 0
 
+# Clear first, on every path. These destinations are fixed, so a second use of
+# the action in one job would otherwise inherit the first one's files and treat
+# them as this configuration's state.
+rm -rf "${DEST:?}"
+
 api() { gh api -H 'Accept: application/vnd.github+json' "$@"; }
 export GH_HOST="${GH_HOST#*://}"
 
@@ -17,17 +22,43 @@ export GH_HOST="${GH_HOST#*://}"
 # Loading it would hand a fork's bytes to a pickle loader inside a run holding
 # this repository's credentials. A run whose head repository differs from the
 # repository it ran in is exactly that case, and is never read.
-listing="$(api "repos/$REPOSITORY/actions/artifacts?name=$ARTIFACT_NAME&per_page=100" 2>/dev/null || true)"
-selected="$(jq -r '[.artifacts[]?
+# Paginated, because rejected entries still occupy the page: a fork that
+# repeatedly uploads under this name could otherwise push the trusted bundle off
+# the first page and quietly deny reuse to everyone.
+trusted='[.artifacts[]?
   | select(.expired == false)
   | select(.workflow_run != null)
   | select(.workflow_run.head_repository_id == .workflow_run.repository_id)]
-  | sort_by(.created_at) | last | .id // empty' <<< "${listing:-{\}}" 2>/dev/null || true)"
+  | sort_by(.created_at) | last'
+selected="" expires="" rejected=0 page=1
+while [ "$page" -le 10 ]; do
+  listing="$(api "repos/$REPOSITORY/actions/artifacts?name=$ARTIFACT_NAME&per_page=100&page=$page" 2>/dev/null || true)"
+  [ -n "$listing" ] || break
+  returned="$(jq -r '.artifacts | length' <<< "$listing" 2>/dev/null || echo 0)"
+  [ "${returned:-0}" -gt 0 ] || break
+  rejected=$(( rejected + $(jq -r '[.artifacts[]? | select(.workflow_run.head_repository_id != .workflow_run.repository_id)] | length' <<< "$listing" 2>/dev/null || echo 0) ))
+  selected="$(jq -r "$trusted | .id // empty" <<< "$listing" 2>/dev/null || true)"
+  if [ -n "$selected" ]; then
+    expires="$(jq -r "$trusted | .expires_at // empty" <<< "$listing" 2>/dev/null || true)"
+    break
+  fi
+  [ "$returned" -eq 100 ] || break
+  page=$(( page + 1 ))
+done
 if [ -z "$selected" ]; then
-  rejected="$(jq -r '[.artifacts[]? | select(.workflow_run.head_repository_id != .workflow_run.repository_id)] | length' <<< "${listing:-{\}}" 2>/dev/null || echo 0)"
-  [ "${rejected:-0}" -eq 0 ] 2>/dev/null || echo "::warning::Ignored $rejected artifact(s) named $ARTIFACT_NAME produced by a run on code this repository does not control."
+  [ "$rejected" -eq 0 ] || echo "::warning::Ignored $rejected artifact(s) named $ARTIFACT_NAME produced by a run on code this repository does not control."
   echo "::notice::No stored $ARTIFACT_NAME to reuse; deriving from the base analysis."
   exit 0
+fi
+
+# C2/C4: a review artifact references this one by id for its whole retention, so
+# say when it would outlive what it points at and the caller can republish it.
+if [ -n "${RENEW_WITHIN_DAYS:-}" ] && [ -n "$expires" ]; then
+  renew="$(python3 -c 'import datetime,sys
+expires = datetime.datetime.fromisoformat(sys.argv[1].replace("Z", "+00:00"))
+horizon = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=int(sys.argv[2]))
+print("true" if expires < horizon else "false")' "$expires" "$RENEW_WITHIN_DAYS" 2>/dev/null || echo false)"
+  [ -z "${GITHUB_OUTPUT:-}" ] || echo "renew=$renew" >> "$GITHUB_OUTPUT"
 fi
 
 archive="$RUNNER_TEMP/$ARTIFACT_NAME.zip"
@@ -44,6 +75,6 @@ mkdir -p "$DEST"
 [ -z "${GITHUB_OUTPUT:-}" ] || echo "artifact_id=$selected" >> "$GITHUB_OUTPUT"
 if ! unzip -qo "$archive" -d "$DEST"; then
   echo "::warning::$ARTIFACT_NAME could not be unpacked; deriving from the base analysis."
-  rm -rf "$DEST"
+  rm -rf "${DEST:?}"
 fi
 rm -f "$archive"
