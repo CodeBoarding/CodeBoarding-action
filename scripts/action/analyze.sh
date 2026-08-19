@@ -101,14 +101,19 @@ stage() {
   # time rather than carried in the state directory, so a bundle can never
   # inherit the label of the one it was seeded from.
   python3 -c 'import json,os,sys
-json.dump({
-    "kind": sys.argv[2],
+kind = sys.argv[2]
+marker = {
+    "kind": kind,
     "engine_version": os.environ.get("ENGINE_VERSION", ""),
     "cfg_hash": os.environ.get("CFG_HASH", ""),
     "merge_base_sha": os.environ.get("REVIEW_BASE_SHA", ""),
-    "head_sha": os.environ.get("REVIEW_HEAD_SHA", ""),
-    "pr_number": os.environ.get("PR_NUMBER", ""),
-}, open(sys.argv[1], "w"), indent=2)' "$STAGE_DIR/$kind/metadata.json" "$kind"
+}
+# A base describes one commit and is shared by every pull request that forks
+# there, so the run that happened to compute it is not part of its identity.
+if kind == "warmstart":
+    marker["pr_number"] = os.environ.get("PR_NUMBER", "")
+    marker["head_sha"] = os.environ.get("REVIEW_HEAD_SHA", "")
+json.dump(marker, open(sys.argv[1], "w"), indent=2)' "$STAGE_DIR/$kind/metadata.json" "$kind"
 }
 
 analyze_sync() {
