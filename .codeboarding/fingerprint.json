@@ -17,7 +17,7 @@
     "scripts/action/deliver-sync.sh": "3d18aba1468dfc0e",
     "scripts/action/install-sync.sh": "26fa2f5d0a545fa7",
     "scripts/action/state-names.sh": "8f1ae6dc5bffe161",
-    "scripts/action/fetch-state.sh": "96c2b75e7c1867e8",
+    "scripts/action/fetch-state.sh": "4997e2e30ea461d2",
     "scripts/action/render-review.sh": "2c37a3719c6ed860",
     "scripts/action/guard.sh": "154ff57eafeb4d6c",
     "scripts/action/sync-summary.sh": "24456ef53fe7b60c",
