@@ -482,13 +482,20 @@ class PublishedStateTests(unittest.TestCase):
         self.assertIn("fetch_base.outputs.artifact_id == ''", inline[0])
 
     def test_a_base_outlives_the_reviews_that_reference_it(self) -> None:
-        # A review artifact points at a base by id for 30 days, so a base kept
-        # for less leaves that review unusable for the rest of its life.
-        for step in self._uploads():
-            if "out/base" in step.get("path", ""):
-                self.assertEqual(
-                    step.get("retention-days"), "30", f"{step['name']} may expire before the reviews naming it"
-                )
+        # A review points at a base by id for its whole life, so a base kept for
+        # the same period is only ever good at the instant it is written: the
+        # renewal check would then fire on every run and republish it every time,
+        # which is exactly the duplication that splitting it out removed.
+        review = next(s for s in self._uploads() if "review_artifact.outputs.artifact_dir" in s.get("path", ""))
+        review_days = int(review["retention-days"])
+        bases = [s for s in self._uploads() if "out/base" in s.get("path", "")]
+        self.assertTrue(bases, "no base publication step found")
+        for step in bases:
+            self.assertGreater(
+                int(step.get("retention-days", 0)),
+                review_days,
+                f"{step['name']} does not outlive the reviews that reference it",
+            )
 
     def test_the_reusable_analysis_honours_the_configured_retention(self) -> None:
         warmstart = [s for s in self._uploads() if "warmstart" in s.get("path", "")]
