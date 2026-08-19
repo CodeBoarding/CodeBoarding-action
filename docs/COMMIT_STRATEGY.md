@@ -36,8 +36,14 @@ about once per merge base rather than once per run — ten runs on one pull requ
 would otherwise store ten identical copies, which measured at exactly half the
 artifact.
 
-`metadata.json` names the base artifact so a reader can fetch it without
-reconstructing the name:
+**Every bundle carries a `metadata.json` naming its `kind`** — `review`, `base`
+or `warmstart`. Without it a base bundle is an `analysis.json` and nothing else,
+which unpacks exactly like a head artifact and would be rendered as one by a
+reader that resolved the wrong name. Assert on `kind` rather than inferring from
+the payload.
+
+`metadata.json` in the review artifact names the base artifact so a reader can
+fetch it without reconstructing the name:
 
 | Field | Meaning |
 |---|---|
@@ -45,6 +51,7 @@ reconstructing the name:
 | `pr_base_sha` | the merge base, under the name the webview resolves |
 | `merge_base_sha` | the same value under this action's own name |
 | `base_artifact` | the artifact holding the graph that was compared against |
+| `base_artifact_id` | **which one**, since two artifacts can share that name and disagree: the engine is not deterministic, and a sync run publishes bases for the same commit |
 | `merge_base_resolved` | `false` means the merge base could not be resolved, so the comparison is against `base_sha` |
 | `base_sha` | the base branch tip when the event fired — *not* what was compared against |
 | `pr_number`, `mode`, `seed_source`, `chain_depth` | provenance; nothing rendering a diagram needs them |

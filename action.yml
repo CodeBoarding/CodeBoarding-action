@@ -211,6 +211,7 @@ runs:
     # the committed baseline and the head from the base, which is what every run
     # did before any of this existed.
     - name: Fetch published base analysis
+      id: fetch_base
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.base_name != '' && github.server_url == 'https://github.com'
       continue-on-error: true
       shell: bash
@@ -345,6 +346,7 @@ runs:
     # every pull request forking there would read it, and a fork's analysis must
     # never be what they read.
     - name: Publish base analysis
+      id: publish_base
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_analyze.outputs.publish_base == 'true' && steps.guard.outputs.is_fork != 'true' && steps.state.outputs.base_name != '' && github.server_url == 'https://github.com'
       continue-on-error: true
       uses: actions/upload-artifact@v4
@@ -370,6 +372,7 @@ runs:
       env:
         ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
         BASE_ARTIFACT_NAME: ${{ steps.state.outputs.base_name }}
+        BASE_ARTIFACT_ID: ${{ steps.publish_base.outputs.artifact-id || steps.fetch_base.outputs.artifact_id }}
         BASE_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.base_analysis_path }}
         INLINE_BASE: ${{ steps.guard.outputs.is_fork == 'true' && steps.review_analyze.outputs.publish_base == 'true' }}
         ANALYSIS_MODE: ${{ steps.review_analyze.outputs.analysis_mode }}

@@ -81,7 +81,12 @@ The graph it was compared against is published separately, named for the commit
 it describes, because the merge base rarely changes during a pull request and a
 copy per run would store the same bytes over and over. Read
 `metadata.base_artifact` and fetch that artifact by name; the graph inside it is
-`analysis.json`.
+`analysis.json`, and `metadata.base_artifact_id` records exactly which artifact
+this review used, since two can share a name and disagree.
+
+Every bundle the action publishes carries a `metadata.json` with a `kind` of
+`review`, `base` or `warmstart`. Check it rather than inferring from the
+payload: a base bundle is otherwise indistinguishable from a head one.
 
 The action requests 30-day retention; a repository or organisation policy can shorten it, so treat an artifact's own `expired` flag as the truth rather than any fixed window.
 

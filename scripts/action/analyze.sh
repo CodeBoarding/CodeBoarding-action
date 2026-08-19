@@ -85,11 +85,25 @@ analysis_digest() {
 # working directory rather than the pickle alone, so restoring it needs one
 # lookup and no correlating of two artifacts.
 stage() {
-  local state="$1" name="$2"
+  local state="$1" kind="$2"
   [ -n "${STAGE_DIR:-}" ] || return 0
-  mkdir -p "${STAGE_DIR:?}/$name"
-  rm -rf "${STAGE_DIR:?}/$name"
-  cp -a "$state" "$STAGE_DIR/$name"
+  rm -rf "${STAGE_DIR:?}/$kind"
+  mkdir -p "$STAGE_DIR"
+  cp -a "$state" "$STAGE_DIR/$kind"
+  # Say what this bundle is. Without it a base bundle is an analysis.json and
+  # nothing else, which unpacks exactly like a head artifact and would be
+  # rendered as one by a reader that fetched the wrong name. Written at staging
+  # time rather than carried in the state directory, so a bundle can never
+  # inherit the label of the one it was seeded from.
+  python3 -c 'import json,os,sys
+json.dump({
+    "kind": sys.argv[2],
+    "engine_version": os.environ.get("ENGINE_VERSION", ""),
+    "cfg_hash": os.environ.get("CFG_HASH", ""),
+    "merge_base_sha": os.environ.get("REVIEW_BASE_SHA", ""),
+    "head_sha": os.environ.get("REVIEW_HEAD_SHA", ""),
+    "pr_number": os.environ.get("PR_NUMBER", ""),
+}, open(sys.argv[1], "w"), indent=2)' "$STAGE_DIR/$kind/metadata.json" "$kind"
 }
 
 analyze_sync() {

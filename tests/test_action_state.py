@@ -284,6 +284,27 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(calls[-1]["mode"], "full")
         self.assertEqual(calls[-1]["depth"], "2")
 
+    def test_each_bundle_says_what_it_is(self) -> None:
+        # A base bundle is otherwise an analysis.json and nothing else, which
+        # unpacks exactly like a head artifact and would be rendered as one.
+        _state(self.base_dir)
+        self._analyze()
+
+        warmstart = json.loads((self.stage_dir / "warmstart" / "metadata.json").read_text())
+        self.assertEqual(warmstart["kind"], "warmstart")
+        self.assertEqual(warmstart["merge_base_sha"], "merge-base-sha")
+
+    def test_a_bundle_never_inherits_the_label_of_its_seed(self) -> None:
+        # A fetched base bundle carries kind=base, and the head is seeded by
+        # copying that directory. A marker that travelled with the files would
+        # publish this pull request's analysis labelled as a base graph.
+        _state(self.base_dir)
+        (self.base_dir / "metadata.json").write_text(json.dumps({"kind": "base"}), encoding="utf-8")
+
+        self._analyze()
+
+        self.assertEqual(json.loads((self.stage_dir / "warmstart" / "metadata.json").read_text())["kind"], "warmstart")
+
     def test_analysis_is_staged_for_publication(self) -> None:
         _state(self.base_dir)
         self._bind()
@@ -325,6 +346,7 @@ class ReviewArtifactTests(unittest.TestCase):
                 "GITHUB_OUTPUT": str(output),
                 "ANALYSIS_PATH": str(self.head),
                 "BASE_ARTIFACT_NAME": "codeboarding-base-cfg-mergebasesha",
+                "BASE_ARTIFACT_ID": "4242",
                 "BASE_ANALYSIS_PATH": str(self.base),
                 "INLINE_BASE": "false",
                 "ANALYSIS_MODE": "incremental",
@@ -359,6 +381,11 @@ class ReviewArtifactTests(unittest.TestCase):
         self.assertEqual(metadata["base_sha"], "tip-sha")
         self.assertEqual(metadata["merge_base_sha"], "merge-base-sha")
         self.assertEqual(metadata["base_artifact"], "codeboarding-base-cfg-mergebasesha")
+        # The name is not enough: two artifacts can share it and disagree, since
+        # the engine is not deterministic and sync publishes bases too.
+        self.assertEqual(metadata["base_artifact_id"], "4242")
+        # A reader can assert on one field instead of guessing from the payload.
+        self.assertEqual(metadata["kind"], "review")
         # The webview resolves base_commit_sha || pr_base_sha || base_sha, so the
         # merge base has to appear under a name it looks for or it silently uses
         # the branch tip.

@@ -38,6 +38,10 @@ if ! api "repos/$REPOSITORY/actions/artifacts/$selected/zip" > "$archive" 2>/dev
 fi
 
 mkdir -p "$DEST"
+# Which one was used, not just which name was asked for: two artifacts can share
+# a name and disagree, since the engine is not deterministic and a sync run
+# publishes bases too.
+[ -z "${GITHUB_OUTPUT:-}" ] || echo "artifact_id=$selected" >> "$GITHUB_OUTPUT"
 if ! unzip -qo "$archive" -d "$DEST"; then
   echo "::warning::$ARTIFACT_NAME could not be unpacked; deriving from the base analysis."
   rm -rf "$DEST"
