@@ -1,14 +1,14 @@
 {
   "files": {
     "AGENTS.md": "0315875f661e8206",
-    "action.yml": "cf957e6983dd88af",
+    "action.yml": "53b4351082c125e7",
     "pyproject.toml": "d2f78b9c7f0b5865",
-    "README.md": "f575859bcbdbb662",
+    "README.md": "76db62acfd92774b",
     "LICENSE": "356a3402bd47e108",
     "release-please-config.json": "e1ea6dfc5a9fa8bd",
     "CHANGELOG.md": "cc3ebe95d01afacf",
     "assets/icon.svg": "1f5885e35bb4798e",
-    "docs/COMMIT_STRATEGY.md": "930a0ffe5293d3dc",
+    "docs/COMMIT_STRATEGY.md": "36bf8413cd40d38a",
     "scripts/diff_to_mermaid.py": "385a552dc44b4871",
     "scripts/oidc_relay.py": "5af0d8557c0af6e0",
     "scripts/run_local.sh": "a2b94f83d28d6c63",
@@ -19,11 +19,11 @@
     "scripts/action/state-names.sh": "8f1ae6dc5bffe161",
     "scripts/action/fetch-state.sh": "96c2b75e7c1867e8",
     "scripts/action/render-review.sh": "2c37a3719c6ed860",
-    "scripts/action/guard.sh": "7b3e83f07c6c80ec",
+    "scripts/action/guard.sh": "154ff57eafeb4d6c",
     "scripts/action/sync-summary.sh": "24456ef53fe7b60c",
     "scripts/action/with-auth.sh": "7d92d8547db076c5",
-    "scripts/action/build-review-artifact.sh": "7395d80bc03de76e",
-    "scripts/action/analyze.sh": "2b5985250a7fcb13",
+    "scripts/action/build-review-artifact.sh": "380aae6e6e296576",
+    "scripts/action/analyze.sh": "dffc4c05958025f1",
     "scripts/action/build-review-comment.sh": "949852579c3bbe45"
   }
 }
