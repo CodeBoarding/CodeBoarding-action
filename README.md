@@ -111,7 +111,7 @@ For a direct provider, pass its name and key:
 
 The action maps a provider name to the environment variable Core uses (`anthropic` → `ANTHROPIC_API_KEY`, `openai` → `OPENAI_API_KEY`, and so on). `aws`/`aws_bedrock` maps to `AWS_BEARER_TOKEN_BEDROCK`. Provider names following the standard convention are not restricted by an action-side allowlist; the pinned Core release remains the source of truth for which providers it implements.
 
-CodeBoarding 0.13.8 supports OpenRouter, OpenAI-compatible endpoints, Anthropic, Google, Vercel AI Gateway, AWS Bedrock, Cerebras, DeepSeek, GLM, Kimi, Ollama, and LiteLLM. See Core's [`agents/llm_config.py`](https://github.com/CodeBoarding/CodeBoarding/blob/main/agents/llm_config.py) for current defaults and endpoint variables. In particular, Ollama needs `OLLAMA_BASE_URL` or `OLLAMA_HOST`, and LiteLLM needs `LITELLM_BASE_URL` on the action step.
+CodeBoarding 0.13.10 supports OpenRouter, OpenAI-compatible endpoints, Anthropic-compatible endpoints, Google, Vercel AI Gateway, AWS Bedrock, Cerebras, DeepSeek, GLM, Kimi, OrcaRouter, Ollama, and LiteLLM. See Core's [`agents/llm_config.py`](https://github.com/CodeBoarding/CodeBoarding/blob/main/agents/llm_config.py) for current defaults and endpoint variables. In particular, Ollama needs `OLLAMA_BASE_URL` or `OLLAMA_HOST`, and LiteLLM needs `LITELLM_BASE_URL` on the action step.
 
 A CodeBoarding license keeps the hosted OIDC path but removes hosted quota limits:
 
@@ -237,7 +237,7 @@ With the default `github.token`, the repository or organization must allow GitHu
 | `force_full` | sync | `false` | Ignore the committed baseline for this run. |
 | `warmstart_retention_days` | review | `1` | Days to keep the reusable analysis. Only the next run reads it. |
 
-The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted webview URL, rolling sync branch, commit message, and CodeBoarding 0.13.8 version are intentionally fixed in v2 rather than exposed as configuration.
+The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted webview URL, rolling sync branch, commit message, and CodeBoarding 0.13.10 version are intentionally fixed in v2 rather than exposed as configuration.
 
 ## Outputs
 
@@ -271,7 +271,7 @@ Run the local analysis pipeline:
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...
-python -m pip install codeboarding==0.13.8
+python -m pip install codeboarding==0.13.10
 tests/run_local.sh --repo /path/to/repo --base main --head feature
 ```
 
