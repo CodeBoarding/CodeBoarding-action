@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.12.2](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.12.1...v1.12.2) (2026-08-26)
+
+
+### Bug Fixes
+
+* **action:** pin CodeBoarding 0.13.10 ([#100](https://github.com/CodeBoarding/CodeBoarding-action/issues/100)) ([af6b531](https://github.com/CodeBoarding/CodeBoarding-action/commit/af6b531a72c2b482f57eb6ea56f38e846d9e64ba))
+* align tooling and CI with Python 3.12 ([845aa94](https://github.com/CodeBoarding/CodeBoarding-action/commit/845aa9407fc3dcdd4aa8cdfc7512201e3ca6a06f))
+* **review:** say when artifacts cannot be listed ([#98](https://github.com/CodeBoarding/CodeBoarding-action/issues/98)) ([dd11082](https://github.com/CodeBoarding/CodeBoarding-action/commit/dd11082547c58659250a3fbe54a9d4c4c4c9cb17))
+
 ## [1.12.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.12.0...v1.12.1) (2026-08-19)
 
 
