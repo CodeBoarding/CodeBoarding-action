@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.3](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.12.2...v1.12.3) (2026-08-26)
+
+
+### Bug Fixes
+
+* **action:** restore Core runtime compatibility ([#101](https://github.com/CodeBoarding/CodeBoarding-action/issues/101)) ([b735334](https://github.com/CodeBoarding/CodeBoarding-action/commit/b735334588180ecfce3ef98c9346fc6c68c15acf))
+
 ## [1.12.2](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.12.1...v1.12.2) (2026-08-26)
 
 
