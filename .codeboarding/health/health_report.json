@@ -1,11 +1,12 @@
 {
   "repository_name": ".codeboarding-target",
-  "timestamp": "2026-08-26T21:40:28.531910+00:00",
-  "overall_score": 0.9996835443037974,
+  "timestamp": "2026-08-26T22:14:15.599537+00:00",
+  "overall_score": 0.9990196078431373,
   "check_summaries": [
     {
       "check_name": "function_size",
       "description": "Checks that functions/methods do not exceed line count thresholds",
+      "languages": [],
       "check_type": "standard",
       "total_entities_checked": 50,
       "findings_count": 0,
@@ -14,48 +15,18 @@
       "finding_groups": []
     },
     {
-      "check_name": "fan_out",
-      "description": "Checks efferent coupling: how many other functions each function calls",
-      "check_type": "standard",
-      "total_entities_checked": 50,
-      "findings_count": 0,
-      "warning_count": 0,
-      "score": 1.0,
-      "finding_groups": []
-    },
-    {
-      "check_name": "fan_in",
-      "description": "Checks afferent coupling: how many other functions call each function",
-      "check_type": "standard",
-      "total_entities_checked": 50,
-      "findings_count": 0,
-      "warning_count": 0,
-      "score": 1.0,
-      "finding_groups": []
-    },
-    {
-      "check_name": "god_class",
-      "description": "Detects classes with too many methods, too much code, or too many outgoing dependencies",
-      "check_type": "standard",
-      "total_entities_checked": 2,
-      "findings_count": 0,
-      "warning_count": 0,
-      "score": 1.0,
-      "finding_groups": []
-    },
-    {
-      "check_name": "inheritance_depth",
-      "description": "Checks that class inheritance hierarchies do not exceed depth thresholds",
-      "check_type": "standard",
-      "total_entities_checked": 5,
-      "findings_count": 0,
-      "warning_count": 0,
-      "score": 1.0,
-      "finding_groups": []
+      "check_name": "circular_dependencies",
+      "description": "Detects circular dependencies between packages",
+      "languages": [],
+      "check_type": "circular_dependencies",
+      "cycles": [],
+      "packages_checked": 1,
+      "packages_in_cycles": 0
     },
     {
       "check_name": "unused_code_diagnostics",
       "description": "Detects unused imports, variables, functions, and dead code via LSP diagnostics",
+      "languages": [],
       "check_type": "standard",
       "total_entities_checked": 1,
       "findings_count": 1,

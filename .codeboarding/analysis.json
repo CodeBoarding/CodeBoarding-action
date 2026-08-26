@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-08-26T21:40:28.676183+00:00",
-    "source_tree_hash": "969ee50265db6e1cd12612dc4b77e815c9a6f3e0352f7365431f02ee8eb9a807",
+    "generated_at": "2026-08-26T22:15:30.234795+00:00",
+    "source_tree_hash": "7fe5db68bd4990f1223f8d2ae7dea7752bebfcac24649683de3d2fcef3746813",
     "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
@@ -15,7 +15,7 @@
       }
     }
   },
-  "description": "The CodeBoarding-action is a CI/CD integration tool designed to automate the analysis of code changes and visualize their architectural impact within GitHub Pull Requests. The system operates as a pipeline: it first interfaces with an external analysis engine to retrieve structural metadata, then performs a differential analysis between the current state and the base branch. This diff is then transformed into visual representations (Mermaid.js diagrams) and interactive Call-to-Action (CTA) elements. Finally, the system handles telemetry and feedback loops to refine the analysis quality, ensuring that developers receive a concise, visual summary of how their changes affect the broader system architecture.",
+  "description": "This architecture comprises the helper scripts driving repository analysis, OIDC token relaying for secure authentication, and architectural diff-to-Mermaid diagram generation within GitHub Actions workflows. The main flow involves executing the CodeBoarding repository analysis CLI, proxying authenticated requests through a local OIDC token relay server, computing structural and relation diffs between revisions, and rendering the resulting architectural changes as Mermaid diagrams.",
   "files": {
     "scripts/diff_to_mermaid.py": {
       "method_keys": [
@@ -59,17 +59,6 @@
       "content_hash": "385a552dc44b4871",
       "module_hash": "76cbae741d0dd615"
     },
-    "scripts/analyze_repository.py": {
-      "method_keys": [
-        "scripts/analyze_repository.py|scripts.analyze_repository.AnalysisError",
-        "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool",
-        "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response",
-        "scripts/analyze_repository.py|scripts.analyze_repository._run_command",
-        "scripts/analyze_repository.py|scripts.analyze_repository.main"
-      ],
-      "content_hash": "03f39d1ac2f146ec",
-      "module_hash": "621ccc2626ad8f2a"
-    },
     "scripts/oidc_relay.py": {
       "method_keys": [
         "scripts/oidc_relay.py|scripts.oidc_relay.RelayConfig",
@@ -89,6 +78,17 @@
       ],
       "content_hash": "5af0d8557c0af6e0",
       "module_hash": "581a285c4c8aad4a"
+    },
+    "scripts/analyze_repository.py": {
+      "method_keys": [
+        "scripts/analyze_repository.py|scripts.analyze_repository.AnalysisError",
+        "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool",
+        "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response",
+        "scripts/analyze_repository.py|scripts.analyze_repository._run_command",
+        "scripts/analyze_repository.py|scripts.analyze_repository.main"
+      ],
+      "content_hash": "03f39d1ac2f146ec",
+      "module_hash": "621ccc2626ad8f2a"
     }
   },
   "methods_index": {
@@ -380,46 +380,6 @@
       "type": "FUNCTION",
       "content_hash": "fbbd7d2293c174c9"
     },
-    "scripts/analyze_repository.py|scripts.analyze_repository.AnalysisError": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository.AnalysisError",
-      "start_line": 16,
-      "end_line": 17,
-      "type": "CLASS",
-      "content_hash": "e23f18bc0d32e21b"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository._parse_bool",
-      "start_line": 20,
-      "end_line": 29,
-      "type": "FUNCTION",
-      "content_hash": "3de011b556fa2edb"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository._parse_cli_response",
-      "start_line": 32,
-      "end_line": 66,
-      "type": "FUNCTION",
-      "content_hash": "064ec779cc59420b"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository._run_command": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository._run_command",
-      "start_line": 69,
-      "end_line": 90,
-      "type": "FUNCTION",
-      "content_hash": "001ae1f8af80eaf8"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository.main": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository.main",
-      "start_line": 93,
-      "end_line": 137,
-      "type": "FUNCTION",
-      "content_hash": "e807c9b057c463bf"
-    },
     "scripts/oidc_relay.py|scripts.oidc_relay.RelayConfig": {
       "file_path": "scripts/oidc_relay.py",
       "qualified_name": "scripts.oidc_relay.RelayConfig",
@@ -531,76 +491,70 @@
       "end_line": 183,
       "type": "FUNCTION",
       "content_hash": "32cb887f244d21dd"
+    },
+    "scripts/analyze_repository.py|scripts.analyze_repository.AnalysisError": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository.AnalysisError",
+      "start_line": 16,
+      "end_line": 17,
+      "type": "CLASS",
+      "content_hash": "e23f18bc0d32e21b"
+    },
+    "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository._parse_bool",
+      "start_line": 20,
+      "end_line": 29,
+      "type": "FUNCTION",
+      "content_hash": "3de011b556fa2edb"
+    },
+    "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository._parse_cli_response",
+      "start_line": 32,
+      "end_line": 66,
+      "type": "FUNCTION",
+      "content_hash": "064ec779cc59420b"
+    },
+    "scripts/analyze_repository.py|scripts.analyze_repository._run_command": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository._run_command",
+      "start_line": 69,
+      "end_line": 90,
+      "type": "FUNCTION",
+      "content_hash": "001ae1f8af80eaf8"
+    },
+    "scripts/analyze_repository.py|scripts.analyze_repository.main": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository.main",
+      "start_line": 93,
+      "end_line": 137,
+      "type": "FUNCTION",
+      "content_hash": "e807c9b057c463bf"
     }
   },
   "components": [
     {
-      "name": "Visual Rendering Engine",
-      "description": "Transforms raw architectural data and component definitions into formatted Mermaid.js diagrams and structured file representations for UI display.",
-      "key_entities": [
-        {
-          "qualified_name": "scripts.diff_to_mermaid.render_mermaid",
-          "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 512,
-          "reference_end_line": 639
-        },
-        {
-          "qualified_name": "scripts.diff_to_mermaid._display_status",
-          "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 377,
-          "reference_end_line": 378
-        },
-        {
-          "qualified_name": "scripts.diff_to_mermaid._init_directive",
-          "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 473,
-          "reference_end_line": 492
-        }
-      ],
-      "source_cluster_ids": [
-        "4",
-        "5"
-      ],
-      "file_methods": [
-        {
-          "file_path": "scripts/diff_to_mermaid.py",
-          "methods": [
-            "scripts.diff_to_mermaid._comp_id",
-            "scripts.diff_to_mermaid._comp_name",
-            "scripts.diff_to_mermaid._has_changes",
-            "scripts.diff_to_mermaid._sanitize",
-            "scripts.diff_to_mermaid._esc",
-            "scripts.diff_to_mermaid._truncate",
-            "scripts.diff_to_mermaid._display_status",
-            "scripts.diff_to_mermaid._Scope",
-            "scripts.diff_to_mermaid._Scope.__init__",
-            "scripts.diff_to_mermaid._Scope.resolve",
-            "scripts.diff_to_mermaid._filter_changed",
-            "scripts.diff_to_mermaid._filter_changed.touches",
-            "scripts.diff_to_mermaid._init_directive",
-            "scripts.diff_to_mermaid._count_changed_components",
-            "scripts.diff_to_mermaid._has_changed_relations",
-            "scripts.diff_to_mermaid.render_mermaid",
-            "scripts.diff_to_mermaid.render_mermaid.build",
-            "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
-            "scripts.diff_to_mermaid.render_mermaid.build.emit_level"
-          ]
-        }
-      ],
-      "component_id": "2",
-      "can_expand": false,
-      "components": [],
-      "components_relations": []
-    },
-    {
-      "name": "Structural Diff Engine",
-      "description": "Compares project analysis states to identify structural changes in methods, files, and component relationships across different git refs.",
+      "name": "Diff Analysis Engine",
+      "description": "Computes structural and relational deltas between architecture models, tracking component additions, modifications, and affected method/relation changes.",
       "key_entities": [
         {
           "qualified_name": "scripts.diff_to_mermaid._diff_components",
           "reference_file": "scripts/diff_to_mermaid.py",
           "reference_start_line": 262,
           "reference_end_line": 307
+        },
+        {
+          "qualified_name": "scripts.diff_to_mermaid._diff_relations",
+          "reference_file": "scripts/diff_to_mermaid.py",
+          "reference_start_line": 202,
+          "reference_end_line": 248
+        },
+        {
+          "qualified_name": "scripts.diff_to_mermaid._analysis_changes",
+          "reference_file": "scripts/diff_to_mermaid.py",
+          "reference_start_line": 147,
+          "reference_end_line": 175
         },
         {
           "qualified_name": "scripts.diff_to_mermaid._has_structural_changes",
@@ -610,8 +564,9 @@
         }
       ],
       "source_cluster_ids": [
-        "2",
-        "7"
+        "1",
+        "4",
+        "5"
       ],
       "file_methods": [
         {
@@ -631,9 +586,121 @@
             "scripts.diff_to_mermaid._owns_analysis_change",
             "scripts.diff_to_mermaid._rel_key",
             "scripts.diff_to_mermaid._diff_relations",
+            "scripts.diff_to_mermaid._has_changes",
             "scripts.diff_to_mermaid._diff_components",
             "scripts.diff_to_mermaid.build_diff",
+            "scripts.diff_to_mermaid._init_directive",
+            "scripts.diff_to_mermaid._count_changed_components",
+            "scripts.diff_to_mermaid._has_changed_relations",
+            "scripts.diff_to_mermaid.render_mermaid",
+            "scripts.diff_to_mermaid.render_mermaid.build",
             "scripts.diff_to_mermaid.main"
+          ]
+        }
+      ],
+      "component_id": "1",
+      "can_expand": false,
+      "components": [],
+      "components_relations": []
+    },
+    {
+      "name": "Mermaid Diagram Renderer",
+      "description": "Formats, scopes, sanitizes, and renders architecture components and relationships into Mermaid diagram syntax.",
+      "key_entities": [
+        {
+          "qualified_name": "scripts.diff_to_mermaid._Scope",
+          "reference_file": "scripts/diff_to_mermaid.py",
+          "reference_start_line": 381,
+          "reference_end_line": 425
+        },
+        {
+          "qualified_name": "scripts.diff_to_mermaid._filter_changed",
+          "reference_file": "scripts/diff_to_mermaid.py",
+          "reference_start_line": 428,
+          "reference_end_line": 470
+        },
+        {
+          "qualified_name": "scripts.diff_to_mermaid._display_status",
+          "reference_file": "scripts/diff_to_mermaid.py",
+          "reference_start_line": 377,
+          "reference_end_line": 378
+        }
+      ],
+      "source_cluster_ids": [
+        "3",
+        "6"
+      ],
+      "file_methods": [
+        {
+          "file_path": "scripts/diff_to_mermaid.py",
+          "methods": [
+            "scripts.diff_to_mermaid._comp_id",
+            "scripts.diff_to_mermaid._comp_name",
+            "scripts.diff_to_mermaid._sanitize",
+            "scripts.diff_to_mermaid._esc",
+            "scripts.diff_to_mermaid._truncate",
+            "scripts.diff_to_mermaid._display_status",
+            "scripts.diff_to_mermaid._Scope",
+            "scripts.diff_to_mermaid._Scope.__init__",
+            "scripts.diff_to_mermaid._Scope.resolve",
+            "scripts.diff_to_mermaid._filter_changed",
+            "scripts.diff_to_mermaid._filter_changed.touches",
+            "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
+            "scripts.diff_to_mermaid.render_mermaid.build.emit_level"
+          ]
+        }
+      ],
+      "component_id": "2",
+      "can_expand": false,
+      "components": [],
+      "components_relations": []
+    },
+    {
+      "name": "OIDC Relay Handler",
+      "description": "Handles inbound HTTP proxy requests by minting GitHub Actions OIDC tokens and attaching authorization headers before forwarding upstream.",
+      "key_entities": [
+        {
+          "qualified_name": "scripts.oidc_relay._RelayHandler",
+          "reference_file": "scripts/oidc_relay.py",
+          "reference_start_line": 96,
+          "reference_end_line": 152
+        },
+        {
+          "qualified_name": "scripts.oidc_relay._mint_oidc_token",
+          "reference_file": "scripts/oidc_relay.py",
+          "reference_start_line": 61,
+          "reference_end_line": 76
+        },
+        {
+          "qualified_name": "scripts.oidc_relay._authorization",
+          "reference_file": "scripts/oidc_relay.py",
+          "reference_start_line": 79,
+          "reference_end_line": 89
+        },
+        {
+          "qualified_name": "scripts.oidc_relay._upstream_url",
+          "reference_file": "scripts/oidc_relay.py",
+          "reference_start_line": 92,
+          "reference_end_line": 93
+        }
+      ],
+      "source_cluster_ids": [
+        "2"
+      ],
+      "file_methods": [
+        {
+          "file_path": "scripts/oidc_relay.py",
+          "methods": [
+            "scripts.oidc_relay._with_audience",
+            "scripts.oidc_relay._mint_oidc_token",
+            "scripts.oidc_relay._authorization",
+            "scripts.oidc_relay._upstream_url",
+            "scripts.oidc_relay._RelayHandler",
+            "scripts.oidc_relay._RelayHandler.log_message",
+            "scripts.oidc_relay._RelayHandler.config",
+            "scripts.oidc_relay._RelayHandler._request_body",
+            "scripts.oidc_relay._RelayHandler._send",
+            "scripts.oidc_relay._RelayHandler._handle"
           ]
         }
       ],
@@ -643,13 +710,36 @@
       "components_relations": []
     },
     {
-      "name": "Interaction Orchestrator",
-      "description": "Generates interactive Call-to-Action (CTA) links and webview URLs to facilitate developer engagement with the analysis results.",
-      "key_entities": [],
+      "name": "Repository Analysis Driver",
+      "description": "Invokes the CodeBoarding CLI to perform repository analysis, parses execution output, and handles errors across CI runs.",
+      "key_entities": [
+        {
+          "qualified_name": "scripts.analyze_repository.main",
+          "reference_file": "scripts/analyze_repository.py",
+          "reference_start_line": 93,
+          "reference_end_line": 137
+        },
+        {
+          "qualified_name": "scripts.analyze_repository._run_command",
+          "reference_file": "scripts/analyze_repository.py",
+          "reference_start_line": 69,
+          "reference_end_line": 90
+        },
+        {
+          "qualified_name": "scripts.analyze_repository._parse_cli_response",
+          "reference_file": "scripts/analyze_repository.py",
+          "reference_start_line": 32,
+          "reference_end_line": 66
+        },
+        {
+          "qualified_name": "scripts.analyze_repository.AnalysisError",
+          "reference_file": "scripts/analyze_repository.py",
+          "reference_start_line": 16,
+          "reference_end_line": 17
+        }
+      ],
       "source_cluster_ids": [
-        "6",
-        "9",
-        "10"
+        "7"
       ],
       "file_methods": [
         {
@@ -661,21 +751,44 @@
             "scripts.analyze_repository._run_command",
             "scripts.analyze_repository.main"
           ]
+        }
+      ],
+      "component_id": "4",
+      "can_expand": false,
+      "components": [],
+      "components_relations": []
+    },
+    {
+      "name": "OIDC Relay Server",
+      "description": "Manages configuration parsing and the HTTP server lifecycle for the background OIDC token relay service.",
+      "key_entities": [
+        {
+          "qualified_name": "scripts.oidc_relay.RelayServer",
+          "reference_file": "scripts/oidc_relay.py",
+          "reference_start_line": 155,
+          "reference_end_line": 161
         },
+        {
+          "qualified_name": "scripts.oidc_relay.RelayConfig",
+          "reference_file": "scripts/oidc_relay.py",
+          "reference_start_line": 46,
+          "reference_end_line": 50
+        },
+        {
+          "qualified_name": "scripts.oidc_relay.main",
+          "reference_file": "scripts/oidc_relay.py",
+          "reference_start_line": 164,
+          "reference_end_line": 183
+        }
+      ],
+      "source_cluster_ids": [
+        "8"
+      ],
+      "file_methods": [
         {
           "file_path": "scripts/oidc_relay.py",
           "methods": [
             "scripts.oidc_relay.RelayConfig",
-            "scripts.oidc_relay._with_audience",
-            "scripts.oidc_relay._mint_oidc_token",
-            "scripts.oidc_relay._authorization",
-            "scripts.oidc_relay._upstream_url",
-            "scripts.oidc_relay._RelayHandler",
-            "scripts.oidc_relay._RelayHandler.log_message",
-            "scripts.oidc_relay._RelayHandler.config",
-            "scripts.oidc_relay._RelayHandler._request_body",
-            "scripts.oidc_relay._RelayHandler._send",
-            "scripts.oidc_relay._RelayHandler._handle",
             "scripts.oidc_relay.RelayServer",
             "scripts.oidc_relay.RelayServer.__init__",
             "scripts.oidc_relay.main"
@@ -690,38 +803,38 @@
   ],
   "components_relations": [
     {
-      "relation": "Returns rendering metadata and diagram artifacts",
-      "src_name": "Visual Rendering Engine",
-      "dst_name": "Interaction Orchestrator",
-      "evidence": "The rendering engine writes the Mermaid diagram to a file and prints a JSON metadata object to stdout, which the shell orchestrator captures for GitHub status updates.",
+      "relation": "Passes computed structural diffs for diagram generation",
+      "src_name": "Diff Analysis Engine",
+      "dst_name": "Mermaid Diagram Renderer",
+      "evidence": "scripts/diff_to_mermaid.py:main calls build_diff() from the Diff Analysis Engine to construct semantic delta dictionaries (components, components_relations), passing the result into render_mermaid() for formatting and Mermaid diagram synthesis.",
       "key_edges": [],
-      "src_id": "2",
-      "dst_id": "5",
-      "is_static": false,
-      "all_edges": []
-    },
-    {
-      "relation": "Provides annotated diff model for visualization",
-      "src_name": "Structural Diff Engine",
-      "dst_name": "Visual Rendering Engine",
-      "evidence": "The main execution flow passes a structured 'diff' dictionary, containing component and relation changes, directly into the rendering logic.",
-      "key_edges": [
-        {
-          "source": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main",
-          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid",
-          "call_sites": [
-            {
-              "line": 603,
-              "column": 21
-            }
-          ],
-          "description": ""
-        }
-      ],
-      "src_id": "3",
+      "src_id": "1",
       "dst_id": "2",
       "is_static": true,
       "all_edges": [
+        {
+          "source": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_components",
+          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_name",
+          "call_sites": [
+            {
+              "line": 265,
+              "column": 21
+            },
+            {
+              "line": 270,
+              "column": 39
+            },
+            {
+              "line": 274,
+              "column": 27
+            },
+            {
+              "line": 299,
+              "column": 12
+            }
+          ],
+          "description": ""
+        },
         {
           "source": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.build_diff",
           "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_name",
@@ -738,46 +851,23 @@
           "description": ""
         },
         {
-          "source": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_components",
-          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_name",
+          "source": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build",
+          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed",
           "call_sites": [
             {
-              "line": 216,
-              "column": 21
-            },
-            {
-              "line": 221,
-              "column": 39
-            },
-            {
-              "line": 225,
-              "column": 27
-            },
-            {
-              "line": 250,
-              "column": 12
+              "line": 543,
+              "column": 13
             }
           ],
           "description": ""
         },
         {
-          "source": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_components",
-          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changes",
+          "source": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build",
+          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_level",
           "call_sites": [
             {
-              "line": 241,
-              "column": 43
-            }
-          ],
-          "description": ""
-        },
-        {
-          "source": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main",
-          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid",
-          "call_sites": [
-            {
-              "line": 603,
-              "column": 21
+              "line": 585,
+              "column": 9
             }
           ],
           "description": ""
@@ -785,15 +875,54 @@
       ]
     },
     {
-      "relation": "Triggers structural comparison via CLI",
-      "src_name": "Interaction Orchestrator",
-      "dst_name": "Structural Diff Engine",
-      "evidence": "Shell scripts in the action layer (e.g., render-review.sh) invoke the Python entry point with --base and --head analysis paths to initiate the diffing process.",
-      "key_edges": [],
+      "relation": "Produces analysis JSON artifacts consumed for diff computation",
+      "src_name": "Repository Analysis Driver",
+      "dst_name": "Diff Analysis Engine",
+      "evidence": "analyze_repository.py orchestrates CLI analysis runs (codeboarding incremental / full) and outputs analysis.json artifact paths, which are loaded via load_analysis / read_analysis_json by diff_to_mermaid.py to calculate structural and relational differences.",
+      "key_edges": [
+        {
+          "source": "scripts/analyze_repository.py|scripts.analyze_repository.main",
+          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.load_analysis",
+          "call_sites": [],
+          "description": "Analysis artifacts produced by analyze_repository.py are loaded via load_analysis for diff computation."
+        }
+      ],
+      "src_id": "4",
+      "dst_id": "1",
+      "is_static": false,
+      "all_edges": [
+        {
+          "source": "scripts/analyze_repository.py|scripts.analyze_repository.main",
+          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.load_analysis",
+          "call_sites": [],
+          "description": "Analysis artifacts produced by analyze_repository.py are loaded via load_analysis for diff computation."
+        }
+      ]
+    },
+    {
+      "relation": "Dispatches incoming HTTP requests to relay handlers",
+      "src_name": "OIDC Relay Server",
+      "dst_name": "OIDC Relay Handler",
+      "evidence": "RelayServer (inheriting from ThreadingHTTPServer) is initialized with _RelayHandler as its HTTP request handler class and shares its RelayConfig state to process proxied requests.",
+      "key_edges": [
+        {
+          "source": "scripts/oidc_relay.py|scripts.oidc_relay.RelayServer.__init__",
+          "target": "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler",
+          "call_sites": [],
+          "description": "RelayServer initializes _RelayHandler to process incoming HTTP requests."
+        }
+      ],
       "src_id": "5",
       "dst_id": "3",
       "is_static": false,
-      "all_edges": []
+      "all_edges": [
+        {
+          "source": "scripts/oidc_relay.py|scripts.oidc_relay.RelayServer.__init__",
+          "target": "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler",
+          "call_sites": [],
+          "description": "RelayServer initializes _RelayHandler to process incoming HTTP requests."
+        }
+      ]
     }
   ]
 }
