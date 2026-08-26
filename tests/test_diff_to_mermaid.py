@@ -76,16 +76,16 @@ class TestDiff(unittest.TestCase):
                 )
             return projected
 
-        rendering = ModuleType("codeboarding_workflows.rendering")
+        rendering = ModuleType("output_generators.rendering")
         rendering.project_relations_to_level = project_relations_to_level
         analysis_json = ModuleType("diagram_analysis.analysis_json")
         analysis_json.parse_unified_analysis = parse_unified_analysis
         analysis_json.build_id_to_name_map = build_id_to_name_map
         modules = {
-            "codeboarding_workflows": ModuleType("codeboarding_workflows"),
-            "codeboarding_workflows.rendering": rendering,
             "diagram_analysis": ModuleType("diagram_analysis"),
             "diagram_analysis.analysis_json": analysis_json,
+            "output_generators": ModuleType("output_generators"),
+            "output_generators.rendering": rendering,
         }
         analysis = {
             "components": [

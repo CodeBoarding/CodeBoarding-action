@@ -162,6 +162,13 @@ runs:
       with:
         python-version: '3.12'
 
+    - name: Setup Java for CodeBoarding
+      if: steps.guard.outputs.skip != 'true'
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: '21'
+
     - name: Install CodeBoarding
       if: steps.guard.outputs.skip != 'true'
       shell: bash

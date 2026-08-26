@@ -292,9 +292,9 @@ class ActionSyncTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             fake_core = root / "core"
-            (fake_core / "codeboarding_workflows").mkdir(parents=True)
-            (fake_core / "diagram_analysis").mkdir()
-            (fake_core / "codeboarding_workflows" / "rendering.py").write_text(
+            (fake_core / "diagram_analysis").mkdir(parents=True)
+            (fake_core / "output_generators").mkdir(parents=True)
+            (fake_core / "output_generators" / "rendering.py").write_text(
                 "def project_relations_to_level(*args): return []\n", encoding="utf-8"
             )
             (fake_core / "diagram_analysis" / "analysis_json.py").write_text(
