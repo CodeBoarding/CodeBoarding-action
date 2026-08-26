@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-08-26T22:15:30.234795+00:00",
-    "source_tree_hash": "7fe5db68bd4990f1223f8d2ae7dea7752bebfcac24649683de3d2fcef3746813",
+    "generated_at": "2026-08-26T23:12:32.695192+00:00",
+    "source_tree_hash": "d550fa93543f8ba6f1204aed2544184902205d9a297a13eb366f06ab4e7934c1",
     "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
@@ -56,7 +56,7 @@
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_level",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main"
       ],
-      "content_hash": "385a552dc44b4871",
+      "content_hash": "be4401b5ff279bd6",
       "module_hash": "76cbae741d0dd615"
     },
     "scripts/oidc_relay.py": {
@@ -130,7 +130,7 @@
       "start_line": 87,
       "end_line": 105,
       "type": "FUNCTION",
-      "content_hash": "6f39ab0d93375aa4"
+      "content_hash": "0ee6340a01cf0317"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_id": {
       "file_path": "scripts/diff_to_mermaid.py",
