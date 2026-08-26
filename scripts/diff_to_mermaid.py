@@ -87,8 +87,8 @@ def read_analysis_json(path: Path) -> dict:
 def load_analysis(path: Path) -> dict:
     data = read_analysis_json(path)
     try:
-        from codeboarding_workflows.rendering import project_relations_to_level
         from diagram_analysis.analysis_json import build_id_to_name_map, parse_unified_analysis
+        from output_generators.rendering import project_relations_to_level
     except ImportError as exc:
         sys.exit(f"::error::Could not load the installed CodeBoarding analysis reader: {exc}")
 

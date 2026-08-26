@@ -21,6 +21,34 @@ jobs:
       - name: Run unit tests (stdlib only)
         run: python -m unittest discover -s tests -v
 
+  core-compatibility:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned CodeBoarding release
+        shell: bash
+        run: |
+          set -euo pipefail
+          requirement="$(sed -n "s/.*'\(codeboarding==[^']*\)'.*/\1/p" action.yml)"
+          if [ -z "$requirement" ]; then
+            echo "Could not resolve the CodeBoarding requirement from action.yml" >&2
+            exit 1
+          fi
+          python -m pip install --disable-pip-version-check "$requirement"
+      - name: Render with the installed CodeBoarding release
+        run: >-
+          python scripts/diff_to_mermaid.py
+          --base .codeboarding/analysis.json
+          --head .codeboarding/analysis.json
+          --out "${RUNNER_TEMP}/diagram.md"
+          --direction LR
+          --render-depth 1
+
   lint:
     runs-on: ubuntu-latest
     steps:
