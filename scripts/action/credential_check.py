@@ -25,6 +25,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 DOCS = "https://github.com/CodeBoarding/CodeBoarding-action#authentication-and-providers"
 SETTINGS_HINT = "Settings -> Secrets and variables -> Actions"
@@ -113,16 +114,25 @@ def load_table(path: Path = TABLE) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _clean_key(raw: str) -> str:
-    """Undo the ways a pasted key arrives wrapped: whitespace, quotes, a VAR= prefix."""
-    value = re.sub(r"\s+", "", raw)
+def _unquote(value: str) -> str:
     for _ in range(2):
         value = re.sub(r'^"(.*)"$', r"\1", value)
         value = re.sub(r"^'(.*)'$", r"\1", value)
-    value = re.sub(r"^[A-Z0-9_]+=", "", value)
-    for _ in range(2):
-        value = re.sub(r'^"(.*)"$', r"\1", value)
-        value = re.sub(r"^'(.*)'$", r"\1", value)
+    return value
+
+
+def _clean_key(raw: str, env_var: str) -> str:
+    """Undo the ways a pasted key arrives wrapped: whitespace, quotes, a `VAR=` prefix.
+
+    Only THIS input's own variable name is stripped. Matching any `[A-Z0-9_]+=` prefix
+    corrupted real credentials: a base64 token like `AWSKEY123=` was reduced to the empty
+    string and then reported as a key the user had not set, which is precisely the
+    misleading failure this contract exists to remove. Bedrock bearer tokens are base64,
+    so that was reachable, not theoretical.
+    """
+    value = _unquote(re.sub(r"\s+", "", raw))
+    if value.startswith(f"{env_var}="):
+        value = _unquote(value[len(env_var) + 1 :])
     return value
 
 
@@ -132,7 +142,8 @@ def read_inputs(table: dict, environ: dict[str, str]) -> dict[str, str]:
     for provider in table["providers"].values():
         for input_name in provider["inputs"]:
             raw = environ.get(f"CB_IN_{input_name.upper()}", "")
-            value = _clean_key(raw) if input_name.endswith("_api_key") else raw.strip()
+            env_var = provider["inputs"][input_name]
+            value = _clean_key(raw, env_var) if input_name.endswith("_api_key") else raw.strip()
             if value:
                 values[input_name] = value
     return values
@@ -305,6 +316,27 @@ def _is_endpoint(var: str) -> bool:
     return var.endswith(("_BASE_URL", "_HOST")) or var == "AWS_DEFAULT_REGION"
 
 
+def _safe_endpoint(value: str) -> str:
+    """An endpoint with any embedded credential removed, for publishing.
+
+    The job summary renders on the run page, which is public for a public repository, and
+    an endpoint is user-supplied text that can carry authentication: `https://u:tok@host`
+    or `?api-key=...`. Endpoints are not masked, deliberately, because a wrong one is the
+    thing you most want to see. So publish the part that helps you spot a mistake, the
+    scheme, host and path, and drop the parts that only carry secrets.
+    """
+    split = urlsplit(value)
+    if not split.scheme or not split.netloc:
+        # Not a URL (OLLAMA_HOST is often `host:11434`), so it carries no userinfo unless
+        # someone wrote one; if they did, say nothing rather than guess where it ends.
+        return "(hidden)" if "@" in value else value
+    host = split.netloc.rsplit("@", 1)[-1]
+    redacted = urlunsplit((split.scheme, host, split.path, "", ""))
+    if split.username or split.query:
+        redacted += " (credentials removed)"
+    return redacted
+
+
 def _pays(table: dict, plan: dict) -> str:
     """What is actually paying for this run's tokens, in one phrase.
 
@@ -373,7 +405,7 @@ def plan_summary(table: dict, plan: dict) -> list[tuple[str, str]]:
     # setting most likely to be wrong and least likely to be noticed.
     for var, value in sorted(plan["env"].items()):
         if _is_endpoint(var):
-            rows.append((f"`{var}`", f"`{value}`"))
+            rows.append((f"`{var}`", f"`{_safe_endpoint(value)}`"))
     return rows
 
 

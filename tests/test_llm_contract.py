@@ -173,6 +173,45 @@ class ContractTests(unittest.TestCase):
         )
         self.assertEqual(plan["tier"], "hosted")
 
+    def test_a_key_containing_an_equals_sign_survives_intact(self) -> None:
+        """Stripping any `[A-Z0-9_]+=` prefix corrupted real credentials.
+
+        `AWSKEY123=` became the empty string and was then reported as a key the user had
+        not set, which is exactly the misleading failure this contract removes. Bedrock
+        bearer tokens are base64, so it was reachable rather than theoretical.
+        """
+        for raw in ("QUJDRA==", "ABC=DEF", "AWSKEY123=", "sk-ant-abc123"):
+            with self.subTest(key=raw):
+                plan = self.resolve(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY=raw)
+                self.assertEqual(plan["env"]["ANTHROPIC_API_KEY"], raw)
+        # The paste it was written for still works: this input's own variable, and no other.
+        pasted = self.resolve(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="ANTHROPIC_API_KEY=sk-real")
+        self.assertEqual(pasted["env"]["ANTHROPIC_API_KEY"], "sk-real")
+        other = self.resolve(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="OPENAI_API_KEY=sk-x")
+        self.assertEqual(other["env"]["ANTHROPIC_API_KEY"], "OPENAI_API_KEY=sk-x")
+
+    def test_a_published_endpoint_never_carries_its_credentials(self) -> None:
+        """The job summary renders on the run page, public for a public repository, and an
+        endpoint is user-supplied text that can carry authentication. Endpoints are not
+        masked on purpose, so what is published has to be safe by construction."""
+        for value in (
+            "https://user:s3cret@gw.example/v1",
+            "https://gw.example/v1?api-key=s3cret",
+        ):
+            with self.subTest(endpoint=value):
+                plan = self.resolve(CB_IN_LLM="openai", CB_IN_OPENAI_API_KEY="k", CB_IN_OPENAI_BASE_URL=value)
+                rendered = "\n".join(v for _, v in credential_check.plan_summary(self.table, plan))
+                self.assertNotIn("s3cret", rendered)
+                self.assertIn("gw.example", rendered, "the host still has to be checkable")
+                # The value the analysis uses is untouched; only the reporting is trimmed.
+                self.assertEqual(plan["env"]["OPENAI_BASE_URL"], value)
+
+    def test_an_ordinary_endpoint_is_published_unchanged(self) -> None:
+        """Redaction that mangles a correct endpoint would defeat the point of showing it."""
+        plan = self.resolve(CB_IN_LLM="ollama", CB_IN_OLLAMA_BASE_URL="http://localhost:11434")
+        rendered = dict(credential_check.plan_summary(self.table, plan))
+        self.assertEqual(rendered["`OLLAMA_BASE_URL`"], "`http://localhost:11434`")
+
     def test_a_hosted_run_does_not_name_the_upstream_it_is_routed_to(self) -> None:
         """Which provider sits behind CodeBoarding's proxy is our routing decision.
 
