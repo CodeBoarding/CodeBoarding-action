@@ -173,6 +173,33 @@ class ContractTests(unittest.TestCase):
         )
         self.assertEqual(plan["tier"], "hosted")
 
+    def test_a_hosted_run_does_not_name_the_upstream_it_is_routed_to(self) -> None:
+        """Which provider sits behind CodeBoarding's proxy is our routing decision.
+
+        Reporting it invites "why does my plan say openrouter?", and implies a commitment
+        we have not made: the proxy's upstream can change without notice. The plan keeps
+        it, because the analysis still has to be pointed somewhere; only the reporting
+        withholds it.
+        """
+        for environ in (
+            {"CB_IN_LLM": "hosted", **OIDC},
+            {"CB_IN_LLM": "license", "CB_IN_LICENSE_KEY": "lic", **OIDC},
+        ):
+            plan = self.resolve(**environ)
+            with self.subTest(tier=plan["tier"]):
+                self.assertEqual(credential_check.reported_provider(plan), "")
+                rendered = dict(credential_check.plan_summary(self.table, plan))
+                self.assertNotIn("Provider", rendered)
+                self.assertNotIn("openrouter", credential_check.plan_headline(self.table, plan))
+                # Still resolved internally: the run has to be pointed somewhere.
+                self.assertEqual(plan["provider"], "openrouter")
+
+    def test_your_own_provider_is_always_named(self) -> None:
+        """It is your configuration, and it is the thing you would check first."""
+        plan = self.resolve(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k")
+        self.assertEqual(credential_check.reported_provider(plan), "anthropic")
+        self.assertEqual(dict(credential_check.plan_summary(self.table, plan))["Provider"], "`anthropic`")
+
     def test_an_endpoint_only_run_is_not_described_as_using_a_key(self) -> None:
         """`llm: openai` with only a base URL resolves no key, and with-auth.sh strips any
         inherited one, so naming a key would name a credential that is not there."""

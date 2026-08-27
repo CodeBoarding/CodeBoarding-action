@@ -184,7 +184,8 @@ to Core and silently stay unreachable here.
 
 Every run reports what it resolved, so the answer never has to be inferred from behaviour:
 
-- outputs `llm_tier` (`hosted`, `license`, `byok`, `byok+license`), `llm_provider`, and
+- outputs `llm_tier` (`hosted`, `license`, `byok`, `byok+license`), `llm_provider` (empty
+  on the hosted tiers, where the upstream is ours rather than yours), and
   `llm_config_error` (empty when configured);
 - a job-summary table naming the tier and provider;
 - on a configuration failure, an error annotation and — in review mode — a pull request
@@ -316,7 +317,7 @@ The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted w
 | Output | Mode | Description |
 |---|---|---|
 | `llm_tier` | both | `hosted`, `license`, `byok`, or `byok+license`. |
-| `llm_provider` | both | Provider the run used. |
+| `llm_provider` | both | Provider the run used. Empty on `hosted` and `license`: which upstream the proxy routes to is CodeBoarding's decision, not your configuration. |
 | `llm_config_error` | both | Configuration failure code, empty when configured. |
 | `diagram_md` | review | Path to the rendered Mermaid block on the runner. |
 | `n_changed` | review | Number of changed components. |

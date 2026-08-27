@@ -326,6 +326,20 @@ def _pays(table: dict, plan: dict) -> str:
     return f"your own {label} endpoint, called directly with no API key"
 
 
+def reported_provider(plan: dict) -> str:
+    """The provider to tell the user about, which is none on the hosted tiers.
+
+    Hosted and licensed runs go through CodeBoarding's proxy, and which upstream sits
+    behind it is our routing decision, not the user's configuration. Naming it invites
+    "why does my CodeBoarding plan say openrouter?", and worse, implies a commitment we
+    have not made: we can change what the proxy routes to without telling anyone.
+
+    It stays in the plan, because the analysis still has to be pointed somewhere and the
+    reusable-analysis identity has to separate the tiers. Only the reporting is withheld.
+    """
+    return "" if plan["tier"] in ("hosted", "license") else plan["provider"]
+
+
 def plan_headline(table: dict, plan: dict) -> str:
     """The one line the log opens with. Same source as the summary, so they cannot drift."""
     sentence = f"CodeBoarding is running on {_pays(table, plan)}."
@@ -342,8 +356,11 @@ def plan_summary(table: dict, plan: dict) -> list[tuple[str, str]]:
     never reaches CodeBoarding, so a licence wired beside your own key is recorded and
     not spent; saying only "byok+license" leaves that ambiguous, so it is spelled out.
     """
-    tier, provider = plan["tier"], plan["provider"]
-    rows = [("Tier", f"`{tier}`"), ("Provider", f"`{provider}`")]
+    tier = plan["tier"]
+    rows = [("Tier", f"`{tier}`")]
+    shown = reported_provider(plan)
+    if shown:
+        rows.append(("Provider", f"`{shown}`"))
     rows.append(("Credentials", _pays(table, plan)))
     if tier == "byok+license":
         rows.append(
@@ -433,7 +450,7 @@ def main(argv: list[str]) -> int:
             "message": "",
             "details": "",
             "tier": plan["tier"],
-            "provider": plan["provider"],
+            "provider": reported_provider(plan),
             "summary": "\n".join(f"| {k} | {v} |" for k, v in plan_summary(table, plan)),
             "headline": plan_headline(table, plan),
         },
