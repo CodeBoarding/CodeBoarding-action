@@ -12,23 +12,23 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-_spec = importlib.util.spec_from_file_location("resolve_llm", ROOT / "scripts" / "action" / "resolve_llm.py")
-resolve_llm = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(resolve_llm)
+_spec = importlib.util.spec_from_file_location("llm_credentials", ROOT / "scripts" / "action" / "llm_credentials.py")
+llm_credentials = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(llm_credentials)
 
 OIDC = {"ACTIONS_ID_TOKEN_REQUEST_URL": "https://oidc.example/token"}
 
 
 class ContractTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.table = resolve_llm.load_table()
+        self.table = llm_credentials.load_table()
 
     def resolve(self, **environ: str) -> dict:
-        return resolve_llm.resolve(self.table, environ)
+        return llm_credentials.resolve(self.table, environ)
 
-    def refuse(self, **environ: str) -> resolve_llm.ConfigError:
-        with self.assertRaises(resolve_llm.ConfigError) as caught:
-            resolve_llm.resolve(self.table, environ)
+    def refuse(self, **environ: str) -> llm_credentials.ConfigError:
+        with self.assertRaises(llm_credentials.ConfigError) as caught:
+            llm_credentials.resolve(self.table, environ)
         return caught.exception
 
     # -- accepted shapes ---------------------------------------------------

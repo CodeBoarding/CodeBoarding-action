@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Resolves the run's LLM credentials from the action's inputs, or explains why it cannot.
+"""The run's LLM credentials: what they resolve to, or what to tell the user instead.
+
+Both halves live here on purpose. The `message` on every ConfigError is the sentence the
+user actually reads -- preflight-llm.sh puts it in the step output, and action.yml posts
+that same string as the pull request comment, the error annotation and the job summary --
+so the rule and its explanation are written together and cannot drift apart.
 
 One provider, chosen explicitly by the `llm` input, and nothing is ever reached by an
 empty string falling through to a default. A misconfigured run fails here -- before the
