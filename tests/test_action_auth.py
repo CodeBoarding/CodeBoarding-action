@@ -221,8 +221,26 @@ class ActionAuthTests(unittest.TestCase):
         self.assertEqual(outputs["error"], "hosted_with_provider_key")
         self.assertIn("openai_api_key", outputs["message"])
         self.assertIn("::error title=CodeBoarding LLM configuration::", result.stdout)
+        # The annotation carries the one-line form; the summary carries the copyable one.
+        annotation = next(line for line in result.stdout.splitlines() if line.startswith("::error title="))
+        self.assertNotIn("```", annotation)
         summary = (Path(self.temp_dir.name) / "summary.md").read_text(encoding="utf-8")
         self.assertIn("CodeBoarding could not start", summary)
+        # "Remove one of these" has two valid fixes, so it stays prose; the remedies that
+        # have one exact answer carry a snippet, which the next test covers.
+        self.assertIn("openai_api_key", outputs["details"])
+
+    def test_a_refusal_with_one_exact_fix_carries_it_into_the_summary(self) -> None:
+        result, _, outputs = self._preflight(
+            CB_IN_LLM="anthropic",
+            GITHUB_REPOSITORY="acme/widgets",
+            GITHUB_SERVER_URL="https://github.com",
+        )
+        self.assertNotEqual(result.returncode, 0)
+        summary = (Path(self.temp_dir.name) / "summary.md").read_text(encoding="utf-8")
+        self.assertIn("```yaml", summary, "the summary should show the line to add")
+        self.assertIn("secrets/actions/new", summary, "and the page to click")
+        self.assertIn("anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}", outputs["details"])
 
     def test_successful_run_reports_its_tier_and_provider(self) -> None:
         """The webview reads this to show what a repository is actually running on."""

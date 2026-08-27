@@ -31,6 +31,7 @@ tier="$(field tier)"
 provider="$(field provider)"
 error="$(field error)"
 message="$(field message)"
+details="$(field details)"
 
 backend_id=""
 [ ! -s "$AUTH_DIR/backend-id" ] || backend_id="$(cksum < "$AUTH_DIR/backend-id" | cut -d' ' -f1)"
@@ -43,6 +44,11 @@ backend_id=""
   echo "message<<CB_EOF"
   echo "$message"
   echo "CB_EOF"
+  # Markdown, for the surfaces that can render it. The annotation gets `message`, which
+  # is one line, because a workflow command cannot carry newlines.
+  echo "details<<CB_EOF"
+  echo "$details"
+  echo "CB_EOF"
 } >> "$GITHUB_OUTPUT"
 
 if [ "$resolved" -ne 0 ]; then
@@ -50,7 +56,7 @@ if [ "$resolved" -ne 0 ]; then
   {
     echo "### CodeBoarding could not start"
     echo
-    echo "$message"
+    echo "$details"
     echo
     echo "No analysis ran, and no CodeBoarding hosted usage was consumed."
   } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"

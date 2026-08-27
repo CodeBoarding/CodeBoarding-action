@@ -291,7 +291,7 @@ runs:
         message: |
           ### CodeBoarding review - not configured
 
-          ${{ steps.llm.outputs.message }}
+          ${{ steps.llm.outputs.details }}
 
           No analysis ran, and no CodeBoarding hosted usage was consumed.
 

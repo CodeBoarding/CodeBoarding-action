@@ -163,6 +163,53 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(error.code, "unknown_llm")
         self.assertIn("anthropic", error.message)
 
+    def test_a_remedy_links_the_secrets_page_and_shows_the_line_to_add(self) -> None:
+        """ "Add the secret and wire it" is a description of the fix, not the fix.
+
+        The reader is someone who has never edited a workflow. They get the page to click
+        and the exact YAML, in the file it belongs in, indented as it will sit there.
+        """
+        runner = {
+            "GITHUB_REPOSITORY": "acme/widgets",
+            "GITHUB_SERVER_URL": "https://github.com",
+            "GITHUB_WORKFLOW_REF": "acme/widgets/.github/workflows/codeboarding.yml@refs/pull/7/merge",
+        }
+        error = self.refuse(CB_IN_LLM="anthropic", **runner)
+        self.assertIn("https://github.com/acme/widgets/settings/secrets/actions/new", error.details)
+        self.assertIn(".github/workflows/codeboarding.yml", error.details)
+        self.assertIn("```yaml", error.details)
+        self.assertIn("anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}", error.details)
+        self.assertIn("llm: anthropic", error.details)
+
+    def test_a_remedy_degrades_to_prose_off_a_runner(self) -> None:
+        """No GITHUB_REPOSITORY means no link to build, so say it without one."""
+        error = self.refuse(CB_IN_LLM="anthropic")
+        self.assertNotIn("](", error.details, "a half-built link is worse than none")
+        self.assertIn("Add a repository secret", error.details)
+        self.assertIn("your CodeBoarding workflow", error.details)
+
+    def test_the_licence_and_permission_remedies_are_copyable_too(self) -> None:
+        licence = self.refuse(CB_IN_LLM="license", GITHUB_REPOSITORY="acme/widgets", **OIDC)
+        self.assertIn("secrets/actions/new", licence.details)
+        self.assertIn("license_key: ${{ secrets.CODEBOARDING_LICENSE }}", licence.details)
+
+        oidc = self.refuse(CB_IN_LLM="hosted")
+        self.assertIn("permissions:", oidc.details)
+        self.assertIn("id-token: write", oidc.details)
+        self.assertIn("```yaml", oidc.details)
+
+    def test_the_annotation_stays_one_line_however_rich_the_remedy(self) -> None:
+        """`::error::` cannot carry newlines, so the two renderings must stay separate."""
+        for environ in (
+            {"CB_IN_LLM": "anthropic", "GITHUB_REPOSITORY": "acme/widgets"},
+            {"CB_IN_LLM": "license", **OIDC},
+            {"CB_IN_LLM": "hosted"},
+            {},
+        ):
+            with self.subTest(environ=environ):
+                error = self.refuse(**environ)
+                self.assertNotIn("\n", error.message)
+
     def test_every_declared_refusal_is_exercised_by_this_file(self) -> None:
         """No refusal ships untested. Walks one configuration per code and asserts the set
         it produces is exactly the set the module declares it can raise, so adding a code

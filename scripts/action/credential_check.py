@@ -54,13 +54,59 @@ ERROR_CODES = frozenset(
 
 
 class ConfigError(Exception):
-    """A configuration the action refuses to run, with the code the webview keys on."""
+    """A configuration the action refuses to run, with the code the webview keys on.
 
-    def __init__(self, code: str, message: str) -> None:
+    Two renderings, because they go to surfaces with different rules. ``message`` is one
+    plain line, for the ``::error::`` annotation, which cannot carry newlines. ``details``
+    is markdown for the pull request comment and the job summary, where a link and a
+    snippet the reader can copy are worth far more than a sentence describing them.
+    """
+
+    def __init__(self, code: str, message: str, details: str | None = None) -> None:
         super().__init__(message)
         assert code in ERROR_CODES, f"undeclared error code: {code}"
         self.code = code
         self.message = message
+        self.details = details or message
+
+
+def secrets_url(environ: dict[str, str]) -> str | None:
+    """This repository's "new secret" page, when the runner tells us which repo we are in."""
+    repo = environ.get("GITHUB_REPOSITORY", "")
+    if not repo:
+        return None
+    server = environ.get("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
+    return f"{server}/{repo}/settings/secrets/actions/new"
+
+
+def workflow_path(environ: dict[str, str]) -> str:
+    """The workflow file to edit, named rather than left for the reader to find.
+
+    GITHUB_WORKFLOW_REF is ``owner/repo/.github/workflows/x.yml@refs/...``; a repository
+    can have several workflows calling this action, so "add it to your workflow" is not
+    an instruction someone can follow without guessing.
+    """
+    ref = environ.get("GITHUB_WORKFLOW_REF", "")
+    path = ref.split("@", 1)[0]
+    _, _, tail = path.partition("/")
+    _, _, tail = tail.partition("/")
+    return tail or "your CodeBoarding workflow"
+
+
+def _add_secret(environ: dict[str, str], secret: str, what: str) -> str:
+    """Step one of every credential remedy: put the value in the repository."""
+    url = secrets_url(environ)
+    where = f"[Add a repository secret]({url})" if url else "Add a repository secret"
+    return f"{where} named `{secret}`, with {what} as the value."
+
+
+def _wire_it(environ: dict[str, str], llm: str, lines: list[str]) -> str:
+    """Step two: the exact YAML, in the exact file, indented as it will sit there."""
+    body = "\n".join(f"          {line}" for line in lines)
+    return (
+        f"In `{workflow_path(environ)}`, the CodeBoarding step's `with:` block "
+        f"needs to read:\n\n```yaml\n        with:\n          llm: {llm}\n{body}\n```"
+    )
 
 
 def load_table(path: Path = TABLE) -> dict:
@@ -124,10 +170,18 @@ def _require_id_token(llm: str, environ: dict[str, str]) -> None:
         "missing_id_token",
         f"`llm: {llm}` authenticates with a GitHub OIDC token, which this job cannot mint. "
         "Add `permissions:` with `id-token: write` to the job that uses this action.",
+        "\n\n".join(
+            [
+                f"`llm: {llm}` authenticates with a GitHub OIDC token, which this job cannot mint.",
+                f"In `{workflow_path(environ)}`, the job running this action needs:",
+                "```yaml\n    permissions:\n      id-token: write\n```",
+                "No secret is involved: the token is minted per request and never stored.",
+            ]
+        ),
     )
 
 
-def _resolve_byok(table: dict, name: str, given: dict[str, str]) -> dict:
+def _resolve_byok(table: dict, name: str, given: dict[str, str], environ: dict[str, str]) -> dict:
     provider = table["providers"][name]
     foreign = sorted(i for i in given if owner_of(table, i) != name)
     if foreign:
@@ -150,15 +204,26 @@ def _resolve_byok(table: dict, name: str, given: dict[str, str]) -> dict:
         # page for the inputs that actually belong there.
         if keys:
             secret = provider["inputs"][keys[0]]
-            fix = (
-                f"Add the {secret} repository secret ({SETTINGS_HINT}) and wire it as "
-                f"`{keys[0]}: ${{{{ secrets.{secret} }}}}`."
+            fix = f"Add the {secret} repository secret ({SETTINGS_HINT}) and wire it as `{keys[0]}`."
+            details = "\n\n".join(
+                [
+                    f"`llm: {name}` needs {needed}, and none is set.",
+                    "**1.** " + _add_secret(environ, secret, f"your {provider['label']} API key"),
+                    "**2.** " + _wire_it(environ, name, [f"{keys[0]}: ${{{{ secrets.{secret} }}}}"]),
+                ]
             )
         else:
             fix = f"Set `{wanted[0]}` on the action step to your {provider['label']} endpoint."
+            details = "\n\n".join(
+                [
+                    f"`llm: {name}` needs {needed}, and none is set.",
+                    _wire_it(environ, name, [f"{wanted[0]}: https://your-{name}-host"]),
+                ]
+            )
         raise ConfigError(
             "missing_provider_key",
             f"`llm: {name}` needs {needed}, and none is set. {fix}",
+            details,
         )
     return env
 
@@ -194,8 +259,14 @@ def resolve(table: dict, environ: dict[str, str]) -> dict:
             raise ConfigError(
                 "missing_license_key",
                 "`llm: license` needs `license_key`, which is empty. Add the "
-                f"CODEBOARDING_LICENSE repository secret ({SETTINGS_HINT}) and wire it as "
-                "`license_key: ${{ secrets.CODEBOARDING_LICENSE }}`.",
+                f"CODEBOARDING_LICENSE repository secret ({SETTINGS_HINT}) and wire it.",
+                "\n\n".join(
+                    [
+                        "`llm: license` needs `license_key`, which is empty.",
+                        "**1.** " + _add_secret(environ, "CODEBOARDING_LICENSE", "your CodeBoarding licence key"),
+                        "**2.** " + _wire_it(environ, "license", ["license_key: ${{ secrets.CODEBOARDING_LICENSE }}"]),
+                    ]
+                ),
             )
         _require_id_token(llm, environ)
         return {
@@ -214,7 +285,7 @@ def resolve(table: dict, environ: dict[str, str]) -> dict:
             f"See {DOCS}.",
         )
 
-    env = _resolve_byok(table, name, given)
+    env = _resolve_byok(table, name, given, environ)
     # A licence alongside a provider key is deliberately allowed, not an error: it says
     # "my CodeBoarding plan, my own tokens". Nothing enforces it yet -- direct provider
     # calls never reach our proxy -- so it is recorded for the surfaces that read it.
@@ -282,7 +353,15 @@ def main(argv: list[str]) -> int:
     try:
         plan = resolve(table, dict(os.environ))
     except ConfigError as error:
-        json.dump({"ok": False, "error": error.code, "message": error.message}, sys.stdout)
+        json.dump(
+            {
+                "ok": False,
+                "error": error.code,
+                "message": error.message,
+                "details": error.details,
+            },
+            sys.stdout,
+        )
         print()
         return 1
 
@@ -293,6 +372,7 @@ def main(argv: list[str]) -> int:
             "ok": True,
             "error": "",
             "message": "",
+            "details": "",
             "tier": plan["tier"],
             "provider": plan["provider"],
         },
