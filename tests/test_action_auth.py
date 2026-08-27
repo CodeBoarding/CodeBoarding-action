@@ -155,8 +155,8 @@ class ActionAuthTests(unittest.TestCase):
         self.assertEqual(scoped.returncode, 0, scoped.stderr or scoped.stdout)
 
     def test_a_provider_input_left_empty_is_stripped_not_inherited(self) -> None:
-        """`aws_region` unset means the engine's default, never whatever the job exported."""
-        result, auth_dir, _ = self._preflight(CB_IN_LLM="aws", CB_IN_AWS_API_KEY="k")
+        """An unset region means the engine's default, never whatever the job exported."""
+        result, auth_dir, _ = self._preflight(CB_IN_LLM="aws_bedrock", CB_IN_AWS_BEDROCK_API_KEY="k")
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
         self.assertIn("AWS_DEFAULT_REGION", (auth_dir / "foreign-envs").read_text(encoding="utf-8"))
 

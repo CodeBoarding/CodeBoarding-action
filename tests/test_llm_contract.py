@@ -65,11 +65,31 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(plan["tier"], "byok+license")
         self.assertEqual(plan["provider"], "anthropic")
 
-    def test_aliases_and_casing_resolve_to_the_canonical_provider(self) -> None:
-        for value in ("aws_bedrock", "AWS-Bedrock", "  bedrock  "):
+    def test_one_spelling_per_provider_and_nothing_else(self) -> None:
+        """Casing and surrounding space are forgiven; a second spelling is not.
+
+        Aliases look free and are not: each one is another value to document, test and keep
+        in step with the picker, and the refusal already lists what is accepted.
+        """
+        for value in ("aws_bedrock", "AWS_BEDROCK", "  aws_bedrock  "):
             with self.subTest(value=value):
-                plan = self.resolve(CB_IN_LLM=value, CB_IN_AWS_API_KEY="k")
-                self.assertEqual(plan["provider"], "aws")
+                plan = self.resolve(CB_IN_LLM=value, CB_IN_AWS_BEDROCK_API_KEY="k")
+                self.assertEqual(plan["provider"], "aws_bedrock")
+        for value in ("aws", "bedrock", "aws-bedrock", "gemini"):
+            with self.subTest(rejected=value):
+                error = self.refuse(CB_IN_LLM=value, CB_IN_AWS_BEDROCK_API_KEY="k")
+                self.assertEqual(error.code, "unknown_llm")
+                self.assertIn("aws_bedrock", error.message, "the refusal must name what to use")
+
+    def test_each_providers_inputs_are_named_after_the_value_that_selects_it(self) -> None:
+        """`llm: X` always pairs with `X_api_key`, so the pairing never has to be looked up."""
+        for name, provider in self.table["providers"].items():
+            for input_name in provider["inputs"]:
+                with self.subTest(provider=name, input=input_name):
+                    self.assertTrue(input_name.startswith(f"{name}_"), input_name)
+
+    def test_the_table_carries_no_alias_map(self) -> None:
+        self.assertNotIn("aliases", self.table)
 
     def test_pasted_key_wrappers_are_stripped(self) -> None:
         plan = self.resolve(CB_IN_LLM="openrouter", CB_IN_OPENROUTER_API_KEY="  'OPENROUTER_API_KEY=\"sk-x\"'  \n")

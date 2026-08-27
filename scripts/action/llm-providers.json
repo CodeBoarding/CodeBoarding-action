@@ -6,6 +6,12 @@
     "file cannot ship: a provider core added but this table lacks would otherwise be",
     "unreachable, and one core removed would be accepted here and fail mid-analysis.",
     "",
+    "Each key is the ONE value `llm:` accepts for that provider, and each provider's inputs",
+    "are named after it, so `llm: X` always pairs with `X_api_key`. There are no aliases:",
+    "a second spelling is a second thing to document, test and keep in step, and the error",
+    "message lists the accepted values anyway. Where core's internal name differs from the",
+    "one we ask people to type, `core` carries the translation and nothing else does.",
+    "",
     "'selection_envs' is the load-bearing field. Core selects a provider when ANY of them",
     "is set, so 'at least one is non-empty' is exactly what makes a provider usable -- this",
     "action does not invent a stricter or looser rule of its own. An api-key env that is not",
@@ -14,11 +20,6 @@
   ],
   "engine": "0.13.10",
   "hosted_provider": "openrouter",
-  "aliases": {
-    "aws_bedrock": "aws",
-    "bedrock": "aws",
-    "gemini": "google"
-  },
   "providers": {
     "openrouter": {
       "label": "OpenRouter",
@@ -78,14 +79,15 @@
         "vercel_base_url": "VERCEL_BASE_URL"
       }
     },
-    "aws": {
+    "aws_bedrock": {
+      "core": "aws",
       "label": "AWS Bedrock",
       "selection_envs": [
         "AWS_BEARER_TOKEN_BEDROCK"
       ],
       "inputs": {
-        "aws_api_key": "AWS_BEARER_TOKEN_BEDROCK",
-        "aws_region": "AWS_DEFAULT_REGION"
+        "aws_bedrock_api_key": "AWS_BEARER_TOKEN_BEDROCK",
+        "aws_bedrock_region": "AWS_DEFAULT_REGION"
       }
     },
     "cerebras": {

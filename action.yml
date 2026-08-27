@@ -10,7 +10,7 @@ inputs:
     required: false
     default: 'review'
   llm:
-    description: 'Required. Where analysis credentials come from: hosted, license, or a provider name (anthropic, aws, cerebras, deepseek, glm, google, kimi, litellm, ollama, openai, openrouter, orcarouter, vercel).'
+    description: 'Required. Where analysis credentials come from: hosted, license, or a provider name (anthropic, aws_bedrock, cerebras, deepseek, glm, google, kimi, litellm, ollama, openai, openrouter, orcarouter, vercel).'
     required: true
   license_key:
     description: 'CodeBoarding license key. Required by llm: license; optional alongside a provider key.'
@@ -21,13 +21,13 @@ inputs:
     description: 'Anthropic API key, used when llm is anthropic. Sets ANTHROPIC_API_KEY.'
     required: false
     default: ''
-  # AWS Bedrock - selected by llm: aws
-  aws_api_key:
-    description: 'AWS Bedrock API key, used when llm is aws. Sets AWS_BEARER_TOKEN_BEDROCK.'
+  # AWS Bedrock - selected by llm: aws_bedrock
+  aws_bedrock_api_key:
+    description: 'AWS Bedrock API key, used when llm is aws_bedrock. Sets AWS_BEARER_TOKEN_BEDROCK.'
     required: false
     default: ''
-  aws_region:
-    description: 'AWS Bedrock region, used when llm is aws. Sets AWS_DEFAULT_REGION.'
+  aws_bedrock_region:
+    description: 'AWS Bedrock region, used when llm is aws_bedrock. Sets AWS_DEFAULT_REGION.'
     required: false
     default: ''
   # Cerebras - selected by llm: cerebras
@@ -256,8 +256,8 @@ runs:
         CB_IN_LLM: ${{ inputs.llm }}
         CB_IN_LICENSE_KEY: ${{ inputs.license_key }}
         CB_IN_ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
-        CB_IN_AWS_API_KEY: ${{ inputs.aws_api_key }}
-        CB_IN_AWS_REGION: ${{ inputs.aws_region }}
+        CB_IN_AWS_BEDROCK_API_KEY: ${{ inputs.aws_bedrock_api_key }}
+        CB_IN_AWS_BEDROCK_REGION: ${{ inputs.aws_bedrock_region }}
         CB_IN_CEREBRAS_API_KEY: ${{ inputs.cerebras_api_key }}
         CB_IN_DEEPSEEK_API_KEY: ${{ inputs.deepseek_api_key }}
         CB_IN_DEEPSEEK_BASE_URL: ${{ inputs.deepseek_base_url }}

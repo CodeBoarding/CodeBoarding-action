@@ -154,7 +154,7 @@ without knowing any precedence rules.
 | `llm` | Provider | Inputs | Needs at least one of |
 |---|---|---|---|
 | `anthropic` | Anthropic | `anthropic_api_key` | `anthropic_api_key` |
-| `aws` | AWS Bedrock | `aws_api_key`, `aws_region` | `aws_api_key` |
+| `aws_bedrock` | AWS Bedrock | `aws_bedrock_api_key`, `aws_bedrock_region` | `aws_bedrock_api_key` |
 | `cerebras` | Cerebras | `cerebras_api_key` | `cerebras_api_key` |
 | `deepseek` | DeepSeek | `deepseek_api_key`, `deepseek_base_url` | `deepseek_api_key` or `deepseek_base_url` |
 | `glm` | GLM | `glm_api_key`, `glm_base_url` | `glm_api_key` or `glm_base_url` |
@@ -167,9 +167,11 @@ without knowing any precedence rules.
 | `orcarouter` | OrcaRouter | `orcarouter_api_key` | `orcarouter_api_key` |
 | `vercel` | Vercel AI Gateway | `vercel_api_key`, `vercel_base_url` | `vercel_api_key` or `vercel_base_url` |
 
-`aws_bedrock`, `bedrock` and `gemini` are accepted as aliases. `ollama` and `litellm` are
-selected by their endpoint rather than a key, which is why a key alone does not configure
-them — that mirrors how Core itself decides.
+Each provider has exactly one accepted spelling, and its inputs are named after it, so
+`llm: X` always pairs with `X_api_key`. There are no aliases: a second spelling is another
+thing to document and keep in step, and an unrecognised value is refused with the accepted
+list. `ollama` and `litellm` are selected by their endpoint rather than a key, which is why
+a key alone does not configure them — that mirrors how Core itself decides.
 
 This table is generated from [`scripts/action/llm-providers.json`](scripts/action/llm-providers.json),
 which mirrors the CodeBoarding release this action pins. `tests/test_provider_table_drift.py`

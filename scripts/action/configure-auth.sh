@@ -20,10 +20,6 @@ case "$TIER" in
   *) echo "Using direct $(cat "$AUTH_DIR/provider-name") credentials."; exit 0 ;;
 esac
 
-if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
-  echo "::error::Missing OIDC token. Add permissions: id-token: write." && exit 1
-fi
-
 READY="$AUTH_DIR/ready-port"
 PID="$AUTH_DIR/relay.pid"
 LOG="$AUTH_DIR/relay.log"

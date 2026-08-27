@@ -137,7 +137,7 @@ def _resolve_byok(table: dict, name: str, given: dict[str, str]) -> dict:
 
 def resolve(table: dict, environ: dict[str, str]) -> dict:
     """The whole contract. Returns a plan; raises ConfigError with the reason otherwise."""
-    llm = re.sub(r"[\s-]+", "_", environ.get("CB_IN_LLM", "").strip().lower())
+    llm = environ.get("CB_IN_LLM", "").strip().lower()
     license_key = environ.get("CB_IN_LICENSE_KEY", "").strip()
     given = read_inputs(table, environ)
 
@@ -158,7 +158,7 @@ def resolve(table: dict, environ: dict[str, str]) -> dict:
                 "to run your CodeBoarding plan, or remove `license_key`.",
             )
         _require_id_token(llm, environ)
-        return {"tier": "hosted", "provider": table["hosted_provider"], "hosted": True, "env": {}}
+        return {"tier": "hosted", "provider": table["hosted_provider"], "env": {}}
 
     if llm == "license":
         _reject_provider_inputs(table, given, llm, "license")
@@ -173,12 +173,11 @@ def resolve(table: dict, environ: dict[str, str]) -> dict:
         return {
             "tier": "license",
             "provider": table["hosted_provider"],
-            "hosted": True,
             "license": license_key,
             "env": {},
         }
 
-    name = table["aliases"].get(llm, llm)
+    name = llm
     if name not in table["providers"]:
         raise ConfigError(
             "unknown_llm",
@@ -194,7 +193,6 @@ def resolve(table: dict, environ: dict[str, str]) -> dict:
     return {
         "tier": "byok+license" if license_key else "byok",
         "provider": name,
-        "hosted": False,
         "env": env,
     }
 
@@ -250,7 +248,6 @@ def main(argv: list[str]) -> int:
             "message": "",
             "tier": plan["tier"],
             "provider": plan["provider"],
-            "hosted": plan["hosted"],
         },
         sys.stdout,
     )

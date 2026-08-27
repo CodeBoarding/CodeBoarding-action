@@ -42,6 +42,11 @@ def _core_providers():
 CORE_PROVIDERS = _core_providers()
 
 
+def core_name(name: str) -> str:
+    """The engine's name for a provider we may expose under a friendlier one."""
+    return TABLE["providers"][name].get("core", name)
+
+
 @unittest.skipIf(CORE_PROVIDERS is None, "the pinned CodeBoarding release is not installed")
 class ProviderTableDriftTests(unittest.TestCase):
     def test_the_table_pins_the_release_action_yml_installs(self) -> None:
@@ -55,7 +60,7 @@ class ProviderTableDriftTests(unittest.TestCase):
 
     def test_the_same_providers_exist_on_both_sides(self) -> None:
         self.assertEqual(
-            sorted(TABLE["providers"]),
+            sorted(core_name(n) for n in TABLE["providers"]),
             sorted(CORE_PROVIDERS),
             "the action and the pinned engine disagree about which providers exist",
         )
@@ -66,13 +71,13 @@ class ProviderTableDriftTests(unittest.TestCase):
             with self.subTest(provider=name):
                 self.assertEqual(
                     sorted(provider["selection_envs"]),
-                    sorted(CORE_PROVIDERS[name].selection_envs),
+                    sorted(CORE_PROVIDERS[core_name(name)].selection_envs),
                     f"{name}'s selection variables drifted from the engine",
                 )
 
     def test_every_provider_key_reaches_the_variable_core_reads(self) -> None:
         for name, provider in TABLE["providers"].items():
-            api_key_env = CORE_PROVIDERS[name].api_key_env
+            api_key_env = CORE_PROVIDERS[core_name(name)].api_key_env
             if api_key_env is None:
                 continue  # e.g. aws, whose SDK reads its own bearer token variable
             with self.subTest(provider=name):
@@ -91,14 +96,15 @@ class ProviderTableDriftTests(unittest.TestCase):
         }
         self.assertEqual(sorted(core - known), [])
 
-    def test_aliases_point_at_providers_that_exist(self) -> None:
-        for alias, target in TABLE["aliases"].items():
-            with self.subTest(alias=alias):
-                self.assertIn(target, CORE_PROVIDERS)
-                self.assertNotIn(alias, CORE_PROVIDERS, f"{alias} is a real provider, not an alias")
+    def test_every_renamed_provider_still_names_a_real_one(self) -> None:
+        """A `core` translation may only point at a provider the engine actually has."""
+        for name, provider in TABLE["providers"].items():
+            if "core" in provider:
+                with self.subTest(provider=name):
+                    self.assertIn(provider["core"], CORE_PROVIDERS)
 
     def test_the_hosted_tier_names_a_real_provider(self) -> None:
-        self.assertIn(TABLE["hosted_provider"], CORE_PROVIDERS)
+        self.assertIn(core_name(TABLE["hosted_provider"]), CORE_PROVIDERS)
 
 
 if __name__ == "__main__":
