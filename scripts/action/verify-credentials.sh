@@ -78,16 +78,10 @@ if [ -d "$AUTH_DIR/env" ]; then
 fi
 [ ! -s "$AUTH_DIR/license.txt" ] || echo "::add-mask::$(cat "$AUTH_DIR/license.txt")"
 
-case "$tier" in
-  hosted) label="CodeBoarding's hosted free tier" ;;
-  license) label="a CodeBoarding plan, on CodeBoarding's hosted tier" ;;
-  byok) label="your own ${provider} key" ;;
-  # Named precisely: the plan is wired but a direct provider call never reaches us, so
-  # "with a CodeBoarding plan" would imply the plan is paying for something here.
-  byok+license) label="your own ${provider} key (the wired CodeBoarding plan is not spent on a direct call)" ;;
-  *) label="${tier}" ;;
-esac
-echo "CodeBoarding is running on ${label}."
+# Written by the check, not restated here. The same phrase feeds the summary, so the log
+# and the summary cannot end up claiming different things -- which they did: this said
+# "your own openai key" for an endpoint-only run that resolved no key at all.
+field headline
 # The rows come from the check, which is the only thing that knows what it resolved.
 {
   echo "### CodeBoarding configuration"

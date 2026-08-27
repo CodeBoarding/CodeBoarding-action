@@ -164,7 +164,11 @@ def _reject_provider_inputs(table: dict, given: dict[str, str], llm: str, tier: 
 
 
 def _require_id_token(llm: str, environ: dict[str, str]) -> None:
-    if environ.get("ACTIONS_ID_TOKEN_REQUEST_URL"):
+    # Both, because the relay needs both (oidc_relay.py refuses to start without either)
+    # and a runner can expose one without the other. Checking only the URL let that case
+    # through preflight and turned it into a generic failure after the engine install,
+    # which is the whole thing this check exists to prevent.
+    if environ.get("ACTIONS_ID_TOKEN_REQUEST_URL") and environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN"):
         return
     raise ConfigError(
         "missing_id_token",
@@ -301,6 +305,35 @@ def _is_endpoint(var: str) -> bool:
     return var.endswith(("_BASE_URL", "_HOST")) or var == "AWS_DEFAULT_REGION"
 
 
+def _pays(table: dict, plan: dict) -> str:
+    """What is actually paying for this run's tokens, in one phrase.
+
+    Endpoint-only runs are the reason this is not just the tier name. `llm: openai` with a
+    base URL and no key, and every keyless ollama or litellm run, resolve with no API key
+    at all -- with-auth.sh strips any inherited one -- so "your own OpenAI key" would name
+    a credential that is not there.
+    """
+    tier, provider = plan["tier"], plan["provider"]
+    if tier == "hosted":
+        return "CodeBoarding's hosted free tier"
+    if tier == "license":
+        return "CodeBoarding's hosted tier, on your plan"
+    entry = table["providers"].get(provider, {})
+    label = entry.get("label", provider)
+    key_envs = {var for i, var in entry.get("inputs", {}).items() if i.endswith("_api_key")}
+    if any(plan["env"].get(var) for var in key_envs):
+        return f"your own {label} key, called directly"
+    return f"your own {label} endpoint, called directly with no API key"
+
+
+def plan_headline(table: dict, plan: dict) -> str:
+    """The one line the log opens with. Same source as the summary, so they cannot drift."""
+    sentence = f"CodeBoarding is running on {_pays(table, plan)}."
+    if plan["tier"] == "byok+license":
+        return sentence + " The wired CodeBoarding plan is not spent on a direct call."
+    return sentence
+
+
 def plan_summary(table: dict, plan: dict) -> list[tuple[str, str]]:
     """What this run is actually about to do, for the job summary.
 
@@ -310,14 +343,8 @@ def plan_summary(table: dict, plan: dict) -> list[tuple[str, str]]:
     not spent; saying only "byok+license" leaves that ambiguous, so it is spelled out.
     """
     tier, provider = plan["tier"], plan["provider"]
-    label = table["providers"].get(provider, {}).get("label", provider)
     rows = [("Tier", f"`{tier}`"), ("Provider", f"`{provider}`")]
-    if tier == "hosted":
-        rows.append(("Credentials", "CodeBoarding's hosted free tier"))
-    elif tier == "license":
-        rows.append(("Credentials", "CodeBoarding's hosted tier, on your plan"))
-    else:
-        rows.append(("Credentials", f"your own {label} key, called directly"))
+    rows.append(("Credentials", _pays(table, plan)))
     if tier == "byok+license":
         rows.append(
             (
@@ -408,6 +435,7 @@ def main(argv: list[str]) -> int:
             "tier": plan["tier"],
             "provider": plan["provider"],
             "summary": "\n".join(f"| {k} | {v} |" for k, v in plan_summary(table, plan)),
+            "headline": plan_headline(table, plan),
         },
         sys.stdout,
     )

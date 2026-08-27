@@ -16,7 +16,11 @@ _spec = importlib.util.spec_from_file_location("credential_check", ROOT / "scrip
 credential_check = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(credential_check)
 
-OIDC = {"ACTIONS_ID_TOKEN_REQUEST_URL": "https://oidc.example/token"}
+# Both, since the relay needs both and the check now says so.
+OIDC = {
+    "ACTIONS_ID_TOKEN_REQUEST_URL": "https://oidc.example/token",
+    "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "request-token",
+}
 
 
 class ContractTests(unittest.TestCase):
@@ -150,6 +154,41 @@ class ContractTests(unittest.TestCase):
         error = self.refuse(CB_IN_LLM="license", **OIDC)
         self.assertEqual(error.code, "missing_license_key")
         self.assertIn("CODEBOARDING_LICENSE", error.message)
+
+    def test_hosted_tiers_require_both_oidc_variables(self) -> None:
+        """The relay refuses to start without either, and a runner can expose one alone.
+
+        Checking only the URL let that through preflight and turned a detectable
+        configuration error into a generic failure after the engine install.
+        """
+        for extra in ({}, {"ACTIONS_ID_TOKEN_REQUEST_URL": "https://oidc.example/token"}):
+            with self.subTest(present=sorted(extra)):
+                error = self.refuse(CB_IN_LLM="hosted", **extra)
+                self.assertEqual(error.code, "missing_id_token")
+        # Both present is the only accepted shape.
+        plan = self.resolve(
+            CB_IN_LLM="hosted",
+            ACTIONS_ID_TOKEN_REQUEST_URL="https://oidc.example/token",
+            ACTIONS_ID_TOKEN_REQUEST_TOKEN="request-token",
+        )
+        self.assertEqual(plan["tier"], "hosted")
+
+    def test_an_endpoint_only_run_is_not_described_as_using_a_key(self) -> None:
+        """`llm: openai` with only a base URL resolves no key, and with-auth.sh strips any
+        inherited one, so naming a key would name a credential that is not there."""
+        table = self.table
+        keyless = self.resolve(CB_IN_LLM="openai", CB_IN_OPENAI_BASE_URL="https://gw.example/v1")
+        self.assertIn("no API key", credential_check.plan_headline(table, keyless))
+        self.assertNotIn("key, called directly", credential_check.plan_headline(table, keyless))
+
+        keyed = self.resolve(CB_IN_LLM="openai", CB_IN_OPENAI_API_KEY="sk-x")
+        self.assertIn("your own OpenAI key, called directly", credential_check.plan_headline(table, keyed))
+
+    def test_the_headline_and_the_summary_cannot_disagree(self) -> None:
+        """Both render from the same phrase; they were separately written and drifted."""
+        plan = self.resolve(CB_IN_LLM="ollama", CB_IN_OLLAMA_BASE_URL="http://localhost:11434")
+        rows = dict(credential_check.plan_summary(self.table, plan))
+        self.assertIn(rows["Credentials"], credential_check.plan_headline(self.table, plan))
 
     def test_hosted_tiers_require_the_oidc_permission(self) -> None:
         for value, extra in (("hosted", {}), ("license", {"CB_IN_LICENSE_KEY": "lic"})):
