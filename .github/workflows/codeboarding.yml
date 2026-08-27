@@ -114,6 +114,5 @@ jobs:
           # Named, not inferred: the action refuses to guess where credentials come
           # from, so every workflow says which of hosted / license / a provider it
           # wants. CodeBoarding's own repositories run on the CodeBoarding plan.
-          llm: license
-          license_key: ${{ secrets.CODEBOARDING_LICENSE }}
+          llm: anthropic
           github_token: ${{ steps.codeboarding-app-token-client.outputs.token || steps.codeboarding-app-token-app.outputs.token || github.token }}
