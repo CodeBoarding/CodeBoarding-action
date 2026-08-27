@@ -133,6 +133,14 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(error.code, "hosted_with_provider_key")
         self.assertIn("llm: anthropic", error.message)
 
+    def test_license_refuses_to_share_a_workflow_with_a_provider_key(self) -> None:
+        """The mirror of the hosted case, and it shipped untested: `llm: license` runs on
+        CodeBoarding's credentials, so a provider key beside it asks for two things at once."""
+        error = self.refuse(CB_IN_LLM="license", CB_IN_LICENSE_KEY="lic", CB_IN_ANTHROPIC_API_KEY="k", **OIDC)
+        self.assertEqual(error.code, "license_with_provider_key")
+        self.assertIn("anthropic_api_key", error.message)
+        self.assertIn("llm: anthropic", error.message)
+
     def test_hosted_refuses_a_licence_it_would_not_spend(self) -> None:
         error = self.refuse(CB_IN_LLM="hosted", CB_IN_LICENSE_KEY="lic", **OIDC)
         self.assertEqual(error.code, "hosted_with_license")
@@ -154,6 +162,24 @@ class ContractTests(unittest.TestCase):
         error = self.refuse(CB_IN_LLM="claude")
         self.assertEqual(error.code, "unknown_llm")
         self.assertIn("anthropic", error.message)
+
+    def test_every_declared_refusal_is_exercised_by_this_file(self) -> None:
+        """No refusal ships untested. Walks one configuration per code and asserts the set
+        it produces is exactly the set the module declares it can raise, so adding a code
+        without a case here fails rather than going unnoticed."""
+        cases = [
+            {},
+            {"CB_IN_LLM": "not_a_provider"},
+            {"CB_IN_LLM": "anthropic"},
+            {"CB_IN_LLM": "license", **OIDC},
+            {"CB_IN_LLM": "hosted"},
+            {"CB_IN_LLM": "hosted", "CB_IN_ANTHROPIC_API_KEY": "k", **OIDC},
+            {"CB_IN_LLM": "hosted", "CB_IN_LICENSE_KEY": "lic", **OIDC},
+            {"CB_IN_LLM": "license", "CB_IN_LICENSE_KEY": "lic", "CB_IN_ANTHROPIC_API_KEY": "k", **OIDC},
+            {"CB_IN_LLM": "anthropic", "CB_IN_ANTHROPIC_API_KEY": "k", "CB_IN_OPENAI_API_KEY": "o"},
+        ]
+        seen = {self.refuse(**case).code for case in cases}
+        self.assertEqual(seen, set(llm_credentials.ERROR_CODES))
 
     def test_every_refusal_carries_a_code_and_an_actionable_message(self) -> None:
         cases = [
