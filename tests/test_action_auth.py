@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-PREFLIGHT = ROOT / "scripts" / "action" / "preflight-llm.sh"
+PREFLIGHT = ROOT / "scripts" / "action" / "verify-credentials.sh"
 CONFIGURE_AUTH = ROOT / "scripts" / "action" / "configure-auth.sh"
 WITH_AUTH = ROOT / "scripts" / "action" / "with-auth.sh"
 

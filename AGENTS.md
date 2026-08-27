@@ -17,7 +17,7 @@ when that pin is bumped *and* a new action release ships.
 
 ## Bumping the engine pin
 
-`scripts/action/llm-providers.json` mirrors the pinned release's `LLM_PROVIDERS`.
+`scripts/action/supported-providers.json` mirrors the pinned release's `LLM_PROVIDERS`.
 Credentials are validated before the engine is installed — that is what makes a
 misconfigured run fail in seconds instead of a minute — so the action cannot ask
 the engine at run time and keeps this copy instead.

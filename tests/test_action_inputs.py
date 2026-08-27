@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ACTION = (ROOT / "action.yml").read_text(encoding="utf-8")
-TABLE = json.loads((ROOT / "scripts" / "action" / "llm-providers.json").read_text(encoding="utf-8"))
+TABLE = json.loads((ROOT / "scripts" / "action" / "supported-providers.json").read_text(encoding="utf-8"))
 
 
 def declared_inputs() -> dict[str, str]:

@@ -17,7 +17,7 @@ from importlib import metadata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TABLE = json.loads((ROOT / "scripts" / "action" / "llm-providers.json").read_text(encoding="utf-8"))
+TABLE = json.loads((ROOT / "scripts" / "action" / "supported-providers.json").read_text(encoding="utf-8"))
 
 
 def _core_providers():
@@ -55,7 +55,7 @@ class ProviderTableDriftTests(unittest.TestCase):
         self.assertEqual(
             TABLE["engine"],
             pinned.group(1),
-            "llm-providers.json records a different release than action.yml installs",
+            "supported-providers.json records a different release than action.yml installs",
         )
 
     def test_the_same_providers_exist_on_both_sides(self) -> None:

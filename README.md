@@ -173,7 +173,7 @@ thing to document and keep in step, and an unrecognised value is refused with th
 list. `ollama` and `litellm` are selected by their endpoint rather than a key, which is why
 a key alone does not configure them — that mirrors how Core itself decides.
 
-This table is generated from [`scripts/action/llm-providers.json`](scripts/action/llm-providers.json),
+This table is generated from [`scripts/action/supported-providers.json`](scripts/action/supported-providers.json),
 which mirrors the CodeBoarding release this action pins. `tests/test_provider_table_drift.py`
 installs that release in CI and fails if the two disagree, so a provider cannot be added
 to Core and silently stay unreachable here.

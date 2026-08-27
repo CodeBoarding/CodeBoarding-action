@@ -12,23 +12,23 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-_spec = importlib.util.spec_from_file_location("llm_credentials", ROOT / "scripts" / "action" / "llm_credentials.py")
-llm_credentials = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(llm_credentials)
+_spec = importlib.util.spec_from_file_location("credential_check", ROOT / "scripts" / "action" / "credential_check.py")
+credential_check = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(credential_check)
 
 OIDC = {"ACTIONS_ID_TOKEN_REQUEST_URL": "https://oidc.example/token"}
 
 
 class ContractTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.table = llm_credentials.load_table()
+        self.table = credential_check.load_table()
 
     def resolve(self, **environ: str) -> dict:
-        return llm_credentials.resolve(self.table, environ)
+        return credential_check.resolve(self.table, environ)
 
-    def refuse(self, **environ: str) -> llm_credentials.ConfigError:
-        with self.assertRaises(llm_credentials.ConfigError) as caught:
-            llm_credentials.resolve(self.table, environ)
+    def refuse(self, **environ: str) -> credential_check.ConfigError:
+        with self.assertRaises(credential_check.ConfigError) as caught:
+            credential_check.resolve(self.table, environ)
         return caught.exception
 
     # -- accepted shapes ---------------------------------------------------
@@ -179,7 +179,7 @@ class ContractTests(unittest.TestCase):
             {"CB_IN_LLM": "anthropic", "CB_IN_ANTHROPIC_API_KEY": "k", "CB_IN_OPENAI_API_KEY": "o"},
         ]
         seen = {self.refuse(**case).code for case in cases}
-        self.assertEqual(seen, set(llm_credentials.ERROR_CODES))
+        self.assertEqual(seen, set(credential_check.ERROR_CODES))
 
     def test_every_refusal_carries_a_code_and_an_actionable_message(self) -> None:
         cases = [

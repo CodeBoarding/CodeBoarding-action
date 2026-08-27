@@ -276,7 +276,7 @@ runs:
         CB_IN_ORCAROUTER_API_KEY: ${{ inputs.orcarouter_api_key }}
         CB_IN_VERCEL_API_KEY: ${{ inputs.vercel_api_key }}
         CB_IN_VERCEL_BASE_URL: ${{ inputs.vercel_base_url }}
-      run: "$GITHUB_ACTION_PATH/scripts/action/preflight-llm.sh"
+      run: "$GITHUB_ACTION_PATH/scripts/action/verify-credentials.sh"
 
     # Said in the pull request, not only in the Actions tab, because the person who has
     # to add the secret is the one reading the pull request.

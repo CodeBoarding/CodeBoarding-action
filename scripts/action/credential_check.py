@@ -2,7 +2,7 @@
 """The run's LLM credentials: what they resolve to, or what to tell the user instead.
 
 Both halves live here on purpose. The `message` on every ConfigError is the sentence the
-user actually reads -- preflight-llm.sh puts it in the step output, and action.yml posts
+user actually reads -- verify-credentials.sh puts it in the step output, and action.yml posts
 that same string as the pull request comment, the error annotation and the job summary --
 so the rule and its explanation are written together and cannot drift apart.
 
@@ -28,7 +28,7 @@ from pathlib import Path
 
 DOCS = "https://github.com/CodeBoarding/CodeBoarding-action#authentication-and-providers"
 SETTINGS_HINT = "Settings -> Secrets and variables -> Actions"
-TABLE = Path(__file__).resolve().parent / "llm-providers.json"
+TABLE = Path(__file__).resolve().parent / "supported-providers.json"
 
 
 #: Every reason this module can refuse a configuration.

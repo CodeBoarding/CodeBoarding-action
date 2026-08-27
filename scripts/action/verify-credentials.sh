@@ -19,7 +19,7 @@ done < <(compgen -v | grep -E '^CB_IN_.*_API_KEY$' || true)
 [ -z "${CB_IN_LICENSE_KEY:-}" ] || echo "::add-mask::${CB_IN_LICENSE_KEY}"
 
 set +e
-plan="$(python3 "${ACTION_PATH}/scripts/action/llm_credentials.py" --auth-dir "$AUTH_DIR")"
+plan="$(python3 "${ACTION_PATH}/scripts/action/credential_check.py" --auth-dir "$AUTH_DIR")"
 resolved=$?
 set -e
 

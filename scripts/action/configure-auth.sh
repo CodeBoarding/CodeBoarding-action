@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Starts the hosted credential relay when the resolved plan calls for it.
 #
-# The plan itself was decided by preflight-llm.sh before the checkout; this step only
+# The plan itself was decided by verify-credentials.sh before the checkout; this step only
 # does the part that needs the engine's Python present. A direct-provider run has
 # nothing to do here: its key never leaves the runner.
 set -euo pipefail
