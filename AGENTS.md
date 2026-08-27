@@ -15,6 +15,19 @@ pinned to a release in `action.yml`. `scripts/engine_adapter.py` is the CLI
 adapter into it (no analysis logic lives there). Engine changes reach users only
 when that pin is bumped *and* a new action release ships.
 
+## Bumping the engine pin
+
+`scripts/action/supported-providers.json` mirrors the pinned release's `LLM_PROVIDERS`.
+Credentials are validated before the engine is installed — that is what makes a
+misconfigured run fail in seconds instead of a minute — so the action cannot ask
+the engine at run time and keeps this copy instead.
+
+When you change the `codeboarding==` pin in `action.yml`, update that file in the
+same commit: its `engine` field, and any provider whose selection variables
+changed. `tests/test_provider_table_drift.py` runs in the `core-compatibility` CI
+job and fails when they disagree. Adding a provider also means adding its
+`<name>_api_key` input to `action.yml`; `tests/test_action_inputs.py` checks that.
+
 ## Protected tests
 
 Some tests encode a behavioural contract that is expensive to rediscover once
@@ -35,6 +48,12 @@ Protected tests:
   its merge base, never against the base branch tip. Comparing against the tip
   attributes other people's commits to the pull request and reports them
   backwards, as removals.
+- `tests/test_action_auth.py::test_a_named_provider_never_falls_back_to_codeboarding_credentials`
+  — a workflow that names a provider runs on that provider or fails. The action
+  used to read an empty key as "no preference" and resolve it to CodeBoarding's
+  hosted tier, so a repository that had not added its secret yet went green
+  while running on another vendor's model and CodeBoarding's money, silently.
+  Any change that reintroduces a credential fallback breaks this test.
 
 ## Releases
 
@@ -56,6 +75,13 @@ messages, so every commit and PR title must follow Conventional Commits:
 - `fix:` → patch bump
 - `feat!:` / `fix!:` or a `BREAKING CHANGE:` footer → major bump. Avoid unless
   intended: consumers pinned to the old major tag never receive it automatically.
+
+A deliberate exception exists. The explicit-credentials change (`llm` required,
+no fallback) is a breaking change that shipped as `feat:`, not `feat!:`. A major
+bump moves adopters to `v2` and freezes `v1`, which would have left every
+existing workflow on the old silent-fallback behaviour forever — the opposite of
+the intent. Shipping it as a minor bump on the moving `v1` tag is what makes
+adopters actually receive it. Do not "correct" this to `feat!:` after the fact.
 - `chore:` / `docs:` / `ci:` / `refactor:` / `test:` → ride along in the next
   release but do not trigger one.
 

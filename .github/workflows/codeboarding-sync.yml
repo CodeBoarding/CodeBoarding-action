@@ -141,6 +141,9 @@ jobs:
       - uses: ./
         with:
           mode: sync
+          # CodeBoarding's own repositories run on the CodeBoarding plan.
+          llm: license
+          license_key: ${{ secrets.CODEBOARDING_LICENSE }}
           sync_strategy: ${{ inputs.sync_strategy || 'push' }}
           force_full: ${{ inputs.force_full || false }}
           # App token authenticates the baseline push so the commit is attributed
