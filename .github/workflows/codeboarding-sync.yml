@@ -1,30 +1,11 @@
-# Dogfood sync mode: keep THIS repo's committed architecture baseline
-# (.codeboarding/analysis.json + rendered docs) current on every push to main,
-# so the PR review workflow always diffs against an up-to-date baseline.
-#
-# This is the ONLY baseline writer for this repo. The manual "rebuild from
-# scratch" path (previously a separate refresh-baseline.yml) is now the
-# workflow_dispatch + force_full input below, which runs the same tested action
-# instead of a hand-rolled copy of its pipeline.
-
 name: CodeBoarding sync
 
 on:
   push:
-    branches: [main]
+    branches: ['main']
     # Loop guard: don't re-trigger on the files this workflow itself commits.
-    # This list must name EVERY generated artifact (an un-ignored one leaks the
-    # bot's own commit through and re-triggers), and must name ONLY generated
-    # artifacts — never a user-authored input, whose edit changes analysis scope
-    # and must regenerate the baseline. So: deliberately NOT '.codeboarding/**'
-    # (would swallow .codeboarding/.codeboardingignore) and NOT
-    # '.codeboarding/health/**' (would swallow the user-authored health/.healthignore
-    # and health/health_config.json) — only the generated health/health_report.json
-    # is listed. In push mode the action also skips re-analyzing its own commit by
-    # author email as a backstop; in pull_request mode this list is the loop guard
-    # (a merged baseline PR touches only these files), with the commit step's
-    # "nothing to commit" gate stopping any stray re-run. The bot commit uses no
-    # [skip ci] (that would leak through squash-merges and skip real merges).
+    # List generated files only: user-authored scope configuration must still trigger
+    # regeneration, while a merged sync PR must not trigger a loop.
     paths-ignore:
       - '.codeboarding/*.md'
       - '.codeboarding/analysis.json'
@@ -41,109 +22,31 @@ on:
         type: boolean
         required: false
         default: false
-      sync_strategy:
-        description: 'Deliver directly to the target branch or open/update a rolling baseline PR.'
-        type: choice
-        options: [push, pull_request]
-        required: false
-        default: push
 
-# No workflow-level permissions: the single job below requests only what it
-# needs (least privilege), so the default token starts with none.
-permissions: {}
+permissions:
+  contents: write   # commit the generated baseline + docs to the branch
+  id-token: write   # identifies this repo to CodeBoarding's hosted tier, used by the free
+                    # tier AND a license, and as the fallback until your own key exists
 
 concurrency:
-  # Serialize this workflow against itself: a push landing while a manual
-  # dispatch is mid-run must not produce two concurrent commits to main.
-  group: codeboarding-baseline-writers
+  # Serialize against itself so a push landing mid-run can't make two commits.
+  group: codeboarding-sync
   cancel-in-progress: false
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    permissions:
-      contents: write       # push the generated baseline branch
-      pull-requests: write  # workflow_dispatch may exercise pull_request delivery
-      id-token: write       # mint per-request OIDC credentials for the relay
     steps:
-      # Dogfood: run the action from the checked-out repo (uses: ./) so pushes to
-      # main exercise the action code on main, not the last published release.
-      # The action reads its scripts via github.action_path and checks the engine
-      # and target repo into subdirectories, so this local checkout is untouched.
-      - uses: actions/checkout@v4
-      # Mint the CodeBoarding GitHub App token so the baseline commit lands as
-      # codeboarding-review[bot] (App avatar = the CodeBoarding logo) instead of
-      # the generic github-actions[bot]. Mirrors the review workflow's token flow.
-      # Fails open: when App credentials are absent/invalid we fall back to
-      # github.token below, and the commit shows the default Actions identity.
-      # End-user repos can't reuse this — the App private key is never shipped to
-      # their runners; they authenticate the free tier via OIDC (see README).
-      - name: Detect CodeBoarding GitHub App credentials
-        id: codeboarding-app-config
-        shell: bash
-        env:
-          CLIENT_ID: ${{ vars.CODEBOARDING_APP_CLIENT_ID }}
-          APP_ID: ${{ vars.CODEBOARDING_APP_ID }}
-          PRIVATE_KEY: ${{ secrets.CODEBOARDING_APP_PRIVATE_KEY }}
-        run: |
-          client_id="${CLIENT_ID:-}"
-          app_id="${APP_ID:-}"
-
-          # GitHub App client IDs start with "Iv". If that value was stored in
-          # CODEBOARDING_APP_ID, use it as a client ID to avoid the deprecated
-          # app-id input path.
-          if [ -z "$client_id" ] && [ "${app_id#Iv}" != "$app_id" ]; then
-            client_id="$app_id"
-            app_id=""
-          fi
-
-          has_private_key=false
-          private_key_valid=false
-          if [ -n "$PRIVATE_KEY" ]; then
-            has_private_key=true
-            if printf '%s' "$PRIVATE_KEY" | openssl pkey -noout >/dev/null 2>&1; then
-              private_key_valid=true
-            else
-              echo "::warning::CODEBOARDING_APP_PRIVATE_KEY is not a valid PEM private key, so the sync commit will fall back to github-actions[bot]."
-              if printf '%b' "$PRIVATE_KEY" | openssl pkey -noout >/dev/null 2>&1; then
-                printf '%s\n' "::warning::CODEBOARDING_APP_PRIVATE_KEY looks like it contains literal \\n escapes. Store the downloaded PEM as multi-line secret text instead."
-              fi
-            fi
-          fi
-
-          {
-            [ -n "$client_id" ] && echo "has_client_id=true" || echo "has_client_id=false"
-            [ -n "$app_id" ] && echo "has_app_id=true" || echo "has_app_id=false"
-            echo "client_id=$client_id"
-            echo "has_private_key=$has_private_key"
-            echo "private_key_valid=$private_key_valid"
-          } >> "$GITHUB_OUTPUT"
-      - uses: actions/create-github-app-token@v3
-        id: codeboarding-app-token-client
-        if: steps.codeboarding-app-config.outputs.has_client_id == 'true' && steps.codeboarding-app-config.outputs.private_key_valid == 'true'
-        continue-on-error: true
-        with:
-          client-id: ${{ steps.codeboarding-app-config.outputs.client_id }}
-          private-key: ${{ secrets.CODEBOARDING_APP_PRIVATE_KEY }}
-      - uses: actions/create-github-app-token@v3
-        id: codeboarding-app-token-app
-        if: steps.codeboarding-app-config.outputs.has_client_id != 'true' && steps.codeboarding-app-config.outputs.has_app_id == 'true' && steps.codeboarding-app-config.outputs.private_key_valid == 'true'
-        continue-on-error: true
-        with:
-          app-id: ${{ vars.CODEBOARDING_APP_ID }}
-          private-key: ${{ secrets.CODEBOARDING_APP_PRIVATE_KEY }}
-      - name: Warn when CodeBoarding App token is unavailable
-        if: steps.codeboarding-app-token-client.outputs.token == '' && steps.codeboarding-app-token-app.outputs.token == ''
-        shell: bash
-        run: |
-          echo "::warning::CodeBoarding GitHub App token is unavailable; the sync commit falls back to github-actions[bot]. Check CODEBOARDING_APP_PRIVATE_KEY formatting if app credentials are configured."
-      - uses: ./
+      - uses: CodeBoarding/CodeBoarding-action@v1
         with:
           mode: sync
-          sync_strategy: ${{ inputs.sync_strategy || 'push' }}
           force_full: ${{ inputs.force_full || false }}
-          # App token authenticates the baseline push so the commit is attributed
-          # to the CodeBoarding App (logo avatar). Falls back to the workflow token,
-          # which can push because this job grants contents: write.
-          github_token: ${{ steps.codeboarding-app-token-client.outputs.token || steps.codeboarding-app-token-app.outputs.token || github.token }}
+          target_branch: 'main'
+          # Your own Anthropic key. Add ANTHROPIC_API_KEY under Settings → Secrets and
+          # variables → Actions and every run calls Anthropic directly with it.
+          # Until that secret exists this is an empty string and the run falls back to
+          # CodeBoarding's free hosted tier (what id-token: write above is for).
+          llm_provider: anthropic
+          llm_api_key: ${{ secrets.ANTHROPIC_API_KEY }}   # your Anthropic key
+          license_key: ${{ secrets.CODEBOARDING_LICENSE }}  # CodeBoarding paid plan (used only when no key is set)
