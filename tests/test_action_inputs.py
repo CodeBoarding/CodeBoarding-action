@@ -74,6 +74,16 @@ class ActionInputTests(unittest.TestCase):
         for later in ("- name: Checkout analysis target", "- name: Install CodeBoarding"):
             self.assertLess(preflight, ACTION.index(later), f"{later} runs before preflight")
 
+    def test_a_crashed_credential_check_still_stops_the_run(self) -> None:
+        """The check is `continue-on-error` so a refusal can be reported before the job
+        dies. That same flag would let a crash in it through: no `error` output written,
+        so a condition keyed only on the code is false and the run reaches the checkout
+        and the engine install. The stop must also watch the step's outcome."""
+        start = ACTION.index("- name: Stop on LLM configuration failure")
+        condition = ACTION[start : ACTION.index("run:", start)]
+        self.assertIn("steps.llm.outputs.error != ''", condition)
+        self.assertIn("steps.llm.outcome != 'success'", condition)
+
     def test_the_generic_failure_comment_never_buries_the_actionable_one(self) -> None:
         """Both write the same sticky comment, and the generic one runs on `failure()`.
 

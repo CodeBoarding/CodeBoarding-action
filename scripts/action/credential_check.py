@@ -301,6 +301,38 @@ def _is_endpoint(var: str) -> bool:
     return var.endswith(("_BASE_URL", "_HOST")) or var == "AWS_DEFAULT_REGION"
 
 
+def plan_summary(table: dict, plan: dict) -> list[tuple[str, str]]:
+    """What this run is actually about to do, for the job summary.
+
+    "Tier: byok+license" names the configuration without answering the question someone
+    reads a summary to answer, which is *which credential pays*. A direct provider call
+    never reaches CodeBoarding, so a licence wired beside your own key is recorded and
+    not spent; saying only "byok+license" leaves that ambiguous, so it is spelled out.
+    """
+    tier, provider = plan["tier"], plan["provider"]
+    label = table["providers"].get(provider, {}).get("label", provider)
+    rows = [("Tier", f"`{tier}`"), ("Provider", f"`{provider}`")]
+    if tier == "hosted":
+        rows.append(("Credentials", "CodeBoarding's hosted free tier"))
+    elif tier == "license":
+        rows.append(("Credentials", "CodeBoarding's hosted tier, on your plan"))
+    else:
+        rows.append(("Credentials", f"your own {label} key, called directly"))
+    if tier == "byok+license":
+        rows.append(
+            (
+                "Licence",
+                "wired, and not spent: a direct provider call never reaches CodeBoarding",
+            )
+        )
+    # Only where the run was pointed somewhere other than the default, since that is the
+    # setting most likely to be wrong and least likely to be noticed.
+    for var, value in sorted(plan["env"].items()):
+        if _is_endpoint(var):
+            rows.append((f"`{var}`", f"`{value}`"))
+    return rows
+
+
 def write_auth_dir(table: dict, plan: dict, auth_dir: Path) -> None:
     """Lay the plan out as files the later steps read, readable only by this user."""
     os.umask(0o077)
@@ -375,6 +407,7 @@ def main(argv: list[str]) -> int:
             "details": "",
             "tier": plan["tier"],
             "provider": plan["provider"],
+            "summary": "\n".join(f"| {k} | {v} |" for k, v in plan_summary(table, plan)),
         },
         sys.stdout,
     )

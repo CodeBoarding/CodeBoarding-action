@@ -143,8 +143,10 @@ The same rule makes the combinations explicit rather than order-dependent:
 | `llm: anthropic` + key + `license_key` | Anthropic, on a CodeBoarding plan |
 
 A licence alongside your own key is deliberately allowed: it says "my CodeBoarding plan,
-my own tokens". Direct provider calls never reach our proxy, so nothing meters that
-combination today; it is recorded and reported, not enforced.
+my own tokens". **Your key always wins.** A direct provider call never reaches
+CodeBoarding, so the licence is recorded and reported but not spent, and nothing meters
+that combination today. The job summary says so on every run, rather than leaving you to
+infer it from the tier name.
 
 ### Providers
 

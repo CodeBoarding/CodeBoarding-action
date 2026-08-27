@@ -82,15 +82,17 @@ case "$tier" in
   hosted) label="CodeBoarding's hosted free tier" ;;
   license) label="a CodeBoarding plan, on CodeBoarding's hosted tier" ;;
   byok) label="your own ${provider} key" ;;
-  byok+license) label="your own ${provider} key, with a CodeBoarding plan" ;;
+  # Named precisely: the plan is wired but a direct provider call never reaches us, so
+  # "with a CodeBoarding plan" would imply the plan is paying for something here.
+  byok+license) label="your own ${provider} key (the wired CodeBoarding plan is not spent on a direct call)" ;;
   *) label="${tier}" ;;
 esac
 echo "CodeBoarding is running on ${label}."
+# The rows come from the check, which is the only thing that knows what it resolved.
 {
   echo "### CodeBoarding configuration"
   echo
   echo "| | |"
   echo "|---|---|"
-  echo "| Tier | \`${tier}\` |"
-  echo "| Provider | \`${provider}\` |"
+  field summary
 } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"

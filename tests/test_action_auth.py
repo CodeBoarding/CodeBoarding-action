@@ -308,6 +308,66 @@ done
         self.assertEqual((auth_dir / "env" / "OPENROUTER_API_KEY").read_text(), "github-actions-oidc-relay")
         self.assertEqual((auth_dir / "env" / "OPENROUTER_BASE_URL").read_text(), "http://127.0.0.1:12345")
 
+    def test_your_own_key_wins_outright_when_a_licence_is_wired_beside_it(self) -> None:
+        """`byok+license` runs on YOUR key. The licence is recorded and never spent.
+
+        A direct provider call does not go through CodeBoarding, so there is nothing for a
+        licence to pay for. The tier label alone leaves that ambiguous, so the guarantee is
+        pinned here: the provider key is exported, no licence is staged for the relay, and
+        the relay is never started.
+        """
+        temp_dir = Path(self.temp_dir.name)
+        fake_bin = temp_dir / "bin"
+        fake_bin.mkdir()
+        marker = temp_dir / "relay-started"
+        (fake_bin / "python3").write_text(f'#!/usr/bin/env bash\ntouch "{marker}"\n', encoding="utf-8")
+        (fake_bin / "python3").chmod(0o755)
+
+        result, auth_dir, outputs = self._preflight(
+            CB_IN_LLM="anthropic",
+            CB_IN_ANTHROPIC_API_KEY="my-own-key",
+            CB_IN_LICENSE_KEY="a-licence",
+            ACTIONS_ID_TOKEN_REQUEST_URL="https://oidc.example/token",
+            ACTIONS_ID_TOKEN_REQUEST_TOKEN="request-token",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        self.assertEqual(outputs["tier"], "byok+license")
+        self.assertEqual((auth_dir / "env" / "ANTHROPIC_API_KEY").read_text(), "my-own-key")
+        self.assertFalse((auth_dir / "license.txt").exists(), "no licence is staged for the relay")
+        self.assertNotIn("a-licence", (auth_dir / "env" / "ANTHROPIC_API_KEY").read_text())
+
+        configured = subprocess.run(
+            [str(CONFIGURE_AUTH)],
+            env={
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "ACTION_PATH": str(ROOT),
+                "RUNNER_TEMP": str(temp_dir / "runner"),
+                "ACTIONS_ID_TOKEN_REQUEST_URL": "https://oidc.example/token",
+                "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "request-token",
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(configured.returncode, 0, configured.stderr or configured.stdout)
+        self.assertFalse(marker.exists(), "a licensed BYOK run must not contact the relay")
+
+        scoped = self._with_auth('test "$ANTHROPIC_API_KEY" = "my-own-key" && test -z "${OPENROUTER_API_KEY:-}"')
+        self.assertEqual(scoped.returncode, 0, scoped.stderr or scoped.stdout)
+
+    def test_the_summary_says_which_credential_actually_pays(self) -> None:
+        """A tier name is not an answer to "whose key is this run spending?"."""
+        self._preflight(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k", CB_IN_LICENSE_KEY="lic")
+        summary = (Path(self.temp_dir.name) / "summary.md").read_text(encoding="utf-8")
+        self.assertIn("your own Anthropic key, called directly", summary)
+        self.assertIn("not spent", summary, "the licence's status must be stated, not implied")
+
+    def test_the_summary_names_a_non_default_endpoint(self) -> None:
+        """The setting most likely to be wrong and least likely to be noticed."""
+        self._preflight(CB_IN_LLM="openai", CB_IN_OPENAI_API_KEY="k", CB_IN_OPENAI_BASE_URL="https://gw.example/v1")
+        summary = (Path(self.temp_dir.name) / "summary.md").read_text(encoding="utf-8")
+        self.assertIn("https://gw.example/v1", summary)
+
     def test_direct_provider_runs_start_no_relay(self) -> None:
         temp_dir = Path(self.temp_dir.name)
         fake_bin = temp_dir / "bin"

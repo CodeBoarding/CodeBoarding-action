@@ -297,13 +297,23 @@ runs:
 
           <sub>run [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) - attempt ${{ github.run_attempt }}</sub>
 
+    # Fires on a refusal AND on the check failing to reach a verdict at all. The step
+    # above is `continue-on-error` so the refusal can be reported before the job dies,
+    # which also means a crash in it -- an unreadable provider table, a missing python3 --
+    # would leave `error` empty and let the run carry on to the checkout and the engine
+    # install. Checking the outcome as well keeps "credentials are decided before anything
+    # expensive happens" true when the deciding itself breaks.
     - name: Stop on LLM configuration failure
-      if: steps.guard.outputs.skip != 'true' && steps.llm.outputs.error != ''
+      if: steps.guard.outputs.skip != 'true' && (steps.llm.outputs.error != '' || steps.llm.outcome != 'success')
       shell: bash
       env:
         CB_ERROR: ${{ steps.llm.outputs.error }}
       run: |
-        echo "CodeBoarding did not run: $CB_ERROR" >&2
+        if [ -n "$CB_ERROR" ]; then
+          echo "CodeBoarding did not run: $CB_ERROR" >&2
+        else
+          echo "::error title=CodeBoarding LLM configuration::The credential check did not complete, so no analysis was attempted. See the step above."
+        fi
         exit 1
 
     - name: Post review progress
