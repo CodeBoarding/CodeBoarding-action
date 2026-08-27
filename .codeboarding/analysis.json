@@ -1,17 +1,17 @@
 {
   "metadata": {
-    "generated_at": "2026-08-26T23:15:14.037270+00:00",
-    "source_tree_hash": "f2c4da1c278eb10066464e5b711ca9f9783222cdc178e3d3439a8fedae7701de",
+    "generated_at": "2026-08-27T22:07:31.172175+00:00",
+    "source_tree_hash": "45d4a852909af066180c6578637fd17aac28c0bdac8a5b687a7669c9c2cbbfb7",
     "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
     "file_coverage_summary": {
-      "total_files": 32,
-      "analyzed": 3,
-      "not_analyzed": 29,
+      "total_files": 38,
+      "analyzed": 4,
+      "not_analyzed": 34,
       "not_analyzed_by_reason": {
-        "other": 21,
-        "codeboardingignore": 8
+        "other": 23,
+        "codeboardingignore": 11
       }
     }
   },
@@ -89,6 +89,36 @@
       ],
       "content_hash": "03f39d1ac2f146ec",
       "module_hash": "621ccc2626ad8f2a"
+    },
+    "scripts/action/credential_check.py": {
+      "method_keys": [
+        "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError",
+        "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError.__init__",
+        "scripts/action/credential_check.py|scripts.action.credential_check.secrets_url",
+        "scripts/action/credential_check.py|scripts.action.credential_check.workflow_path",
+        "scripts/action/credential_check.py|scripts.action.credential_check._add_secret",
+        "scripts/action/credential_check.py|scripts.action.credential_check._wire_it",
+        "scripts/action/credential_check.py|scripts.action.credential_check.load_table",
+        "scripts/action/credential_check.py|scripts.action.credential_check._unquote",
+        "scripts/action/credential_check.py|scripts.action.credential_check._clean_key",
+        "scripts/action/credential_check.py|scripts.action.credential_check.read_inputs",
+        "scripts/action/credential_check.py|scripts.action.credential_check.owner_of",
+        "scripts/action/credential_check.py|scripts.action.credential_check._provider_list",
+        "scripts/action/credential_check.py|scripts.action.credential_check._reject_provider_inputs",
+        "scripts/action/credential_check.py|scripts.action.credential_check._require_id_token",
+        "scripts/action/credential_check.py|scripts.action.credential_check._resolve_byok",
+        "scripts/action/credential_check.py|scripts.action.credential_check.resolve",
+        "scripts/action/credential_check.py|scripts.action.credential_check._is_endpoint",
+        "scripts/action/credential_check.py|scripts.action.credential_check._safe_endpoint",
+        "scripts/action/credential_check.py|scripts.action.credential_check._pays",
+        "scripts/action/credential_check.py|scripts.action.credential_check.reported_provider",
+        "scripts/action/credential_check.py|scripts.action.credential_check.plan_headline",
+        "scripts/action/credential_check.py|scripts.action.credential_check.plan_summary",
+        "scripts/action/credential_check.py|scripts.action.credential_check.write_auth_dir",
+        "scripts/action/credential_check.py|scripts.action.credential_check.main"
+      ],
+      "content_hash": "3a283497aacba653",
+      "module_hash": "32f1bd213d8a350f"
     }
   },
   "methods_index": {
@@ -531,6 +561,198 @@
       "end_line": 137,
       "type": "FUNCTION",
       "content_hash": "e807c9b057c463bf"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.ConfigError",
+      "start_line": 57,
+      "end_line": 71,
+      "type": "CLASS",
+      "content_hash": "426011d5d2230adc"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError.__init__": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.ConfigError.__init__",
+      "start_line": 66,
+      "end_line": 71,
+      "type": "METHOD",
+      "content_hash": "f81c95d089278b17"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.secrets_url": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.secrets_url",
+      "start_line": 74,
+      "end_line": 80,
+      "type": "FUNCTION",
+      "content_hash": "1fc04b1cfa8fc297"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.workflow_path": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.workflow_path",
+      "start_line": 83,
+      "end_line": 94,
+      "type": "FUNCTION",
+      "content_hash": "f324e18326d069a1"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._add_secret": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._add_secret",
+      "start_line": 97,
+      "end_line": 101,
+      "type": "FUNCTION",
+      "content_hash": "492b070772034e92"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._wire_it": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._wire_it",
+      "start_line": 104,
+      "end_line": 110,
+      "type": "FUNCTION",
+      "content_hash": "47d7f21707b95795"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.load_table": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.load_table",
+      "start_line": 113,
+      "end_line": 114,
+      "type": "FUNCTION",
+      "content_hash": "883b027dcd4a1f81"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._unquote": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._unquote",
+      "start_line": 117,
+      "end_line": 121,
+      "type": "FUNCTION",
+      "content_hash": "d76d75a01207b5c3"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._clean_key": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._clean_key",
+      "start_line": 124,
+      "end_line": 136,
+      "type": "FUNCTION",
+      "content_hash": "7022f1f27f479e9a"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.read_inputs": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.read_inputs",
+      "start_line": 139,
+      "end_line": 149,
+      "type": "FUNCTION",
+      "content_hash": "63027aa36242eaee"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.owner_of": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.owner_of",
+      "start_line": 152,
+      "end_line": 156,
+      "type": "FUNCTION",
+      "content_hash": "642022ffe104707b"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._provider_list": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._provider_list",
+      "start_line": 159,
+      "end_line": 160,
+      "type": "FUNCTION",
+      "content_hash": "dc5cdf89617abb12"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._reject_provider_inputs": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._reject_provider_inputs",
+      "start_line": 163,
+      "end_line": 174,
+      "type": "FUNCTION",
+      "content_hash": "74b7a440fc4d6a4f"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._require_id_token": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._require_id_token",
+      "start_line": 177,
+      "end_line": 196,
+      "type": "FUNCTION",
+      "content_hash": "d851b0187fc2ff80"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._resolve_byok": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._resolve_byok",
+      "start_line": 199,
+      "end_line": 243,
+      "type": "FUNCTION",
+      "content_hash": "450353451688c808"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.resolve": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.resolve",
+      "start_line": 246,
+      "end_line": 311,
+      "type": "FUNCTION",
+      "content_hash": "61ef327e9a6141da"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._is_endpoint": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._is_endpoint",
+      "start_line": 314,
+      "end_line": 316,
+      "type": "FUNCTION",
+      "content_hash": "d2e340c8c4019c62"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._safe_endpoint": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._safe_endpoint",
+      "start_line": 319,
+      "end_line": 337,
+      "type": "FUNCTION",
+      "content_hash": "fe29000746501ef5"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._pays": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._pays",
+      "start_line": 340,
+      "end_line": 358,
+      "type": "FUNCTION",
+      "content_hash": "5b05786790186cee"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.reported_provider": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.reported_provider",
+      "start_line": 361,
+      "end_line": 372,
+      "type": "FUNCTION",
+      "content_hash": "74017705ae0828bb"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.plan_headline": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.plan_headline",
+      "start_line": 375,
+      "end_line": 380,
+      "type": "FUNCTION",
+      "content_hash": "524ee91b9da8fbdf"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.plan_summary": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.plan_summary",
+      "start_line": 383,
+      "end_line": 409,
+      "type": "FUNCTION",
+      "content_hash": "e651d73f54fb8285"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.write_auth_dir": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.write_auth_dir",
+      "start_line": 412,
+      "end_line": 452,
+      "type": "FUNCTION",
+      "content_hash": "35b0b557c638ebea"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.main": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.main",
+      "start_line": 455,
+      "end_line": 492,
+      "type": "FUNCTION",
+      "content_hash": "1d67aac61f0b0b91"
     }
   },
   "components": [
@@ -799,6 +1021,50 @@
       "can_expand": false,
       "components": [],
       "components_relations": []
+    },
+    {
+      "name": "LLM Credential Resolver",
+      "description": "Validates user-supplied LLM provider inputs, verifies OIDC identity tokens or API keys, and formats preflight diagnostic errors before engine execution.",
+      "key_entities": [],
+      "source_cluster_ids": [
+        "9",
+        "10"
+      ],
+      "file_methods": [
+        {
+          "file_path": "scripts/action/credential_check.py",
+          "methods": [
+            "scripts.action.credential_check.ConfigError",
+            "scripts.action.credential_check.ConfigError.__init__",
+            "scripts.action.credential_check.secrets_url",
+            "scripts.action.credential_check.workflow_path",
+            "scripts.action.credential_check._add_secret",
+            "scripts.action.credential_check._wire_it",
+            "scripts.action.credential_check.load_table",
+            "scripts.action.credential_check._unquote",
+            "scripts.action.credential_check._clean_key",
+            "scripts.action.credential_check.read_inputs",
+            "scripts.action.credential_check.owner_of",
+            "scripts.action.credential_check._provider_list",
+            "scripts.action.credential_check._reject_provider_inputs",
+            "scripts.action.credential_check._require_id_token",
+            "scripts.action.credential_check._resolve_byok",
+            "scripts.action.credential_check.resolve",
+            "scripts.action.credential_check._is_endpoint",
+            "scripts.action.credential_check._safe_endpoint",
+            "scripts.action.credential_check._pays",
+            "scripts.action.credential_check.reported_provider",
+            "scripts.action.credential_check.plan_headline",
+            "scripts.action.credential_check.plan_summary",
+            "scripts.action.credential_check.write_auth_dir",
+            "scripts.action.credential_check.main"
+          ]
+        }
+      ],
+      "component_id": "6",
+      "can_expand": false,
+      "components": [],
+      "components_relations": []
     }
   ],
   "components_relations": [
@@ -920,7 +1186,7 @@
           "source": "scripts/oidc_relay.py|scripts.oidc_relay.RelayServer.__init__",
           "target": "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler",
           "call_sites": [],
-          "description": "RelayServer initializes _RelayHandler to process incoming HTTP requests."
+          "description": ""
         }
       ]
     }
