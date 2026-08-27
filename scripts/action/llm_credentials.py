@@ -31,11 +31,34 @@ SETTINGS_HINT = "Settings -> Secrets and variables -> Actions"
 TABLE = Path(__file__).resolve().parent / "llm-providers.json"
 
 
+#: Every reason this module can refuse a configuration.
+#:
+#: Declared rather than left implicit in the raise sites, for two reasons. These codes are
+#: an interface: the action emits them as `llm_config_error` and the webview keys on them,
+#: so adding one silently is a contract change nobody reviewed. And a code with no test is
+#: invisible -- `license_with_provider_key` shipped untested precisely because nothing
+#: enumerated the set. `test_llm_contract.py` asserts every entry here is exercised.
+ERROR_CODES = frozenset(
+    {
+        "missing_llm",
+        "unknown_llm",
+        "missing_provider_key",
+        "missing_license_key",
+        "missing_id_token",
+        "hosted_with_provider_key",
+        "hosted_with_license",
+        "license_with_provider_key",
+        "foreign_provider_key",
+    }
+)
+
+
 class ConfigError(Exception):
     """A configuration the action refuses to run, with the code the webview keys on."""
 
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
+        assert code in ERROR_CODES, f"undeclared error code: {code}"
         self.code = code
         self.message = message
 
