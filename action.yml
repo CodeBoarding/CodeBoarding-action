@@ -627,6 +627,19 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         path: ${{ steps.review_body.outputs.path }}
 
+    # The same body, on the run page. Job summaries and logs are explicitly excluded from
+    # the artifact storage allowance, and the cap is 1MiB per step against a diagram
+    # measured in single-digit kilobytes, so this is free in both senses. It earns its
+    # place on the triggers where the comment cannot be the record: a manual dispatch, or
+    # any run whose comment write fails on a token without `pull-requests: write`.
+    - name: Add the review to the job summary
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_body.outputs.path != ''
+      continue-on-error: true
+      shell: bash
+      env:
+        BODY: ${{ steps.review_body.outputs.path }}
+      run: cat "$BODY" >> "$GITHUB_STEP_SUMMARY"
+
     # Skipped when the run stopped on a credential problem: that path already replaced
     # this same sticky comment with the input and secret to fix, and "see the workflow
     # logs" posted over the top of it would send the reader hunting for what they had

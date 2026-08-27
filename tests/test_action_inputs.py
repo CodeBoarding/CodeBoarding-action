@@ -74,6 +74,18 @@ class ActionInputTests(unittest.TestCase):
         for later in ("- name: Checkout analysis target", "- name: Install CodeBoarding"):
             self.assertLess(preflight, ACTION.index(later), f"{later} runs before preflight")
 
+    def test_the_review_reaches_the_job_summary_as_well_as_the_comment(self) -> None:
+        """The comment is the product, but it is not always reachable: a manual dispatch has
+        no pull request, and a token without `pull-requests: write` cannot write one. Job
+        summaries are excluded from the artifact storage allowance, so the record is free."""
+        start = ACTION.index("- name: Add the review to the job summary")
+        block = ACTION[start : ACTION.index("- name: Post review failure", start)]
+        self.assertIn("GITHUB_STEP_SUMMARY", block)
+        self.assertIn("steps.review_body.outputs.path", block)
+        # Never fail a good review because the summary write did not work.
+        self.assertIn("continue-on-error: true", block)
+        self.assertLess(ACTION.index("- name: Post review comment"), start, "comment first")
+
     def test_a_crashed_credential_check_still_stops_the_run(self) -> None:
         """The check is `continue-on-error` so a refusal can be reported before the job
         dies. That same flag would let a crash in it through: no `error` output written,
