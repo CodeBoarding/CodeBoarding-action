@@ -137,6 +137,29 @@ class ActionAuthTests(unittest.TestCase):
         )
         self.assertEqual(scoped.returncode, 0, scoped.stderr or scoped.stdout)
 
+    def test_an_inherited_key_cannot_supply_a_provider_selected_by_its_endpoint(self) -> None:
+        """The same substitution as the protected test, one provider narrower.
+
+        `llm: openai` with only an endpoint is a legitimate keyless configuration. Sparing
+        every variable OpenAI *could* use, rather than the ones this run actually resolved,
+        would leave a stray OPENAI_API_KEY from the job environment to credential the run.
+        """
+        result, auth_dir, _ = self._preflight(CB_IN_LLM="openai", CB_IN_OPENAI_BASE_URL="https://proxy.example/v1")
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        self.assertIn("OPENAI_API_KEY", (auth_dir / "foreign-envs").read_text(encoding="utf-8"))
+
+        scoped = self._with_auth(
+            'test -z "${OPENAI_API_KEY:-}" && test "$OPENAI_BASE_URL" = https://proxy.example/v1',
+            OPENAI_API_KEY="inherited",
+        )
+        self.assertEqual(scoped.returncode, 0, scoped.stderr or scoped.stdout)
+
+    def test_a_provider_input_left_empty_is_stripped_not_inherited(self) -> None:
+        """`aws_region` unset means the engine's default, never whatever the job exported."""
+        result, auth_dir, _ = self._preflight(CB_IN_LLM="aws", CB_IN_AWS_API_KEY="k")
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        self.assertIn("AWS_DEFAULT_REGION", (auth_dir / "foreign-envs").read_text(encoding="utf-8"))
+
     def test_model_inputs_keep_their_precedence(self) -> None:
         self._preflight(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k")
         scoped = self._with_auth(

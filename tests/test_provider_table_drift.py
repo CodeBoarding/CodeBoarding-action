@@ -13,15 +13,33 @@ from __future__ import annotations
 import json
 import re
 import unittest
+from importlib import metadata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TABLE = json.loads((ROOT / "scripts" / "action" / "llm-providers.json").read_text(encoding="utf-8"))
 
-try:  # pragma: no cover - availability is the point of the skip
-    from agents.llm_config import LLM_PROVIDERS as CORE_PROVIDERS
-except Exception:  # noqa: BLE001 - any import failure means the engine is not installed
-    CORE_PROVIDERS = None
+
+def _core_providers():
+    """The pinned engine's provider table, or None when the engine is not installed.
+
+    The distinction matters more than it looks. Skipping when the package is ABSENT is
+    what lets the stdlib-only suite run anywhere. Skipping when it is PRESENT but fails
+    to import would quietly retire this whole file the moment a pin moved a module or
+    dropped a dependency, which is exactly the bump this test exists to catch. So the
+    installed-ness question is asked of the distribution, and any import failure after
+    that is raised rather than swallowed.
+    """
+    try:
+        metadata.version("codeboarding")
+    except metadata.PackageNotFoundError:
+        return None
+    from agents.llm_config import LLM_PROVIDERS
+
+    return LLM_PROVIDERS
+
+
+CORE_PROVIDERS = _core_providers()
 
 
 @unittest.skipIf(CORE_PROVIDERS is None, "the pinned CodeBoarding release is not installed")

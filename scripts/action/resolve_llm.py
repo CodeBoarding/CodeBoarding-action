@@ -210,10 +210,16 @@ def write_auth_dir(table: dict, plan: dict, auth_dir: Path) -> None:
         (env_dir / var).write_text(value, encoding="utf-8")
     if plan.get("license"):
         (auth_dir / "license.txt").write_text(plan["license"], encoding="utf-8")
-    # Every selection variable core knows about, so with-auth.sh can strip the ones this
-    # run did not ask for without carrying its own copy of the list to fall behind on.
-    keep = set(table["providers"][plan["provider"]]["selection_envs"])
-    keep |= set(table["providers"][plan["provider"]]["inputs"].values())
+    # Every variable core knows about, minus the ones this run actually resolved, so
+    # with-auth.sh can strip the rest without carrying its own copy of the list to fall
+    # behind on.
+    #
+    # Keyed on what was RESOLVED, not on which provider was selected. Sparing every
+    # variable the selected provider could use would leave an inherited value in place
+    # for the ones it did not: `llm: openai` with only `openai_base_url` set would let a
+    # stray OPENAI_API_KEY from the job environment supply the credentials, which is the
+    # same silent substitution this contract exists to prevent, one provider narrower.
+    keep = set(plan["env"])
     everything = {
         var
         for provider in table["providers"].values()

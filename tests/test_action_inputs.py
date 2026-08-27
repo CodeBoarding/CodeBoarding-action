@@ -74,6 +74,25 @@ class ActionInputTests(unittest.TestCase):
         for later in ("- name: Checkout analysis target", "- name: Install CodeBoarding"):
             self.assertLess(preflight, ACTION.index(later), f"{later} runs before preflight")
 
+    def test_the_generic_failure_comment_never_buries_the_actionable_one(self) -> None:
+        """Both write the same sticky comment, and the generic one runs on `failure()`.
+
+        Without the guard, a run stopped for a missing secret posts the input and secret to
+        fix, then immediately replaces it with "see the workflow logs" -- sending the reader
+        to hunt for what they had just been told.
+        """
+        start = ACTION.index("- name: Post review failure")
+        condition = ACTION[start : ACTION.index("message:", start)]
+        self.assertIn("steps.llm.outputs.error == ''", condition)
+
+    def test_python_is_available_before_the_credential_check_runs(self) -> None:
+        """The check is a Python program, so a runner without a system python3 would fail a
+        configuration that is perfectly valid."""
+        self.assertLess(
+            ACTION.index("- name: Setup Python"),
+            ACTION.index("- name: Check LLM configuration"),
+        )
+
     def test_a_refused_run_reports_and_then_fails(self) -> None:
         report = ACTION.index("- name: Report LLM configuration failure")
         stop = ACTION.index("- name: Stop on LLM configuration failure")

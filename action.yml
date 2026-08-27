@@ -231,6 +231,17 @@ runs:
         COMMENT_ID: ${{ github.event.comment.id }}
       run: GH_HOST="${GITHUB_SERVER_URL#*://}" gh api -X POST "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" -f content=eyes >/dev/null
 
+    # Ahead of the credential check rather than after the checkout, because that check
+    # is a Python program. Hosted runners ship a system python3 and would not notice;
+    # a self-hosted runner without one would fail a perfectly valid configuration. It
+    # costs a couple of seconds and still leaves the check ahead of the engine install,
+    # which is the part worth failing before.
+    - name: Setup Python
+      if: steps.guard.outputs.skip != 'true'
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
     # Resolved before the checkout and the engine install, so a workflow that names a
     # provider it has no key for fails within seconds, naming the input to fix, instead
     # of running to completion on credentials it never asked for. Nothing downstream
@@ -320,12 +331,6 @@ runs:
         fetch-depth: 1
         persist-credentials: false
         path: .codeboarding-target
-
-    - name: Setup Python
-      if: steps.guard.outputs.skip != 'true'
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
 
     - name: Setup Java for CodeBoarding
       if: steps.guard.outputs.skip != 'true'
@@ -611,8 +616,12 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github_token }}
         path: ${{ steps.review_body.outputs.path }}
 
+    # Skipped when the run stopped on a credential problem: that path already replaced
+    # this same sticky comment with the input and secret to fix, and "see the workflow
+    # logs" posted over the top of it would send the reader hunting for what they had
+    # just been told.
     - name: Post review failure
-      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_comment.outcome != 'success'
+      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_comment.outcome != 'success' && steps.llm.outputs.error == ''
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:
