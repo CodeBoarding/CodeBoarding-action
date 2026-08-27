@@ -141,6 +141,7 @@ jobs:
       - uses: ./
         with:
           mode: sync
+          llm: hosted
           sync_strategy: ${{ inputs.sync_strategy || 'push' }}
           force_full: ${{ inputs.force_full || false }}
           # App token authenticates the baseline push so the commit is attributed

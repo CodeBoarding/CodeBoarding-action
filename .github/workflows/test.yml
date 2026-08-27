@@ -40,6 +40,8 @@ jobs:
             exit 1
           fi
           python -m pip install --disable-pip-version-check "$requirement"
+      - name: Check the provider table against the installed release
+        run: python -m unittest tests.test_provider_table_drift -v
       - name: Render with the installed CodeBoarding release
         run: >-
           python scripts/diff_to_mermaid.py

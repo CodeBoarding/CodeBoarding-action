@@ -50,7 +50,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: CodeBoarding/CodeBoarding-action@v2
+      - uses: CodeBoarding/CodeBoarding-action@v1
+        with:
+          llm: hosted   # or license, or a provider name -- see Authentication
 ```
 
 Automatic runs update one sticky **CodeBoarding review** comment. A trusted repository owner, member, or collaborator can comment `/codeboarding` to analyze the current PR head again, including on fork PRs; every command creates a new result comment.
@@ -98,29 +100,91 @@ Fork pull requests never carry an analysis forward. They are reviewed on request
 
 ## Authentication and providers
 
-With no LLM inputs, the action uses CodeBoarding's hosted OpenRouter tier. It mints short-lived GitHub OIDC credentials per request, so the job needs `id-token: write` and no stored LLM secret.
-
-For a direct provider, pass its name and key:
-
-```yaml
-      - uses: CodeBoarding/CodeBoarding-action@v2
-        with:
-          llm_provider: anthropic
-          llm_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-```
-
-The action maps a provider name to the environment variable Core uses (`anthropic` → `ANTHROPIC_API_KEY`, `openai` → `OPENAI_API_KEY`, and so on). `aws`/`aws_bedrock` maps to `AWS_BEARER_TOKEN_BEDROCK`. Provider names following the standard convention are not restricted by an action-side allowlist; the pinned Core release remains the source of truth for which providers it implements.
-
-CodeBoarding 0.13.10 supports OpenRouter, OpenAI-compatible endpoints, Anthropic-compatible endpoints, Google, Vercel AI Gateway, AWS Bedrock, Cerebras, DeepSeek, GLM, Kimi, OrcaRouter, Ollama, and LiteLLM. See Core's [`agents/llm_config.py`](https://github.com/CodeBoarding/CodeBoarding/blob/main/agents/llm_config.py) for current defaults and endpoint variables. In particular, Ollama needs `OLLAMA_BASE_URL` or `OLLAMA_HOST`, and LiteLLM needs `LITELLM_BASE_URL` on the action step.
-
-A CodeBoarding license keeps the hosted OIDC path but removes hosted quota limits:
+The `llm` input is required and says where analysis credentials come from. There are
+three answers, and the action never picks one for you:
 
 ```yaml
-        with:
-          license_key: ${{ secrets.CODEBOARDING_LICENSE }}
+    with:
+      llm: hosted                                        # CodeBoarding's free tier
+```
+```yaml
+    with:
+      llm: license                                       # a CodeBoarding plan
+      license_key: ${{ secrets.CODEBOARDING_LICENSE }}
+```
+```yaml
+    with:
+      llm: anthropic                                     # your own provider key
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-`llm_api_key` takes precedence over `license_key`. A direct provider key does not require `id-token: write`; hosted free and licensed usage does.
+`hosted` and `license` run through CodeBoarding's proxy and need `id-token: write`, which
+mints short-lived credentials per request and stores no LLM secret in your repository. A
+provider key is used directly and needs no OIDC permission.
+
+**An empty value is never a fallback.** If you name a provider and its key is missing --
+because the secret does not exist yet, or is misspelt — the run fails in its first
+seconds and says which input and which secret to fix. It does not quietly analyze on
+CodeBoarding's hosted tier instead. That was the old behaviour, and it meant a repository
+could report an Anthropic review that Anthropic never produced.
+
+The same rule makes the combinations explicit rather than order-dependent:
+
+| Workflow says | Result |
+|---|---|
+| nothing | refused: `llm` is required |
+| `llm: hosted` | the free tier |
+| `llm: hosted` + any provider key | refused: pick one |
+| `llm: hosted` + `license_key` | refused: use `llm: license` |
+| `llm: license` without `license_key` | refused: names the secret to add |
+| `llm: anthropic` + `anthropic_api_key` | Anthropic, directly |
+| `llm: anthropic`, key empty or absent | refused: names the input and the secret |
+| `llm: anthropic` + `openai_api_key` | refused: a second provider's key |
+| `llm: anthropic` + key + `license_key` | Anthropic, on a CodeBoarding plan |
+
+A licence alongside your own key is deliberately allowed: it says "my CodeBoarding plan,
+my own tokens". Direct provider calls never reach our proxy, so nothing meters that
+combination today; it is recorded and reported, not enforced.
+
+### Providers
+
+Each provider has its own inputs, so which key a workflow uses is readable from the file
+without knowing any precedence rules.
+
+| `llm` | Provider | Inputs | Needs at least one of |
+|---|---|---|---|
+| `anthropic` | Anthropic | `anthropic_api_key` | `anthropic_api_key` |
+| `aws` | AWS Bedrock | `aws_api_key`, `aws_region` | `aws_api_key` |
+| `cerebras` | Cerebras | `cerebras_api_key` | `cerebras_api_key` |
+| `deepseek` | DeepSeek | `deepseek_api_key`, `deepseek_base_url` | `deepseek_api_key` or `deepseek_base_url` |
+| `glm` | GLM | `glm_api_key`, `glm_base_url` | `glm_api_key` or `glm_base_url` |
+| `google` | Google Gemini | `google_api_key` | `google_api_key` |
+| `kimi` | Kimi | `kimi_api_key`, `kimi_base_url` | `kimi_api_key` or `kimi_base_url` |
+| `litellm` | LiteLLM | `litellm_api_key`, `litellm_base_url` | `litellm_base_url` |
+| `ollama` | Ollama | `ollama_api_key`, `ollama_base_url` | `ollama_base_url` |
+| `openai` | OpenAI | `openai_api_key`, `openai_base_url` | `openai_api_key` or `openai_base_url` |
+| `openrouter` | OpenRouter | `openrouter_api_key` | `openrouter_api_key` |
+| `orcarouter` | OrcaRouter | `orcarouter_api_key` | `orcarouter_api_key` |
+| `vercel` | Vercel AI Gateway | `vercel_api_key`, `vercel_base_url` | `vercel_api_key` or `vercel_base_url` |
+
+`aws_bedrock`, `bedrock` and `gemini` are accepted as aliases. `ollama` and `litellm` are
+selected by their endpoint rather than a key, which is why a key alone does not configure
+them — that mirrors how Core itself decides.
+
+This table is generated from [`scripts/action/llm-providers.json`](scripts/action/llm-providers.json),
+which mirrors the CodeBoarding release this action pins. `tests/test_provider_table_drift.py`
+installs that release in CI and fails if the two disagree, so a provider cannot be added
+to Core and silently stay unreachable here.
+
+### Reporting
+
+Every run reports what it resolved, so the answer never has to be inferred from behaviour:
+
+- outputs `llm_tier` (`hosted`, `license`, `byok`, `byok+license`), `llm_provider`, and
+  `llm_config_error` (empty when configured);
+- a job-summary table naming the tier and provider;
+- on a configuration failure, an error annotation and — in review mode — a pull request
+  comment with the fix, so the person who has to add the secret sees it where they are.
 
 ## Model selection
 
@@ -189,9 +253,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: CodeBoarding/CodeBoarding-action@v2
+      - uses: CodeBoarding/CodeBoarding-action@v1
         with:
           mode: sync
+          llm: hosted
           target_branch: main
           force_full: ${{ inputs.force_full || false }}
 ```
@@ -209,9 +274,10 @@ permissions:
   id-token: write
 
 # ...
-      - uses: CodeBoarding/CodeBoarding-action@v2
+      - uses: CodeBoarding/CodeBoarding-action@v1
         with:
           mode: sync
+          llm: hosted
           target_branch: main
           sync_strategy: pull_request
 ```
@@ -225,9 +291,11 @@ With the default `github.token`, the repository or organization must allow GitHu
 | Input | Mode | Default | Description |
 |---|---|---|---|
 | `mode` | both | `review` | `review` or `sync`. |
-| `llm_api_key` | both | empty | Direct-provider key. With the default provider, empty selects hosted OIDC usage. |
-| `llm_provider` | both | `openrouter` | Provider for `llm_api_key`. |
-| `license_key` | both | empty | License for unmetered hosted usage. |
+| `llm` | both | **required** | `hosted`, `license`, or a provider name. No default. |
+| `<provider>_api_key` | both | empty | That provider's key, e.g. `anthropic_api_key`. See [Providers](#providers). |
+| `<provider>_base_url` | both | empty | That provider's endpoint, where it has one. |
+| `aws_region` | both | empty | Bedrock region. Core defaults to `us-east-1`. |
+| `license_key` | both | empty | CodeBoarding license. Required by `llm: license`. |
 | `model` | both | empty | Default model for both analysis and parsing. |
 | `agent_model` | both | empty | Analysis-only override for `model`. |
 | `parsing_model` | both | empty | Parsing-only override for `model`. |
@@ -237,12 +305,15 @@ With the default `github.token`, the repository or organization must allow GitHu
 | `force_full` | sync | `false` | Ignore the committed baseline for this run. |
 | `warmstart_retention_days` | review | `1` | Days to keep the reusable analysis. Only the next run reads it. |
 
-The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted webview URL, rolling sync branch, commit message, and CodeBoarding 0.13.10 version are intentionally fixed in v2 rather than exposed as configuration.
+The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted webview URL, rolling sync branch, commit message, and CodeBoarding 0.13.10 version are intentionally fixed rather than exposed as configuration.
 
 ## Outputs
 
 | Output | Mode | Description |
 |---|---|---|
+| `llm_tier` | both | `hosted`, `license`, `byok`, or `byok+license`. |
+| `llm_provider` | both | Provider the run used. |
+| `llm_config_error` | both | Configuration failure code, empty when configured. |
 | `diagram_md` | review | Path to the rendered Mermaid block on the runner. |
 | `n_changed` | review | Number of changed components. |
 | `truncated` | review | Whether the graph was reduced to fit GitHub limits. |

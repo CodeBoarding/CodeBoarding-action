@@ -9,16 +9,108 @@ inputs:
     description: 'review posts a PR architecture diff; sync updates the versioned analysis baseline.'
     required: false
     default: 'review'
-  llm_api_key:
-    description: 'Optional direct-provider key. With the default provider, empty selects hosted OIDC usage.'
+  llm:
+    description: 'Required. Where analysis credentials come from: hosted, license, or a provider name (anthropic, aws, cerebras, deepseek, glm, google, kimi, litellm, ollama, openai, openrouter, orcarouter, vercel).'
+    required: true
+  license_key:
+    description: 'CodeBoarding license key. Required by llm: license; optional alongside a provider key.'
     required: false
     default: ''
-  llm_provider:
-    description: 'Provider for llm_api_key, for example openrouter, anthropic, openai, google, or ollama.'
+  # Anthropic - selected by llm: anthropic
+  anthropic_api_key:
+    description: 'Anthropic API key, used when llm is anthropic. Sets ANTHROPIC_API_KEY.'
     required: false
-    default: 'openrouter'
-  license_key:
-    description: 'Optional CodeBoarding license for unmetered hosted usage.'
+    default: ''
+  # AWS Bedrock - selected by llm: aws
+  aws_api_key:
+    description: 'AWS Bedrock API key, used when llm is aws. Sets AWS_BEARER_TOKEN_BEDROCK.'
+    required: false
+    default: ''
+  aws_region:
+    description: 'AWS Bedrock region, used when llm is aws. Sets AWS_DEFAULT_REGION.'
+    required: false
+    default: ''
+  # Cerebras - selected by llm: cerebras
+  cerebras_api_key:
+    description: 'Cerebras API key, used when llm is cerebras. Sets CEREBRAS_API_KEY.'
+    required: false
+    default: ''
+  # DeepSeek - selected by llm: deepseek
+  deepseek_api_key:
+    description: 'DeepSeek API key, used when llm is deepseek. Sets DEEPSEEK_API_KEY.'
+    required: false
+    default: ''
+  deepseek_base_url:
+    description: 'DeepSeek endpoint, used when llm is deepseek. Sets DEEPSEEK_BASE_URL.'
+    required: false
+    default: ''
+  # GLM - selected by llm: glm
+  glm_api_key:
+    description: 'GLM API key, used when llm is glm. Sets GLM_API_KEY.'
+    required: false
+    default: ''
+  glm_base_url:
+    description: 'GLM endpoint, used when llm is glm. Sets GLM_BASE_URL.'
+    required: false
+    default: ''
+  # Google Gemini - selected by llm: google
+  google_api_key:
+    description: 'Google Gemini API key, used when llm is google. Sets GOOGLE_API_KEY.'
+    required: false
+    default: ''
+  # Kimi - selected by llm: kimi
+  kimi_api_key:
+    description: 'Kimi API key, used when llm is kimi. Sets KIMI_API_KEY.'
+    required: false
+    default: ''
+  kimi_base_url:
+    description: 'Kimi endpoint, used when llm is kimi. Sets KIMI_BASE_URL.'
+    required: false
+    default: ''
+  # LiteLLM - selected by llm: litellm
+  litellm_api_key:
+    description: 'LiteLLM API key, used when llm is litellm. Sets LITELLM_API_KEY.'
+    required: false
+    default: ''
+  litellm_base_url:
+    description: 'LiteLLM endpoint, used when llm is litellm. Sets LITELLM_BASE_URL.'
+    required: false
+    default: ''
+  # Ollama - selected by llm: ollama
+  ollama_api_key:
+    description: 'Ollama API key, used when llm is ollama. Sets OLLAMA_API_KEY.'
+    required: false
+    default: ''
+  ollama_base_url:
+    description: 'Ollama endpoint, used when llm is ollama. Sets OLLAMA_BASE_URL.'
+    required: false
+    default: ''
+  # OpenAI - selected by llm: openai
+  openai_api_key:
+    description: 'OpenAI API key, used when llm is openai. Sets OPENAI_API_KEY.'
+    required: false
+    default: ''
+  openai_base_url:
+    description: 'OpenAI endpoint, used when llm is openai. Sets OPENAI_BASE_URL.'
+    required: false
+    default: ''
+  # OpenRouter - selected by llm: openrouter
+  openrouter_api_key:
+    description: 'OpenRouter API key, used when llm is openrouter. Sets OPENROUTER_API_KEY.'
+    required: false
+    default: ''
+  # OrcaRouter - selected by llm: orcarouter
+  orcarouter_api_key:
+    description: 'OrcaRouter API key, used when llm is orcarouter. Sets ORCAROUTER_API_KEY.'
+    required: false
+    default: ''
+  # Vercel AI Gateway - selected by llm: vercel
+  vercel_api_key:
+    description: 'Vercel AI Gateway API key, used when llm is vercel. Sets VERCEL_API_KEY.'
+    required: false
+    default: ''
+  vercel_base_url:
+    description: 'Vercel AI Gateway endpoint, used when llm is vercel. Sets VERCEL_BASE_URL.'
     required: false
     default: ''
   model:
@@ -54,6 +146,15 @@ inputs:
     required: false
     default: '1'
 outputs:
+  llm_tier:
+    description: 'Resolved credential tier: hosted, license, byok, or byok+license.'
+    value: ${{ steps.llm.outputs.tier }}
+  llm_provider:
+    description: 'Provider this run used for analysis.'
+    value: ${{ steps.llm.outputs.provider }}
+  llm_config_error:
+    description: 'Stable code for a credential configuration failure, empty when configured.'
+    value: ${{ steps.llm.outputs.error }}
   diagram_md:
     description: 'Path to the rendered Mermaid review diagram.'
     value: ${{ steps.review_render.outputs.diagram_md }}
@@ -130,6 +231,70 @@ runs:
         COMMENT_ID: ${{ github.event.comment.id }}
       run: GH_HOST="${GITHUB_SERVER_URL#*://}" gh api -X POST "repos/${REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" -f content=eyes >/dev/null
 
+    # Resolved before the checkout and the engine install, so a workflow that names a
+    # provider it has no key for fails within seconds, naming the input to fix, instead
+    # of running to completion on credentials it never asked for. Nothing downstream
+    # re-decides this: the plan it writes is what the analysis runs with.
+    - name: Check LLM configuration
+      id: llm
+      if: steps.guard.outputs.skip != 'true'
+      continue-on-error: true
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CB_IN_LLM: ${{ inputs.llm }}
+        CB_IN_LICENSE_KEY: ${{ inputs.license_key }}
+        CB_IN_ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+        CB_IN_AWS_API_KEY: ${{ inputs.aws_api_key }}
+        CB_IN_AWS_REGION: ${{ inputs.aws_region }}
+        CB_IN_CEREBRAS_API_KEY: ${{ inputs.cerebras_api_key }}
+        CB_IN_DEEPSEEK_API_KEY: ${{ inputs.deepseek_api_key }}
+        CB_IN_DEEPSEEK_BASE_URL: ${{ inputs.deepseek_base_url }}
+        CB_IN_GLM_API_KEY: ${{ inputs.glm_api_key }}
+        CB_IN_GLM_BASE_URL: ${{ inputs.glm_base_url }}
+        CB_IN_GOOGLE_API_KEY: ${{ inputs.google_api_key }}
+        CB_IN_KIMI_API_KEY: ${{ inputs.kimi_api_key }}
+        CB_IN_KIMI_BASE_URL: ${{ inputs.kimi_base_url }}
+        CB_IN_LITELLM_API_KEY: ${{ inputs.litellm_api_key }}
+        CB_IN_LITELLM_BASE_URL: ${{ inputs.litellm_base_url }}
+        CB_IN_OLLAMA_API_KEY: ${{ inputs.ollama_api_key }}
+        CB_IN_OLLAMA_BASE_URL: ${{ inputs.ollama_base_url }}
+        CB_IN_OPENAI_API_KEY: ${{ inputs.openai_api_key }}
+        CB_IN_OPENAI_BASE_URL: ${{ inputs.openai_base_url }}
+        CB_IN_OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
+        CB_IN_ORCAROUTER_API_KEY: ${{ inputs.orcarouter_api_key }}
+        CB_IN_VERCEL_API_KEY: ${{ inputs.vercel_api_key }}
+        CB_IN_VERCEL_BASE_URL: ${{ inputs.vercel_base_url }}
+      run: "$GITHUB_ACTION_PATH/scripts/action/preflight-llm.sh"
+
+    # Said in the pull request, not only in the Actions tab, because the person who has
+    # to add the secret is the one reading the pull request.
+    - name: Report LLM configuration failure
+      if: steps.guard.outputs.skip != 'true' && steps.llm.outputs.error != '' && steps.guard.outputs.mode == 'review' && steps.guard.outputs.pr_number != ''
+      continue-on-error: true
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: ${{ steps.guard.outputs.comment_id }}
+        number: ${{ steps.guard.outputs.pr_number }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        message: |
+          ### CodeBoarding review - not configured
+
+          ${{ steps.llm.outputs.message }}
+
+          No analysis ran, and no CodeBoarding hosted usage was consumed.
+
+          <sub>run [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) - attempt ${{ github.run_attempt }}</sub>
+
+    - name: Stop on LLM configuration failure
+      if: steps.guard.outputs.skip != 'true' && steps.llm.outputs.error != ''
+      shell: bash
+      env:
+        CB_ERROR: ${{ steps.llm.outputs.error }}
+      run: |
+        echo "CodeBoarding did not run: $CB_ERROR" >&2
+        exit 1
+
     - name: Post review progress
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       continue-on-error: true
@@ -188,9 +353,6 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        LLM_API_KEY: ${{ inputs.llm_api_key }}
-        LLM_PROVIDER: ${{ inputs.llm_provider }}
-        LICENSE_KEY: ${{ inputs.license_key }}
       run: "$GITHUB_ACTION_PATH/scripts/action/configure-auth.sh"
 
     - name: Resolve analysis identity
@@ -203,7 +365,7 @@ runs:
         MERGE_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
         PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
         IS_FORK: ${{ steps.guard.outputs.is_fork }}
-        LLM_PROVIDER: ${{ inputs.llm_provider }}
+        LLM_PROVIDER: ${{ steps.llm.outputs.provider }}
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}

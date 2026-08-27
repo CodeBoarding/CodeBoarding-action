@@ -1,4 +1,4 @@
-"""Tests for the composite action's provider credential boundary."""
+"""Tests for the composite action's credential boundary, as the runner exercises it."""
 
 from __future__ import annotations
 
@@ -9,101 +9,168 @@ import tempfile
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
+PREFLIGHT = ROOT / "scripts" / "action" / "preflight-llm.sh"
 CONFIGURE_AUTH = ROOT / "scripts" / "action" / "configure-auth.sh"
 WITH_AUTH = ROOT / "scripts" / "action" / "with-auth.sh"
 
 
 class ActionAuthTests(unittest.TestCase):
-    def _configure(self, provider: str, key: str, **extra_env: str) -> tuple[subprocess.CompletedProcess, Path]:
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+
+    def _preflight(self, **inputs: str) -> tuple[subprocess.CompletedProcess, Path, dict[str, str]]:
         temp_dir = Path(self.temp_dir.name)
         runner_temp = temp_dir / "runner"
-        runner_temp.mkdir()
-        output = temp_dir / "output"
-        github_env = temp_dir / "github-env"
+        runner_temp.mkdir(exist_ok=True)
+        output = temp_dir / "github-output"
+        output.write_text("", encoding="utf-8")
         env = {
             "PATH": os.environ["PATH"],
             "ACTION_PATH": str(ROOT),
-            "GITHUB_ENV": str(github_env),
             "GITHUB_OUTPUT": str(output),
-            "LICENSE_KEY": "",
-            "LLM_API_KEY": key,
-            "LLM_PROVIDER": provider,
+            "GITHUB_STEP_SUMMARY": str(temp_dir / "summary.md"),
             "RUNNER_TEMP": str(runner_temp),
-            **extra_env,
+            **inputs,
         }
-        result = subprocess.run(
-            [str(CONFIGURE_AUTH)],
+        result = subprocess.run([str(PREFLIGHT)], env=env, capture_output=True, text=True, check=False)
+        return result, runner_temp / "codeboarding-auth", self._outputs(output)
+
+    @staticmethod
+    def _outputs(path: Path) -> dict[str, str]:
+        """Parse the runner's key=value and key<<HEREDOC output file."""
+        values: dict[str, str] = {}
+        lines = path.read_text(encoding="utf-8").splitlines()
+        index = 0
+        while index < len(lines):
+            key, _, value = lines[index].partition("=")
+            if value == "" and "<<" in lines[index]:
+                key, _, delimiter = lines[index].partition("<<")
+                body: list[str] = []
+                index += 1
+                while index < len(lines) and lines[index] != delimiter:
+                    body.append(lines[index])
+                    index += 1
+                values[key] = "\n".join(body)
+            else:
+                values[key] = value
+            index += 1
+        return values
+
+    def _with_auth(self, script: str, **extra_env: str) -> subprocess.CompletedProcess:
+        runner_temp = Path(self.temp_dir.name) / "runner"
+        env = {"PATH": os.environ["PATH"], "RUNNER_TEMP": str(runner_temp), **extra_env}
+        return subprocess.run(
+            [str(WITH_AUTH), "bash", "-c", script],
             env=env,
             capture_output=True,
             text=True,
             check=False,
         )
-        return result, runner_temp / "codeboarding-auth"
 
-    def setUp(self) -> None:
-        self.temp_dir = tempfile.TemporaryDirectory()
+    # -- the guarantee -----------------------------------------------------
 
-    def tearDown(self) -> None:
-        self.temp_dir.cleanup()
+    def test_a_named_provider_never_falls_back_to_codeboarding_credentials(self) -> None:
+        """PROTECTED TEST -- a workflow that names a provider runs on that provider or
+        not at all.
 
-    def test_maps_provider_keys_without_exporting_them_to_github_env(self) -> None:
-        cases = {
-            "openai": "OPENAI_API_KEY",
-            "vercel": "VERCEL_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY",
-            "google": "GOOGLE_API_KEY",
-            "aws": "AWS_BEARER_TOKEN_BEDROCK",
-            "aws_bedrock": "AWS_BEARER_TOKEN_BEDROCK",
-            "cerebras": "CEREBRAS_API_KEY",
-            "deepseek": "DEEPSEEK_API_KEY",
-            "glm": "GLM_API_KEY",
-            "kimi": "KIMI_API_KEY",
-            "openrouter": "OPENROUTER_API_KEY",
-        }
-        for provider, expected_env in cases.items():
-            with self.subTest(provider=provider):
-                self.temp_dir.cleanup()
-                self.temp_dir = tempfile.TemporaryDirectory()
-                result, auth_dir = self._configure(provider, "fake-key")
-                self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-                self.assertEqual((auth_dir / "provider-env").read_text(), expected_env)
-                self.assertEqual((auth_dir / "provider-key").read_text(), "fake-key")
-                self.assertFalse((Path(self.temp_dir.name) / "github-env").exists())
-                mode = stat.S_IMODE((auth_dir / "provider-key").stat().st_mode)
-                self.assertEqual(mode & 0o077, 0)
+        This action used to treat an empty key as "no preference" and resolve it to
+        CodeBoarding's hosted OpenRouter tier. A repository that asked for Anthropic and
+        had not added its secret yet therefore went green while running on a different
+        vendor, a different model, and CodeBoarding's money -- and nothing in the run
+        said so. Falling back is never the right answer to an unanswered question here:
+        the workflow named a provider, so the only honest outcomes are that provider or
+        a failure that says what is missing.
+        """
+        result, auth_dir, outputs = self._preflight(
+            CB_IN_LLM="anthropic",
+            CB_IN_ANTHROPIC_API_KEY="",
+            ACTIONS_ID_TOKEN_REQUEST_URL="https://oidc.example/token",
+            ACTIONS_ID_TOKEN_REQUEST_TOKEN="request-token",
+        )
 
-    def test_maps_standard_custom_provider_names_without_an_action_allowlist(self) -> None:
-        result, auth_dir = self._configure("acme-ai", "fake-key")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(outputs["error"], "missing_provider_key")
+        self.assertFalse(auth_dir.exists(), "credentials were staged for a refused run")
+        self.assertNotIn("openrouter", result.stdout.lower())
+        self.assertNotIn("OPENROUTER_API_KEY", result.stdout)
 
+        # And the analysis cannot proceed on whatever the environment happened to hold.
+        scoped = self._with_auth("true", OPENROUTER_API_KEY="inherited")
+        self.assertNotEqual(scoped.returncode, 0)
+
+    # -- resolution --------------------------------------------------------
+
+    def test_provider_key_is_staged_privately_and_exported_for_analysis(self) -> None:
+        result, auth_dir, outputs = self._preflight(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="fake=key")
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-        self.assertEqual((auth_dir / "provider-env").read_text(), "ACME_AI_API_KEY")
+        self.assertEqual(outputs["tier"], "byok")
+        self.assertEqual(outputs["provider"], "anthropic")
+        self.assertEqual(outputs["error"], "")
 
-    def test_normalizes_pasted_provider_key_wrappers(self) -> None:
-        result, auth_dir = self._configure("openrouter", "  'OPENROUTER_API_KEY=\"fake-key\"'  \n")
+        key_file = auth_dir / "env" / "ANTHROPIC_API_KEY"
+        self.assertEqual(key_file.read_text(encoding="utf-8"), "fake=key")
+        self.assertEqual(stat.S_IMODE(key_file.stat().st_mode) & 0o077, 0)
+        self.assertIn("::add-mask::fake=key", result.stdout)
 
+        scoped = self._with_auth(
+            'test "$ANTHROPIC_API_KEY" = "fake=key" && test "$CODEBOARDING_SOURCE" = github_action'
+        )
+        self.assertEqual(scoped.returncode, 0, scoped.stderr or scoped.stdout)
+        self.assertFalse(auth_dir.exists(), "credentials outlived the analysis command")
+
+    def test_selectors_for_other_providers_are_stripped_from_the_analysis(self) -> None:
+        """Core picks a provider from its environment, so an inherited key must not vote."""
+        result, _, _ = self._preflight(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k")
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-        self.assertEqual((auth_dir / "provider-key").read_text(), "fake-key")
 
-    def test_ollama_and_litellm_keys_use_core_environment_names(self) -> None:
-        for provider in ("ollama", "litellm"):
-            with self.subTest(provider=provider):
-                self.temp_dir.cleanup()
-                self.temp_dir = tempfile.TemporaryDirectory()
-                result, auth_dir = self._configure(provider, "fake-key")
-                self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-                self.assertEqual((auth_dir / "provider-env").read_text(), f"{provider.upper()}_API_KEY")
-                self.assertEqual((auth_dir / "provider-key").read_text(), "fake-key")
+        scoped = self._with_auth(
+            'test -z "${OPENAI_API_KEY:-}" && test -z "${OPENAI_BASE_URL:-}" && '
+            'test -z "${OPENROUTER_API_KEY:-}" && test -z "${LITELLM_BASE_URL:-}" && '
+            'test -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}"',
+            OPENAI_API_KEY="inherited",
+            OPENAI_BASE_URL="https://inherited.example",
+            OPENROUTER_API_KEY="inherited",
+            LITELLM_BASE_URL="https://inherited.example",
+            ACTIONS_ID_TOKEN_REQUEST_URL="https://oidc.example/token",
+        )
+        self.assertEqual(scoped.returncode, 0, scoped.stderr or scoped.stdout)
 
-    def test_keyless_direct_provider_does_not_fall_back_to_hosted_openrouter(self) -> None:
-        result, auth_dir = self._configure("ollama", "")
+    def test_model_inputs_keep_their_precedence(self) -> None:
+        self._preflight(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k")
+        scoped = self._with_auth(
+            'test "$AGENT_MODEL" = analysis-model && test "$PARSING_MODEL" = shared-model',
+            MODEL="shared-model",
+            AGENT_MODEL_INPUT="analysis-model",
+            PARSING_MODEL_INPUT="",
+        )
+        self.assertEqual(scoped.returncode, 0, scoped.stderr or scoped.stdout)
 
+    def test_refusal_reports_a_code_and_an_actionable_message(self) -> None:
+        result, _, outputs = self._preflight(CB_IN_LLM="hosted", CB_IN_OPENAI_API_KEY="k")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(outputs["error"], "hosted_with_provider_key")
+        self.assertIn("openai_api_key", outputs["message"])
+        self.assertIn("::error title=CodeBoarding LLM configuration::", result.stdout)
+        summary = (Path(self.temp_dir.name) / "summary.md").read_text(encoding="utf-8")
+        self.assertIn("CodeBoarding could not start", summary)
+
+    def test_successful_run_reports_its_tier_and_provider(self) -> None:
+        """The webview reads this to show what a repository is actually running on."""
+        result, _, outputs = self._preflight(
+            CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k", CB_IN_LICENSE_KEY="lic"
+        )
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-        self.assertEqual((auth_dir / "provider-env").read_text(), "OLLAMA_API_KEY")
-        self.assertFalse((auth_dir / "provider-key").exists())
+        self.assertEqual(outputs["tier"], "byok+license")
+        summary = (Path(self.temp_dir.name) / "summary.md").read_text(encoding="utf-8")
+        self.assertIn("byok+license", summary)
+        self.assertIn("anthropic", summary)
 
-    def test_hosted_auth_relays_to_aws_proxy_instead_of_openrouter(self) -> None:
+    # -- hosted tiers ------------------------------------------------------
+
+    def test_hosted_auth_relays_to_the_codeboarding_proxy(self) -> None:
         temp_dir = Path(self.temp_dir.name)
         fake_bin = temp_dir / "bin"
         fake_bin.mkdir()
@@ -124,99 +191,65 @@ done
         )
         fake_python.chmod(0o755)
 
-        result, auth_dir = self._configure(
-            "openrouter",
-            "",
+        result, auth_dir, outputs = self._preflight(
+            CB_IN_LLM="license",
+            CB_IN_LICENSE_KEY="a-license",
             ACTIONS_ID_TOKEN_REQUEST_URL="https://oidc.example/token",
             ACTIONS_ID_TOKEN_REQUEST_TOKEN="request-token",
-            CAPTURED_ARGS=str(captured_args),
-            PATH=f"{fake_bin}:{os.environ['PATH']}",
         )
-
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-        args = captured_args.read_text(encoding="utf-8").splitlines()
-        upstream_index = args.index("--upstream-base-url") + 1
-        self.assertEqual(
-            args[upstream_index],
-            "https://auduihjmm4b735zci7vyabuikq0hppqn.lambda-url.us-east-1.on.aws",
-        )
-        self.assertNotIn("https://openrouter.ai/api/v1", args)
-        self.assertEqual((auth_dir / "provider-key").read_text(), "github-actions-oidc-relay")
+        self.assertEqual(outputs["tier"], "license")
+        self.assertIn("::add-mask::a-license", result.stdout)
 
-    def test_failed_relay_start_removes_credentials_and_process(self) -> None:
-        temp_dir = Path(self.temp_dir.name)
-        fake_bin = temp_dir / "bin"
-        fake_bin.mkdir()
-        relay_pid = temp_dir / "relay-pid"
-        (fake_bin / "python3").write_text(
-            '#!/usr/bin/env bash\nprintf \'%s\' "$$" > "$RELAY_PID"\nexec /bin/sleep 30\n',
-            encoding="utf-8",
-        )
-        (fake_bin / "sleep").write_text("#!/usr/bin/env bash\n/bin/sleep 0.01\n", encoding="utf-8")
-        for path in (fake_bin / "python3", fake_bin / "sleep"):
-            path.chmod(0o755)
-
-        result, auth_dir = self._configure(
-            "openrouter",
-            "",
-            ACTIONS_ID_TOKEN_REQUEST_URL="https://oidc.example/token",
-            ACTIONS_ID_TOKEN_REQUEST_TOKEN="request-token",
-            LICENSE_KEY="license",
-            RELAY_PID=str(relay_pid),
-            PATH=f"{fake_bin}:{os.environ['PATH']}",
-        )
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertFalse(auth_dir.exists())
-        with self.assertRaises(ProcessLookupError):
-            os.kill(int(relay_pid.read_text(encoding="utf-8")), 0)
-
-    def test_with_auth_scopes_credentials_source_and_model_precedence(self) -> None:
-        result, auth_dir = self._configure("anthropic", "fake=key")
-        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-        command = [
-            str(WITH_AUTH),
-            "bash",
-            "-c",
-            'test "$ANTHROPIC_API_KEY" = "fake=key" && '
-            'test -z "${OPENAI_API_KEY:-}" && '
-            'test -z "${OPENAI_BASE_URL:-}" && '
-            'test -z "${OPENROUTER_API_KEY:-}" && '
-            'test -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" && '
-            'test -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" && '
-            'test "$CODEBOARDING_SOURCE" = github_action && '
-            'test "$AGENT_MODEL" = analysis-model && '
-            'test "$PARSING_MODEL" = shared-model',
-        ]
-        env = {
-            "PATH": os.environ["PATH"],
-            "RUNNER_TEMP": str(auth_dir.parent),
-            "MODEL": "shared-model",
-            "AGENT_MODEL_INPUT": "analysis-model",
-            "PARSING_MODEL_INPUT": "",
-            "OPENAI_API_KEY": "inherited-key",
-            "OPENAI_BASE_URL": "https://inherited.example",
-            "ACTIONS_ID_TOKEN_REQUEST_URL": "https://oidc.example/token",
-            "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "request-token",
-        }
-        scoped = subprocess.run(command, env=env, capture_output=True, text=True, check=False)
-        self.assertEqual(scoped.returncode, 0, scoped.stderr or scoped.stdout)
-        self.assertFalse(auth_dir.exists())
-
-    def test_keyless_provider_requires_its_endpoint(self) -> None:
-        result, auth_dir = self._configure("ollama", "")
-        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-
-        scoped = subprocess.run(
-            [str(WITH_AUTH), "true"],
-            env={"PATH": os.environ["PATH"], "RUNNER_TEMP": str(auth_dir.parent)},
+        configured = subprocess.run(
+            [str(CONFIGURE_AUTH)],
+            env={
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "ACTION_PATH": str(ROOT),
+                "RUNNER_TEMP": str(temp_dir / "runner"),
+                "CAPTURED_ARGS": str(captured_args),
+                "ACTIONS_ID_TOKEN_REQUEST_URL": "https://oidc.example/token",
+                "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "request-token",
+            },
             capture_output=True,
             text=True,
             check=False,
         )
+        self.assertEqual(configured.returncode, 0, configured.stderr or configured.stdout)
+        args = captured_args.read_text(encoding="utf-8").splitlines()
+        upstream = args[args.index("--upstream-base-url") + 1]
+        self.assertEqual(upstream, "https://auduihjmm4b735zci7vyabuikq0hppqn.lambda-url.us-east-1.on.aws")
+        self.assertIn("--license-file", args)
+        self.assertEqual((auth_dir / "env" / "OPENROUTER_API_KEY").read_text(), "github-actions-oidc-relay")
+        self.assertEqual((auth_dir / "env" / "OPENROUTER_BASE_URL").read_text(), "http://127.0.0.1:12345")
 
+    def test_direct_provider_runs_start_no_relay(self) -> None:
+        temp_dir = Path(self.temp_dir.name)
+        fake_bin = temp_dir / "bin"
+        fake_bin.mkdir()
+        marker = temp_dir / "relay-started"
+        (fake_bin / "python3").write_text(f'#!/usr/bin/env bash\ntouch "{marker}"\n', encoding="utf-8")
+        (fake_bin / "python3").chmod(0o755)
+
+        self._preflight(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k")
+        configured = subprocess.run(
+            [str(CONFIGURE_AUTH)],
+            env={
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "ACTION_PATH": str(ROOT),
+                "RUNNER_TEMP": str(temp_dir / "runner"),
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(configured.returncode, 0, configured.stderr or configured.stdout)
+        self.assertFalse(marker.exists(), "a direct-provider run contacted the hosted relay")
+
+    def test_analysis_refuses_to_run_without_a_resolved_plan(self) -> None:
+        scoped = self._with_auth("true")
         self.assertNotEqual(scoped.returncode, 0)
-        self.assertIn("ollama requires OLLAMA_BASE_URL or OLLAMA_HOST", scoped.stderr)
+        self.assertIn("credentials are unavailable", scoped.stdout + scoped.stderr)
 
 
 if __name__ == "__main__":
