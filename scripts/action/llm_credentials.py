@@ -202,6 +202,11 @@ def resolve(table: dict, environ: dict[str, str]) -> dict:
     }
 
 
+def _is_endpoint(var: str) -> bool:
+    """Configuration rather than credential: safe to name in an artifact, worth hashing."""
+    return var.endswith(("_BASE_URL", "_HOST")) or var == "AWS_DEFAULT_REGION"
+
+
 def write_auth_dir(table: dict, plan: dict, auth_dir: Path) -> None:
     """Lay the plan out as files the later steps read, readable only by this user."""
     os.umask(0o077)
@@ -228,7 +233,21 @@ def write_auth_dir(table: dict, plan: dict, auth_dir: Path) -> None:
         for provider in table["providers"].values()
         for var in list(provider["selection_envs"]) + list(provider["inputs"].values())
     }
-    (auth_dir / "foreign-envs").write_text("\n".join(sorted(everything - keep)), encoding="utf-8")
+    # Trailing newline, because `read` returns non-zero on an unterminated final line and
+    # a `while read` loop therefore skips it. Without it the alphabetically last variable
+    # was never unset: an inherited VERCEL_BASE_URL survived an Anthropic run and let core
+    # see two providers configured. with-auth.sh guards the same case from its side.
+    # What the run talks to, minus anything secret. The reusable-analysis name is built
+    # from this: pointing `openai_base_url` at a different backend, or moving Bedrock to
+    # another region, produces different analysis, so it must not restore a bundle built
+    # against the old one. Keys are deliberately excluded -- they do not change what the
+    # model says, and rotating one should not throw away a warm start.
+    backend = [f"{plan['tier']}:{plan['provider']}"]
+    backend += [f"{var}={value}" for var, value in sorted(plan["env"].items()) if _is_endpoint(var)]
+    (auth_dir / "backend-id").write_text("\n".join(backend), encoding="utf-8")
+
+    foreign = sorted(everything - keep)
+    (auth_dir / "foreign-envs").write_text("".join(f"{var}\n" for var in foreign), encoding="utf-8")
 
 
 def main(argv: list[str]) -> int:

@@ -20,7 +20,10 @@ fi
 # The list of what to strip is written by the resolver from the provider table, rather
 # than kept here, so it cannot fall behind the pinned engine.
 if [ -s "$AUTH_DIR/foreign-envs" ]; then
-  while IFS= read -r selector; do
+  # `|| [ -n "$selector" ]` so a file whose last line is unterminated still strips that
+  # entry: `read` reports failure at EOF even when it read a partial line, and losing the
+  # last variable silently is exactly how a second provider stays configured.
+  while IFS= read -r selector || [ -n "$selector" ]; do
     [ -z "$selector" ] || unset "$selector"
   done < "$AUTH_DIR/foreign-envs"
 fi

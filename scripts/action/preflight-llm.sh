@@ -32,8 +32,12 @@ provider="$(field provider)"
 error="$(field error)"
 message="$(field message)"
 
+backend_id=""
+[ ! -s "$AUTH_DIR/backend-id" ] || backend_id="$(cksum < "$AUTH_DIR/backend-id" | cut -d' ' -f1)"
+
 {
   echo "tier=$tier"
+  echo "backend_id=$backend_id"
   echo "provider=$provider"
   echo "error=$error"
   echo "message<<CB_EOF"

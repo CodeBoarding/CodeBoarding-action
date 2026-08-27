@@ -160,6 +160,50 @@ class ActionAuthTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
         self.assertIn("AWS_DEFAULT_REGION", (auth_dir / "foreign-envs").read_text(encoding="utf-8"))
 
+    def test_the_last_foreign_selector_is_stripped_like_every_other(self) -> None:
+        """The alphabetically last entry is the one a `while read` loop drops.
+
+        `"\\n".join(...)` left the file unterminated, so `read` failed at EOF and never ran
+        the body for that record. VERCEL_BASE_URL sorts last, so an Anthropic run inherited
+        it and core saw two providers configured. The earlier stripping test passed
+        throughout, because none of the variables it named was last.
+        """
+        result, auth_dir, _ = self._preflight(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k")
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        listed = (auth_dir / "foreign-envs").read_text(encoding="utf-8")
+        self.assertTrue(listed.endswith("\n"), "an unterminated final record is silently skipped")
+        last = listed.strip().splitlines()[-1]
+
+        scoped = self._with_auth(f'test -z "${{{last}:-}}"', **{last: "inherited"})
+        self.assertEqual(scoped.returncode, 0, f"{last} survived into the analysis")
+
+    def test_endpoint_and_region_changes_reach_the_reusable_analysis_name(self) -> None:
+        """Two runs that talk to different backends must not share a warm start."""
+        secret = "sk-distinctive-value"
+        first, auth_dir, outputs = self._preflight(
+            CB_IN_LLM="openai", CB_IN_OPENAI_API_KEY=secret, CB_IN_OPENAI_BASE_URL="https://a.example/v1"
+        )
+        self.assertEqual(first.returncode, 0, first.stderr or first.stdout)
+        recorded = (auth_dir / "backend-id").read_text(encoding="utf-8")
+        self.assertIn("https://a.example/v1", recorded)
+        self.assertNotIn(secret, recorded, "an artifact name must never be built from a key")
+        moved = outputs["backend_id"]
+
+        self.temp_dir.cleanup()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        _, _, other = self._preflight(
+            CB_IN_LLM="openai", CB_IN_OPENAI_API_KEY=secret, CB_IN_OPENAI_BASE_URL="https://b.example/v1"
+        )
+        self.assertNotEqual(moved, other["backend_id"], "a different endpoint must not reuse analysis")
+
+    def test_rotating_a_key_does_not_throw_away_reusable_analysis(self) -> None:
+        """The backend id names what the run talks to, never the secret it talks with."""
+        _, _, first = self._preflight(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="old-key")
+        self.temp_dir.cleanup()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        _, _, second = self._preflight(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="new-key")
+        self.assertEqual(first["backend_id"], second["backend_id"])
+
     def test_model_inputs_keep_their_precedence(self) -> None:
         self._preflight(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k")
         scoped = self._with_auth(

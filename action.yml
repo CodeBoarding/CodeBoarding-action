@@ -371,6 +371,7 @@ runs:
         PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
         IS_FORK: ${{ steps.guard.outputs.is_fork }}
         LLM_PROVIDER: ${{ steps.llm.outputs.provider }}
+        BACKEND_ID: ${{ steps.llm.outputs.backend_id }}
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}

@@ -296,7 +296,7 @@ With the default `github.token`, the repository or organization must allow GitHu
 | `llm` | both | **required** | `hosted`, `license`, or a provider name. No default. |
 | `<provider>_api_key` | both | empty | That provider's key, e.g. `anthropic_api_key`. See [Providers](#providers). |
 | `<provider>_base_url` | both | empty | That provider's endpoint, where it has one. |
-| `aws_region` | both | empty | Bedrock region. Core defaults to `us-east-1`. |
+| `aws_bedrock_region` | both | empty | Bedrock region. Core defaults to `us-east-1`. |
 | `license_key` | both | empty | CodeBoarding license. Required by `llm: license`. |
 | `model` | both | empty | Default model for both analysis and parsing. |
 | `agent_model` | both | empty | Analysis-only override for `model`. |

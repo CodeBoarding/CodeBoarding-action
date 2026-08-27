@@ -30,8 +30,11 @@ fi
 ignore_digest=none
 ignore_file="$CHECKOUT_DIR/.codeboarding/.codeboardingignore"
 [ ! -f "$ignore_file" ] || ignore_digest="$(digest < "$ignore_file")"
-model_digest="$(printf '%s\n%s\n%s\n%s\n' \
-  "${LLM_PROVIDER:-}" "${MODEL:-}" "${AGENT_MODEL_INPUT:-}" "${PARSING_MODEL_INPUT:-}" | digest)"
+# BACKEND_ID covers the tier and any endpoint or region the run was pointed at, so moving
+# `openai_base_url` to another gateway invalidates a warm start the way changing the model
+# does. It carries no key: rotating a secret must not throw away reusable analysis.
+model_digest="$(printf '%s\n%s\n%s\n%s\n%s\n' \
+  "${LLM_PROVIDER:-}" "${BACKEND_ID:-}" "${MODEL:-}" "${AGENT_MODEL_INPUT:-}" "${PARSING_MODEL_INPUT:-}" | digest)"
 cfg="$(printf '%s\n%s\n%s\n%s\n' \
   "$STATE_SCHEMA" "$engine_version" "$ignore_digest" "$model_digest" | digest)"
 
