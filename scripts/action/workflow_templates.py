@@ -130,3 +130,40 @@ def match(kind: str, text: str, version: int | None = None) -> dict[str, str] | 
     guard = captured.get("SYNC_PR_GUARD", captured.get("DELIVERY_INPUT", ""))
     result["delivery"] = "pull_request" if guard.strip() else "push"
     return result
+
+
+def bundle() -> dict:
+    """Everything a consumer needs, in one file it can import.
+
+    The webview bundles its generator into a browser build, so it cannot read these files
+    from disk. Rather than have it keep a second, hand-maintained copy of the text, the
+    action publishes the templates as data and the webview vendors that one artifact.
+    `tests/test_workflow_templates.py` asserts this matches the .yml files it is built from,
+    so the authored template stays the thing under review.
+    """
+    log = json.loads(_read(TEMPLATES / "CHANGELOG.json"))
+    kinds = {"review": "codeboarding.yml", "sync": "codeboarding-sync.yml"}
+    return {
+        "current": log["current"],
+        "changelog": log["versions"],
+        "templates": {k: _read(TEMPLATES / name) for k, name in kinds.items()},
+        "credentials": credential_fills(),
+        "delivery": {
+            d: {
+                "permission": _read(TEMPLATES / "fills" / f"delivery.{d}.permission.yml"),
+                "input": _read(TEMPLATES / "fills" / f"delivery.{d}.input.yml"),
+                "sync_pr_guard": _read(TEMPLATES / "fills" / f"sync_pr_guard.{d}.yml"),
+            }
+            for d in ("push", "pull_request")
+        },
+    }
+
+
+def write_bundle() -> Path:
+    path = TEMPLATES / "bundle.json"
+    path.write_text(json.dumps(bundle(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
+if __name__ == "__main__":
+    print(write_bundle())

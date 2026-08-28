@@ -108,6 +108,41 @@ class ReadmeTests(unittest.TestCase):
                 self.assertEqual(block, expected, "regenerate the README from templates/")
 
 
+class BundleTests(unittest.TestCase):
+    """The published bundle must be the templates, not a copy that drifts from them.
+
+    The webview cannot read these files: its generator is bundled into a browser build. So
+    the action publishes them as data and the webview vendors that. This is the assertion
+    that keeps the authored .yml the thing under review, rather than a decorative original
+    beside the JSON everyone actually uses.
+    """
+
+    def setUp(self) -> None:
+        self.bundle = json.loads((ROOT / "templates" / "bundle.json").read_text(encoding="utf-8"))
+
+    def test_the_committed_bundle_is_current(self) -> None:
+        self.assertEqual(
+            self.bundle,
+            wt.bundle(),
+            "run `python3 scripts/action/workflow_templates.py` to rebuild templates/bundle.json",
+        )
+
+    def test_the_bundle_renders_what_the_templates_render(self) -> None:
+        """Rendering from the bundle alone, the way a consumer will, reaches the same file."""
+        for name, (branch, tier, delivery) in CASES.items():
+            for kind in ("review", "sync"):
+                with self.subTest(case=name, kind=kind):
+                    holes = {
+                        "BRANCH": branch,
+                        "CREDENTIALS": self.bundle["credentials"][tier],
+                        "SYNC_PR_GUARD": self.bundle["delivery"][delivery]["sync_pr_guard"],
+                        "DELIVERY_PERMISSION": self.bundle["delivery"][delivery]["permission"],
+                        "DELIVERY_INPUT": self.bundle["delivery"][delivery]["input"],
+                    }
+                    rendered = wt.HOLE.sub(lambda m: holes[m.group(1)], self.bundle["templates"][kind])
+                    self.assertEqual(rendered, (FIXTURES / f"{name}.{kind}.yml").read_text())
+
+
 class ChangelogTests(unittest.TestCase):
     def setUp(self) -> None:
         self.log = json.loads((ROOT / "templates" / "CHANGELOG.json").read_text(encoding="utf-8"))
