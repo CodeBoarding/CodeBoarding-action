@@ -12,6 +12,7 @@ changed instead of being updated.
 
 from __future__ import annotations
 
+import difflib
 import importlib.util
 import json
 import unittest
@@ -36,16 +37,49 @@ CASES = {
 
 
 class TemplateRenderTests(unittest.TestCase):
-    def test_every_fixture_is_reproduced_exactly(self) -> None:
+    def test_the_only_change_from_what_the_webview_ships_is_the_oidc_permission(self) -> None:
+        """The fixtures are the webview's own output, and the templates reproduce them
+        except for one reviewed change: `id-token: write` is no longer granted to a
+        workflow running on the user's own provider key, because such a run never mints a
+        token. Every other line must be identical. A template that merely looked right
+        would rewrite every repository's workflow on its next update, so the assertion is
+        deliberately "nothing else moved" rather than "close enough".
+        """
         for name, (branch, tier, delivery) in CASES.items():
             for kind in ("review", "sync"):
                 with self.subTest(case=name, kind=kind):
-                    expected = (FIXTURES / f"{name}.{kind}.yml").read_text(encoding="utf-8")
-                    self.assertEqual(
-                        wt.render(kind, branch=branch, tier=tier, delivery=delivery),
-                        expected,
-                        "the template no longer produces the workflow the webview ships",
-                    )
+                    shipped = (FIXTURES / f"{name}.{kind}.yml").read_text(encoding="utf-8")
+                    rendered = wt.render(kind, branch=branch, tier=tier, delivery=delivery)
+                    changed = [
+                        line
+                        for line in difflib.unified_diff(shipped.splitlines(), rendered.splitlines(), lineterm="")
+                        if line[:1] in "+-" and not line.startswith(("---", "+++"))
+                    ]
+                    stray = [
+                        c
+                        for c in changed
+                        if "id-token" not in c and "provider key never" not in c and "tier AND a license" not in c
+                    ]
+                    self.assertEqual(stray, [], "the template changed something it should not have")
+
+    def test_only_the_hosted_tiers_can_identify_the_repository(self) -> None:
+        """Least privilege, decided by the credentials. A direct provider call never asks
+        GitHub for a token, so a moving third-party action has no reason to be able to."""
+        for tier, granted in (("hosted", True), ("license", True), ("byok:anthropic", False)):
+            for kind in ("review", "sync"):
+                with self.subTest(tier=tier, kind=kind):
+                    rendered = wt.render(kind, branch="main", tier=tier, delivery="push")
+                    self.assertEqual("id-token: write" in rendered, granted)
+
+    def test_a_branch_name_with_an_apostrophe_stays_valid_yaml(self) -> None:
+        """`release/o'neil` is a valid ref, and raw interpolation produced a scalar GitHub
+        could not parse."""
+        rendered = wt.render("sync", branch="release/o'neil", tier="hosted", delivery="push")
+        # Doubling is how a single-quoted YAML scalar escapes an apostrophe. Raw
+        # interpolation produced `['release/o'neil']`, which GitHub refuses to parse.
+        self.assertIn("branches: ['release/o''neil']", rendered)
+        self.assertIn("target_branch: 'release/o''neil'", rendered)
+        self.assertNotIn("['release/o'neil']", rendered)
 
 
 class TemplateMatchTests(unittest.TestCase):
@@ -128,19 +162,27 @@ class BundleTests(unittest.TestCase):
         )
 
     def test_the_bundle_renders_what_the_templates_render(self) -> None:
-        """Rendering from the bundle alone, the way a consumer will, reaches the same file."""
+        """Rendering from the bundle alone, the way a consumer will, reaches the same file.
+
+        Against `render`, not the fixtures, because the fixtures are the webview's older
+        output and the OIDC change above is a deliberate departure from them.
+        """
         for name, (branch, tier, delivery) in CASES.items():
             for kind in ("review", "sync"):
                 with self.subTest(case=name, kind=kind):
                     holes = {
-                        "BRANCH": branch,
+                        "BRANCH": wt.yaml_scalar(branch),
                         "CREDENTIALS": self.bundle["credentials"][tier],
                         "SYNC_PR_GUARD": self.bundle["delivery"][delivery]["sync_pr_guard"],
-                        "DELIVERY_PERMISSION": self.bundle["delivery"][delivery]["permission"],
+                        "OIDC_PERMISSION": self.bundle["oidc"]["review"][
+                            "byok" if tier.startswith("byok") else "hosted"
+                        ],
+                        "EXTRA_PERMISSIONS": self.bundle["delivery"][delivery]["permission"]
+                        + self.bundle["oidc"]["sync"]["byok" if tier.startswith("byok") else "hosted"],
                         "DELIVERY_INPUT": self.bundle["delivery"][delivery]["input"],
                     }
                     rendered = wt.HOLE.sub(lambda m: holes[m.group(1)], self.bundle["templates"][kind])
-                    self.assertEqual(rendered, (FIXTURES / f"{name}.{kind}.yml").read_text())
+                    self.assertEqual(rendered, wt.render(kind, branch=branch, tier=tier, delivery=delivery))
 
 
 class ChangelogTests(unittest.TestCase):

@@ -25,9 +25,7 @@ on:
 
 permissions:
   contents: write   # commit the generated baseline + docs to the branch
-{{DELIVERY_PERMISSION}}  id-token: write   # identifies this repo to CodeBoarding's hosted tier, used by the free
-                    # tier AND a license, and as the fallback until your own key exists
-
+{{EXTRA_PERMISSIONS}}
 concurrency:
   # Serialize against itself so a push landing mid-run can't make two commits.
   group: codeboarding-sync

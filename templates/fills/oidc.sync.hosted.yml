@@ -1,0 +1,2 @@
+  id-token: write   # identifies this repo to CodeBoarding's hosted tier; a run on your own
+                    # provider key never mints one, so it is not granted there

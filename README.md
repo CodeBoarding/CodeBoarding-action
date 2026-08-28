@@ -38,7 +38,7 @@ jobs:
       contents: read        # check out the repo + read the committed baseline (no writes in review mode)
       pull-requests: write  # post the architecture-diff PR comment
       issues: write         # the /codeboarding issue_comment trigger + comment API
-      id-token: write       # mint a GitHub OIDC token for the free hosted tier (write is the only level for id-token)
+      id-token: write       # mint a GitHub OIDC token for CodeBoarding's hosted tier
       actions: read         # let a repeat review download the analysis an earlier run published, instead of re-deriving the whole PR
     if: >
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
@@ -254,8 +254,8 @@ on:
 
 permissions:
   contents: write   # commit the generated baseline + docs to the branch
-  id-token: write   # identifies this repo to CodeBoarding's hosted tier, used by the free
-                    # tier AND a license, and as the fallback until your own key exists
+  id-token: write   # identifies this repo to CodeBoarding's hosted tier; a run on your own
+                    # provider key never mints one, so it is not granted there
 
 concurrency:
   # Serialize against itself so a push landing mid-run can't make two commits.
