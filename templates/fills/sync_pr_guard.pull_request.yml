@@ -1,0 +1,2 @@
+ &&
+       github.head_ref != 'codeboarding/sync'

@@ -1,0 +1,25 @@
+{
+  "_comment": [
+    "Every workflow template CodeBoarding has shipped, newest first, with one sentence",
+    "saying what changed. The webview renders the entries between the version a repository",
+    "matches and `current` into the message it shows, so this file IS the user-facing copy;",
+    "it is not a developer changelog that someone later paraphrases.",
+    "",
+    "`type` decides how an entry composes with the ones after it:",
+    "  update  - adds to what came before; concatenated with later entries.",
+    "  replace - supersedes every earlier description; rendering starts here.",
+    "",
+    "`replace` is what keeps a revert honest. Without it, a repository two versions behind a",
+    "change that was itself undone would be told about both, and read a description of a",
+    "journey rather than of where it is going."
+  ],
+  "current": 1,
+  "versions": [
+    {
+      "version": 1,
+      "type": "replace",
+      "summary": "Says where CodeBoarding gets its AI credentials, and fails with the missing secret named instead of quietly running on a different provider.",
+      "detail": "First template tracked by version. Everything committed before this is recognised by content, and described by this entry."
+    }
+  ]
+}

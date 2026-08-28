@@ -18,48 +18,48 @@ name: CodeBoarding review
 
 on:
   pull_request:
-    types: [opened, reopened, ready_for_review, synchronize]
+    types: [opened, reopened, ready_for_review, closed, synchronize]
   issue_comment:
     types: [created]
 
-permissions:
-  contents: read
-  actions: read        # download the analysis an earlier run published
-  pull-requests: write
-  issues: write
-  id-token: write
+# No workflow-level permissions: each job requests only what it needs (least
+# privilege), so the default token starts with none.
+permissions: {}
 
-# One review at a time per pull request. Two pushes in quick succession would
-# otherwise analyze concurrently, and both would start from the same older
-# analysis instead of the newer one continuing from its predecessor. They also
-# share one sticky comment, so whichever finishes last wins — which can be the
-# run for the older commit. Queue rather than cancel, so a /codeboarding command
-# waits for a running review instead of killing it.
 concurrency:
   group: codeboarding-${{ github.event.pull_request.number || github.event.issue.number }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
 
 jobs:
   review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read        # check out the repo + read the committed baseline (no writes in review mode)
+      pull-requests: write  # post the architecture-diff PR comment
+      issues: write         # the /codeboarding issue_comment trigger + comment API
+      id-token: write       # mint a GitHub OIDC token for the free hosted tier (write is the only level for id-token)
+      actions: read         # let a repeat review download the analysis an earlier run published, instead of re-deriving the whole PR
     if: >
-      (github.event_name == 'pull_request' && github.event.pull_request.draft == false &&
+      (github.event_name == 'pull_request' && github.event.action != 'closed' &&
+       github.event.pull_request.draft == false &&
        github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
        startsWith(github.event.comment.body, '/codeboarding') &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
     steps:
       - uses: CodeBoarding/CodeBoarding-action@v1
         with:
-          llm: hosted   # or license, or a provider name -- see Authentication
+          # CodeBoarding's free hosted tier. No secret to add: the run authenticates
+          # with the GitHub OIDC token that `id-token: write` above grants.
+          llm: hosted
 ```
 
 Automatic runs update one sticky **CodeBoarding review** comment. A trusted repository owner, member, or collaborator can comment `/codeboarding` to analyze the current PR head again, including on fork PRs; every command creates a new result comment.
 
 `synchronize` re-runs the review on every push to the branch. Each of those runs covers only the commits pushed since the previous one, so a push costs a fraction of a first analysis — and a pushed commit is the only thing that builds the reusable analysis, since GitHub gives comment-triggered runs a read-only cache. Drop `synchronize` from the list if you would rather spend one analysis per pull request than one per push.
 
-Keep the `concurrency` block if you keep `synchronize`: it is what makes a push continue from the push before it, and what stops a slower run for an older commit from overwriting the review comment for a newer one. Set `cancel-in-progress: true` instead to abandon a superseded run rather than queue it, which costs less when branches are pushed to rapidly, at the price of no analysis for the commits in between.
+Keep the `concurrency` block if you keep `synchronize`: it is what makes a push continue from the push before it, and what stops a slower run for an older commit from overwriting the review comment for a newer one. `cancel-in-progress` fires only when a pull request is *closed*, which is why `closed` is in the trigger list: it stops an in-flight review finishing for a pull request nobody is going to read. Set it to `true` to abandon any superseded run rather than queue it, which costs less on rapidly pushed branches, at the price of no analysis for the commits in between.
 
 `/codeboarding` analyzes the current head, reusing this pull request's previous analysis when there is one. It takes no arguments.
 
@@ -231,25 +231,34 @@ name: CodeBoarding sync
 
 on:
   push:
-    branches: [main]
+    branches: ['main']
+    # Loop guard: don't re-trigger on the files this workflow itself commits.
+    # List generated files only: user-authored scope configuration must still trigger
+    # regeneration, while a merged sync PR must not trigger a loop.
     paths-ignore:
+      - '.codeboarding/*.md'
       - '.codeboarding/analysis.json'
       - '.codeboarding/fingerprint.json'
       - '.codeboarding/static_analysis.pkl'
       - '.codeboarding/static_analysis.sha'
       - '.codeboarding/codeboarding_version.json'
+      - '.codeboarding/health/health_report.json'
+      - 'docs/development/architecture.md'
   workflow_dispatch:
     inputs:
       force_full:
-        description: Rebuild without the committed baseline
+        description: 'Ignore the committed baseline and rebuild it from scratch (full analysis).'
         type: boolean
+        required: false
         default: false
 
 permissions:
-  contents: write
-  id-token: write
+  contents: write   # commit the generated baseline + docs to the branch
+  id-token: write   # identifies this repo to CodeBoarding's hosted tier, used by the free
+                    # tier AND a license, and as the fallback until your own key exists
 
 concurrency:
+  # Serialize against itself so a push landing mid-run can't make two commits.
   group: codeboarding-sync
   cancel-in-progress: false
 
@@ -261,9 +270,11 @@ jobs:
       - uses: CodeBoarding/CodeBoarding-action@v1
         with:
           mode: sync
-          llm: hosted
-          target_branch: main
           force_full: ${{ inputs.force_full || false }}
+          target_branch: 'main'
+          # CodeBoarding's free hosted tier. No secret to add: the run authenticates
+          # with the GitHub OIDC token that `id-token: write` above grants.
+          llm: hosted
 ```
 
 The first run, `force_full: true`, or an incompatible baseline causes a full analysis. Otherwise sync asks Core for an incremental update. If the generated state is unchanged, no commit is created. If the target advances while analysis is running, the stale result is not rebased onto code it did not analyze; the newer push run is allowed to produce the current baseline.
