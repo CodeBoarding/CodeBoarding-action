@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.13.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.12.3...v1.13.0) (2026-08-31)
+
+
+### Features
+
+* require an explicit llm input and never fall back to hosted credentials ([#104](https://github.com/CodeBoarding/CodeBoarding-action/issues/104)) ([19ffef4](https://github.com/CodeBoarding/CodeBoarding-action/commit/19ffef4423916a3ada1ac95324c636f9b027eb0a))
+
+
+### Bug Fixes
+
+* bump CodeBoarding engine to 0.13.11 ([#117](https://github.com/CodeBoarding/CodeBoarding-action/issues/117)) ([0049667](https://github.com/CodeBoarding/CodeBoarding-action/commit/0049667f853d4e6f33728e33b014e394eaa9fd9e))
+
 ## [1.12.3](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.12.2...v1.12.3) (2026-08-26)
 
 
