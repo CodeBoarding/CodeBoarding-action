@@ -1,12 +1,12 @@
 {
   "files": {
     "AGENTS.md": "bdba334e4eea2a5b",
-    "action.yml": "c52fba948ecdd7de",
+    "action.yml": "69124735d4100e1e",
     "pyproject.toml": "e021f980c6c67022",
     "README.md": "c86ed24565098ba0",
     "LICENSE": "356a3402bd47e108",
     "release-please-config.json": "e1ea6dfc5a9fa8bd",
-    "CHANGELOG.md": "ade29c3e991e4859",
+    "CHANGELOG.md": "14a19203fa8bc015",
     "assets/icon.svg": "1f5885e35bb4798e",
     "docs/COMMIT_STRATEGY.md": "36bf8413cd40d38a",
     "scripts/diff_to_mermaid.py": "be4401b5ff279bd6",
@@ -25,7 +25,7 @@
     "scripts/action/verify-credentials.sh": "9832afc0f5082c4c",
     "scripts/action/with-auth.sh": "ee8e0b3ef4b97188",
     "scripts/action/build-review-artifact.sh": "380aae6e6e296576",
-    "scripts/action/supported-providers.json": "a5eded1b839a3407",
+    "scripts/action/supported-providers.json": "a0c0804e978d19d9",
     "scripts/action/analyze.sh": "dffc4c05958025f1",
     "scripts/action/build-review-comment.sh": "949852579c3bbe45"
   }
