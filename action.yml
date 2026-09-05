@@ -353,7 +353,7 @@ runs:
       if: steps.guard.outputs.skip != 'true'
       shell: bash
       run: |
-        python -m pip install --disable-pip-version-check 'codeboarding==0.13.11'
+        python -m pip install --disable-pip-version-check 'codeboarding==0.14.0'
         # Fail here, with the reason, rather than mid-analysis with a traceback:
         # pinning a release does not pin what its dependencies resolve to. Run
         # the console script, not `python -c`, which would put the analyzed
