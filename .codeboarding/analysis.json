@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-08-31T23:02:25.953300+00:00",
-    "source_tree_hash": "5be26716276df19347ff8f134a935e931dfc0a4b7b9851366949d54805167bfd",
+    "generated_at": "2026-09-06T20:19:17.417973+00:00",
+    "source_tree_hash": "33bf75f2c7f5c51c109fbf89e1569038f49c38de8d228e75006f7bd19ddaf313",
     "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
@@ -13,10 +13,84 @@
         "other": 23,
         "codeboardingignore": 11
       }
+    },
+    "tree_spec": {
+      "version": 3,
+      "grouper": "affinity",
+      "machinery": [],
+      "scopes": {
+        "root": {
+          "axis": "structural",
+          "rung": "frontier",
+          "leaf_reason": "",
+          "last_id": 1,
+          "rules": [
+            {
+              "id": "1",
+              "name": "scripts",
+              "origin": "box",
+              "kind": "component",
+              "prefixes": [
+                [
+                  "scripts"
+                ]
+              ]
+            }
+          ]
+        },
+        "1": {
+          "axis": "",
+          "rung": "leaf",
+          "leaf_reason": "small: 4 units, at most 7; nothing to un-merge",
+          "last_id": 0,
+          "rules": []
+        }
+      }
     }
   },
-  "description": "This architecture comprises the helper scripts driving repository analysis, OIDC token relaying for secure authentication, and architectural diff-to-Mermaid diagram generation within GitHub Actions workflows. The main flow involves executing the CodeBoarding repository analysis CLI, proxying authenticated requests through a local OIDC token relay server, computing structural and relation diffs between revisions, and rendering the resulting architectural changes as Mermaid diagrams.",
+  "description": "Automation and execution scripts supporting CodeBoarding's GitHub Action workflow. The scope encapsulates LLM provider credential validation and error messaging, invocation of the CodeBoarding analysis CLI in full or incremental mode, a local loopback relay for refreshing short-lived GitHub Actions OIDC tokens, and diff rendering that formats analysis deltas into GitHub-compatible Mermaid diagrams.",
   "files": {
+    "scripts/action/credential_check.py": {
+      "method_keys": [
+        "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError",
+        "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError.__init__",
+        "scripts/action/credential_check.py|scripts.action.credential_check.secrets_url",
+        "scripts/action/credential_check.py|scripts.action.credential_check.workflow_path",
+        "scripts/action/credential_check.py|scripts.action.credential_check._add_secret",
+        "scripts/action/credential_check.py|scripts.action.credential_check._wire_it",
+        "scripts/action/credential_check.py|scripts.action.credential_check.load_table",
+        "scripts/action/credential_check.py|scripts.action.credential_check._unquote",
+        "scripts/action/credential_check.py|scripts.action.credential_check._clean_key",
+        "scripts/action/credential_check.py|scripts.action.credential_check.read_inputs",
+        "scripts/action/credential_check.py|scripts.action.credential_check.owner_of",
+        "scripts/action/credential_check.py|scripts.action.credential_check._provider_list",
+        "scripts/action/credential_check.py|scripts.action.credential_check._reject_provider_inputs",
+        "scripts/action/credential_check.py|scripts.action.credential_check._require_id_token",
+        "scripts/action/credential_check.py|scripts.action.credential_check._resolve_byok",
+        "scripts/action/credential_check.py|scripts.action.credential_check.resolve",
+        "scripts/action/credential_check.py|scripts.action.credential_check._is_endpoint",
+        "scripts/action/credential_check.py|scripts.action.credential_check._safe_endpoint",
+        "scripts/action/credential_check.py|scripts.action.credential_check._pays",
+        "scripts/action/credential_check.py|scripts.action.credential_check.reported_provider",
+        "scripts/action/credential_check.py|scripts.action.credential_check.plan_headline",
+        "scripts/action/credential_check.py|scripts.action.credential_check.plan_summary",
+        "scripts/action/credential_check.py|scripts.action.credential_check.write_auth_dir",
+        "scripts/action/credential_check.py|scripts.action.credential_check.main"
+      ],
+      "content_hash": "3a283497aacba653",
+      "module_hash": "32f1bd213d8a350f"
+    },
+    "scripts/analyze_repository.py": {
+      "method_keys": [
+        "scripts/analyze_repository.py|scripts.analyze_repository.AnalysisError",
+        "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool",
+        "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response",
+        "scripts/analyze_repository.py|scripts.analyze_repository._run_command",
+        "scripts/analyze_repository.py|scripts.analyze_repository.main"
+      ],
+      "content_hash": "03f39d1ac2f146ec",
+      "module_hash": "621ccc2626ad8f2a"
+    },
     "scripts/diff_to_mermaid.py": {
       "method_keys": [
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._relation_dict",
@@ -78,50 +152,241 @@
       ],
       "content_hash": "5af0d8557c0af6e0",
       "module_hash": "581a285c4c8aad4a"
-    },
-    "scripts/analyze_repository.py": {
-      "method_keys": [
-        "scripts/analyze_repository.py|scripts.analyze_repository.AnalysisError",
-        "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool",
-        "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response",
-        "scripts/analyze_repository.py|scripts.analyze_repository._run_command",
-        "scripts/analyze_repository.py|scripts.analyze_repository.main"
-      ],
-      "content_hash": "03f39d1ac2f146ec",
-      "module_hash": "621ccc2626ad8f2a"
-    },
-    "scripts/action/credential_check.py": {
-      "method_keys": [
-        "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError",
-        "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError.__init__",
-        "scripts/action/credential_check.py|scripts.action.credential_check.secrets_url",
-        "scripts/action/credential_check.py|scripts.action.credential_check.workflow_path",
-        "scripts/action/credential_check.py|scripts.action.credential_check._add_secret",
-        "scripts/action/credential_check.py|scripts.action.credential_check._wire_it",
-        "scripts/action/credential_check.py|scripts.action.credential_check.load_table",
-        "scripts/action/credential_check.py|scripts.action.credential_check._unquote",
-        "scripts/action/credential_check.py|scripts.action.credential_check._clean_key",
-        "scripts/action/credential_check.py|scripts.action.credential_check.read_inputs",
-        "scripts/action/credential_check.py|scripts.action.credential_check.owner_of",
-        "scripts/action/credential_check.py|scripts.action.credential_check._provider_list",
-        "scripts/action/credential_check.py|scripts.action.credential_check._reject_provider_inputs",
-        "scripts/action/credential_check.py|scripts.action.credential_check._require_id_token",
-        "scripts/action/credential_check.py|scripts.action.credential_check._resolve_byok",
-        "scripts/action/credential_check.py|scripts.action.credential_check.resolve",
-        "scripts/action/credential_check.py|scripts.action.credential_check._is_endpoint",
-        "scripts/action/credential_check.py|scripts.action.credential_check._safe_endpoint",
-        "scripts/action/credential_check.py|scripts.action.credential_check._pays",
-        "scripts/action/credential_check.py|scripts.action.credential_check.reported_provider",
-        "scripts/action/credential_check.py|scripts.action.credential_check.plan_headline",
-        "scripts/action/credential_check.py|scripts.action.credential_check.plan_summary",
-        "scripts/action/credential_check.py|scripts.action.credential_check.write_auth_dir",
-        "scripts/action/credential_check.py|scripts.action.credential_check.main"
-      ],
-      "content_hash": "3a283497aacba653",
-      "module_hash": "32f1bd213d8a350f"
     }
   },
   "methods_index": {
+    "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.ConfigError",
+      "start_line": 57,
+      "end_line": 71,
+      "type": "CLASS",
+      "content_hash": "426011d5d2230adc"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError.__init__": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.ConfigError.__init__",
+      "start_line": 66,
+      "end_line": 71,
+      "type": "METHOD",
+      "content_hash": "f81c95d089278b17"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.secrets_url": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.secrets_url",
+      "start_line": 74,
+      "end_line": 80,
+      "type": "FUNCTION",
+      "content_hash": "1fc04b1cfa8fc297"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.workflow_path": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.workflow_path",
+      "start_line": 83,
+      "end_line": 94,
+      "type": "FUNCTION",
+      "content_hash": "f324e18326d069a1"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._add_secret": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._add_secret",
+      "start_line": 97,
+      "end_line": 101,
+      "type": "FUNCTION",
+      "content_hash": "492b070772034e92"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._wire_it": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._wire_it",
+      "start_line": 104,
+      "end_line": 110,
+      "type": "FUNCTION",
+      "content_hash": "47d7f21707b95795"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.load_table": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.load_table",
+      "start_line": 113,
+      "end_line": 114,
+      "type": "FUNCTION",
+      "content_hash": "883b027dcd4a1f81"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._unquote": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._unquote",
+      "start_line": 117,
+      "end_line": 121,
+      "type": "FUNCTION",
+      "content_hash": "d76d75a01207b5c3"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._clean_key": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._clean_key",
+      "start_line": 124,
+      "end_line": 136,
+      "type": "FUNCTION",
+      "content_hash": "7022f1f27f479e9a"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.read_inputs": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.read_inputs",
+      "start_line": 139,
+      "end_line": 149,
+      "type": "FUNCTION",
+      "content_hash": "63027aa36242eaee"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.owner_of": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.owner_of",
+      "start_line": 152,
+      "end_line": 156,
+      "type": "FUNCTION",
+      "content_hash": "642022ffe104707b"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._provider_list": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._provider_list",
+      "start_line": 159,
+      "end_line": 160,
+      "type": "FUNCTION",
+      "content_hash": "dc5cdf89617abb12"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._reject_provider_inputs": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._reject_provider_inputs",
+      "start_line": 163,
+      "end_line": 174,
+      "type": "FUNCTION",
+      "content_hash": "74b7a440fc4d6a4f"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._require_id_token": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._require_id_token",
+      "start_line": 177,
+      "end_line": 196,
+      "type": "FUNCTION",
+      "content_hash": "d851b0187fc2ff80"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._resolve_byok": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._resolve_byok",
+      "start_line": 199,
+      "end_line": 243,
+      "type": "FUNCTION",
+      "content_hash": "450353451688c808"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.resolve": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.resolve",
+      "start_line": 246,
+      "end_line": 311,
+      "type": "FUNCTION",
+      "content_hash": "61ef327e9a6141da"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._is_endpoint": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._is_endpoint",
+      "start_line": 314,
+      "end_line": 316,
+      "type": "FUNCTION",
+      "content_hash": "d2e340c8c4019c62"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._safe_endpoint": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._safe_endpoint",
+      "start_line": 319,
+      "end_line": 337,
+      "type": "FUNCTION",
+      "content_hash": "fe29000746501ef5"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._pays": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._pays",
+      "start_line": 340,
+      "end_line": 358,
+      "type": "FUNCTION",
+      "content_hash": "5b05786790186cee"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.reported_provider": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.reported_provider",
+      "start_line": 361,
+      "end_line": 372,
+      "type": "FUNCTION",
+      "content_hash": "74017705ae0828bb"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.plan_headline": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.plan_headline",
+      "start_line": 375,
+      "end_line": 380,
+      "type": "FUNCTION",
+      "content_hash": "524ee91b9da8fbdf"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.plan_summary": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.plan_summary",
+      "start_line": 383,
+      "end_line": 409,
+      "type": "FUNCTION",
+      "content_hash": "e651d73f54fb8285"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.write_auth_dir": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.write_auth_dir",
+      "start_line": 412,
+      "end_line": 452,
+      "type": "FUNCTION",
+      "content_hash": "35b0b557c638ebea"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check.main": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check.main",
+      "start_line": 455,
+      "end_line": 492,
+      "type": "FUNCTION",
+      "content_hash": "1d67aac61f0b0b91"
+    },
+    "scripts/analyze_repository.py|scripts.analyze_repository.AnalysisError": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository.AnalysisError",
+      "start_line": 16,
+      "end_line": 17,
+      "type": "CLASS",
+      "content_hash": "e23f18bc0d32e21b"
+    },
+    "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository._parse_bool",
+      "start_line": 20,
+      "end_line": 29,
+      "type": "FUNCTION",
+      "content_hash": "3de011b556fa2edb"
+    },
+    "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository._parse_cli_response",
+      "start_line": 32,
+      "end_line": 66,
+      "type": "FUNCTION",
+      "content_hash": "064ec779cc59420b"
+    },
+    "scripts/analyze_repository.py|scripts.analyze_repository._run_command": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository._run_command",
+      "start_line": 69,
+      "end_line": 90,
+      "type": "FUNCTION",
+      "content_hash": "001ae1f8af80eaf8"
+    },
+    "scripts/analyze_repository.py|scripts.analyze_repository.main": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository.main",
+      "start_line": 93,
+      "end_line": 137,
+      "type": "FUNCTION",
+      "content_hash": "e807c9b057c463bf"
+    },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._relation_dict": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._relation_dict",
@@ -521,514 +786,31 @@
       "end_line": 183,
       "type": "FUNCTION",
       "content_hash": "32cb887f244d21dd"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository.AnalysisError": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository.AnalysisError",
-      "start_line": 16,
-      "end_line": 17,
-      "type": "CLASS",
-      "content_hash": "e23f18bc0d32e21b"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository._parse_bool",
-      "start_line": 20,
-      "end_line": 29,
-      "type": "FUNCTION",
-      "content_hash": "3de011b556fa2edb"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository._parse_cli_response",
-      "start_line": 32,
-      "end_line": 66,
-      "type": "FUNCTION",
-      "content_hash": "064ec779cc59420b"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository._run_command": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository._run_command",
-      "start_line": 69,
-      "end_line": 90,
-      "type": "FUNCTION",
-      "content_hash": "001ae1f8af80eaf8"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository.main": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository.main",
-      "start_line": 93,
-      "end_line": 137,
-      "type": "FUNCTION",
-      "content_hash": "e807c9b057c463bf"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.ConfigError",
-      "start_line": 57,
-      "end_line": 71,
-      "type": "CLASS",
-      "content_hash": "426011d5d2230adc"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError.__init__": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.ConfigError.__init__",
-      "start_line": 66,
-      "end_line": 71,
-      "type": "METHOD",
-      "content_hash": "f81c95d089278b17"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.secrets_url": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.secrets_url",
-      "start_line": 74,
-      "end_line": 80,
-      "type": "FUNCTION",
-      "content_hash": "1fc04b1cfa8fc297"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.workflow_path": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.workflow_path",
-      "start_line": 83,
-      "end_line": 94,
-      "type": "FUNCTION",
-      "content_hash": "f324e18326d069a1"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._add_secret": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._add_secret",
-      "start_line": 97,
-      "end_line": 101,
-      "type": "FUNCTION",
-      "content_hash": "492b070772034e92"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._wire_it": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._wire_it",
-      "start_line": 104,
-      "end_line": 110,
-      "type": "FUNCTION",
-      "content_hash": "47d7f21707b95795"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.load_table": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.load_table",
-      "start_line": 113,
-      "end_line": 114,
-      "type": "FUNCTION",
-      "content_hash": "883b027dcd4a1f81"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._unquote": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._unquote",
-      "start_line": 117,
-      "end_line": 121,
-      "type": "FUNCTION",
-      "content_hash": "d76d75a01207b5c3"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._clean_key": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._clean_key",
-      "start_line": 124,
-      "end_line": 136,
-      "type": "FUNCTION",
-      "content_hash": "7022f1f27f479e9a"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.read_inputs": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.read_inputs",
-      "start_line": 139,
-      "end_line": 149,
-      "type": "FUNCTION",
-      "content_hash": "63027aa36242eaee"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.owner_of": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.owner_of",
-      "start_line": 152,
-      "end_line": 156,
-      "type": "FUNCTION",
-      "content_hash": "642022ffe104707b"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._provider_list": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._provider_list",
-      "start_line": 159,
-      "end_line": 160,
-      "type": "FUNCTION",
-      "content_hash": "dc5cdf89617abb12"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._reject_provider_inputs": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._reject_provider_inputs",
-      "start_line": 163,
-      "end_line": 174,
-      "type": "FUNCTION",
-      "content_hash": "74b7a440fc4d6a4f"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._require_id_token": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._require_id_token",
-      "start_line": 177,
-      "end_line": 196,
-      "type": "FUNCTION",
-      "content_hash": "d851b0187fc2ff80"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._resolve_byok": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._resolve_byok",
-      "start_line": 199,
-      "end_line": 243,
-      "type": "FUNCTION",
-      "content_hash": "450353451688c808"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.resolve": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.resolve",
-      "start_line": 246,
-      "end_line": 311,
-      "type": "FUNCTION",
-      "content_hash": "61ef327e9a6141da"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._is_endpoint": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._is_endpoint",
-      "start_line": 314,
-      "end_line": 316,
-      "type": "FUNCTION",
-      "content_hash": "d2e340c8c4019c62"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._safe_endpoint": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._safe_endpoint",
-      "start_line": 319,
-      "end_line": 337,
-      "type": "FUNCTION",
-      "content_hash": "fe29000746501ef5"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._pays": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._pays",
-      "start_line": 340,
-      "end_line": 358,
-      "type": "FUNCTION",
-      "content_hash": "5b05786790186cee"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.reported_provider": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.reported_provider",
-      "start_line": 361,
-      "end_line": 372,
-      "type": "FUNCTION",
-      "content_hash": "74017705ae0828bb"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.plan_headline": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.plan_headline",
-      "start_line": 375,
-      "end_line": 380,
-      "type": "FUNCTION",
-      "content_hash": "524ee91b9da8fbdf"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.plan_summary": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.plan_summary",
-      "start_line": 383,
-      "end_line": 409,
-      "type": "FUNCTION",
-      "content_hash": "e651d73f54fb8285"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.write_auth_dir": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.write_auth_dir",
-      "start_line": 412,
-      "end_line": 452,
-      "type": "FUNCTION",
-      "content_hash": "35b0b557c638ebea"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.main": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.main",
-      "start_line": 455,
-      "end_line": 492,
-      "type": "FUNCTION",
-      "content_hash": "1d67aac61f0b0b91"
     }
   },
   "components": [
     {
-      "name": "Diff Analysis Engine",
-      "description": "Computes structural and relational deltas between architecture models, tracking component additions, modifications, and affected method/relation changes.",
+      "name": "GitHub Action Automation Scripts",
+      "description": "Provides CLI execution, credential validation, loopback OIDC authentication relaying, and Mermaid diagram diffing for GitHub Action workflows.",
       "key_entities": [
         {
-          "qualified_name": "scripts.diff_to_mermaid._diff_components",
+          "qualified_name": "scripts.diff_to_mermaid.load_analysis",
           "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 262,
-          "reference_end_line": 307
+          "reference_start_line": 87,
+          "reference_end_line": 105
         },
-        {
-          "qualified_name": "scripts.diff_to_mermaid._diff_relations",
-          "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 202,
-          "reference_end_line": 248
-        },
-        {
-          "qualified_name": "scripts.diff_to_mermaid._analysis_changes",
-          "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 147,
-          "reference_end_line": 175
-        },
-        {
-          "qualified_name": "scripts.diff_to_mermaid._has_structural_changes",
-          "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 133,
-          "reference_end_line": 136
-        }
-      ],
-      "source_cluster_ids": [
-        "1",
-        "4",
-        "5"
-      ],
-      "file_methods": [
-        {
-          "file_path": "scripts/diff_to_mermaid.py",
-          "methods": [
-            "scripts.diff_to_mermaid._relation_dict",
-            "scripts.diff_to_mermaid._project_analysis",
-            "scripts.diff_to_mermaid._project_analysis.project_level",
-            "scripts.diff_to_mermaid.read_analysis_json",
-            "scripts.diff_to_mermaid.load_analysis",
-            "scripts.diff_to_mermaid._file_methods",
-            "scripts.diff_to_mermaid._methods_by_file",
-            "scripts.diff_to_mermaid._has_structural_changes",
-            "scripts.diff_to_mermaid._has_method_changes",
-            "scripts.diff_to_mermaid._analysis_changes",
-            "scripts.diff_to_mermaid._analysis_changes.content_changed",
-            "scripts.diff_to_mermaid._owns_analysis_change",
-            "scripts.diff_to_mermaid._rel_key",
-            "scripts.diff_to_mermaid._diff_relations",
-            "scripts.diff_to_mermaid._has_changes",
-            "scripts.diff_to_mermaid._diff_components",
-            "scripts.diff_to_mermaid.build_diff",
-            "scripts.diff_to_mermaid._init_directive",
-            "scripts.diff_to_mermaid._count_changed_components",
-            "scripts.diff_to_mermaid._has_changed_relations",
-            "scripts.diff_to_mermaid.render_mermaid",
-            "scripts.diff_to_mermaid.render_mermaid.build",
-            "scripts.diff_to_mermaid.main"
-          ]
-        }
-      ],
-      "component_id": "1",
-      "can_expand": false,
-      "components": [],
-      "components_relations": []
-    },
-    {
-      "name": "Mermaid Diagram Renderer",
-      "description": "Formats, scopes, sanitizes, and renders architecture components and relationships into Mermaid diagram syntax.",
-      "key_entities": [
-        {
-          "qualified_name": "scripts.diff_to_mermaid._Scope",
-          "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 381,
-          "reference_end_line": 425
-        },
-        {
-          "qualified_name": "scripts.diff_to_mermaid._filter_changed",
-          "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 428,
-          "reference_end_line": 470
-        },
-        {
-          "qualified_name": "scripts.diff_to_mermaid._display_status",
-          "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 377,
-          "reference_end_line": 378
-        }
-      ],
-      "source_cluster_ids": [
-        "3",
-        "6"
-      ],
-      "file_methods": [
-        {
-          "file_path": "scripts/diff_to_mermaid.py",
-          "methods": [
-            "scripts.diff_to_mermaid._comp_id",
-            "scripts.diff_to_mermaid._comp_name",
-            "scripts.diff_to_mermaid._sanitize",
-            "scripts.diff_to_mermaid._esc",
-            "scripts.diff_to_mermaid._truncate",
-            "scripts.diff_to_mermaid._display_status",
-            "scripts.diff_to_mermaid._Scope",
-            "scripts.diff_to_mermaid._Scope.__init__",
-            "scripts.diff_to_mermaid._Scope.resolve",
-            "scripts.diff_to_mermaid._filter_changed",
-            "scripts.diff_to_mermaid._filter_changed.touches",
-            "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
-            "scripts.diff_to_mermaid.render_mermaid.build.emit_level"
-          ]
-        }
-      ],
-      "component_id": "2",
-      "can_expand": false,
-      "components": [],
-      "components_relations": []
-    },
-    {
-      "name": "OIDC Relay Handler",
-      "description": "Handles inbound HTTP proxy requests by minting GitHub Actions OIDC tokens and attaching authorization headers before forwarding upstream.",
-      "key_entities": [
-        {
-          "qualified_name": "scripts.oidc_relay._RelayHandler",
-          "reference_file": "scripts/oidc_relay.py",
-          "reference_start_line": 96,
-          "reference_end_line": 152
-        },
-        {
-          "qualified_name": "scripts.oidc_relay._mint_oidc_token",
-          "reference_file": "scripts/oidc_relay.py",
-          "reference_start_line": 61,
-          "reference_end_line": 76
-        },
-        {
-          "qualified_name": "scripts.oidc_relay._authorization",
-          "reference_file": "scripts/oidc_relay.py",
-          "reference_start_line": 79,
-          "reference_end_line": 89
-        },
-        {
-          "qualified_name": "scripts.oidc_relay._upstream_url",
-          "reference_file": "scripts/oidc_relay.py",
-          "reference_start_line": 92,
-          "reference_end_line": 93
-        }
-      ],
-      "source_cluster_ids": [
-        "2"
-      ],
-      "file_methods": [
-        {
-          "file_path": "scripts/oidc_relay.py",
-          "methods": [
-            "scripts.oidc_relay._with_audience",
-            "scripts.oidc_relay._mint_oidc_token",
-            "scripts.oidc_relay._authorization",
-            "scripts.oidc_relay._upstream_url",
-            "scripts.oidc_relay._RelayHandler",
-            "scripts.oidc_relay._RelayHandler.log_message",
-            "scripts.oidc_relay._RelayHandler.config",
-            "scripts.oidc_relay._RelayHandler._request_body",
-            "scripts.oidc_relay._RelayHandler._send",
-            "scripts.oidc_relay._RelayHandler._handle"
-          ]
-        }
-      ],
-      "component_id": "3",
-      "can_expand": false,
-      "components": [],
-      "components_relations": []
-    },
-    {
-      "name": "Repository Analysis Driver",
-      "description": "Invokes the CodeBoarding CLI to perform repository analysis, parses execution output, and handles errors across CI runs.",
-      "key_entities": [
-        {
-          "qualified_name": "scripts.analyze_repository.main",
-          "reference_file": "scripts/analyze_repository.py",
-          "reference_start_line": 93,
-          "reference_end_line": 137
-        },
-        {
-          "qualified_name": "scripts.analyze_repository._run_command",
-          "reference_file": "scripts/analyze_repository.py",
-          "reference_start_line": 69,
-          "reference_end_line": 90
-        },
-        {
-          "qualified_name": "scripts.analyze_repository._parse_cli_response",
-          "reference_file": "scripts/analyze_repository.py",
-          "reference_start_line": 32,
-          "reference_end_line": 66
-        },
-        {
-          "qualified_name": "scripts.analyze_repository.AnalysisError",
-          "reference_file": "scripts/analyze_repository.py",
-          "reference_start_line": 16,
-          "reference_end_line": 17
-        }
-      ],
-      "source_cluster_ids": [
-        "7"
-      ],
-      "file_methods": [
-        {
-          "file_path": "scripts/analyze_repository.py",
-          "methods": [
-            "scripts.analyze_repository.AnalysisError",
-            "scripts.analyze_repository._parse_bool",
-            "scripts.analyze_repository._parse_cli_response",
-            "scripts.analyze_repository._run_command",
-            "scripts.analyze_repository.main"
-          ]
-        }
-      ],
-      "component_id": "4",
-      "can_expand": false,
-      "components": [],
-      "components_relations": []
-    },
-    {
-      "name": "OIDC Relay Server",
-      "description": "Manages configuration parsing and the HTTP server lifecycle for the background OIDC token relay service.",
-      "key_entities": [
         {
           "qualified_name": "scripts.oidc_relay.RelayServer",
           "reference_file": "scripts/oidc_relay.py",
           "reference_start_line": 155,
           "reference_end_line": 161
-        },
-        {
-          "qualified_name": "scripts.oidc_relay.RelayConfig",
-          "reference_file": "scripts/oidc_relay.py",
-          "reference_start_line": 46,
-          "reference_end_line": 50
-        },
-        {
-          "qualified_name": "scripts.oidc_relay.main",
-          "reference_file": "scripts/oidc_relay.py",
-          "reference_start_line": 164,
-          "reference_end_line": 183
         }
       ],
       "source_cluster_ids": [
-        "8"
-      ],
-      "file_methods": [
-        {
-          "file_path": "scripts/oidc_relay.py",
-          "methods": [
-            "scripts.oidc_relay.RelayConfig",
-            "scripts.oidc_relay.RelayServer",
-            "scripts.oidc_relay.RelayServer.__init__",
-            "scripts.oidc_relay.main"
-          ]
-        }
-      ],
-      "component_id": "5",
-      "can_expand": false,
-      "components": [],
-      "components_relations": []
-    },
-    {
-      "name": "LLM Credential Resolver",
-      "description": "Validates user-supplied LLM provider inputs, verifies OIDC identity tokens or API keys, and formats preflight diagnostic errors before engine execution.",
-      "key_entities": [],
-      "source_cluster_ids": [
-        "9",
-        "10"
+        "0",
+        "1",
+        "2",
+        "3"
       ],
       "file_methods": [
         {
@@ -1059,136 +841,83 @@
             "scripts.action.credential_check.write_auth_dir",
             "scripts.action.credential_check.main"
           ]
+        },
+        {
+          "file_path": "scripts/analyze_repository.py",
+          "methods": [
+            "scripts.analyze_repository.AnalysisError",
+            "scripts.analyze_repository._parse_bool",
+            "scripts.analyze_repository._parse_cli_response",
+            "scripts.analyze_repository._run_command",
+            "scripts.analyze_repository.main"
+          ]
+        },
+        {
+          "file_path": "scripts/diff_to_mermaid.py",
+          "methods": [
+            "scripts.diff_to_mermaid._relation_dict",
+            "scripts.diff_to_mermaid._project_analysis",
+            "scripts.diff_to_mermaid._project_analysis.project_level",
+            "scripts.diff_to_mermaid.read_analysis_json",
+            "scripts.diff_to_mermaid.load_analysis",
+            "scripts.diff_to_mermaid._comp_id",
+            "scripts.diff_to_mermaid._comp_name",
+            "scripts.diff_to_mermaid._file_methods",
+            "scripts.diff_to_mermaid._methods_by_file",
+            "scripts.diff_to_mermaid._has_structural_changes",
+            "scripts.diff_to_mermaid._has_method_changes",
+            "scripts.diff_to_mermaid._analysis_changes",
+            "scripts.diff_to_mermaid._analysis_changes.content_changed",
+            "scripts.diff_to_mermaid._owns_analysis_change",
+            "scripts.diff_to_mermaid._rel_key",
+            "scripts.diff_to_mermaid._diff_relations",
+            "scripts.diff_to_mermaid._has_changes",
+            "scripts.diff_to_mermaid._diff_components",
+            "scripts.diff_to_mermaid.build_diff",
+            "scripts.diff_to_mermaid._sanitize",
+            "scripts.diff_to_mermaid._esc",
+            "scripts.diff_to_mermaid._truncate",
+            "scripts.diff_to_mermaid._display_status",
+            "scripts.diff_to_mermaid._Scope",
+            "scripts.diff_to_mermaid._Scope.__init__",
+            "scripts.diff_to_mermaid._Scope.resolve",
+            "scripts.diff_to_mermaid._filter_changed",
+            "scripts.diff_to_mermaid._filter_changed.touches",
+            "scripts.diff_to_mermaid._init_directive",
+            "scripts.diff_to_mermaid._count_changed_components",
+            "scripts.diff_to_mermaid._has_changed_relations",
+            "scripts.diff_to_mermaid.render_mermaid",
+            "scripts.diff_to_mermaid.render_mermaid.build",
+            "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
+            "scripts.diff_to_mermaid.render_mermaid.build.emit_level",
+            "scripts.diff_to_mermaid.main"
+          ]
+        },
+        {
+          "file_path": "scripts/oidc_relay.py",
+          "methods": [
+            "scripts.oidc_relay.RelayConfig",
+            "scripts.oidc_relay._with_audience",
+            "scripts.oidc_relay._mint_oidc_token",
+            "scripts.oidc_relay._authorization",
+            "scripts.oidc_relay._upstream_url",
+            "scripts.oidc_relay._RelayHandler",
+            "scripts.oidc_relay._RelayHandler.log_message",
+            "scripts.oidc_relay._RelayHandler.config",
+            "scripts.oidc_relay._RelayHandler._request_body",
+            "scripts.oidc_relay._RelayHandler._send",
+            "scripts.oidc_relay._RelayHandler._handle",
+            "scripts.oidc_relay.RelayServer",
+            "scripts.oidc_relay.RelayServer.__init__",
+            "scripts.oidc_relay.main"
+          ]
         }
       ],
-      "component_id": "6",
+      "component_id": "1",
       "can_expand": false,
       "components": [],
       "components_relations": []
     }
   ],
-  "components_relations": [
-    {
-      "relation": "Passes computed structural diffs for diagram generation",
-      "src_name": "Diff Analysis Engine",
-      "dst_name": "Mermaid Diagram Renderer",
-      "evidence": "scripts/diff_to_mermaid.py:main calls build_diff() from the Diff Analysis Engine to construct semantic delta dictionaries (components, components_relations), passing the result into render_mermaid() for formatting and Mermaid diagram synthesis.",
-      "key_edges": [],
-      "src_id": "1",
-      "dst_id": "2",
-      "is_static": true,
-      "all_edges": [
-        {
-          "source": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_components",
-          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_name",
-          "call_sites": [
-            {
-              "line": 265,
-              "column": 21
-            },
-            {
-              "line": 270,
-              "column": 39
-            },
-            {
-              "line": 274,
-              "column": 27
-            },
-            {
-              "line": 299,
-              "column": 12
-            }
-          ],
-          "description": ""
-        },
-        {
-          "source": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.build_diff",
-          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_name",
-          "call_sites": [
-            {
-              "line": 313,
-              "column": 21
-            },
-            {
-              "line": 315,
-              "column": 43
-            }
-          ],
-          "description": ""
-        },
-        {
-          "source": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build",
-          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed",
-          "call_sites": [
-            {
-              "line": 543,
-              "column": 13
-            }
-          ],
-          "description": ""
-        },
-        {
-          "source": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build",
-          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_level",
-          "call_sites": [
-            {
-              "line": 585,
-              "column": 9
-            }
-          ],
-          "description": ""
-        }
-      ]
-    },
-    {
-      "relation": "Produces analysis JSON artifacts consumed for diff computation",
-      "src_name": "Repository Analysis Driver",
-      "dst_name": "Diff Analysis Engine",
-      "evidence": "analyze_repository.py orchestrates CLI analysis runs (codeboarding incremental / full) and outputs analysis.json artifact paths, which are loaded via load_analysis / read_analysis_json by diff_to_mermaid.py to calculate structural and relational differences.",
-      "key_edges": [
-        {
-          "source": "scripts/analyze_repository.py|scripts.analyze_repository.main",
-          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.load_analysis",
-          "call_sites": [],
-          "description": "Analysis artifacts produced by analyze_repository.py are loaded via load_analysis for diff computation."
-        }
-      ],
-      "src_id": "4",
-      "dst_id": "1",
-      "is_static": false,
-      "all_edges": [
-        {
-          "source": "scripts/analyze_repository.py|scripts.analyze_repository.main",
-          "target": "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.load_analysis",
-          "call_sites": [],
-          "description": "Analysis artifacts produced by analyze_repository.py are loaded via load_analysis for diff computation."
-        }
-      ]
-    },
-    {
-      "relation": "Dispatches incoming HTTP requests to relay handlers",
-      "src_name": "OIDC Relay Server",
-      "dst_name": "OIDC Relay Handler",
-      "evidence": "RelayServer (inheriting from ThreadingHTTPServer) is initialized with _RelayHandler as its HTTP request handler class and shares its RelayConfig state to process proxied requests.",
-      "key_edges": [
-        {
-          "source": "scripts/oidc_relay.py|scripts.oidc_relay.RelayServer.__init__",
-          "target": "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler",
-          "call_sites": [],
-          "description": "RelayServer initializes _RelayHandler to process incoming HTTP requests."
-        }
-      ],
-      "src_id": "5",
-      "dst_id": "3",
-      "is_static": false,
-      "all_edges": [
-        {
-          "source": "scripts/oidc_relay.py|scripts.oidc_relay.RelayServer.__init__",
-          "target": "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler",
-          "call_sites": [],
-          "description": ""
-        }
-      ]
-    }
-  ]
+  "components_relations": []
 }
