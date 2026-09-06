@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.14.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.13.0...v1.14.0) (2026-09-06)
+
+
+### Features
+
+* **engine:** generate deeper architecture-aligned component hierarchies ([3ffc1b5](https://github.com/CodeBoarding/CodeBoarding-action/commit/3ffc1b554b10214990e1b5a0d27f7cdf6da98e9d))
+
+
+### Bug Fixes
+
+* **action:** rebuild 0.13.x baselines once before incremental analysis resumes ([3ffc1b5](https://github.com/CodeBoarding/CodeBoarding-action/commit/3ffc1b554b10214990e1b5a0d27f7cdf6da98e9d))
+* **engine:** ground relationships and assign each method to one component ([3ffc1b5](https://github.com/CodeBoarding/CodeBoarding-action/commit/3ffc1b554b10214990e1b5a0d27f7cdf6da98e9d))
+* **engine:** keep incremental structure correct for new and deleted components ([3ffc1b5](https://github.com/CodeBoarding/CodeBoarding-action/commit/3ffc1b554b10214990e1b5a0d27f7cdf6da98e9d))
+* **engine:** preserve Java and C# package, type, and constructor structure ([3ffc1b5](https://github.com/CodeBoarding/CodeBoarding-action/commit/3ffc1b554b10214990e1b5a0d27f7cdf6da98e9d))
+* **engine:** prevent raw fallback names, checkout-path leakage, duplicate names, and empty components ([3ffc1b5](https://github.com/CodeBoarding/CodeBoarding-action/commit/3ffc1b554b10214990e1b5a0d27f7cdf6da98e9d))
+
+
+### Performance Improvements
+
+* **engine:** reduce analysis time and model-token usage ([3ffc1b5](https://github.com/CodeBoarding/CodeBoarding-action/commit/3ffc1b554b10214990e1b5a0d27f7cdf6da98e9d))
+
 ## [1.13.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.12.3...v1.13.0) (2026-08-31)
 
 
