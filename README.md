@@ -331,7 +331,7 @@ early. The action input matches the metadata name and the engine receives only
 `--depth-cap`. There are no old-name input aliases. Historical workflows using
 the removed `depth_level` action input must switch to `depth_cap`.
 
-This action pins Core 0.14.2 for the `--depth-cap` CLI contract. Publish that Core
+This action pins Core 0.14.3 for the `--depth-cap` CLI contract. Publish that Core
 release before releasing the action. Earlier eShop evidence predates this final
 breaking CLI migration.
 
