@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.15.0...v1.15.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* update CodeBoarding dependency to 0.14.3 ([#125](https://github.com/CodeBoarding/CodeBoarding-action/issues/125)) ([0463d70](https://github.com/CodeBoarding/CodeBoarding-action/commit/0463d701da80133165613d0ace509c657563f125))
+
 ## [1.15.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.14.0...v1.15.0) (2026-09-08)
 
 
