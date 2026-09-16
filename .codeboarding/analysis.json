@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-09-08T21:19:35.273234+00:00",
-    "source_tree_hash": "9ff43b2cb6b5b1191edd791e3049344637fa5a76f4a1616845c7b23b5bab048a",
+    "generated_at": "2026-09-16T20:44:03.247922+00:00",
+    "source_tree_hash": "c7a9d0017fd57f44fa9bfb1023bdd9b40281b269a3f82c95092aea628e260ba2",
     "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
@@ -15,7 +15,7 @@
       }
     },
     "tree_spec": {
-      "version": 3,
+      "version": 4,
       "grouper": "affinity",
       "machinery": [],
       "scopes": {
@@ -29,7 +29,6 @@
               "id": "1",
               "name": "scripts",
               "origin": "box",
-              "kind": "component",
               "prefixes": [
                 [
                   "scripts"
@@ -48,7 +47,7 @@
       }
     }
   },
-  "description": "Automation and execution scripts supporting CodeBoarding's GitHub Action workflow. The scope encapsulates LLM provider credential validation and error messaging, invocation of the CodeBoarding analysis CLI in full or incremental mode, a local loopback relay for refreshing short-lived GitHub Actions OIDC tokens, and diff rendering that formats analysis deltas into GitHub-compatible Mermaid diagrams.",
+  "description": "This scope provides the GitHub Action automation and runner support scripts. It performs preflight LLM credential validation, hosts a loopback OIDC token refresh relay for hosted proxy authentication, invokes and validates CodeBoarding CLI analysis runs, and computes component/relation diffs to render Mermaid diagrams in pull request comments.",
   "files": {
     "scripts/action/credential_check.py": {
       "method_keys": [
@@ -790,26 +789,26 @@
   },
   "components": [
     {
-      "name": "GitHub Action Automation Scripts",
-      "description": "Provides CLI execution, credential validation, loopback OIDC authentication relaying, and Mermaid diagram diffing for GitHub Action workflows.",
+      "name": "action_scripts",
+      "description": "Automates GitHub Action workflows by verifying LLM credentials, relaying OIDC authentication tokens, driving repository analysis CLI commands, and rendering analysis diffs as Mermaid graphs.",
       "key_entities": [
         {
-          "qualified_name": "scripts.analyze_repository.main",
+          "qualified_name": "scripts.oidc_relay.RelayServer",
+          "reference_file": "scripts/oidc_relay.py",
+          "reference_start_line": 155,
+          "reference_end_line": 161
+        },
+        {
+          "qualified_name": "scripts.analyze_repository._parse_cli_response",
           "reference_file": "scripts/analyze_repository.py",
-          "reference_start_line": 93,
-          "reference_end_line": 137
+          "reference_start_line": 32,
+          "reference_end_line": 66
         },
         {
           "qualified_name": "scripts.diff_to_mermaid.load_analysis",
           "reference_file": "scripts/diff_to_mermaid.py",
           "reference_start_line": 87,
           "reference_end_line": 105
-        },
-        {
-          "qualified_name": "scripts.oidc_relay.RelayServer",
-          "reference_file": "scripts/oidc_relay.py",
-          "reference_start_line": 155,
-          "reference_end_line": 161
         }
       ],
       "source_cluster_ids": [
