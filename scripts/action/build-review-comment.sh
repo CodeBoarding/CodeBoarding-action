@@ -12,6 +12,12 @@ WEBVIEW_URL="https://app.codeboarding.org/${GITHUB_REPOSITORY}/pull/${PR_NUMBER}
 BODY="${RUNNER_TEMP}/review-comment.md"
 printf '### CodeBoarding review\n\n**Status:** %s changed %s\n' "$N_CHANGED" "$COMPONENT_NOUN" > "$BODY"
 printf '\nSee the full change in [CodeBoarding](%s).\n' "$WEBVIEW_URL" >> "$BODY"
+# Above the diagram, not below it: the whole point is that the picture that follows
+# is missing something, and a caveat under it is read after the picture is believed.
+if [ -n "${DIAGNOSTICS_MD:-}" ] && [ -s "${DIAGNOSTICS_MD}" ]; then
+  printf '\n' >> "$BODY"
+  cat "${DIAGNOSTICS_MD}" >> "$BODY"
+fi
 # The diagram compares against the merge base, so commits landed on the base
 # branch since this PR forked are excluded. Say so rather than hide it.
 BEHIND="${BEHIND_BY:-0}"

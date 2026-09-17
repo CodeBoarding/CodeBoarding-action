@@ -496,6 +496,19 @@ runs:
         retention-days: 30
         if-no-files-found: ignore
 
+    # An analysis that finished is not an analysis that finished cleanly. The engine
+    # records every degradation it survived; without this the run is green and the
+    # committed diagram is short of a language with nothing to say so.
+    - name: Read analysis diagnostics
+      id: sync_diagnostics
+      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.sync_analyze.outputs.analysis_path != ''
+      continue-on-error: true
+      shell: bash
+      env:
+        ANALYSIS_PATH: ${{ steps.sync_analyze.outputs.analysis_path }}
+        DIAGNOSTICS_OUT: ${{ runner.temp }}/codeboarding-diagnostics.md
+      run: 'python3 "$GITHUB_ACTION_PATH/scripts/analysis_diagnostics.py" --analysis "$ANALYSIS_PATH" --out "$DIAGNOSTICS_OUT"'
+
     - name: Write sync summary
       if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
       shell: bash
@@ -505,6 +518,7 @@ runs:
         FILES: ${{ steps.sync_commit.outputs.files_written }}
         STRATEGY: ${{ inputs.sync_strategy }}
         PR_URL: ${{ steps.sync_commit.outputs.sync_pr_url }}
+        DIAGNOSTICS_MD: ${{ steps.sync_diagnostics.outputs.markdown_path }}
       run: "$GITHUB_ACTION_PATH/scripts/action/sync-summary.sh"
 
     - name: Analyze pull request
@@ -566,6 +580,16 @@ runs:
         retention-days: 30
         if-no-files-found: ignore
 
+    - name: Read analysis diagnostics
+      id: review_diagnostics
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_analyze.outputs.analysis_path != ''
+      continue-on-error: true
+      shell: bash
+      env:
+        ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
+        DIAGNOSTICS_OUT: ${{ runner.temp }}/codeboarding-diagnostics.md
+      run: 'python3 "$GITHUB_ACTION_PATH/scripts/analysis_diagnostics.py" --analysis "$ANALYSIS_PATH" --out "$DIAGNOSTICS_OUT"'
+
     - name: Render review diagram
       id: review_render
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
@@ -622,6 +646,7 @@ runs:
         BEHIND_BY: ${{ steps.guard.outputs.behind_by }}
         BASE_REF: ${{ steps.guard.outputs.base_ref }}
         MERGE_BASE_RESOLVED: ${{ steps.guard.outputs.merge_base_resolved }}
+        DIAGNOSTICS_MD: ${{ steps.review_diagnostics.outputs.markdown_path }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-comment.sh"
 
     - name: Post review comment

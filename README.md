@@ -191,6 +191,24 @@ Every run reports what it resolved, so the answer never has to be inferred from 
 - on a configuration failure, an error annotation and — in review mode — a pull request
   comment with the fix, so the person who has to add the secret sees it where they are.
 
+### Analysis diagnostics
+
+A run can finish, exit zero, and still have produced a diagram that is missing something:
+a language server that never started, a language nothing indexed under, naming that
+stopped answering mid-run. Core records each of those in the analysis it writes
+(`metadata.run_diagnostics`), and this action reads them back rather than publishing the
+result as though nothing happened:
+
+- a `::warning::` annotation per degradation, on the run page;
+- the same list in the job summary (sync) and at the top of the review comment, above the
+  diagram — a caveat printed under a picture is read after the picture is believed;
+- each entry carries what to do about it. Where nothing on your side would have changed
+  the outcome, it says so and links Discord instead of inventing an instruction.
+
+Diagnostics never fail the run: a degraded analysis is still worth having, and the whole
+point is that you learn it is degraded. The webview reads the same field out of the
+analysis it loads, so a diagram opened there carries the same warning.
+
 ## Model selection
 
 All model inputs are optional and are passed directly to Core without action-side validation:
