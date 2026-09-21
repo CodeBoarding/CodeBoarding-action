@@ -8,7 +8,13 @@ fi
 RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
 # Stable PR route: the webview resolves the repo/PR's latest artifact itself,
 # so the link stays valid across runs instead of pinning one run id.
-WEBVIEW_URL="https://app.codeboarding.org/${GITHUB_REPOSITORY}/pull/${PR_NUMBER}"
+# Standard utm_* rather than a bespoke ?src=: PostHog lifts utm_* into person and
+# session properties by itself, so this is attributable the day the action ships,
+# with no matching change in the web app. Without it the only evidence a visit
+# came from here is a github.com referrer, which most clients strip and a link
+# pasted into chat never had. Constant across runs on purpose: a run id here
+# would scatter one pull request's clicks across a new value per re-run.
+WEBVIEW_URL="https://app.codeboarding.org/${GITHUB_REPOSITORY}/pull/${PR_NUMBER}?utm_source=github&utm_medium=pr_comment&utm_campaign=gh_action"
 BODY="${RUNNER_TEMP}/review-comment.md"
 printf '### CodeBoarding review\n\n**Status:** %s changed %s\n' "$N_CHANGED" "$COMPONENT_NOUN" > "$BODY"
 printf '\nSee the full change in [CodeBoarding](%s).\n' "$WEBVIEW_URL" >> "$BODY"
