@@ -1,17 +1,17 @@
 {
   "metadata": {
-    "generated_at": "2026-09-22T09:37:32.859388+00:00",
-    "source_tree_hash": "0e5814d0683e7c6c3a662bc5934b70adad9f0cdff042d9735aa16aba132b5322",
+    "generated_at": "2026-09-22T21:49:36.257381+00:00",
+    "source_tree_hash": "e655552762a8af1bc87e1c0354b45b83a2828d01832655c95b78287d77064469",
     "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
     "file_coverage_summary": {
-      "total_files": 38,
+      "total_files": 40,
       "analyzed": 4,
-      "not_analyzed": 34,
+      "not_analyzed": 36,
       "not_analyzed_by_reason": {
         "other": 23,
-        "codeboardingignore": 11
+        "codeboardingignore": 13
       }
     },
     "tree_spec": {
@@ -47,7 +47,7 @@
       }
     }
   },
-  "description": "This scope provides the GitHub Action automation and runner support scripts. It performs preflight LLM credential validation, hosts a loopback OIDC token refresh relay for hosted proxy authentication, invokes and validates CodeBoarding CLI analysis runs, and computes component/relation diffs to render Mermaid diagrams in pull request comments.",
+  "description": "This scope provides GitHub Action automation and runner support scripts. It performs preflight LLM credential validation, hosts a loopback OIDC token refresh relay for proxy authentication, drives CodeBoarding CLI analysis runs, and computes component/relation diffs to render Mermaid diagrams in pull request comments.",
   "files": {
     "scripts/action/credential_check.py": {
       "method_keys": [
@@ -103,8 +103,10 @@
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._methods_by_file",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_structural_changes",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_method_changes",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._content_changed",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._changed_files",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.analysed_files_changed",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._analysis_changes",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._analysis_changes.content_changed",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._owns_analysis_change",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._rel_key",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_relations",
@@ -129,8 +131,8 @@
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_level",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main"
       ],
-      "content_hash": "be4401b5ff279bd6",
-      "module_hash": "76cbae741d0dd615"
+      "content_hash": "896684e0327a679b",
+      "module_hash": "1fb1c9d1e28c030e"
     },
     "scripts/oidc_relay.py": {
       "method_keys": [
@@ -389,290 +391,306 @@
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._relation_dict": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._relation_dict",
-      "start_line": 50,
-      "end_line": 58,
+      "start_line": 55,
+      "end_line": 63,
       "type": "FUNCTION",
       "content_hash": "801e1bc47ec57702"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._project_analysis": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._project_analysis",
-      "start_line": 61,
-      "end_line": 77,
+      "start_line": 66,
+      "end_line": 82,
       "type": "FUNCTION",
       "content_hash": "d61d2932a460e6a6"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._project_analysis.project_level": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._project_analysis.project_level",
-      "start_line": 65,
-      "end_line": 74,
+      "start_line": 70,
+      "end_line": 79,
       "type": "FUNCTION",
       "content_hash": "0026422919ed0eb4"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.read_analysis_json": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.read_analysis_json",
-      "start_line": 80,
-      "end_line": 84,
+      "start_line": 85,
+      "end_line": 89,
       "type": "FUNCTION",
       "content_hash": "47fd5e4824a8bbe9"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.load_analysis": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.load_analysis",
-      "start_line": 87,
-      "end_line": 105,
+      "start_line": 92,
+      "end_line": 110,
       "type": "FUNCTION",
       "content_hash": "0ee6340a01cf0317"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_id": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._comp_id",
-      "start_line": 111,
-      "end_line": 112,
+      "start_line": 116,
+      "end_line": 117,
       "type": "FUNCTION",
       "content_hash": "0cb8d9398468a0e6"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_name": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._comp_name",
-      "start_line": 115,
-      "end_line": 116,
+      "start_line": 120,
+      "end_line": 121,
       "type": "FUNCTION",
       "content_hash": "399b6e3662e7ce1f"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._file_methods": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._file_methods",
-      "start_line": 119,
-      "end_line": 120,
+      "start_line": 124,
+      "end_line": 125,
       "type": "FUNCTION",
       "content_hash": "b54d71b9e1b80e63"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._methods_by_file": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._methods_by_file",
-      "start_line": 123,
-      "end_line": 130,
+      "start_line": 128,
+      "end_line": 135,
       "type": "FUNCTION",
       "content_hash": "4ba9b19ab0f246f2"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_structural_changes": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._has_structural_changes",
-      "start_line": 133,
-      "end_line": 136,
+      "start_line": 138,
+      "end_line": 141,
       "type": "FUNCTION",
       "content_hash": "d4511a8ccbf2073d"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_method_changes": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._has_method_changes",
-      "start_line": 139,
-      "end_line": 144,
+      "start_line": 144,
+      "end_line": 149,
       "type": "FUNCTION",
       "content_hash": "737fc9898cef0f98"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._content_changed": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._content_changed",
+      "start_line": 152,
+      "end_line": 155,
+      "type": "FUNCTION",
+      "content_hash": "85ed060789d16481"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._changed_files": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid._changed_files",
+      "start_line": 158,
+      "end_line": 165,
+      "type": "FUNCTION",
+      "content_hash": "4985f13a96d808b6"
+    },
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.analysed_files_changed": {
+      "file_path": "scripts/diff_to_mermaid.py",
+      "qualified_name": "scripts.diff_to_mermaid.analysed_files_changed",
+      "start_line": 168,
+      "end_line": 180,
+      "type": "FUNCTION",
+      "content_hash": "06bc4749ffc8f5e6"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._analysis_changes": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._analysis_changes",
-      "start_line": 147,
-      "end_line": 175,
+      "start_line": 183,
+      "end_line": 197,
       "type": "FUNCTION",
-      "content_hash": "4e8c5293d5affc7a"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._analysis_changes.content_changed": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._analysis_changes.content_changed",
-      "start_line": 150,
-      "end_line": 153,
-      "type": "FUNCTION",
-      "content_hash": "400f66db1dad81fa"
+      "content_hash": "97d732e3640c7811"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._owns_analysis_change": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._owns_analysis_change",
-      "start_line": 178,
-      "end_line": 193,
+      "start_line": 200,
+      "end_line": 215,
       "type": "FUNCTION",
       "content_hash": "2517e5dff08a1eac"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._rel_key": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._rel_key",
-      "start_line": 196,
-      "end_line": 199,
+      "start_line": 218,
+      "end_line": 221,
       "type": "FUNCTION",
       "content_hash": "e8de4cfb9ef31082"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_relations": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._diff_relations",
-      "start_line": 202,
-      "end_line": 248,
+      "start_line": 224,
+      "end_line": 270,
       "type": "FUNCTION",
       "content_hash": "652dc3832988ab8d"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changes": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._has_changes",
-      "start_line": 251,
-      "end_line": 259,
+      "start_line": 273,
+      "end_line": 281,
       "type": "FUNCTION",
       "content_hash": "785661b1b374b761"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_components": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._diff_components",
-      "start_line": 262,
-      "end_line": 307,
+      "start_line": 284,
+      "end_line": 329,
       "type": "FUNCTION",
       "content_hash": "7f3d3b547750caa7"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.build_diff": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.build_diff",
-      "start_line": 310,
-      "end_line": 333,
+      "start_line": 332,
+      "end_line": 355,
       "type": "FUNCTION",
       "content_hash": "03d7ac8c994d57db"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._sanitize": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._sanitize",
-      "start_line": 339,
-      "end_line": 341,
+      "start_line": 361,
+      "end_line": 363,
       "type": "FUNCTION",
       "content_hash": "0c4a83ab88d80bc0"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._esc": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._esc",
-      "start_line": 363,
-      "end_line": 369,
+      "start_line": 385,
+      "end_line": 391,
       "type": "FUNCTION",
       "content_hash": "e45c5105d8af2dc4"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._truncate": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._truncate",
-      "start_line": 372,
-      "end_line": 374,
+      "start_line": 394,
+      "end_line": 396,
       "type": "FUNCTION",
       "content_hash": "751d4ca80e5e5268"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._display_status": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._display_status",
-      "start_line": 377,
-      "end_line": 378,
+      "start_line": 399,
+      "end_line": 400,
       "type": "FUNCTION",
       "content_hash": "d5b585da051d6666"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._Scope",
-      "start_line": 381,
-      "end_line": 425,
+      "start_line": 403,
+      "end_line": 447,
       "type": "CLASS",
       "content_hash": "95389df8539e5091"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope.__init__": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._Scope.__init__",
-      "start_line": 392,
-      "end_line": 414,
+      "start_line": 414,
+      "end_line": 436,
       "type": "METHOD",
       "content_hash": "f1143a47440e417d"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope.resolve": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._Scope.resolve",
-      "start_line": 416,
-      "end_line": 425,
+      "start_line": 438,
+      "end_line": 447,
       "type": "METHOD",
       "content_hash": "5bfc527e15cdf1cd"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._filter_changed",
-      "start_line": 428,
-      "end_line": 470,
+      "start_line": 450,
+      "end_line": 492,
       "type": "FUNCTION",
       "content_hash": "91c6dccaa5a809e1"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed.touches": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._filter_changed.touches",
-      "start_line": 461,
-      "end_line": 463,
+      "start_line": 483,
+      "end_line": 485,
       "type": "FUNCTION",
       "content_hash": "e1a0c69dff6f9b3d"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._init_directive": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._init_directive",
-      "start_line": 473,
-      "end_line": 492,
+      "start_line": 495,
+      "end_line": 514,
       "type": "FUNCTION",
       "content_hash": "90d7c75c50f440b4"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._count_changed_components": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._count_changed_components",
-      "start_line": 495,
-      "end_line": 502,
+      "start_line": 517,
+      "end_line": 524,
       "type": "FUNCTION",
       "content_hash": "18a0b2e0cc0785cd"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changed_relations": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._has_changed_relations",
-      "start_line": 505,
-      "end_line": 509,
+      "start_line": 527,
+      "end_line": 531,
       "type": "FUNCTION",
       "content_hash": "06ad82ce29818493"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.render_mermaid",
-      "start_line": 512,
-      "end_line": 639,
+      "start_line": 534,
+      "end_line": 661,
       "type": "FUNCTION",
       "content_hash": "8b7c6d2420ad9ae7"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build",
-      "start_line": 541,
-      "end_line": 614,
+      "start_line": 563,
+      "end_line": 636,
       "type": "FUNCTION",
       "content_hash": "938fa3c85e73367b"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_edges": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
-      "start_line": 552,
-      "end_line": 564,
+      "start_line": 574,
+      "end_line": 586,
       "type": "FUNCTION",
       "content_hash": "beb1d84227b5ecb3"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_level": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build.emit_level",
-      "start_line": 566,
-      "end_line": 583,
+      "start_line": 588,
+      "end_line": 605,
       "type": "FUNCTION",
       "content_hash": "bab2f4f0a975b7d6"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.main",
-      "start_line": 645,
-      "end_line": 686,
+      "start_line": 667,
+      "end_line": 710,
       "type": "FUNCTION",
-      "content_hash": "fbbd7d2293c174c9"
+      "content_hash": "92e0174d2c12d091"
     },
     "scripts/oidc_relay.py|scripts.oidc_relay.RelayConfig": {
       "file_path": "scripts/oidc_relay.py",
@@ -807,8 +825,8 @@
         {
           "qualified_name": "scripts.diff_to_mermaid.load_analysis",
           "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 87,
-          "reference_end_line": 105
+          "reference_start_line": 92,
+          "reference_end_line": 110
         }
       ],
       "source_cluster_ids": [
@@ -871,8 +889,10 @@
             "scripts.diff_to_mermaid._methods_by_file",
             "scripts.diff_to_mermaid._has_structural_changes",
             "scripts.diff_to_mermaid._has_method_changes",
+            "scripts.diff_to_mermaid._content_changed",
+            "scripts.diff_to_mermaid._changed_files",
+            "scripts.diff_to_mermaid.analysed_files_changed",
             "scripts.diff_to_mermaid._analysis_changes",
-            "scripts.diff_to_mermaid._analysis_changes.content_changed",
             "scripts.diff_to_mermaid._owns_analysis_change",
             "scripts.diff_to_mermaid._rel_key",
             "scripts.diff_to_mermaid._diff_relations",
