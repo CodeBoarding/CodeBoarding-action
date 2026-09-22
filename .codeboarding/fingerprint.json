@@ -12,7 +12,7 @@
     "scripts/run_local.sh": "a2b94f83d28d6c63",
     "scripts/oidc_relay.py": "5af0d8557c0af6e0",
     "scripts/action/sync-summary.sh": "24456ef53fe7b60c",
-    "scripts/action/build-review-comment.sh": "949852579c3bbe45",
+    "scripts/action/build-review-comment.sh": "5bf327e0d43385d4",
     "scripts/action/state-names.sh": "aa8b5cec7088e53e",
     "scripts/action/build-review-artifact.sh": "380aae6e6e296576",
     "scripts/action/guard.sh": "154ff57eafeb4d6c",
