@@ -54,19 +54,19 @@ def _build(root: Path, analysis: str) -> tuple[dict, dict]:
 class ReviewArtifactUnchangedTests(unittest.TestCase):
     def test_the_early_exit_flag_is_relayed_to_the_metadata_and_the_comment_step(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            metadata, outputs = _build(Path(tmp), '{"metadata": {"incremental_unchanged": true}, "components": []}')
+            metadata, outputs = _build(Path(tmp), '{"metadata": {"structure_unchanged": true}, "components": []}')
             # A string, like every other `--arg` field the webview reads from this file.
-            self.assertEqual(metadata["incremental_unchanged"], "true")
+            self.assertEqual(metadata["structure_unchanged"], "true")
             self.assertEqual(outputs["unchanged"], "true")
 
     def test_a_re_detailed_run_and_a_pre_flag_analysis_both_read_as_not_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            metadata, outputs = _build(Path(tmp), '{"metadata": {"incremental_unchanged": false}, "components": []}')
-            self.assertEqual(metadata["incremental_unchanged"], "false")
+            metadata, outputs = _build(Path(tmp), '{"metadata": {"structure_unchanged": false}, "components": []}')
+            self.assertEqual(metadata["structure_unchanged"], "false")
             self.assertEqual(outputs["unchanged"], "false")
         with tempfile.TemporaryDirectory() as tmp:
             metadata, outputs = _build(Path(tmp), '{"components": ["head"]}')
-            self.assertEqual(metadata["incremental_unchanged"], "false")
+            self.assertEqual(metadata["structure_unchanged"], "false")
             self.assertEqual(outputs["unchanged"], "false")
 
 
