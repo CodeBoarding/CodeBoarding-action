@@ -14,9 +14,17 @@ RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
 # came from here is a github.com referrer, which most clients strip and a link
 # pasted into chat never had. Constant across runs on purpose: a run id here
 # would scatter one pull request's clicks across a new value per re-run.
-WEBVIEW_URL="https://app.codeboarding.org/${GITHUB_REPOSITORY}/pull/${PR_NUMBER}?utm_source=github&utm_medium=pr_comment&utm_campaign=gh_action"
+PLATFORM_URL="https://app.codeboarding.org/${GITHUB_REPOSITORY}/pull/${PR_NUMBER}"
+WEBVIEW_URL="${PLATFORM_URL}?utm_source=github&utm_medium=pr_comment&utm_campaign=gh_action"
 BODY="${RUNNER_TEMP}/review-comment.md"
-printf '### CodeBoarding review\n\n**Status:** %s changed %s\n' "$N_CHANGED" "$COMPONENT_NOUN" > "$BODY"
+# The status line is what the web platform reads the count from, so its shape is a contract.
+# A run the scope check skipped says so in the same line: its zero is decided from the
+# changed files, not from a diff of two graphs, and a reader deserves to know which.
+STATUS="${N_CHANGED} changed ${COMPONENT_NOUN}"
+if [ "${SCOPE_SKIPPED:-false}" = true ]; then
+  STATUS="${STATUS} (no analysed file changed)"
+fi
+printf '### CodeBoarding review\n\n**Status:** %s\n' "$STATUS" > "$BODY"
 printf '\nSee the full change in [CodeBoarding](%s).\n' "$WEBVIEW_URL" >> "$BODY"
 # The diagram compares against the merge base, so commits landed on the base
 # branch since this PR forked are excluded. Say so rather than hide it.
@@ -40,5 +48,10 @@ fi
     printf '[download artifacts](%s) · ' "$ARTIFACT_URL"
   fi
   printf 'run [%s](%s)</sub>\n' "$GITHUB_RUN_ID" "$RUN_URL"
+  # The machine-readable line: what a reader of the comment (the web platform's dashboard, an
+  # agent) needs without parsing the prose or the diagram. An HTML comment renders as nothing.
+  # Keep it one line, `key=value` pairs, values without spaces, so a regex over it stays trivial.
+  printf '<!-- codeboarding: platform_url=%s changed=%s changed_files=%s analysed_files=%s head=%s -->\n' \
+    "$PLATFORM_URL" "$N_CHANGED" "${CHANGED_FILES:-}" "${ANALYSED_FILES:-}" "${HEAD_SHA:-}"
 } >> "$BODY"
 echo "path=$BODY" >> "$GITHUB_OUTPUT"

@@ -507,9 +507,29 @@ runs:
         PR_URL: ${{ steps.sync_commit.outputs.sync_pr_url }}
       run: "$GITHUB_ACTION_PATH/scripts/action/sync-summary.sh"
 
+    # A pull request that changes nothing the engine would analyse (docs, config, CI, tests
+    # it ignores, a language it does not read) cannot have moved the architecture, so its
+    # head analysis IS the base analysis. When a base graph is at hand, the run below is
+    # skipped and the base is published as the head; the comment says "0 changed components
+    # (no analysed file changed)" so the zero is known to be decided, not measured.
+    - name: Check whether any analysed file changed
+      id: scope
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github_token }}
+        GH_ENTERPRISE_TOKEN: ${{ inputs.github_token }}
+        GH_HOST: ${{ github.server_url }}
+        REPOSITORY: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
+        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
+        BASE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/base
+      run: "$GITHUB_ACTION_PATH/scripts/action/scope-check.sh"
+
     - name: Analyze pull request
       id: review_analyze
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.scope.outputs.skip != 'true'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -537,7 +557,7 @@ runs:
     # so a later rendering or posting failure must not throw it away. Only the
     # next run reads this, hence the short retention.
     - name: Publish this analysis for the next run
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.warmstart_name != '' && github.server_url == 'https://github.com'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.scope.outputs.skip != 'true' && steps.state.outputs.warmstart_name != '' && github.server_url == 'https://github.com'
       continue-on-error: true
       uses: actions/upload-artifact@v4
       with:
@@ -572,8 +592,8 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        BASE_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.base_analysis_path }}
-        HEAD_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
+        BASE_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.base_analysis_path || steps.scope.outputs.base_analysis_path }}
+        HEAD_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path || steps.scope.outputs.analysis_path }}
       run: "$GITHUB_ACTION_PATH/scripts/action/render-review.sh"
 
     - name: Build review artifact
@@ -581,12 +601,15 @@ runs:
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       shell: bash
       env:
-        ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
+        ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path || steps.scope.outputs.analysis_path }}
         BASE_ARTIFACT_NAME: ${{ steps.state.outputs.base_name }}
         BASE_ARTIFACT_ID: ${{ steps.publish_base.outputs.artifact-id || steps.fetch_base.outputs.artifact_id }}
-        BASE_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.base_analysis_path }}
+        BASE_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.base_analysis_path || steps.scope.outputs.base_analysis_path }}
         INLINE_BASE: ${{ steps.publish_base.outputs.artifact-id == '' && steps.fetch_base.outputs.artifact_id == '' }}
-        ANALYSIS_MODE: ${{ steps.review_analyze.outputs.analysis_mode }}
+        ANALYSIS_MODE: ${{ steps.review_analyze.outputs.analysis_mode || steps.scope.outputs.analysis_mode }}
+        SCOPE_SKIPPED: ${{ steps.scope.outputs.skip }}
+        CHANGED_FILES: ${{ steps.scope.outputs.changed_files }}
+        ANALYSED_FILES: ${{ steps.scope.outputs.analysed_files }}
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
         MERGE_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
         MERGE_BASE_RESOLVED: ${{ steps.guard.outputs.merge_base_resolved }}
@@ -622,6 +645,10 @@ runs:
         BEHIND_BY: ${{ steps.guard.outputs.behind_by }}
         BASE_REF: ${{ steps.guard.outputs.base_ref }}
         MERGE_BASE_RESOLVED: ${{ steps.guard.outputs.merge_base_resolved }}
+        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
+        SCOPE_SKIPPED: ${{ steps.scope.outputs.skip }}
+        CHANGED_FILES: ${{ steps.scope.outputs.changed_files }}
+        ANALYSED_FILES: ${{ steps.scope.outputs.analysed_files }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-comment.sh"
 
     - name: Post review comment

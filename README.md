@@ -98,6 +98,12 @@ Because artifacts are readable and writable from every trigger, all paths behave
 
 Fork pull requests never carry an analysis forward. They are reviewed on request, each review starts from the base, and nothing they produce is read by a run on this repository's own code: untrusted code must not shape state that a later run loads. The action also accepts `pull_request_target`, which runs on the base branch ref and lets both share one chain; that trigger has its own trade-offs (a PR that adds this workflow will not run it until merged, and the fork gate becomes load-bearing), so `pull_request` remains the recommended default.
 
+### Pull requests that change nothing analysed
+
+A pull request whose changed files are all outside the analysed scope (docs, configuration, CI, tests the ignore file excludes, or a language the engine does not read) cannot have moved the architecture. Before analysing, a review run lists the pull request's files and counts them against the engine's own rules: its language extensions and `.codeboarding/.codeboardingignore` over the checked-out repository. When none is analysed and a base graph is at hand (a published base, or the baseline the sync workflow committed), the engine is not run: the base is published as the head, the diff renders as empty, and the comment says `0 changed components (no analysed file changed)`, so the zero is known to be decided from the files rather than measured by a diff. Nothing is skipped when the file list cannot be read, when the engine cannot be imported, or when no base exists.
+
+Every review comment ends with a machine-readable HTML comment, `<!-- codeboarding: platform_url=… changed=… changed_files=… analysed_files=… head=… -->`, and the review artifact's `metadata.json` carries `scope_skipped`, `changed_files` and `analysed_files` (strings, like every other field there).
+
 ## Authentication and providers
 
 The `llm` input is required and says where analysis credentials come from. There are

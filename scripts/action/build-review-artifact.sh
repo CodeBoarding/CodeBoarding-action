@@ -36,9 +36,13 @@ jq -n \
   --arg chain_depth "$CHAIN_DEPTH" \
   --arg base_artifact "$BASE_ARTIFACT_NAME" \
   --arg base_artifact_id "$BASE_ARTIFACT_ID" \
+  --arg scope_skipped "${SCOPE_SKIPPED:-false}" \
+  --arg changed_files "${CHANGED_FILES:-}" \
+  --arg analysed_files "${ANALYSED_FILES:-}" \
   '{kind: $kind, mode: $mode, base_sha: $base_sha, merge_base_sha: $merge_base_sha, pr_base_sha: $merge_base_sha,
     merge_base_resolved: $merge_base_resolved, head_sha: $head_sha,
     pr_number: $pr_number, seed_source: $seed_source, chain_depth: $chain_depth,
-    base_artifact: $base_artifact, base_artifact_id: $base_artifact_id}' \
+    base_artifact: $base_artifact, base_artifact_id: $base_artifact_id,
+    scope_skipped: $scope_skipped, changed_files: $changed_files, analysed_files: $analysed_files}' \
   > "${RUNNER_TEMP}/cb-review-artifact/metadata.json"
 echo "artifact_dir=${RUNNER_TEMP}/cb-review-artifact" >> "$GITHUB_OUTPUT"
