@@ -98,6 +98,12 @@ Because artifacts are readable and writable from every trigger, all paths behave
 
 Fork pull requests never carry an analysis forward. They are reviewed on request, each review starts from the base, and nothing they produce is read by a run on this repository's own code: untrusted code must not shape state that a later run loads. The action also accepts `pull_request_target`, which runs on the base branch ref and lets both share one chain; that trigger has its own trade-offs (a PR that adds this workflow will not run it until merged, and the fork gate becomes load-bearing), so `pull_request` remains the recommended default.
 
+### Pull requests that change nothing analysed
+
+A pull request whose changed files are all outside what the engine analyses (docs, configuration, CI, tests the ignore file excludes, or a language the engine does not read) cannot have moved the architecture. The action says so by comparing the two analyses it already holds: the engine records a content hash for every file a component owns, and the review counts the analysed files whose hash differs between the base and the head, including files added or removed. At zero, no byte of analysed code changed, and the comment says `(no analysed file changed)` after the component count. If the count of changed components is not zero at the same time, the analysis grouped the same code differently, and the comment says that too rather than presenting it as a change. The review artifact's `metadata.json` carries the count as `analysed_files_changed` (a string, like every other field there, and `unknown` when either analysis has a file without a hash).
+
+Every review comment ends with a machine-readable HTML comment, `<!-- codeboarding: platform_url=… changed=… analysed_files_changed=… head=… -->`, for readers that should not parse the prose or the diagram. The progress comment carries the platform link from the start, so a pull request can be opened there while the run is still going.
+
 ## Authentication and providers
 
 The `llm` input is required and says where analysis credentials come from. There are

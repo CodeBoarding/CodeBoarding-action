@@ -16,10 +16,11 @@ META="${RUNNER_TEMP}/diagram_meta.json"
 DIFF="$(python3 "$ACTION_PATH/scripts/diff_to_mermaid.py" --base "$BASE_ANALYSIS" --head "$HEAD_ANALYSIS" --out "$DIAGRAM_OUT" --direction LR --render-depth 1)"
 printf '%s' "$DIFF" > "$META"
 
-read -r N_CHANGED TRUNCATED RENDERED EMPTY < <(jq -r '[.n_changed, .truncated, .rendered, .empty] | @tsv' "$META")
+read -r N_CHANGED TRUNCATED RENDERED EMPTY ANALYSED_FILES_CHANGED < <(jq -r '[.n_changed, .truncated, .rendered, .empty, (.analysed_files_changed // "unknown")] | @tsv' "$META")
 [ "$RENDERED" = true ] || [ "$EMPTY" = true ] || { echo "::error::The architecture diff is too large to render."; exit 1; }
 {
   echo "diagram_md=$DIAGRAM_OUT"
   echo "n_changed=$N_CHANGED"
   echo "truncated=$TRUNCATED"
+  echo "analysed_files_changed=$ANALYSED_FILES_CHANGED"
 } >> "$GITHUB_OUTPUT"
