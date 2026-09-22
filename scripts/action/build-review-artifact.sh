@@ -18,6 +18,12 @@ fi
 HEALTH_REPORT="$(dirname "$ANALYSIS_PATH")/health/health_report.json"
 [ ! -f "$HEALTH_REPORT" ] || cp "$HEALTH_REPORT" "${RUNNER_TEMP}/cb-review-artifact/health_report.json"
 
+# The engine's own verdict, read from the analysis it wrote: true when the incremental took
+# its early exit (no cluster or membership deltas, nothing re-detailed, no model consulted),
+# so the comment's "0 changed components" is a decided fact rather than a model's word. An
+# analysis written before the field existed reads as false, which is the safe direction.
+UNCHANGED="$(jq -r 'if .metadata.incremental_unchanged == true then "true" else "false" end' "$ANALYSIS_PATH" 2>/dev/null || echo false)"
+
 # base_sha stays the event's base branch tip for consumers that key on it;
 # merge_base_sha records the commit the diagram actually compared against.
 # pr_base_sha carries the same value under the name the webview already reads:
@@ -36,13 +42,12 @@ jq -n \
   --arg chain_depth "$CHAIN_DEPTH" \
   --arg base_artifact "$BASE_ARTIFACT_NAME" \
   --arg base_artifact_id "$BASE_ARTIFACT_ID" \
-  --arg scope_skipped "${SCOPE_SKIPPED:-false}" \
-  --arg changed_files "${CHANGED_FILES:-}" \
-  --arg analysed_files "${ANALYSED_FILES:-}" \
+  --arg incremental_unchanged "$UNCHANGED" \
   '{kind: $kind, mode: $mode, base_sha: $base_sha, merge_base_sha: $merge_base_sha, pr_base_sha: $merge_base_sha,
     merge_base_resolved: $merge_base_resolved, head_sha: $head_sha,
     pr_number: $pr_number, seed_source: $seed_source, chain_depth: $chain_depth,
     base_artifact: $base_artifact, base_artifact_id: $base_artifact_id,
-    scope_skipped: $scope_skipped, changed_files: $changed_files, analysed_files: $analysed_files}' \
+    incremental_unchanged: $incremental_unchanged}' \
   > "${RUNNER_TEMP}/cb-review-artifact/metadata.json"
 echo "artifact_dir=${RUNNER_TEMP}/cb-review-artifact" >> "$GITHUB_OUTPUT"
+echo "unchanged=$UNCHANGED" >> "$GITHUB_OUTPUT"

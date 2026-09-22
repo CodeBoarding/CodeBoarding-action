@@ -50,22 +50,22 @@ class ReviewCommentTests(unittest.TestCase):
 
     def test_the_machine_readable_line_ends_the_body(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            body = _build(Path(tmp), CHANGED_FILES="4", ANALYSED_FILES="2")
+            body = _build(Path(tmp))
             last = body.rstrip("\n").splitlines()[-1]
             self.assertEqual(
                 last,
-                "<!-- codeboarding: platform_url=https://app.codeboarding.org/owner/repo/pull/605 changed=3 changed_files=4 analysed_files=2 head=abc123 -->",
+                "<!-- codeboarding: platform_url=https://app.codeboarding.org/owner/repo/pull/605 changed=3 unchanged=false head=abc123 -->",
             )
             # The status regex the web platform uses must still find the status line, not the marker.
             match = re.search(r"\*\*Status:\*\*\s*(\d+)\s+changed\s+components?", body)
             self.assertIsNotNone(match)
             self.assertEqual(match.group(1) if match else None, "3")
 
-    def test_a_skipped_run_says_its_zero_was_decided_from_the_files(self) -> None:
+    def test_the_engines_early_exit_is_said_in_the_status_and_the_marker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            body = _build(Path(tmp), N_CHANGED="0", SCOPE_SKIPPED="true", CHANGED_FILES="2", ANALYSED_FILES="0")
-            self.assertIn("**Status:** 0 changed components (no analysed file changed)\n", body)
-            self.assertIn("changed=0 changed_files=2 analysed_files=0", body)
+            body = _build(Path(tmp), N_CHANGED="0", UNCHANGED="true")
+            self.assertIn("**Status:** 0 changed components (nothing analysed changed)\n", body)
+            self.assertIn("changed=0 unchanged=true head=abc123", body)
 
 
 if __name__ == "__main__":
