@@ -15,6 +15,11 @@ differences for this use case: both sides are read from plain file paths (not
 ``git show``), and a relation whose ``(src, dst)`` is unchanged but whose label
 text changed is reported as ``modified`` (the original only did added/deleted).
 
+It also counts the analysed files that differ between the two sides, from the whole-file
+content hash the engine records for every file a component owns. Zero means no byte of
+analysed code changed, whatever the component diff says: a component can still read as
+changed when the analysis grouped the same code differently.
+
 Self-contained stdlib.
 """
 
@@ -144,14 +149,39 @@ def _has_method_changes(base: dict, current: dict) -> bool:
     )
 
 
+def _content_changed(before: dict | None, after: dict | None) -> bool:
+    if before is None or after is None:
+        return before != after
+    return before.get("content_hash") != after.get("content_hash")
+
+
+def _changed_files(base: dict, current: dict) -> set[str]:
+    base_files = base.get("files") or {}
+    current_files = current.get("files") or {}
+    return {
+        path
+        for path in set(base_files) | set(current_files)
+        if _content_changed(base_files.get(path), current_files.get(path))
+    }
+
+
+def analysed_files_changed(base: dict, current: dict) -> int | None:
+    """How many analysed files were added, removed or edited between the two analyses.
+
+    None when either side cannot vouch for it: no file index, or a file indexed without a hash,
+    which would make an edit to it indistinguishable from no edit.
+    """
+    base_files = base.get("files") or {}
+    current_files = current.get("files") or {}
+    if not base_files or not current_files:
+        return None
+    if any(not (entry or {}).get("content_hash") for entry in [*base_files.values(), *current_files.values()]):
+        return None
+    return len(_changed_files(base, current))
+
+
 def _analysis_changes(base: dict, current: dict) -> tuple[set[str], set[str]]:
     """Return changed method keys and changed files without method-level detail."""
-
-    def content_changed(before: dict | None, after: dict | None) -> bool:
-        if before is None or after is None:
-            return before != after
-        return before.get("content_hash") != after.get("content_hash")
-
     base_index = base.get("methods_index") or {}
     current_index = current.get("methods_index") or {}
     changed_methods: set[str] = set()
@@ -159,20 +189,12 @@ def _analysis_changes(base: dict, current: dict) -> tuple[set[str], set[str]]:
     for key in set(base_index) | set(current_index):
         before = base_index.get(key)
         after = current_index.get(key)
-        if not content_changed(before, after):
+        if not _content_changed(before, after):
             continue
         record = after or before or {}
         changed_methods.add(key)
         member_files.add(record.get("file_path") or key.partition("|")[0])
-
-    base_files = base.get("files") or {}
-    current_files = current.get("files") or {}
-    changed_files = {
-        path
-        for path in set(base_files) | set(current_files)
-        if content_changed(base_files.get(path), current_files.get(path))
-    }
-    return changed_methods, changed_files - member_files
+    return changed_methods, _changed_files(base, current) - member_files
 
 
 def _owns_analysis_change(
@@ -666,7 +688,8 @@ def main() -> int:
     p.add_argument("--rank-spacing", type=int, default=None, help="Space between ranks")
     args = p.parse_args()
 
-    diff = build_diff(load_analysis(args.base), load_analysis(args.head))
+    base, head = load_analysis(args.base), load_analysis(args.head)
+    diff = build_diff(base, head)
     mermaid, meta = render_mermaid(
         diff,
         direction=args.direction,
@@ -681,6 +704,7 @@ def main() -> int:
 
     args.out.write_text(mermaid if mermaid is not None else "", encoding="utf-8")
     meta["rendered"] = mermaid is not None
+    meta["analysed_files_changed"] = analysed_files_changed(base, head)
     # Machine-readable summary on stdout for the action to consume.
     print(json.dumps(meta))
     return 0

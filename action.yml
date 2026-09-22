@@ -596,6 +596,7 @@ runs:
         PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
         SEED_SOURCE: ${{ steps.review_analyze.outputs.seed_source }}
         CHAIN_DEPTH: ${{ steps.review_analyze.outputs.chain_depth }}
+        ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-artifact.sh"
 
     - name: Upload review artifact
@@ -625,9 +626,8 @@ runs:
         BASE_REF: ${{ steps.guard.outputs.base_ref }}
         MERGE_BASE_RESOLVED: ${{ steps.guard.outputs.merge_base_resolved }}
         HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
-        # The engine's own word, relayed by the artifact step: true when the incremental took its
-        # early exit and nothing was re-detailed, so the comment's zero is known to be decided.
-        UNCHANGED: ${{ steps.review_artifact.outputs.unchanged }}
+        # Analysed files whose content hash differs between base and head, from the render step.
+        ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-comment.sh"
 
     - name: Post review comment

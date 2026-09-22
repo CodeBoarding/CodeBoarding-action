@@ -1,4 +1,4 @@
-"""The artifact relays the engine's early-exit verdict, and reads a pre-flag analysis as not unchanged."""
+"""The review artifact's metadata records how many analysed files changed, as the render step counted them."""
 
 import json
 import os
@@ -11,9 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILD_ARTIFACT = ROOT / "scripts" / "action" / "build-review-artifact.sh"
 
 
-def _build(root: Path, analysis: str) -> tuple[dict, dict]:
+def _build(root: Path, **extra: str) -> tuple[dict, dict]:
     head = root / "head.json"
-    head.write_text(analysis, encoding="utf-8")
+    head.write_text('{"components": ["head"]}', encoding="utf-8")
     base = root / "base.json"
     base.write_text('{"components": ["base"]}', encoding="utf-8")
     output = root / "github-output"
@@ -37,6 +37,7 @@ def _build(root: Path, analysis: str) -> tuple[dict, dict]:
             "PR_NUMBER": "81",
             "SEED_SOURCE": "pr-chain",
             "CHAIN_DEPTH": "2",
+            **extra,
         },
         capture_output=True,
         text=True,
@@ -51,23 +52,18 @@ def _build(root: Path, analysis: str) -> tuple[dict, dict]:
     return metadata, outputs
 
 
-class ReviewArtifactUnchangedTests(unittest.TestCase):
-    def test_the_early_exit_flag_is_relayed_to_the_metadata_and_the_comment_step(self) -> None:
+class ReviewArtifactMetadataTests(unittest.TestCase):
+    def test_the_analysed_file_count_is_recorded_as_counted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            metadata, outputs = _build(Path(tmp), '{"metadata": {"structure_unchanged": true}, "components": []}')
+            metadata, outputs = _build(Path(tmp), ANALYSED_FILES_CHANGED="0")
             # A string, like every other `--arg` field the webview reads from this file.
-            self.assertEqual(metadata["structure_unchanged"], "true")
-            self.assertEqual(outputs["unchanged"], "true")
+            self.assertEqual(metadata["analysed_files_changed"], "0")
+            self.assertEqual(set(outputs), {"artifact_dir"})
 
-    def test_a_re_detailed_run_and_a_pre_flag_analysis_both_read_as_not_unchanged(self) -> None:
+    def test_a_count_the_render_step_could_not_make_is_recorded_as_unknown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            metadata, outputs = _build(Path(tmp), '{"metadata": {"structure_unchanged": false}, "components": []}')
-            self.assertEqual(metadata["structure_unchanged"], "false")
-            self.assertEqual(outputs["unchanged"], "false")
-        with tempfile.TemporaryDirectory() as tmp:
-            metadata, outputs = _build(Path(tmp), '{"components": ["head"]}')
-            self.assertEqual(metadata["structure_unchanged"], "false")
-            self.assertEqual(outputs["unchanged"], "false")
+            metadata, _outputs = _build(Path(tmp))
+            self.assertEqual(metadata["analysed_files_changed"], "unknown")
 
 
 if __name__ == "__main__":

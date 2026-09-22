@@ -54,28 +54,32 @@ class ReviewCommentTests(unittest.TestCase):
             last = body.rstrip("\n").splitlines()[-1]
             self.assertEqual(
                 last,
-                "<!-- codeboarding: platform_url=https://app.codeboarding.org/owner/repo/pull/605 changed=3 unchanged=false head=abc123 -->",
+                "<!-- codeboarding: platform_url=https://app.codeboarding.org/owner/repo/pull/605 changed=3 analysed_files_changed=unknown head=abc123 -->",
             )
             # The status regex the web platform uses must still find the status line, not the marker.
             match = re.search(r"\*\*Status:\*\*\s*(\d+)\s+changed\s+components?", body)
             self.assertIsNotNone(match)
             self.assertEqual(match.group(1) if match else None, "3")
 
-    def test_the_engines_early_exit_is_said_in_the_status_and_the_marker(self) -> None:
+    def test_no_analysed_file_changed_is_said_in_the_status_and_the_marker(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            body = _build(Path(tmp), N_CHANGED="0", UNCHANGED="true")
-            self.assertIn("**Status:** 0 changed components (nothing analysed changed)\n", body)
-            self.assertIn("changed=0 unchanged=true head=abc123", body)
+            body = _build(Path(tmp), N_CHANGED="0", ANALYSED_FILES_CHANGED="0")
+            self.assertIn("**Status:** 0 changed components (no analysed file changed)\n", body)
+            self.assertNotIn("grouped the same code", body)
+            self.assertIn("changed=0 analysed_files_changed=0 head=abc123", body)
 
-    def test_the_early_exit_alone_is_not_the_verdict(self) -> None:
-        # A run seeded from the pull request's previous head takes the early exit for a docs-only
-        # push on top of real changes, and a body-only edit keeps the clusters while moving method
-        # hashes. In both the diff is not zero, and the comment must not call it unchanged.
+    def test_components_that_differ_with_no_file_changed_are_called_regrouping(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            body = _build(Path(tmp), N_CHANGED="3", UNCHANGED="true")
-            self.assertIn("**Status:** 3 changed components\n", body)
-            self.assertNotIn("nothing analysed changed", body)
-            self.assertIn("changed=3 unchanged=false head=abc123", body)
+            body = _build(Path(tmp), N_CHANGED="3", ANALYSED_FILES_CHANGED="0")
+            self.assertIn("**Status:** 3 changed components (no analysed file changed)\n", body)
+            self.assertIn("grouped the same code differently", body)
+            self.assertIn("changed=3 analysed_files_changed=0 head=abc123", body)
+
+    def test_a_changed_analysed_file_gets_no_verdict_even_at_zero_components(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            body = _build(Path(tmp), N_CHANGED="0", ANALYSED_FILES_CHANGED="2")
+            self.assertIn("**Status:** 0 changed components\n", body)
+            self.assertIn("changed=0 analysed_files_changed=2 head=abc123", body)
 
 
 if __name__ == "__main__":

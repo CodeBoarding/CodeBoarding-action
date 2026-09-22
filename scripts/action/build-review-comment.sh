@@ -18,20 +18,18 @@ PLATFORM_URL="https://app.codeboarding.org/${GITHUB_REPOSITORY}/pull/${PR_NUMBER
 WEBVIEW_URL="${PLATFORM_URL}?utm_source=github&utm_medium=pr_comment&utm_campaign=gh_action"
 BODY="${RUNNER_TEMP}/review-comment.md"
 # The status line is what the web platform reads the count from, so its shape is a contract.
-# When the engine's incremental took its early exit AND the diff found nothing, the same line
-# says so: that zero was decided (no cluster or membership deltas, no model consulted), not
-# reported by a diff of two re-detailed graphs. Both halves are needed. The engine's flag alone
-# says the clusters held; a body-only edit still moves method hashes, which the diff counts as
-# a modified component, and a run seeded from this pull request's previous head can take the
-# early exit for a docs-only push on top of real changes. So the verdict is the engine's word
-# and the diff's zero together, and neither alone.
+# ANALYSED_FILES_CHANGED counts the analysed files whose content hash differs between base and
+# head ("unknown" when the analyses cannot say). At zero no analysed code changed, so the status
+# says so, and a non-zero component count is the analysis grouping the same code differently.
+ANALYSED_FILES_CHANGED="${ANALYSED_FILES_CHANGED:-unknown}"
 STATUS="${N_CHANGED} changed ${COMPONENT_NOUN}"
-VERDICT_UNCHANGED=false
-if [ "${UNCHANGED:-false}" = true ] && [ "$N_CHANGED" = "0" ]; then
-  VERDICT_UNCHANGED=true
-  STATUS="${STATUS} (nothing analysed changed)"
+if [ "$ANALYSED_FILES_CHANGED" = "0" ]; then
+  STATUS="${STATUS} (no analysed file changed)"
 fi
 printf '### CodeBoarding review\n\n**Status:** %s\n' "$STATUS" > "$BODY"
+if [ "$ANALYSED_FILES_CHANGED" = "0" ] && [ "$N_CHANGED" != "0" ]; then
+  printf '\nNo file CodeBoarding analyses changed in this pull request, so the components marked below differ only because the analysis grouped the same code differently.\n' >> "$BODY"
+fi
 printf '\nSee the full change in [CodeBoarding](%s).\n' "$WEBVIEW_URL" >> "$BODY"
 # The diagram compares against the merge base, so commits landed on the base
 # branch since this PR forked are excluded. Say so rather than hide it.
@@ -58,7 +56,7 @@ fi
   # The machine-readable line: what a reader of the comment (the web platform's dashboard, an
   # agent) needs without parsing the prose or the diagram. An HTML comment renders as nothing.
   # Keep it one line, `key=value` pairs, values without spaces, so a regex over it stays trivial.
-  printf '<!-- codeboarding: platform_url=%s changed=%s unchanged=%s head=%s -->\n' \
-    "$PLATFORM_URL" "$N_CHANGED" "$VERDICT_UNCHANGED" "${HEAD_SHA:-}"
+  printf '<!-- codeboarding: platform_url=%s changed=%s analysed_files_changed=%s head=%s -->\n' \
+    "$PLATFORM_URL" "$N_CHANGED" "$ANALYSED_FILES_CHANGED" "${HEAD_SHA:-}"
 } >> "$BODY"
 echo "path=$BODY" >> "$GITHUB_OUTPUT"
