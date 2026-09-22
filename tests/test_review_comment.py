@@ -67,6 +67,16 @@ class ReviewCommentTests(unittest.TestCase):
             self.assertIn("**Status:** 0 changed components (nothing analysed changed)\n", body)
             self.assertIn("changed=0 unchanged=true head=abc123", body)
 
+    def test_the_early_exit_alone_is_not_the_verdict(self) -> None:
+        # A run seeded from the pull request's previous head takes the early exit for a docs-only
+        # push on top of real changes, and a body-only edit keeps the clusters while moving method
+        # hashes. In both the diff is not zero, and the comment must not call it unchanged.
+        with tempfile.TemporaryDirectory() as tmp:
+            body = _build(Path(tmp), N_CHANGED="3", UNCHANGED="true")
+            self.assertIn("**Status:** 3 changed components\n", body)
+            self.assertNotIn("nothing analysed changed", body)
+            self.assertIn("changed=3 unchanged=false head=abc123", body)
+
 
 if __name__ == "__main__":
     unittest.main()

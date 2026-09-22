@@ -18,11 +18,17 @@ PLATFORM_URL="https://app.codeboarding.org/${GITHUB_REPOSITORY}/pull/${PR_NUMBER
 WEBVIEW_URL="${PLATFORM_URL}?utm_source=github&utm_medium=pr_comment&utm_campaign=gh_action"
 BODY="${RUNNER_TEMP}/review-comment.md"
 # The status line is what the web platform reads the count from, so its shape is a contract.
-# When the engine's incremental took its early exit, the same line says so: that zero was
-# decided (no cluster or membership deltas, no model consulted), not reported by a diff of
-# two re-detailed graphs, and a reader deserves to know which.
+# When the engine's incremental took its early exit AND the diff found nothing, the same line
+# says so: that zero was decided (no cluster or membership deltas, no model consulted), not
+# reported by a diff of two re-detailed graphs. Both halves are needed. The engine's flag alone
+# says the clusters held; a body-only edit still moves method hashes, which the diff counts as
+# a modified component, and a run seeded from this pull request's previous head can take the
+# early exit for a docs-only push on top of real changes. So the verdict is the engine's word
+# and the diff's zero together, and neither alone.
 STATUS="${N_CHANGED} changed ${COMPONENT_NOUN}"
-if [ "${UNCHANGED:-false}" = true ]; then
+VERDICT_UNCHANGED=false
+if [ "${UNCHANGED:-false}" = true ] && [ "$N_CHANGED" = "0" ]; then
+  VERDICT_UNCHANGED=true
   STATUS="${STATUS} (nothing analysed changed)"
 fi
 printf '### CodeBoarding review\n\n**Status:** %s\n' "$STATUS" > "$BODY"
@@ -53,6 +59,6 @@ fi
   # agent) needs without parsing the prose or the diagram. An HTML comment renders as nothing.
   # Keep it one line, `key=value` pairs, values without spaces, so a regex over it stays trivial.
   printf '<!-- codeboarding: platform_url=%s changed=%s unchanged=%s head=%s -->\n' \
-    "$PLATFORM_URL" "$N_CHANGED" "${UNCHANGED:-false}" "${HEAD_SHA:-}"
+    "$PLATFORM_URL" "$N_CHANGED" "$VERDICT_UNCHANGED" "${HEAD_SHA:-}"
 } >> "$BODY"
 echo "path=$BODY" >> "$GITHUB_OUTPUT"
