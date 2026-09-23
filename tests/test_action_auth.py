@@ -335,7 +335,9 @@ done
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
         self.assertEqual(outputs["tier"], "byok+license")
         self.assertEqual((auth_dir / "env" / "ANTHROPIC_API_KEY").read_text(), "my-own-key")
-        self.assertFalse((auth_dir / "license.txt").exists(), "no licence is staged for the relay")
+        # Staged for the preflight, which tells the proxy whose plan the run is on; the relay
+        # that would spend it on a model call is never started (asserted below).
+        self.assertEqual((auth_dir / "license.txt").read_text(), "a-licence")
         self.assertNotIn("a-licence", (auth_dir / "env" / "ANTHROPIC_API_KEY").read_text())
 
         configured = subprocess.run(

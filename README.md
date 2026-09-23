@@ -150,8 +150,9 @@ The same rule makes the combinations explicit rather than order-dependent:
 
 A licence alongside your own key is deliberately allowed: it says "my CodeBoarding plan,
 my own tokens". **Your key always wins.** A direct provider call never reaches
-CodeBoarding, so the licence is recorded and reported but not spent; the run is still
-checked and counted like any own-key run (see [Plans and allowances](#plans-and-allowances)). The job summary says so on every run, rather than leaving you to
+CodeBoarding, so the licence is never spent on a model call. It only tells the run's
+check whose plan the run is on, and the run is counted like any own-key run (see
+[Plans and allowances](#plans-and-allowances)). The job summary says so on every run, rather than leaving you to
 infer it from the tier name.
 
 ### Plans and allowances
@@ -187,6 +188,9 @@ ahead and how deep it may go. A final step reports whether a map was produced.
   warning.
 - **CodeBoarding down is never your problem.** If the proxy cannot be reached, the run goes
   ahead at up to 3 levels with a warning.
+- **Update pinned versions.** Action versions from before this release do not start runs
+  with the proxy, so their hosted calls fail once it enforces plans. `@v1` gets this
+  release automatically; a workflow pinned to an older tag or SHA must update.
 
 `license_key` is deprecated: plans now follow your GitHub account. It keeps working until
 the license key cutoff and is ignored after it; each run that sets it says so. Link the key

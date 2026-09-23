@@ -302,13 +302,13 @@ def resolve(table: dict, environ: dict[str, str]) -> dict:
 
     env = _resolve_byok(table, name, given, environ)
     # A licence alongside a provider key is deliberately allowed, not an error: it says
-    # "my CodeBoarding plan, my own tokens". Nothing enforces it yet -- direct provider
-    # calls never reach our proxy -- so it is recorded for the surfaces that read it.
-    return {
-        "tier": "byok+license" if license_key else "byok",
-        "provider": name,
-        "env": env,
-    }
+    # "my CodeBoarding plan, my own tokens". Direct provider calls never reach our proxy, so
+    # it is never spent on a model call; it is staged only for the run's preflight, which
+    # tells the proxy whose plan this run is on.
+    plan = {"tier": "byok+license" if license_key else "byok", "provider": name, "env": env}
+    if license_key:
+        plan["license"] = license_key
+    return plan
 
 
 def _is_endpoint(var: str) -> bool:

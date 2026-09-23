@@ -44,7 +44,9 @@ print(metadata.get("depth_cap", ""))' "$analysis" 2>/dev/null || true
 
 # Names the analysis this run is about to write, and when it started writing it, for the
 # finish step: an engine that crashes on shutdown after writing the map loses this step's
-# outputs, but the run still produced a map and is charged for it.
+# outputs, but the run still produced a map and is charged for it. Called again before a
+# full fallback, so a map the incremental pass wrote does not count once the pass that
+# replaces it fails or is walled.
 mark_map() {
   printf '%s' "$1" > "$RUNNER_TEMP/codeboarding-map"
 }
@@ -137,6 +139,7 @@ analyze_sync() {
   else
     incremental "$CHECKOUT_DIR" "$state"
     if [ "$REQUIRES_FULL" = true ]; then
+      mark_map "$state/analysis.json"
       full "$CHECKOUT_DIR" "$state" "$DEPTH_CAP"
     fi
   fi
@@ -193,8 +196,7 @@ analyze_review() {
     git -C "$CHECKOUT_DIR" worktree add --detach "$base_checkout" "$REVIEW_BASE_SHA" >/dev/null
     seed_state "$base_checkout" "$base_state"
     REQUIRES_FULL=true
-    # FULL_ANALYSIS is the proxy saying this run may go deeper than the baseline was drawn.
-    if [ "$(depth_cap_from "$base_state/analysis.json")" = "$DEPTH_CAP" ] && [ "${FULL_ANALYSIS:-false}" != true ]; then
+    if [ "$(depth_cap_from "$base_state/analysis.json")" = "$DEPTH_CAP" ]; then
       incremental "$base_checkout" "$base_state"
     fi
     if [ "$REQUIRES_FULL" = true ]; then
@@ -225,6 +227,7 @@ analyze_review() {
   mark_map "$head_state/analysis.json"
   incremental "$CHECKOUT_DIR" "$head_state"
   if [ "$REQUIRES_FULL" = true ]; then
+    mark_map "$head_state/analysis.json"
     full "$CHECKOUT_DIR" "$head_state" "$DEPTH_CAP"
   fi
 

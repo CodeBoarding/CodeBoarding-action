@@ -109,7 +109,7 @@ def start(environ: dict[str, str]) -> tuple[dict[str, str], int]:
             environ,
             "/run/start",
             start_request(environ, depth, tier),
-            license_file if tier == "license" and license_file.is_file() else None,
+            license_file if license_file.is_file() else None,
         )
         allowed, cap = answer["allowed"], answer["depth_cap"]
         if not isinstance(allowed, bool) or not isinstance(cap, int) or cap < 1:

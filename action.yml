@@ -543,7 +543,6 @@ runs:
         GIT_TOKEN: ${{ inputs.github_token }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         DEPTH_CAP: ${{ steps.preflight.outputs.depth_cap }}
-        FULL_ANALYSIS: ${{ steps.preflight.outputs.full_analysis }}
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}

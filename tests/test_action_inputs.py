@@ -75,10 +75,6 @@ class ActionInputTests(unittest.TestCase):
         preflight = ACTION[ACTION.index("id: preflight") :]
         self.assertIn("DEPTH_CAP: ${{ inputs.depth_cap }}", preflight[: preflight.index("\n      run:")])
         self.assertEqual(ACTION.count("${{ inputs.depth_cap }}"), 1, "only the preflight reads the input")
-        review = ACTION[ACTION.index("id: review_analyze") :]
-        self.assertIn(
-            "FULL_ANALYSIS: ${{ steps.preflight.outputs.full_analysis }}", review[: review.index("\n      run:")]
-        )
 
     def test_the_preflight_runs_before_the_engine_install_in_every_mode(self) -> None:
         start = ACTION.index("- name: Start the run with CodeBoarding")

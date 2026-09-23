@@ -144,12 +144,16 @@ class RunMeterTests(unittest.TestCase):
         _, requests, _ = self._start(example("run-start.allowed.json"))
         self.assertIsNone(requests[0][2]["baseline_depth"])
 
-    def test_a_licence_rides_in_the_bearer_only_on_the_license_tier(self) -> None:
+    def test_a_staged_licence_rides_in_the_bearer_on_the_license_and_own_key_tiers(self) -> None:
+        """Otherwise a licence holder on their own key reads as Free at the proxy."""
+        _, bare, _ = self._start(example("run-start.allowed.json"), "byok")
         (self.auth_dir / "license.txt").write_text("LIC-123", encoding="utf-8")
-        _, licensed, _ = self._start(example("run-start.allowed.json"), "license")
-        _, own_key, _ = self._start(example("run-start.allowed.json"), "byok+license")
-        self.assertEqual(licensed[0][1], "Bearer oidc-jwt~codeboarding-license~LIC-123")
-        self.assertEqual(own_key[0][1], "Bearer oidc-jwt")
+        for tier, credential in (("license", "hosted"), ("byok+license", "own_key")):
+            with self.subTest(tier=tier):
+                _, requests, _ = self._start(example("run-start.allowed.json"), tier)
+                self.assertEqual(requests[0][1], "Bearer oidc-jwt~codeboarding-license~LIC-123")
+                self.assertEqual(requests[0][2]["credential"], credential)
+        self.assertEqual(bare[0][1], "Bearer oidc-jwt")
 
     # -- the answer --------------------------------------------------------
 
