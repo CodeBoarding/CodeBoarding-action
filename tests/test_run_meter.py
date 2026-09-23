@@ -221,6 +221,67 @@ class RunMeterTests(unittest.TestCase):
             _, code = run_meter.start(self._environ(None, DEPTH_CAP="0"))
         self.assertEqual(code, 1)
 
+    # -- the wall ----------------------------------------------------------
+
+    @NEEDS_JSONSCHEMA
+    def test_a_refused_preflight_keeps_the_wall_for_the_web_app(self) -> None:
+        answer = example("run-start.wall-runs.json")
+        outputs, _, _ = self._start(answer)
+        self.assertEqual(outputs["allowed"], "false")
+        wall = json.loads((self.runner_temp / "codeboarding-wall" / "wall.json").read_text())
+        self.assertEqual(wall, answer["wall"])
+        self.assertEqual(validate(wall, "wall.schema.json"), [])
+
+    def test_an_allowed_run_clears_a_wall_left_by_an_earlier_invocation(self) -> None:
+        stale = self.runner_temp / "codeboarding-wall" / "wall.json"
+        stale.parent.mkdir()
+        stale.write_text(json.dumps(example("wall.token-ceiling.json")))
+        self._start(example("run-start.allowed.json"))
+        self.assertFalse(stale.exists())
+
+    def test_the_wall_is_a_neutral_comment_and_the_step_exits_0(self) -> None:
+        wall = example("run-start.wall-runs.json")["wall"]
+        (self.runner_temp / "codeboarding-wall").mkdir()
+        (self.runner_temp / "codeboarding-wall" / "wall.json").write_text(json.dumps(wall))
+        output, summary = self.root / "github-output", self.root / "summary.md"
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT), "wall"],
+            env={
+                "PATH": os.environ["PATH"],
+                "RUNNER_TEMP": str(self.runner_temp),
+                "GITHUB_OUTPUT": str(output),
+                "GITHUB_STEP_SUMMARY": str(summary),
+                "GITHUB_SERVER_URL": "https://github.com",
+                "GITHUB_REPOSITORY": "acme-corp/billing-service",
+                "GITHUB_RUN_ID": "11809532110",
+                "PR_NUMBER": "482",
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path = output.read_text().strip().removeprefix("path=")
+        body = Path(path).read_text()
+        self.assertIn("### CodeBoarding review · map not drawn", body)
+        self.assertIn(
+            "CodeBoarding map not drawn: m.koch has used 5 of 5 free runs this week (resets Monday 00:00 UTC). "
+            "Pro gives 40 a week; a Team plan covers everyone in acme-corp.",
+            body,
+        )
+        self.assertIn("(https://app.codeboarding.org/dashboard/plan)", body)
+        self.assertIn("wall=runs_exhausted", body)
+        self.assertNotIn("failed", body.lower())
+        self.assertEqual(summary.read_text(), body)
+
+    def test_a_run_stopped_by_a_402_reports_why_it_released(self) -> None:
+        (self.runner_temp / "codeboarding-wall").mkdir()
+        (self.runner_temp / "codeboarding-wall" / "wall.json").write_text(
+            json.dumps(example("wall.token-ceiling.json"))
+        )
+        body, _ = self._finish(JOB_STATUS="success")
+        self.assertEqual((body["outcome"], body["error"]), ("failed", "token_ceiling"))
+
     # -- the finish --------------------------------------------------------
 
     def _finish(self, **environ: str) -> tuple[dict, str]:

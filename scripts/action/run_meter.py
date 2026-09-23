@@ -8,6 +8,9 @@ CodeBoarding; that is the honour-system half of the paywall. The proxy's answer 
 this step's outputs, and its run id is written where the relay packs it into every hosted
 call.
 
+``wall`` turns a refusal, from the preflight or from a 402 mid-run, into the neutral pull
+request comment and job summary. The run exits 0: a plan is never a red check.
+
 ``finish`` runs last, on every outcome, and reports ``POST /run/finish``: ``produced``
 charges the run, anything else releases its hold. Success is the map, not the exit code.
 
@@ -21,6 +24,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import sys
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -85,6 +89,8 @@ def start(environ: dict[str, str]) -> tuple[dict[str, str], int]:
     auth_dir = Path(environ["RUNNER_TEMP"]) / "codeboarding-auth"
     for stale in (Path(environ["RUNNER_TEMP"]) / "codeboarding-map", auth_dir / "run-id"):
         stale.unlink(missing_ok=True)
+    wall_file = Path(environ["RUNNER_TEMP"]) / "codeboarding-wall" / "wall.json"
+    shutil.rmtree(wall_file.parent, ignore_errors=True)
     outputs = {
         "allowed": "true",
         "depth_cap": str(depth),
@@ -124,14 +130,14 @@ def start(environ: dict[str, str]) -> tuple[dict[str, str], int]:
         return outputs, 0
 
     run_id = answer.get("run_id") or ""
-    wall = answer.get("wall") or {}
+    refusal = answer.get("wall") or {}
     outputs.update(
         {
             "allowed": str(allowed).lower(),
             "depth_cap": str(min(depth, cap)),
             "run_id": run_id,
             "full_analysis": str(answer.get("full_analysis") is True).lower(),
-            "wall_message": " ".join(str(wall.get("message", "")).split()),
+            "wall_message": " ".join(str(refusal.get("message", "")).split()),
             "mode": str(answer.get("mode") or ""),
         }
     )
@@ -145,7 +151,46 @@ def start(environ: dict[str, str]) -> tuple[dict[str, str], int]:
         print(f"::notice title=CodeBoarding depth::{answer['depth_reason']}")
     if not allowed:
         print(f"::notice title=CodeBoarding::{outputs['wall_message'] or 'This run is over the plan allowance.'}")
+        if refusal:
+            wall_file.parent.mkdir(parents=True)
+            wall_file.write_text(json.dumps(refusal), encoding="utf-8")
     return outputs, 0
+
+
+def wall(environ: dict[str, str]) -> dict[str, str]:
+    """The neutral comment for a run the plan stopped, written once for the PR and the summary.
+
+    wall.json is the wall payload exactly as the proxy sent it; the step after this uploads
+    it as the `codeboarding-wall` artifact, which is how the web app shows the same sentence
+    on the pull request's page.
+    """
+    runner_temp = Path(environ["RUNNER_TEMP"])
+    try:
+        payload = json.loads((runner_temp / "codeboarding-wall" / "wall.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        payload = {}
+    message = payload.get("message") or "CodeBoarding map not drawn: this run is over the plan's allowance."
+    links = [
+        f"[{label}]({payload[key]})"
+        for key, label in (("plans_url", "Plans"), ("upgrade_url", "Your plan"))
+        if key in payload
+    ]
+    run_url = f"{environ['GITHUB_SERVER_URL']}/{environ['GITHUB_REPOSITORY']}/actions/runs/{environ['GITHUB_RUN_ID']}"
+    platform_url = f"https://app.codeboarding.org/{environ['GITHUB_REPOSITORY']}/pull/{environ.get('PR_NUMBER', '')}"
+    body = "\n\n".join(
+        [
+            "### CodeBoarding review · map not drawn",
+            message,
+            *([" · ".join(links)] if links else []),
+            f"<sub>run [{environ['GITHUB_RUN_ID']}]({run_url})</sub>\n"
+            f"<!-- codeboarding: platform_url={platform_url} wall={payload.get('reason', 'unknown')} -->",
+        ]
+    )
+    path = runner_temp / "wall-comment.md"
+    path.write_text(body + "\n", encoding="utf-8")
+    with open(environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+        summary.write(body + "\n")
+    return {"path": str(path)}
 
 
 def map_written(environ: dict[str, str]) -> bool:
@@ -178,6 +223,13 @@ def outcome(environ: dict[str, str]) -> str:
 def finish(environ: dict[str, str]) -> int:
     """Always 0: reporting the outcome must never be what fails the job."""
     body = {"run_id": environ["RUN_ID"], "outcome": outcome(environ), "error": None}
+    if body["outcome"] != "produced":
+        try:
+            body["error"] = json.loads(
+                (Path(environ["RUNNER_TEMP"]) / "codeboarding-wall" / "wall.json").read_text(encoding="utf-8")
+            )["reason"][:200]
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
     try:
         answer = post(environ, "/run/finish", body)
     except Exception as exc:  # noqa: BLE001 - an unreported run is released after the stale-hold timeout
@@ -189,12 +241,12 @@ def finish(environ: dict[str, str]) -> int:
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["start", "finish"])
+    parser.add_argument("command", choices=["start", "wall", "finish"])
     args = parser.parse_args(argv)
     environ = dict(os.environ)
     if args.command == "finish":
         return finish(environ)
-    outputs, code = start(environ)
+    outputs, code = start(environ) if args.command == "start" else (wall(environ), 0)
     with open(environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as handle:
         handle.writelines(f"{key}={value}\n" for key, value in outputs.items())
     return code

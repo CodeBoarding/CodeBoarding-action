@@ -33,6 +33,8 @@ if [ -s "$AUTH_DIR/license.txt" ]; then
 fi
 # Written by the preflight when the proxy gave this run an id; read per request.
 RELAY_ARGS+=(--run-id-file "$AUTH_DIR/run-id")
+# Outside the auth directory, which goes with the analysis step: the wall outlives it.
+RELAY_ARGS+=(--wall-file "$RUNNER_TEMP/codeboarding-wall/wall.json")
 
 python3 "$ACTION_PATH/scripts/oidc_relay.py" "${RELAY_ARGS[@]}" > "$LOG" 2>&1 &
 echo $! > "$PID"

@@ -110,6 +110,39 @@ class ActionInputTests(unittest.TestCase):
         self.assertIn("steps.review_analyze.outputs.analysis_path || steps.sync_analyze.outputs.analysis_path", block)
         self.assertIn("JOB_STATUS: ${{ job.status }}", block)
 
+    def test_a_run_stopped_by_the_plan_skips_everything_that_needs_a_map(self) -> None:
+        for step in (
+            "Render review diagram",
+            "Build review artifact",
+            "Upload review artifact",
+            "Build review comment",
+            "Post review comment",
+        ):
+            with self.subTest(step=step):
+                start = ACTION.index(f"- name: {step}\n")
+                condition = ACTION[start : ACTION.index("\n", ACTION.index("if:", start))]
+                self.assertIn("steps.review_analyze.outputs.walled != 'true'", condition)
+        start = ACTION.index("- name: Deliver baseline\n")
+        self.assertIn(
+            "steps.sync_analyze.outputs.walled != 'true'",
+            ACTION[start : ACTION.index("\n", ACTION.index("if:", start))],
+        )
+
+    def test_the_wall_is_a_neutral_comment_an_artifact_and_never_a_red_check(self) -> None:
+        """R6: CI never goes red because of a plan. Both walls, the preflight's refusal and a
+        402 mid-run, end in the same sticky comment and the `codeboarding-wall` artifact."""
+        start = ACTION.index("- name: Explain the plan's wall")
+        block = ACTION[start : ACTION.index("- name: Post review failure", start)]
+        self.assertIn(
+            "steps.preflight.outputs.allowed == 'false' || steps.review_analyze.outputs.walled == 'true'", block
+        )
+        self.assertIn("steps.guard.outputs.mode == 'review'", block, "a sync at the ceiling skips silently")
+        self.assertIn("header: ${{ steps.guard.outputs.comment_id }}", block, "it replaces the progress comment")
+        self.assertIn("name: codeboarding-wall", block)
+        self.assertIn("codeboarding-wall/wall.json", block)
+        self.assertEqual(block.count("continue-on-error: true"), 3, "no wall step can fail the job")
+        self.assertNotIn("exit 1", block)
+
     def test_license_key_is_deprecated_but_still_wired(self) -> None:
         self.assertIn("Deprecated", self.inputs["license_key"])
         self.assertIn("CB_IN_LICENSE_KEY: ${{ inputs.license_key }}", ACTION)

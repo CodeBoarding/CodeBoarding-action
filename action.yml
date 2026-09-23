@@ -458,7 +458,7 @@ runs:
 
     - name: Deliver baseline
       id: sync_commit
-      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.guard.outputs.mode == 'sync'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.sync_analyze.outputs.walled != 'true' && steps.guard.outputs.mode == 'sync'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -583,7 +583,7 @@ runs:
 
     - name: Render review diagram
       id: review_render
-      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.review_analyze.outputs.walled != 'true' && steps.guard.outputs.mode == 'review'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -593,7 +593,7 @@ runs:
 
     - name: Build review artifact
       id: review_artifact
-      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.review_analyze.outputs.walled != 'true' && steps.guard.outputs.mode == 'review'
       shell: bash
       env:
         ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
@@ -614,7 +614,7 @@ runs:
 
     - name: Upload review artifact
       id: upload_review_artifact_dotcom
-      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.guard.outputs.mode == 'review' && github.server_url == 'https://github.com'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.review_analyze.outputs.walled != 'true' && steps.guard.outputs.mode == 'review' && github.server_url == 'https://github.com'
       uses: actions/upload-artifact@v4
       with:
         name: codeboarding-review-${{ github.run_id }}-${{ github.run_attempt }}
@@ -628,7 +628,7 @@ runs:
 
     - name: Build review comment
       id: review_body
-      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.review_analyze.outputs.walled != 'true' && steps.guard.outputs.mode == 'review'
       shell: bash
       env:
         DIAGRAM: ${{ steps.review_render.outputs.diagram_md }}
@@ -645,7 +645,7 @@ runs:
 
     - name: Post review comment
       id: review_comment
-      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.review_analyze.outputs.walled != 'true' && steps.guard.outputs.mode == 'review'
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         header: ${{ steps.guard.outputs.comment_id }}
@@ -665,6 +665,39 @@ runs:
       env:
         BODY: ${{ steps.review_body.outputs.path }}
       run: cat "$BODY" >> "$GITHUB_STEP_SUMMARY"
+
+    # The plan stopped this run, at the preflight or with a 402 mid-run: say so in the same
+    # sticky comment and the job summary, in the plan's own words, and end green. A failed
+    # check would punish the author for the plan. The artifact carries the wall payload so
+    # the web app can show the same sentence on the pull request's page.
+    - name: Explain the plan's wall
+      id: wall
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && (steps.preflight.outputs.allowed == 'false' || steps.review_analyze.outputs.walled == 'true')
+      continue-on-error: true
+      shell: bash
+      env:
+        PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
+      run: python3 "$GITHUB_ACTION_PATH/scripts/action/run_meter.py" wall
+
+    - name: Post the plan's wall
+      if: steps.wall.outputs.path != '' && steps.guard.outputs.pr_number != ''
+      continue-on-error: true
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: ${{ steps.guard.outputs.comment_id }}
+        number: ${{ steps.guard.outputs.pr_number }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        path: ${{ steps.wall.outputs.path }}
+
+    - name: Upload the plan's wall
+      if: steps.wall.outputs.path != '' && github.server_url == 'https://github.com'
+      continue-on-error: true
+      uses: actions/upload-artifact@v4
+      with:
+        name: codeboarding-wall
+        path: ${{ runner.temp }}/codeboarding-wall/wall.json
+        if-no-files-found: ignore
+        retention-days: 14
 
     # Skipped when the run stopped on a credential problem: that path already replaced
     # this same sticky comment with the input and secret to fix, and "see the workflow

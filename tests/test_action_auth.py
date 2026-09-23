@@ -307,6 +307,9 @@ done
         self.assertEqual(upstream, "https://auduihjmm4b735zci7vyabuikq0hppqn.lambda-url.us-east-1.on.aws")
         self.assertIn("--license-file", args)
         self.assertEqual(args[args.index("--run-id-file") + 1], str(auth_dir / "run-id"))
+        self.assertEqual(
+            args[args.index("--wall-file") + 1], str(temp_dir / "runner" / "codeboarding-wall" / "wall.json")
+        )
         self.assertEqual((auth_dir / "env" / "OPENROUTER_API_KEY").read_text(), "github-actions-oidc-relay")
         self.assertEqual((auth_dir / "env" / "OPENROUTER_BASE_URL").read_text(), "http://127.0.0.1:12345")
 
@@ -394,6 +397,28 @@ done
         )
         self.assertEqual(configured.returncode, 0, configured.stderr or configured.stdout)
         self.assertFalse(marker.exists(), "a direct-provider run contacted the hosted relay")
+
+    def test_a_run_the_relay_saw_walled_ends_neutral_and_any_other_failure_does_not(self) -> None:
+        """A 402 mid-run is the plan's limit: the analysis step exits 0 and says `walled`, so
+        the action posts the wall instead of going red. Only when the command failed."""
+        wall = Path(self.temp_dir.name) / "runner" / "codeboarding-wall" / "wall.json"
+        output = Path(self.temp_dir.name) / "github-output"
+        for script, has_wall, code, walled in (
+            ("exit 3", True, 0, True),
+            ("exit 3", False, 3, False),
+            ("true", True, 0, False),
+        ):
+            with self.subTest(script=script, has_wall=has_wall):
+                self._preflight(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k")
+                output.write_text("", encoding="utf-8")
+                wall.parent.mkdir(exist_ok=True)
+                if has_wall:
+                    wall.write_text('{"reason": "token_ceiling"}', encoding="utf-8")
+                else:
+                    wall.unlink(missing_ok=True)
+                scoped = self._with_auth(script, GITHUB_OUTPUT=str(output))
+                self.assertEqual(scoped.returncode, code, scoped.stderr or scoped.stdout)
+                self.assertEqual("walled=true" in output.read_text(encoding="utf-8"), walled)
 
     def test_analysis_refuses_to_run_without_a_resolved_plan(self) -> None:
         scoped = self._with_auth("true")

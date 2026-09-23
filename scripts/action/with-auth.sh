@@ -2,6 +2,7 @@
 # Runs one command with the resolved provider credentials, then removes them.
 set -euo pipefail
 AUTH_DIR="${RUNNER_TEMP}/codeboarding-auth"
+# shellcheck disable=SC2329  # run by the EXIT trap, which shellcheck misses once every path exits
 cleanup() {
   if [ -s "$AUTH_DIR/relay.pid" ]; then
     kill "$(cat "$AUTH_DIR/relay.pid")" 2>/dev/null || true
@@ -41,4 +42,16 @@ if [ -n "${MODEL:-}" ]; then
 fi
 [ -z "${AGENT_MODEL_INPUT:-}" ] || export AGENT_MODEL="$AGENT_MODEL_INPUT"
 [ -z "${PARSING_MODEL_INPUT:-}" ] || export PARSING_MODEL="$PARSING_MODEL_INPUT"
-"$@"
+if "$@"; then
+  exit 0
+else
+  status=$?
+fi
+# The relay kept a 402's wall: the run stopped at the plan, which is not a failure of the
+# job. The action ends it neutral instead of red, and a sync skips silently.
+if [ -s "$RUNNER_TEMP/codeboarding-wall/wall.json" ]; then
+  echo "::notice title=CodeBoarding::The map was not drawn: this run reached the plan's limit."
+  echo "walled=true" >> "${GITHUB_OUTPUT:-/dev/null}"
+  exit 0
+fi
+exit "$status"
