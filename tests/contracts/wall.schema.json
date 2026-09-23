@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/wall.schema.json",
+  "title": "Why a run or a map was refused, in the person's unit",
+  "type": "object",
+  "properties": {
+    "reason": {
+      "enum": [
+        "runs_exhausted",
+        "reviews_exhausted",
+        "bot_runs_exhausted",
+        "token_ceiling",
+        "no_live_run",
+        "sign_in_required",
+        "key_retired"
+      ]
+    },
+    "meter": {
+      "enum": [
+        "runs",
+        "reading",
+        "bot_runs",
+        "tokens",
+        null
+      ]
+    },
+    "used": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "limit": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "resets_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "plan": {
+      "enum": [
+        "free",
+        "pro",
+        "max",
+        "team",
+        "enterprise"
+      ]
+    },
+    "subject": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "person",
+            "workspace"
+          ]
+        },
+        "login": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "login"
+      ],
+      "additionalProperties": false
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A complete sentence naming the unit, the count and the reset time"
+    },
+    "upgrade_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "plans_url": {
+      "type": "string",
+      "format": "uri"
+    }
+  },
+  "required": [
+    "reason",
+    "meter",
+    "used",
+    "limit",
+    "resets_at",
+    "plan",
+    "subject",
+    "message",
+    "upgrade_url",
+    "plans_url"
+  ],
+  "additionalProperties": false
+}

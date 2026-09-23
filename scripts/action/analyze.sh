@@ -42,6 +42,13 @@ metadata = json.load(open(sys.argv[1])).get("metadata", {})
 print(metadata.get("depth_cap", ""))' "$analysis" 2>/dev/null || true
 }
 
+# Names the analysis this run is about to write, and when it started writing it, for the
+# finish step: an engine that crashes on shutdown after writing the map loses this step's
+# outputs, but the run still produced a map and is charged for it.
+mark_map() {
+  printf '%s' "$1" > "$RUNNER_TEMP/codeboarding-map"
+}
+
 seed_state() {
   local checkout="$1" state="$2"
   mkdir -p "$state"
@@ -123,6 +130,7 @@ analyze_sync() {
   local work="$RUNNER_TEMP/codeboarding-sync" state="$RUNNER_TEMP/codeboarding-sync/analysis"
   rm -rf "$work"
   seed_state "$CHECKOUT_DIR" "$state"
+  mark_map "$state/analysis.json"
 
   if [ "${FORCE_FULL,,}" = true ] || [ "$(depth_cap_from "$state/analysis.json")" != "$DEPTH_CAP" ]; then
     full "$CHECKOUT_DIR" "$state" "$DEPTH_CAP"
@@ -185,7 +193,8 @@ analyze_review() {
     git -C "$CHECKOUT_DIR" worktree add --detach "$base_checkout" "$REVIEW_BASE_SHA" >/dev/null
     seed_state "$base_checkout" "$base_state"
     REQUIRES_FULL=true
-    if [ "$(depth_cap_from "$base_state/analysis.json")" = "$DEPTH_CAP" ]; then
+    # FULL_ANALYSIS is the proxy saying this run may go deeper than the baseline was drawn.
+    if [ "$(depth_cap_from "$base_state/analysis.json")" = "$DEPTH_CAP" ] && [ "${FULL_ANALYSIS:-false}" != true ]; then
       incremental "$base_checkout" "$base_state"
     fi
     if [ "$REQUIRES_FULL" = true ]; then
@@ -213,6 +222,7 @@ analyze_review() {
   fi
   rm -f "$head_state/origin.json"
 
+  mark_map "$head_state/analysis.json"
   incremental "$CHECKOUT_DIR" "$head_state"
   if [ "$REQUIRES_FULL" = true ]; then
     full "$CHECKOUT_DIR" "$head_state" "$DEPTH_CAP"

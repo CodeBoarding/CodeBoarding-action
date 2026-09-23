@@ -286,6 +286,21 @@ class ReviewChainTests(unittest.TestCase):
         self._analyze(REVIEW_BASE_SHA=sha, DEPTH_CAP="4")
         self.assertEqual([c["mode"] for c in self._engine_calls()], ["incremental", "incremental"])
 
+    def test_the_proxy_asking_for_a_full_analysis_rebuilds_the_committed_baseline(self) -> None:
+        """A Pro author may go deeper than the default branch was drawn: the review then runs
+        in full at the author's cap, never incrementally from the shallower baseline."""
+        sha = self._commit_base(cap=4)
+        self._analyze(REVIEW_BASE_SHA=sha, DEPTH_CAP="4", FULL_ANALYSIS="true")
+        self.assertEqual([c["mode"] for c in self._engine_calls()], ["full", "incremental"])
+        self.assertEqual(self._engine_calls()[0]["depth"], "4")
+
+    def test_the_head_analysis_is_named_for_the_finish_step_before_it_runs(self) -> None:
+        _state(self.base_dir, cap=4)
+        values = self._analyze(DEPTH_CAP="4")
+        marker = self.runner_temp / "codeboarding-map"
+        self.assertEqual(marker.read_text(), values["analysis_path"])
+        self.assertGreaterEqual(Path(values["analysis_path"]).stat().st_mtime_ns, marker.stat().st_mtime_ns)
+
     def test_legacy_committed_depth_is_not_inherited(self) -> None:
         sha = self._commit_base(legacy=True)
         self._analyze(REVIEW_BASE_SHA=sha, DEPTH_CAP="4")

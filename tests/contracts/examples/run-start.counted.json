@@ -1,0 +1,23 @@
+{
+  "depth_reason": null,
+  "plan": "free",
+  "trial": false,
+  "charged_to": {
+    "kind": "person",
+    "subject": "account:acc_3qk2m7x9p4t8w1v6r5ya",
+    "login": "m.koch"
+  },
+  "meter": "runs",
+  "resets_at": "2026-09-28T00:00:00+00:00",
+  "full_analysis": false,
+  "mode": "enforce",
+  "fail_open": false,
+  "wall": null,
+  "allowed": true,
+  "run_id": "vscode:acc_3qk2m7x9p4t8w1v6r5ya#5b0c1b1e-7f7e-4f3a-9d1a-0d6f2a1c9e11",
+  "depth_cap": 3,
+  "counted": true,
+  "used": 5,
+  "limit": 5,
+  "remaining": 0
+}

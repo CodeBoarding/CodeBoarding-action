@@ -1,0 +1,359 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/me.schema.json",
+  "title": "Answer of GET /me: the plan, the counts and the reset time every surface shows",
+  "type": "object",
+  "properties": {
+    "account": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^acc_"
+        },
+        "login": {
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "github"
+          ]
+        },
+        "provider_id": {
+          "type": "integer"
+        },
+        "claimed": {
+          "type": "boolean"
+        },
+        "email": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "login",
+        "provider",
+        "provider_id",
+        "claimed",
+        "email"
+      ],
+      "additionalProperties": false
+    },
+    "plan": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "enum": [
+            "free",
+            "pro",
+            "max",
+            "team",
+            "enterprise"
+          ]
+        },
+        "source": {
+          "enum": [
+            "default",
+            "trial",
+            "subscription",
+            "admin",
+            "legacy"
+          ]
+        },
+        "status": {
+          "enum": [
+            "active",
+            "past_due",
+            "canceled"
+          ]
+        },
+        "expires_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "grace_ends_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "interval": {
+          "enum": [
+            "month",
+            "year",
+            null
+          ]
+        },
+        "cancel_at_period_end": {
+          "type": "boolean"
+        },
+        "covered_by": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "person",
+                    "workspace",
+                    "company"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "name"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "source",
+        "status",
+        "expires_at",
+        "grace_ends_at",
+        "interval",
+        "cancel_at_period_end",
+        "covered_by"
+      ],
+      "additionalProperties": false
+    },
+    "trial": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "enum": [
+            "active",
+            "ended",
+            "none",
+            "ineligible"
+          ]
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "ends_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "days_left": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      },
+      "required": [
+        "state",
+        "started_at",
+        "ends_at",
+        "days_left"
+      ],
+      "additionalProperties": false
+    },
+    "depth_cap": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "description": "null means no cap"
+    },
+    "meters": {
+      "type": "array",
+      "items": {
+        "$ref": "https://codeboarding.org/schemas/licensing/v1/meter.schema.json"
+      }
+    },
+    "orgs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "workspace": {
+            "type": "string",
+            "pattern": "^workspace:github:"
+          },
+          "login": {
+            "type": "string"
+          },
+          "plan": {
+            "enum": [
+              "free",
+              "pro",
+              "max",
+              "team",
+              "enterprise"
+            ]
+          },
+          "covered": {
+            "type": "boolean",
+            "description": "true when this organisation's plan covers the signed-in person"
+          },
+          "members_permission": {
+            "type": "boolean"
+          },
+          "bot_runs": {
+            "anyOf": [
+              {
+                "$ref": "https://codeboarding.org/schemas/licensing/v1/meter.schema.json"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "workspace",
+          "login",
+          "plan",
+          "covered",
+          "members_permission",
+          "bot_runs"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "sessions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "web",
+              "extension"
+            ]
+          },
+          "editor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "current": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "editor",
+          "created_at",
+          "last_used_at",
+          "current"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "offers": {
+      "type": "object",
+      "properties": {
+        "cancel_personal_pro": {
+          "type": "boolean"
+        },
+        "legacy_link": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "license": {
+                  "type": "string",
+                  "description": "e.g. 'Pro license from May 2026'"
+                }
+              },
+              "required": [
+                "license"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "cancel_personal_pro",
+        "legacy_link"
+      ],
+      "additionalProperties": false
+    },
+    "billing": {
+      "type": "object",
+      "properties": {
+        "customer": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "customer"
+      ],
+      "additionalProperties": false
+    },
+    "mode": {
+      "enum": [
+        "legacy",
+        "shadow",
+        "enforce"
+      ]
+    },
+    "now": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "account",
+    "plan",
+    "trial",
+    "depth_cap",
+    "meters",
+    "orgs",
+    "sessions",
+    "offers",
+    "billing",
+    "mode",
+    "now"
+  ],
+  "additionalProperties": false
+}
