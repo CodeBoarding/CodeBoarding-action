@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/billing-portal.response.schema.json",
+  "title": "Answer of POST /billing/portal: a short-lived Stripe Customer Portal link. Refusals: 403 {reason: no_customer} (the account has never paid; /me.billing.customer is false), 400, 502",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "additionalProperties": false
+}

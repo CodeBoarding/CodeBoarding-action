@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/billing-checkout.response.schema.json",
+  "title": "Answer of POST /billing/checkout: the Stripe Checkout page to send the person to. Refusals: 400 (bad interval or a URL off the app origin), 409 {reason: subscribed} (already paying for Pro), 502 (Stripe did not answer), 503 (prices not configured)",
+  "type": "object",
+  "properties": {
+    "url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://"
+    }
+  },
+  "required": [
+    "url"
+  ],
+  "additionalProperties": false
+}

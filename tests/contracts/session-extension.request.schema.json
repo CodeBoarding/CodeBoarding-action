@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/session-extension.request.schema.json",
+  "title": "Body of POST /session/extension (the connect page, with a web session); the answer is session.schema.json",
+  "type": "object",
+  "properties": {
+    "editor": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "vscode.env.appName, e.g. 'Visual Studio Code' or 'Cursor'; listed on the plan page"
+    }
+  },
+  "additionalProperties": false
+}

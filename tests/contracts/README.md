@@ -9,6 +9,10 @@ JSON Schemas (draft 2020-12) for the wire shapes licensing-aws answers and accep
 | `run-start.request.schema.json`, `run-start.response.schema.json` | `POST /run/start` on gha_proxy (OIDC) and license_proxy (extension token) |
 | `run-finish.request.schema.json`, `run-finish.response.schema.json` | `POST /run/finish` on both |
 | `meter-consume.request.schema.json`, `meter-consume.response.schema.json` | `POST /meter/consume` |
+| `billing-checkout.request.schema.json`, `billing-checkout.response.schema.json` | `POST /billing/checkout` |
+| `billing-portal.request.schema.json`, `billing-portal.response.schema.json` | `POST /billing/portal` |
+| `legacy-link.request.schema.json`, `legacy-link.response.schema.json` | `POST /legacy/link` (always 200; only `linked: true` is a link) |
+| `session-extension.request.schema.json` | body of `POST /session/extension` (its answer is `session.schema.json`) |
 | `wall.schema.json` | the refusal inside the answers above, and the body of a 402 from either proxy (`{"error": {"message", "type"}, "wall": …}`) |
 | `meter.schema.json` | one weekly allowance, used by the others |
 
