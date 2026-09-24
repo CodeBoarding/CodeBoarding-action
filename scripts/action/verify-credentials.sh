@@ -16,12 +16,6 @@ rm -rf "$AUTH_DIR"
 while IFS= read -r var; do
   [ -z "${!var:-}" ] || echo "::add-mask::${!var}"
 done < <(compgen -v | grep -E '^CB_IN_.*_API_KEY$' || true)
-[ -z "${CB_IN_LICENSE_KEY:-}" ] || echo "::add-mask::${CB_IN_LICENSE_KEY}"
-
-# Still honoured: the proxy decides what a key is worth, and after the cutoff it is ignored there.
-if [ -n "${CB_IN_LICENSE_KEY:-}" ]; then
-  echo "::warning title=CodeBoarding license_key is deprecated::License keys stop working after the key cutoff. Plans now follow your GitHub account: link this key at https://app.codeboarding.org/dashboard/plan, then remove license_key (and replace llm: license with llm: hosted)."
-fi
 
 set +e
 plan="$(python3 "${ACTION_PATH}/scripts/action/credential_check.py" --auth-dir "$AUTH_DIR")"
@@ -81,7 +75,6 @@ if [ -d "$AUTH_DIR/env" ]; then
     echo "::add-mask::$(cat "$file")"
   done
 fi
-[ ! -s "$AUTH_DIR/license.txt" ] || echo "::add-mask::$(cat "$AUTH_DIR/license.txt")"
 
 # Written by the check, not restated here. The same phrase feeds the summary, so the log
 # and the summary cannot end up claiming different things -- which they did: this said

@@ -52,7 +52,7 @@ jobs:
     steps:
       - uses: CodeBoarding/CodeBoarding-action@v1
         with:
-          llm: hosted   # or license, or a provider name -- see Authentication
+          llm: hosted   # or a provider name -- see Authentication
 ```
 
 Automatic runs review both draft and non-draft pull requests and update one sticky **CodeBoarding review** comment. Opening, reopening, or pushing a commit runs analysis; changing only the draft state does not. A trusted repository owner, member, or collaborator can comment `/codeboarding` to analyze the current PR head again, including on fork PRs; every command creates a new result comment.
@@ -107,16 +107,11 @@ Every review comment ends with a machine-readable HTML comment, `<!-- codeboardi
 ## Authentication and providers
 
 The `llm` input is required and says where analysis credentials come from. There are
-three answers, and the action never picks one for you:
+two answers, and the action never picks one for you:
 
 ```yaml
     with:
-      llm: hosted                                        # CodeBoarding's free tier
-```
-```yaml
-    with:
-      llm: license                                       # a CodeBoarding plan
-      license_key: ${{ secrets.CODEBOARDING_LICENSE }}
+      llm: hosted                                        # CodeBoarding's hosted tier, on your plan
 ```
 ```yaml
     with:
@@ -124,7 +119,7 @@ three answers, and the action never picks one for you:
       anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
-`hosted` and `license` run through CodeBoarding's proxy and need `id-token: write`, which
+`hosted` runs through CodeBoarding's proxy and needs `id-token: write`, which
 mints short-lived credentials per request and stores no LLM secret in your repository. A
 provider key is used directly and needs no OIDC permission.
 
@@ -139,21 +134,17 @@ The same rule makes the combinations explicit rather than order-dependent:
 | Workflow says | Result |
 |---|---|
 | nothing | refused: `llm` is required |
-| `llm: hosted` | the free tier |
+| `llm: hosted` | CodeBoarding's hosted tier, on the plan of whoever the run is charged to |
 | `llm: hosted` + any provider key | refused: pick one |
-| `llm: hosted` + `license_key` | refused: use `llm: license` |
-| `llm: license` without `license_key` | refused: names the secret to add |
+| `llm: license` | refused: license keys are retired, use `llm: hosted` |
 | `llm: anthropic` + `anthropic_api_key` | Anthropic, directly |
 | `llm: anthropic`, key empty or absent | refused: names the input and the secret |
 | `llm: anthropic` + `openai_api_key` | refused: a second provider's key |
-| `llm: anthropic` + key + `license_key` | Anthropic, on a CodeBoarding plan |
 
-A licence alongside your own key is deliberately allowed: it says "my CodeBoarding plan,
-my own tokens". **Your key always wins.** A direct provider call never reaches
-CodeBoarding, so the licence is never spent on a model call. It only tells the run's
-check whose plan the run is on, and the run is counted like any own-key run (see
-[Plans and allowances](#plans-and-allowances)). The job summary says so on every run, rather than leaving you to
-infer it from the tier name.
+License keys are retired: plans follow the GitHub account a run is charged to (see
+[Plans and allowances](#plans-and-allowances)). A workflow that still says `llm: license` is refused with the
+one-word fix; drop its `license_key` line too, which GitHub otherwise reports as an
+unexpected input.
 
 ### Plans and allowances
 
@@ -199,11 +190,6 @@ ahead and how deep it may go. A final step reports whether a map was produced.
   with the proxy, so their hosted calls fail once it enforces plans. `@v1` gets this
   release automatically; a workflow pinned to an older tag or SHA must update.
 
-`license_key` is deprecated: plans now follow your GitHub account. It keeps working until
-the license key cutoff and is ignored after it; each run that sets it says so. Link the key
-to your account on the [plan page](https://app.codeboarding.org/dashboard/plan), then
-remove it (and use `llm: hosted` instead of `llm: license`).
-
 ### Providers
 
 Each provider has its own inputs, so which key a workflow uses is readable from the file
@@ -240,8 +226,8 @@ to Core and silently stay unreachable here.
 
 Every run reports what it resolved, so the answer never has to be inferred from behaviour:
 
-- outputs `llm_tier` (`hosted`, `license`, `byok`, `byok+license`), `llm_provider` (empty
-  on the hosted tiers, where the upstream is ours rather than yours), and
+- outputs `llm_tier` (`hosted`, `byok`), `llm_provider` (empty on the hosted tier, where
+  the upstream is ours rather than yours), and
   `llm_config_error` (empty when configured);
 - a job-summary table naming the tier and provider;
 - on a configuration failure, an error annotation and — in review mode — a pull request
@@ -352,11 +338,10 @@ With the default `github.token`, the repository or organization must allow GitHu
 | Input | Mode | Default | Description |
 |---|---|---|---|
 | `mode` | both | `review` | `review` or `sync`. |
-| `llm` | both | **required** | `hosted`, `license`, or a provider name. No default. |
+| `llm` | both | **required** | `hosted` or a provider name. No default. |
 | `<provider>_api_key` | both | empty | That provider's key, e.g. `anthropic_api_key`. See [Providers](#providers). |
 | `<provider>_base_url` | both | empty | That provider's endpoint, where it has one. |
 | `aws_bedrock_region` | both | empty | Bedrock region. Core defaults to `us-east-1`. |
-| `license_key` | both | empty | Deprecated. CodeBoarding license, required by `llm: license`; ignored after the license key cutoff. |
 | `model` | both | empty | Default model for both analysis and parsing. |
 | `agent_model` | both | empty | Analysis-only override for `model`. |
 | `parsing_model` | both | empty | Parsing-only override for `model`. |
@@ -396,8 +381,8 @@ breaking CLI migration.
 
 | Output | Mode | Description |
 |---|---|---|
-| `llm_tier` | both | `hosted`, `license`, `byok`, or `byok+license`. |
-| `llm_provider` | both | Provider the run used. Empty on `hosted` and `license`: which upstream the proxy routes to is CodeBoarding's decision, not your configuration. |
+| `llm_tier` | both | `hosted` or `byok`. |
+| `llm_provider` | both | Provider the run used. Empty on `hosted`: which upstream the proxy routes to is CodeBoarding's decision, not your configuration. |
 | `llm_config_error` | both | Configuration failure code, empty when configured. |
 | `diagram_md` | review | Path to the rendered Mermaid block on the runner. |
 | `n_changed` | review | Number of changed components. |

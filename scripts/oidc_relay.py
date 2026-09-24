@@ -47,7 +47,6 @@ class RelayConfig:
     upstream_base_url: str
     id_token_request_url: str
     id_token_request_token: str
-    license_file: Path | None = None
     run_id_file: Path | None = None
     wall_file: Path | None = None
 
@@ -80,15 +79,6 @@ def _mint_oidc_token(config: RelayConfig) -> str:
 
 def authorization(config: RelayConfig) -> str:
     token = _mint_oidc_token(config)
-    if config.license_file is not None:
-        try:
-            license_key = config.license_file.read_text(encoding="utf-8").strip()
-        except OSError as exc:
-            raise RuntimeError("could not read CodeBoarding license") from exc
-        if not license_key:
-            raise RuntimeError("CodeBoarding license is empty")
-        token = f"{token}~codeboarding-license~{license_key}"
-    # Last, because the proxy splits it off from the right before it looks for a licence.
     # Absent when the preflight failed open: the proxy then decides what an unheld call gets.
     if config.run_id_file is not None and config.run_id_file.is_file():
         run_id = config.run_id_file.read_text(encoding="utf-8").strip()
@@ -189,7 +179,6 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--upstream-base-url", required=True)
     parser.add_argument("--ready-file", required=True, type=Path)
-    parser.add_argument("--license-file", type=Path)
     parser.add_argument("--run-id-file", type=Path)
     parser.add_argument("--wall-file", type=Path)
     args = parser.parse_args(argv)
@@ -201,9 +190,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     server = RelayServer(
-        RelayConfig(
-            args.upstream_base_url, request_url, request_token, args.license_file, args.run_id_file, args.wall_file
-        )
+        RelayConfig(args.upstream_base_url, request_url, request_token, args.run_id_file, args.wall_file)
     )
     args.ready_file.write_text(str(server.server_port), encoding="utf-8")
     try:

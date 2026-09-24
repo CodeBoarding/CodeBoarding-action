@@ -41,12 +41,11 @@ def proxy_url(environ: dict[str, str]) -> str:
     return environ.get("CODEBOARDING_PROXY_URL") or (Path(__file__).parent / "hosted-proxy-url").read_text().strip()
 
 
-def post(environ: dict[str, str], path: str, body: dict, license_file: Path | None = None) -> dict:
+def post(environ: dict[str, str], path: str, body: dict) -> dict:
     config = RelayConfig(
         proxy_url(environ),
         environ["ACTIONS_ID_TOKEN_REQUEST_URL"],
         environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"],
-        license_file,
     )
     request = Request(
         proxy_url(environ).rstrip("/") + path,
@@ -73,7 +72,7 @@ def start_request(environ: dict[str, str], depth: int, tier: str) -> dict:
     manifest = json.loads((ACTION_ROOT / ".release-please-manifest.json").read_text(encoding="utf-8"))
     body = {
         "depth": depth,
-        "credential": "hosted" if tier in ("hosted", "license") else "own_key",
+        "credential": "hosted" if tier == "hosted" else "own_key",
         "baseline_depth": baseline_depth(Path(environ.get("CHECKOUT_DIR", ""))),
         "client": {"surface": "action", "version": manifest["."]},
     }
@@ -116,14 +115,8 @@ def start(environ: dict[str, str]) -> tuple[dict[str, str], int]:
         return outputs, 0
 
     tier = (auth_dir / "tier").read_text(encoding="utf-8").strip()
-    license_file = auth_dir / "license.txt"
     try:
-        answer = post(
-            environ,
-            "/run/start",
-            start_request(environ, depth, tier),
-            license_file if license_file.is_file() else None,
-        )
+        answer = post(environ, "/run/start", start_request(environ, depth, tier))
         allowed, cap = answer["allowed"], answer["depth_cap"]
         if not isinstance(allowed, bool) or not isinstance(cap, int) or cap < 1:
             raise ValueError("unexpected /run/start answer")

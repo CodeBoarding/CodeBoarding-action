@@ -19,7 +19,7 @@ fi
 TIER="$(cat "$AUTH_DIR/tier")"
 
 case "$TIER" in
-  hosted|license) ;;
+  hosted) ;;
   *) echo "Using direct $(cat "$AUTH_DIR/provider-name") credentials."; exit 0 ;;
 esac
 
@@ -28,9 +28,6 @@ PID="$AUTH_DIR/relay.pid"
 LOG="$AUTH_DIR/relay.log"
 
 RELAY_ARGS=(--upstream-base-url "$HOSTED_PROXY_URL" --ready-file "$READY")
-if [ -s "$AUTH_DIR/license.txt" ]; then
-  RELAY_ARGS+=(--license-file "$AUTH_DIR/license.txt")
-fi
 # Written by the preflight when the proxy gave this run an id; read per request.
 RELAY_ARGS+=(--run-id-file "$AUTH_DIR/run-id")
 # Outside the auth directory, which goes with the analysis step: the wall outlives it.
