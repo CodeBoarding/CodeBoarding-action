@@ -359,6 +359,7 @@ runs:
       env:
         DEPTH_CAP: ${{ inputs.depth_cap }}
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
+        PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
       run: python3 "$GITHUB_ACTION_PATH/scripts/action/run_meter.py" start
 
     - name: Setup Java for CodeBoarding

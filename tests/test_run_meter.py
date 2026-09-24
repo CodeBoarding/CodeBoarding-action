@@ -144,6 +144,20 @@ class RunMeterTests(unittest.TestCase):
         _, requests, _ = self._start(example("run-start.allowed.json"))
         self.assertIsNone(requests[0][2]["baseline_depth"])
 
+    @NEEDS_JSONSCHEMA
+    def test_a_comment_run_names_its_pull_request(self) -> None:
+        """An issue_comment run's OIDC token carries no pull request, so the proxy keys on this."""
+        _, requests, _ = self._start(example("run-start.allowed.json"), PR_NUMBER="482", GITHUB_REF="refs/heads/main")
+        body = requests[0][2]
+        self.assertEqual(body["pull_request"], 482)
+        self.assertEqual(validate(body, "run-start.request.schema.json"), [])
+
+    def test_a_pull_request_run_leaves_its_number_to_the_token(self) -> None:
+        _, requests, _ = self._start(
+            example("run-start.allowed.json"), PR_NUMBER="482", GITHUB_REF="refs/pull/482/merge"
+        )
+        self.assertNotIn("pull_request", requests[0][2])
+
     def test_a_staged_licence_rides_in_the_bearer_on_the_license_and_own_key_tiers(self) -> None:
         """Otherwise a licence holder on their own key reads as Free at the proxy."""
         _, bare, _ = self._start(example("run-start.allowed.json"), "byok")

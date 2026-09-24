@@ -71,12 +71,19 @@ def baseline_depth(checkout: Path) -> int | None:
 
 def start_request(environ: dict[str, str], depth: int, tier: str) -> dict:
     manifest = json.loads((ACTION_ROOT / ".release-please-manifest.json").read_text(encoding="utf-8"))
-    return {
+    body = {
         "depth": depth,
         "credential": "hosted" if tier in ("hosted", "license") else "own_key",
         "baseline_depth": baseline_depth(Path(environ.get("CHECKOUT_DIR", ""))),
         "client": {"surface": "action", "version": manifest["."]},
     }
+    # A /codeboarding comment's OIDC token names no pull request, so the proxy is told which.
+    pull_request = environ.get("PR_NUMBER", "")
+    if re.fullmatch(r"[1-9][0-9]*", pull_request) and not re.fullmatch(
+        r"refs/pull/[0-9]+/merge", environ.get("GITHUB_REF", "")
+    ):
+        body["pull_request"] = int(pull_request)
+    return body
 
 
 def start(environ: dict[str, str]) -> tuple[dict[str, str], int]:
