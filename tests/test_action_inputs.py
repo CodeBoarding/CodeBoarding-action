@@ -55,7 +55,7 @@ class ActionInputTests(unittest.TestCase):
     def test_no_declared_provider_input_is_absent_from_the_table(self) -> None:
         """An input the table does not own can never be read, so it would mislead."""
         suffixes = ("_api_key", "_base_url", "_region")
-        declared = {n for n in self.inputs if n.endswith(suffixes) and n not in {"license_key", "github_token"}}
+        declared = {n for n in self.inputs if n.endswith(suffixes) and n != "github_token"}
         self.assertEqual(sorted(declared - table_inputs()), [])
 
     def test_llm_is_required_and_has_no_default(self) -> None:
@@ -143,9 +143,9 @@ class ActionInputTests(unittest.TestCase):
         self.assertEqual(block.count("continue-on-error: true"), 3, "no wall step can fail the job")
         self.assertNotIn("exit 1", block)
 
-    def test_license_key_is_deprecated_but_still_wired(self) -> None:
-        self.assertIn("Deprecated", self.inputs["license_key"])
-        self.assertIn("CB_IN_LICENSE_KEY: ${{ inputs.license_key }}", ACTION)
+    def test_license_key_is_retired(self) -> None:
+        self.assertNotIn("license_key", self.inputs)
+        self.assertNotIn("CB_IN_LICENSE_KEY", ACTION)
 
     def test_default_workflow_reviews_drafts_on_open_and_new_commits(self) -> None:
         self.assertNotIn("github.event.pull_request.draft", DOGFOOD)

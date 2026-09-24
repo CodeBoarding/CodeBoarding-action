@@ -103,8 +103,8 @@ class TestOidcRelay(unittest.TestCase):
         self.assertEqual([auth for _, auth, _ in received], ["Bearer jwt-1", "Bearer jwt-2"])
         self.assertEqual([path for path, _, _ in received], ["/api/v1/chat/completions?model=test"] * 2)
 
-    def test_the_run_id_rides_last_in_the_bearer_with_or_without_a_licence(self):
-        """The proxy splits `~codeboarding-run~` off from the right, then the licence."""
+    def test_the_run_id_rides_in_the_bearer_once_the_preflight_wrote_it(self):
+        """The proxy splits `~codeboarding-run~` off from the right."""
 
         class OidcIssuer(BaseHTTPRequestHandler):
             def do_GET(self):
@@ -121,8 +121,7 @@ class TestOidcRelay(unittest.TestCase):
         issuer.start()
         self.addCleanup(issuer.close)
         with tempfile.TemporaryDirectory() as temp:
-            license_file, run_id_file = Path(temp) / "license.txt", Path(temp) / "run-id"
-            license_file.write_text("LIC\n")
+            run_id_file = Path(temp) / "run-id"
 
             def bearer(**files):
                 config = oidc_relay.RelayConfig(
@@ -133,11 +132,6 @@ class TestOidcRelay(unittest.TestCase):
             self.assertEqual(bearer(run_id_file=run_id_file), "Bearer jwt", "no run id until the preflight wrote one")
             run_id_file.write_text("github:o/r#42\n")
             self.assertEqual(bearer(run_id_file=run_id_file), "Bearer jwt~codeboarding-run~github:o/r#42")
-            self.assertEqual(
-                bearer(license_file=license_file, run_id_file=run_id_file),
-                "Bearer jwt~codeboarding-license~LIC~codeboarding-run~github:o/r#42",
-            )
-            self.assertEqual(bearer(license_file=license_file), "Bearer jwt~codeboarding-license~LIC")
 
     def test_a_402_wall_is_kept_for_the_action_and_still_relayed(self):
         answers = [

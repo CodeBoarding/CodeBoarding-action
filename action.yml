@@ -10,12 +10,8 @@ inputs:
     required: false
     default: 'review'
   llm:
-    description: 'Required. Where analysis credentials come from: hosted, license, or a provider name (anthropic, aws_bedrock, cerebras, deepseek, glm, google, kimi, litellm, ollama, openai, openrouter, orcarouter, vercel).'
+    description: 'Required. Where analysis credentials come from: hosted or a provider name (anthropic, aws_bedrock, cerebras, deepseek, glm, google, kimi, litellm, ollama, openai, openrouter, orcarouter, vercel).'
     required: true
-  license_key:
-    description: 'Deprecated: plans now follow your GitHub account. A CodeBoarding license key, required by llm: license and optional alongside a provider key; it keeps working until the license key cutoff and is ignored after it.'
-    required: false
-    default: ''
   # Anthropic - selected by llm: anthropic
   anthropic_api_key:
     description: 'Anthropic API key, used when llm is anthropic. Sets ANTHROPIC_API_KEY.'
@@ -151,7 +147,7 @@ inputs:
     default: '1'
 outputs:
   llm_tier:
-    description: 'Resolved credential tier: hosted, license, byok, or byok+license.'
+    description: 'Resolved credential tier: hosted or byok.'
     value: ${{ steps.llm.outputs.tier }}
   llm_provider:
     description: 'Provider this run used for analysis.'
@@ -258,7 +254,6 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         CB_IN_LLM: ${{ inputs.llm }}
-        CB_IN_LICENSE_KEY: ${{ inputs.license_key }}
         CB_IN_ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
         CB_IN_AWS_BEDROCK_API_KEY: ${{ inputs.aws_bedrock_api_key }}
         CB_IN_AWS_BEDROCK_REGION: ${{ inputs.aws_bedrock_region }}

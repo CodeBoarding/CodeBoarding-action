@@ -37,18 +37,16 @@ TABLE = Path(__file__).resolve().parent / "supported-providers.json"
 #: Declared rather than left implicit in the raise sites, for two reasons. These codes are
 #: an interface: the action emits them as `llm_config_error` and the webview keys on them,
 #: so adding one silently is a contract change nobody reviewed. And a code with no test is
-#: invisible -- `license_with_provider_key` shipped untested precisely because nothing
-#: enumerated the set. `test_llm_contract.py` asserts every entry here is exercised.
+#: invisible -- one shipped untested precisely because nothing enumerated the set.
+#: `test_llm_contract.py` asserts every entry here is exercised.
 ERROR_CODES = frozenset(
     {
         "missing_llm",
         "unknown_llm",
         "missing_provider_key",
-        "missing_license_key",
         "missing_id_token",
         "hosted_with_provider_key",
-        "hosted_with_license",
-        "license_with_provider_key",
+        "license_retired",
         "foreign_provider_key",
     }
 )
@@ -160,16 +158,16 @@ def _provider_list(table: dict) -> str:
     return ", ".join(sorted(table["providers"]))
 
 
-def _reject_provider_inputs(table: dict, given: dict[str, str], llm: str, tier: str) -> None:
-    """`llm: hosted`/`license` run on CodeBoarding's credentials; a provider key means the
-    workflow is asking for two different things at once."""
+def _reject_provider_inputs(table: dict, given: dict[str, str]) -> None:
+    """`llm: hosted` runs on CodeBoarding's credentials; a provider key means the workflow
+    is asking for two different things at once."""
     if not given:
         return
     input_name = sorted(given)[0]
     provider = owner_of(table, input_name)
     raise ConfigError(
-        f"{tier}_with_provider_key",
-        f"`llm: {llm}` runs on CodeBoarding's hosted tier, but `{input_name}` is set. "
+        "hosted_with_provider_key",
+        f"`llm: hosted` runs on CodeBoarding's hosted tier, but `{input_name}` is set. "
         f"Remove it, or set `llm: {provider}` to run on that key instead.",
     )
 
@@ -246,69 +244,51 @@ def _resolve_byok(table: dict, name: str, given: dict[str, str], environ: dict[s
 def resolve(table: dict, environ: dict[str, str]) -> dict:
     """The whole contract. Returns a plan; raises ConfigError with the reason otherwise."""
     llm = environ.get("CB_IN_LLM", "").strip().lower()
-    license_key = environ.get("CB_IN_LICENSE_KEY", "").strip()
     given = read_inputs(table, environ)
 
     if not llm:
         raise ConfigError(
             "missing_llm",
             "The `llm` input is required and has no default. Set it to `hosted` "
-            "(CodeBoarding's free tier), `license` (a CodeBoarding plan), or one of: "
+            "(CodeBoarding's hosted tier, on your CodeBoarding plan) or one of: "
             f"{_provider_list(table)}. See {DOCS}.",
         )
 
     if llm == "hosted":
-        _reject_provider_inputs(table, given, llm, "hosted")
-        if license_key:
-            raise ConfigError(
-                "hosted_with_license",
-                "`llm: hosted` is the free tier and never spends a licence. Set `llm: license` "
-                "to run your CodeBoarding plan, or remove `license_key`.",
-            )
+        _reject_provider_inputs(table, given)
         _require_id_token(llm, environ)
         return {"tier": "hosted", "provider": table["hosted_provider"], "env": {}}
 
+    # Keys were retired completely, so the answer that ran on one is refused by name rather
+    # than as an unknown value: the fix is one word, and the plan it paid for now follows
+    # the GitHub account that `hosted` already runs on.
     if llm == "license":
-        _reject_provider_inputs(table, given, llm, "license")
-        if not license_key:
-            raise ConfigError(
-                "missing_license_key",
-                "`llm: license` needs `license_key`, which is empty. Add the "
-                f"CODEBOARDING_LICENSE repository secret ({SETTINGS_HINT}) and wire it.",
-                "\n\n".join(
-                    [
-                        "`llm: license` needs `license_key`, which is empty.",
-                        "**1.** " + _add_secret(environ, "CODEBOARDING_LICENSE", "your CodeBoarding licence key"),
-                        "**2.** " + _wire_it(environ, "license", ["license_key: ${{ secrets.CODEBOARDING_LICENSE }}"]),
-                    ]
-                ),
-            )
-        _require_id_token(llm, environ)
-        return {
-            "tier": "license",
-            "provider": table["hosted_provider"],
-            "license": license_key,
-            "env": {},
-        }
+        raise ConfigError(
+            "license_retired",
+            "`llm: license` was retired with CodeBoarding license keys: plans now follow your "
+            "GitHub account. Set `llm: hosted` and remove `license_key`.",
+            "\n\n".join(
+                [
+                    "`llm: license` was retired with CodeBoarding license keys: plans now follow "
+                    "your GitHub account, so `llm: hosted` runs on the plan the key paid for.",
+                    f"In `{workflow_path(environ)}`, the CodeBoarding step's `with:` block needs "
+                    "`llm: hosted` in place of `llm: license`, and no `license_key` line:"
+                    "\n\n```yaml\n        with:\n          llm: hosted\n```",
+                ]
+            ),
+        )
 
     name = llm
     if name not in table["providers"]:
         raise ConfigError(
             "unknown_llm",
             f"`llm: {environ.get('CB_IN_LLM', '').strip()}` is not a value this action "
-            f"understands. Use `hosted`, `license`, or one of: {_provider_list(table)}. "
+            f"understands. Use `hosted` or one of: {_provider_list(table)}. "
             f"See {DOCS}.",
         )
 
     env = _resolve_byok(table, name, given, environ)
-    # A licence alongside a provider key is deliberately allowed, not an error: it says
-    # "my CodeBoarding plan, my own tokens". Direct provider calls never reach our proxy, so
-    # it is never spent on a model call; it is staged only for the run's preflight, which
-    # tells the proxy whose plan this run is on.
-    plan = {"tier": "byok+license" if license_key else "byok", "provider": name, "env": env}
-    if license_key:
-        plan["license"] = license_key
-    return plan
+    return {"tier": "byok", "provider": name, "env": env}
 
 
 def _is_endpoint(var: str) -> bool:
@@ -347,9 +327,7 @@ def _pays(table: dict, plan: dict) -> str:
     """
     tier, provider = plan["tier"], plan["provider"]
     if tier == "hosted":
-        return "CodeBoarding's hosted free tier"
-    if tier == "license":
-        return "CodeBoarding's hosted tier, on your plan"
+        return "CodeBoarding's hosted tier, on your CodeBoarding plan"
     entry = table["providers"].get(provider, {})
     label = entry.get("label", provider)
     key_envs = {var for i, var in entry.get("inputs", {}).items() if i.endswith("_api_key")}
@@ -359,9 +337,9 @@ def _pays(table: dict, plan: dict) -> str:
 
 
 def reported_provider(plan: dict) -> str:
-    """The provider to tell the user about, which is none on the hosted tiers.
+    """The provider to tell the user about, which is none on the hosted tier.
 
-    Hosted and licensed runs go through CodeBoarding's proxy, and which upstream sits
+    Hosted runs go through CodeBoarding's proxy, and which upstream sits
     behind it is our routing decision, not the user's configuration. Naming it invites
     "why does my CodeBoarding plan say openrouter?", and worse, implies a commitment we
     have not made: we can change what the proxy routes to without telling anyone.
@@ -369,38 +347,25 @@ def reported_provider(plan: dict) -> str:
     It stays in the plan, because the analysis still has to be pointed somewhere and the
     reusable-analysis identity has to separate the tiers. Only the reporting is withheld.
     """
-    return "" if plan["tier"] in ("hosted", "license") else plan["provider"]
+    return "" if plan["tier"] == "hosted" else plan["provider"]
 
 
 def plan_headline(table: dict, plan: dict) -> str:
     """The one line the log opens with. Same source as the summary, so they cannot drift."""
-    sentence = f"CodeBoarding is running on {_pays(table, plan)}."
-    if plan["tier"] == "byok+license":
-        return sentence + " The wired CodeBoarding plan is not spent on a direct call."
-    return sentence
+    return f"CodeBoarding is running on {_pays(table, plan)}."
 
 
 def plan_summary(table: dict, plan: dict) -> list[tuple[str, str]]:
     """What this run is actually about to do, for the job summary.
 
-    "Tier: byok+license" names the configuration without answering the question someone
-    reads a summary to answer, which is *which credential pays*. A direct provider call
-    never reaches CodeBoarding, so a licence wired beside your own key is recorded and
-    not spent; saying only "byok+license" leaves that ambiguous, so it is spelled out.
+    "Tier: byok" names the configuration without answering the question someone reads a
+    summary to answer, which is *which credential pays*, so that is spelled out.
     """
-    tier = plan["tier"]
-    rows = [("Tier", f"`{tier}`")]
+    rows = [("Tier", f"`{plan['tier']}`")]
     shown = reported_provider(plan)
     if shown:
         rows.append(("Provider", f"`{shown}`"))
     rows.append(("Credentials", _pays(table, plan)))
-    if tier == "byok+license":
-        rows.append(
-            (
-                "Licence",
-                "wired, and not spent: a direct provider call never reaches CodeBoarding",
-            )
-        )
     # Only where the run was pointed somewhere other than the default, since that is the
     # setting most likely to be wrong and least likely to be noticed.
     for var, value in sorted(plan["env"].items()):
@@ -418,8 +383,6 @@ def write_auth_dir(table: dict, plan: dict, auth_dir: Path) -> None:
     (auth_dir / "provider-name").write_text(plan["provider"], encoding="utf-8")
     for var, value in plan["env"].items():
         (env_dir / var).write_text(value, encoding="utf-8")
-    if plan.get("license"):
-        (auth_dir / "license.txt").write_text(plan["license"], encoding="utf-8")
     # Every variable core knows about, minus the ones this run actually resolved, so
     # with-auth.sh can strip the rest without carrying its own copy of the list to fall
     # behind on.

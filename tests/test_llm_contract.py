@@ -54,20 +54,10 @@ class ContractTests(unittest.TestCase):
                     f"{name} resolved without a variable core selects it by",
                 )
 
-    def test_hosted_and_license_are_named_not_inferred(self) -> None:
+    def test_hosted_is_named_not_inferred(self) -> None:
         hosted = self.resolve(CB_IN_LLM="hosted", **OIDC)
         self.assertEqual(hosted["tier"], "hosted")
         self.assertEqual(hosted["env"], {})
-
-        licensed = self.resolve(CB_IN_LLM="license", CB_IN_LICENSE_KEY="lic", **OIDC)
-        self.assertEqual(licensed["tier"], "license")
-        self.assertEqual(licensed["license"], "lic")
-
-    def test_licence_alongside_a_provider_key_is_recorded_not_refused(self) -> None:
-        """A CodeBoarding plan and your own tokens are two different questions."""
-        plan = self.resolve(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k", CB_IN_LICENSE_KEY="lic")
-        self.assertEqual(plan["tier"], "byok+license")
-        self.assertEqual(plan["provider"], "anthropic")
 
     def test_one_spelling_per_provider_and_nothing_else(self) -> None:
         """Casing and surrounding space are forgiven; a second spelling is not.
@@ -137,23 +127,14 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(error.code, "hosted_with_provider_key")
         self.assertIn("llm: anthropic", error.message)
 
-    def test_license_refuses_to_share_a_workflow_with_a_provider_key(self) -> None:
-        """The mirror of the hosted case, and it shipped untested: `llm: license` runs on
-        CodeBoarding's credentials, so a provider key beside it asks for two things at once."""
-        error = self.refuse(CB_IN_LLM="license", CB_IN_LICENSE_KEY="lic", CB_IN_ANTHROPIC_API_KEY="k", **OIDC)
-        self.assertEqual(error.code, "license_with_provider_key")
-        self.assertIn("anthropic_api_key", error.message)
-        self.assertIn("llm: anthropic", error.message)
-
-    def test_hosted_refuses_a_licence_it_would_not_spend(self) -> None:
-        error = self.refuse(CB_IN_LLM="hosted", CB_IN_LICENSE_KEY="lic", **OIDC)
-        self.assertEqual(error.code, "hosted_with_license")
-        self.assertIn("llm: license", error.message)
-
-    def test_license_without_a_licence_key_is_refused(self) -> None:
+    def test_license_is_refused_as_retired_with_the_hosted_line_to_use(self) -> None:
+        """Keys are retired, so a workflow still on `llm: license` is told the one-word fix
+        rather than that its value is unknown."""
         error = self.refuse(CB_IN_LLM="license", **OIDC)
-        self.assertEqual(error.code, "missing_license_key")
-        self.assertIn("CODEBOARDING_LICENSE", error.message)
+        self.assertEqual(error.code, "license_retired")
+        self.assertIn("llm: hosted", error.message)
+        self.assertIn("license_key", error.message)
+        self.assertIn("```yaml\n        with:\n          llm: hosted\n```", error.details)
 
     def test_hosted_tiers_require_both_oidc_variables(self) -> None:
         """The relay refuses to start without either, and a runner can expose one alone.
@@ -220,18 +201,13 @@ class ContractTests(unittest.TestCase):
         it, because the analysis still has to be pointed somewhere; only the reporting
         withholds it.
         """
-        for environ in (
-            {"CB_IN_LLM": "hosted", **OIDC},
-            {"CB_IN_LLM": "license", "CB_IN_LICENSE_KEY": "lic", **OIDC},
-        ):
-            plan = self.resolve(**environ)
-            with self.subTest(tier=plan["tier"]):
-                self.assertEqual(credential_check.reported_provider(plan), "")
-                rendered = dict(credential_check.plan_summary(self.table, plan))
-                self.assertNotIn("Provider", rendered)
-                self.assertNotIn("openrouter", credential_check.plan_headline(self.table, plan))
-                # Still resolved internally: the run has to be pointed somewhere.
-                self.assertEqual(plan["provider"], "openrouter")
+        plan = self.resolve(CB_IN_LLM="hosted", **OIDC)
+        self.assertEqual(credential_check.reported_provider(plan), "")
+        rendered = dict(credential_check.plan_summary(self.table, plan))
+        self.assertNotIn("Provider", rendered)
+        self.assertNotIn("openrouter", credential_check.plan_headline(self.table, plan))
+        # Still resolved internally: the run has to be pointed somewhere.
+        self.assertEqual(plan["provider"], "openrouter")
 
     def test_your_own_provider_is_always_named(self) -> None:
         """It is your configuration, and it is the thing you would check first."""
@@ -256,12 +232,10 @@ class ContractTests(unittest.TestCase):
         rows = dict(credential_check.plan_summary(self.table, plan))
         self.assertIn(rows["Credentials"], credential_check.plan_headline(self.table, plan))
 
-    def test_hosted_tiers_require_the_oidc_permission(self) -> None:
-        for value, extra in (("hosted", {}), ("license", {"CB_IN_LICENSE_KEY": "lic"})):
-            with self.subTest(llm=value):
-                error = self.refuse(CB_IN_LLM=value, **extra)
-                self.assertEqual(error.code, "missing_id_token")
-                self.assertIn("id-token: write", error.message)
+    def test_hosted_requires_the_oidc_permission(self) -> None:
+        error = self.refuse(CB_IN_LLM="hosted")
+        self.assertEqual(error.code, "missing_id_token")
+        self.assertIn("id-token: write", error.message)
 
     def test_an_unknown_provider_lists_the_ones_that_exist(self) -> None:
         error = self.refuse(CB_IN_LLM="claude")
@@ -293,11 +267,7 @@ class ContractTests(unittest.TestCase):
         self.assertIn("Add a repository secret", error.details)
         self.assertIn("your CodeBoarding workflow", error.details)
 
-    def test_the_licence_and_permission_remedies_are_copyable_too(self) -> None:
-        licence = self.refuse(CB_IN_LLM="license", GITHUB_REPOSITORY="acme/widgets", **OIDC)
-        self.assertIn("secrets/actions/new", licence.details)
-        self.assertIn("license_key: ${{ secrets.CODEBOARDING_LICENSE }}", licence.details)
-
+    def test_the_permission_remedy_is_copyable_too(self) -> None:
         oidc = self.refuse(CB_IN_LLM="hosted")
         self.assertIn("permissions:", oidc.details)
         self.assertIn("id-token: write", oidc.details)
@@ -326,8 +296,6 @@ class ContractTests(unittest.TestCase):
             {"CB_IN_LLM": "license", **OIDC},
             {"CB_IN_LLM": "hosted"},
             {"CB_IN_LLM": "hosted", "CB_IN_ANTHROPIC_API_KEY": "k", **OIDC},
-            {"CB_IN_LLM": "hosted", "CB_IN_LICENSE_KEY": "lic", **OIDC},
-            {"CB_IN_LLM": "license", "CB_IN_LICENSE_KEY": "lic", "CB_IN_ANTHROPIC_API_KEY": "k", **OIDC},
             {"CB_IN_LLM": "anthropic", "CB_IN_ANTHROPIC_API_KEY": "k", "CB_IN_OPENAI_API_KEY": "o"},
         ]
         seen = {self.refuse(**case).code for case in cases}
@@ -338,7 +306,7 @@ class ContractTests(unittest.TestCase):
             {},
             {"CB_IN_LLM": "nope"},
             {"CB_IN_LLM": "anthropic"},
-            {"CB_IN_LLM": "hosted", "CB_IN_LICENSE_KEY": "l", **OIDC},
+            {"CB_IN_LLM": "hosted", "CB_IN_ANTHROPIC_API_KEY": "k", **OIDC},
             {"CB_IN_LLM": "license", **OIDC},
             {"CB_IN_LLM": "hosted"},
         ]
