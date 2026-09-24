@@ -75,8 +75,7 @@
     }
   ],
   "offers": {
-    "cancel_personal_pro": true,
-    "legacy_link": null
+    "cancel_personal_pro": true
   },
   "billing": {
     "customer": false

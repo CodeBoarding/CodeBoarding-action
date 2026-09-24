@@ -30,13 +30,12 @@
         null,
         "already_linked",
         "not_found",
-        "no_offer",
         "expired",
         "linked_elsewhere",
         "custom_license",
         "account_has_license"
       ],
-      "description": "null: linked now. already_linked: this account had it (linked true). not_found: no such key, or the sign-in match no longer holds. no_offer: {via: email} with nothing offered. expired: canceled or past its end. linked_elsewhere: another account or a Team plan holds it. custom_license: converted to a Team plan with us. account_has_license: this account already holds another license"
+      "description": "null: linked now. already_linked: this account had it (linked true). not_found: no such key. expired: canceled or past its end. linked_elsewhere: another account or a Team plan holds it. custom_license: converted to a Team plan with us. account_has_license: this account already holds another license"
     }
   },
   "required": [
