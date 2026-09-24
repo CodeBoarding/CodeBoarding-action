@@ -1,0 +1,11 @@
+{
+  "depth": 5,
+  "credential": "hosted",
+  "baseline_depth": 2,
+  "pull_request": 482,
+  "client": {
+    "surface": "action",
+    "version": "1.17.0",
+    "editor": null
+  }
+}

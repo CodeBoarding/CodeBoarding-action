@@ -214,6 +214,10 @@
             "type": "boolean",
             "description": "true when this organisation's plan covers the signed-in person"
           },
+          "admin": {
+            "type": "boolean",
+            "description": "true when the signed-in person is an admin of this GitHub organisation (the organisation view, GET /workspaces/{workspace}/usage, also needs a Team or Enterprise plan)"
+          },
           "members_permission": {
             "type": "boolean"
           },
@@ -233,6 +237,7 @@
           "login",
           "plan",
           "covered",
+          "admin",
           "members_permission",
           "bot_runs"
         ],

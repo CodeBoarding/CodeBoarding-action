@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/usage.schema.json",
+  "title": "Answer of GET /me/usage: what this ISO week's runs and private reviews counted, newest first",
+  "type": "object",
+  "properties": {
+    "period": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-W[0-9]{2}$"
+    },
+    "resets_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "runs": {
+      "type": "object",
+      "properties": {
+        "used": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The same count as /me's runs meter: counted items plus runs in flight"
+        },
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "by_you": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "used minus by_bots"
+        },
+        "by_bots": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Items opened by a bot in the person's own repositories"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/run_item"
+          }
+        }
+      },
+      "required": [
+        "used",
+        "limit",
+        "by_you",
+        "by_bots",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "reviews": {
+      "type": "object",
+      "properties": {
+        "used": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/review_item"
+          }
+        }
+      },
+      "required": [
+        "used",
+        "limit",
+        "items"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "period",
+    "resets_at",
+    "runs",
+    "reviews"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "run_item": {
+      "type": "object",
+      "description": "One counted pull request (or workflow run) or VS Code repository. Fields other than key, surface and updates are null for an item counted before attribution was kept",
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "github:<repository id>#pr<n>, github:<repository id>#run<run id>, or vscode:<sha256>"
+        },
+        "surface": {
+          "enum": [
+            "github",
+            "vscode"
+          ]
+        },
+        "repository": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "owner/name for GitHub; for VS Code the client's repository.name, display only"
+        },
+        "pr": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "by": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "person",
+                    "bot"
+                  ]
+                },
+                "login": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "login"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Who opened it: the GitHub actor (the commenter for a comment-triggered run), or the signed-in account for VS Code"
+        },
+        "first_run_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "When the run that counted it started"
+        },
+        "updates": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Later runs of the same item this week, which did not count again"
+        }
+      },
+      "required": [
+        "key",
+        "surface",
+        "repository",
+        "pr",
+        "by",
+        "first_run_at",
+        "updates"
+      ],
+      "additionalProperties": false
+    },
+    "review_item": {
+      "type": "object",
+      "description": "One private map opened this week. repository, pr and opened_at are null for one opened before they were kept",
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "github:<repository id>#pr<n>, or github:<repository id>#run<run id>"
+        },
+        "repository": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "owner/name"
+        },
+        "pr": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "opened_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time",
+          "description": "When it was first opened this week"
+        }
+      },
+      "required": [
+        "key",
+        "repository",
+        "pr",
+        "opened_at"
+      ],
+      "additionalProperties": false
+    }
+  }
+}
