@@ -1,14 +1,14 @@
 {
   "repository_name": ".codeboarding-target",
-  "timestamp": "2026-09-08T18:40:53.710382+00:00",
-  "overall_score": 0.9993243243243244,
+  "timestamp": "2026-09-22T21:49:31.212190+00:00",
+  "overall_score": 1.0,
   "check_summaries": [
     {
       "check_name": "function_size",
       "description": "Checks that functions/methods do not exceed line count thresholds",
       "languages": [],
       "check_type": "standard",
-      "total_entities_checked": 73,
+      "total_entities_checked": 75,
       "findings_count": 0,
       "warning_count": 0,
       "score": 1.0,
@@ -19,34 +19,12 @@
       "description": "Detects unused imports, variables, functions, and dead code via LSP diagnostics",
       "languages": [],
       "check_type": "standard",
-      "total_entities_checked": 1,
-      "findings_count": 1,
+      "total_entities_checked": 0,
+      "findings_count": 0,
       "warning_count": 0,
-      "score": 0.95,
-      "finding_groups": [
-        {
-          "severity": "info",
-          "threshold": 0,
-          "description": "Variables declared but never used",
-          "entities": [
-            {
-              "entity_name": "[unused_variable] \"_format\" is not accessed",
-              "file_path": "scripts/oidc_relay.py",
-              "line_start": 99,
-              "line_end": 99,
-              "metric_value": 0.0
-            }
-          ]
-        }
-      ]
+      "score": 1.0,
+      "finding_groups": []
     }
   ],
-  "file_summaries": [
-    {
-      "file_path": "scripts/oidc_relay.py",
-      "total_findings": 1,
-      "warning_findings": 0,
-      "composite_risk_score": 10.0
-    }
-  ]
+  "file_summaries": []
 }

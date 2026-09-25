@@ -18,7 +18,7 @@ name: CodeBoarding review
 
 on:
   pull_request:
-    types: [opened, reopened, ready_for_review, synchronize]
+    types: [opened, reopened, synchronize]
   issue_comment:
     types: [created]
 
@@ -42,7 +42,7 @@ concurrency:
 jobs:
   review:
     if: >
-      (github.event_name == 'pull_request' && github.event.pull_request.draft == false &&
+      (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
        startsWith(github.event.comment.body, '/codeboarding') &&
@@ -55,7 +55,7 @@ jobs:
           llm: hosted   # or license, or a provider name -- see Authentication
 ```
 
-Automatic runs update one sticky **CodeBoarding review** comment. A trusted repository owner, member, or collaborator can comment `/codeboarding` to analyze the current PR head again, including on fork PRs; every command creates a new result comment.
+Automatic runs review both draft and non-draft pull requests and update one sticky **CodeBoarding review** comment. Opening, reopening, or pushing a commit runs analysis; changing only the draft state does not. A trusted repository owner, member, or collaborator can comment `/codeboarding` to analyze the current PR head again, including on fork PRs; every command creates a new result comment.
 
 `synchronize` re-runs the review on every push to the branch. Each of those runs covers only the commits pushed since the previous one, so a push costs a fraction of a first analysis — and a pushed commit is the only thing that builds the reusable analysis, since GitHub gives comment-triggered runs a read-only cache. Drop `synchronize` from the list if you would rather spend one analysis per pull request than one per push.
 
@@ -97,6 +97,12 @@ Everything here is best-effort. A missing artifact, an expired one, or a token w
 Because artifacts are readable and writable from every trigger, all paths behave the same: an automatic run, a `/codeboarding` command and a manual dispatch each reuse the previous analysis and publish their own. A stored analysis is discarded, and the head re-derived from the base, whenever the pinned CodeBoarding version, `.codeboardingignore`, the model selection, the analysis depth or the merge base changes — or when the base graph it grew from is not the one this run compares against.
 
 Fork pull requests never carry an analysis forward. They are reviewed on request, each review starts from the base, and nothing they produce is read by a run on this repository's own code: untrusted code must not shape state that a later run loads. The action also accepts `pull_request_target`, which runs on the base branch ref and lets both share one chain; that trigger has its own trade-offs (a PR that adds this workflow will not run it until merged, and the fork gate becomes load-bearing), so `pull_request` remains the recommended default.
+
+### Pull requests that change nothing analysed
+
+A pull request whose changed files are all outside what the engine analyses (docs, configuration, CI, tests the ignore file excludes, or a language the engine does not read) cannot have moved the architecture. The action says so by comparing the two analyses it already holds: the engine records a content hash for every file a component owns, and the review counts the analysed files whose hash differs between the base and the head, including files added or removed. At zero, no byte of analysed code changed, and the comment says `(no analysed file changed)` after the component count. If the count of changed components is not zero at the same time, the analysis grouped the same code differently, and the comment says that too rather than presenting it as a change. The review artifact's `metadata.json` carries the count as `analysed_files_changed` (a string, like every other field there, and `unknown` when either analysis has a file without a hash).
+
+Every review comment ends with a machine-readable HTML comment, `<!-- codeboarding: platform_url=… changed=… analysed_files_changed=… head=… -->`, for readers that should not parse the prose or the diagram. The progress comment carries the platform link from the start, so a pull request can be opened there while the run is still going.
 
 ## Authentication and providers
 
@@ -329,7 +335,7 @@ With the default `github.token`, the repository or organization must allow GitHu
 | `force_full` | sync | `false` | Ignore the committed baseline for this run. |
 | `warmstart_retention_days` | review | `1` | Days to keep the reusable analysis. Only the next run reads it. |
 
-The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted webview URL, rolling sync branch, commit message, and CodeBoarding 0.14.1 version are intentionally fixed rather than exposed as configuration.
+The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted webview URL, rolling sync branch, commit message, and CodeBoarding 0.14.4 version are intentionally fixed rather than exposed as configuration.
 
 Review mode needs no sync workflow or committed `.codeboarding` directory. If no
 usable merge-base analysis exists, it runs full analysis there directly, then
@@ -349,7 +355,7 @@ early. The action input matches the metadata name and the engine receives only
 `--depth-cap`. There are no old-name input aliases. Historical workflows using
 the removed `depth_level` action input must switch to `depth_cap`.
 
-This action pins Core 0.14.1 for the `--depth-cap` CLI contract. Publish that Core
+This action pins Core 0.14.3 for the `--depth-cap` CLI contract. Publish that Core
 release before releasing the action. Earlier eShop evidence predates this final
 breaking CLI migration.
 
@@ -388,7 +394,7 @@ Run the local analysis pipeline:
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...
-python -m pip install codeboarding==0.14.1
+python -m pip install codeboarding==0.14.4
 tests/run_local.sh --repo /path/to/repo --base main --head feature
 ```
 

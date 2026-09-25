@@ -2,11 +2,10 @@ name: CodeBoarding review
 
 on:
   pull_request:
-    # Generate once, when the PR becomes reviewable. Reusing this PR's previous
-    # analysis makes per-push runs affordable, so `synchronize` is a reasonable
-    # addition now; /codeboarding still refreshes on demand. 'closed' only
-    # cancels an in-flight review (see concurrency), it doesn't start one.
-    types: [opened, reopened, ready_for_review, closed]
+    # Analyze when the PR opens or receives a commit, whether it is ready or draft.
+    # Changing only the draft state does not rerun analysis. 'closed' only cancels
+    # an in-flight review (see concurrency), it doesn't start one.
+    types: [opened, reopened, closed, synchronize]
   issue_comment:
     types: [created]
 
@@ -37,7 +36,7 @@ jobs:
     # changes generated files, so a diff comment would be noise. Scope this to
     # this repository so a fork using the same branch name is still reviewed.
     if: >
-      (github.event_name == 'pull_request' && github.event.action != 'closed' && github.event.pull_request.draft == false &&
+      (github.event_name == 'pull_request' && github.event.action != 'closed' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
        !(github.head_ref == 'codeboarding/sync' && github.event.pull_request.head.repo.full_name == github.repository)) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&

@@ -1,5 +1,6 @@
 """Unit tests for scripts/diff_to_mermaid.py — diff logic + Mermaid rendering."""
 
+import io
 import json
 import re
 import sys
@@ -34,6 +35,42 @@ def linkstyle_indices_in_range(text):
     n_edges = text.count("-->")
     idxs = [int(x) for m in re.finditer(r"linkStyle ([\d,]+)", text) for x in m.group(1).split(",")]
     return all(i < n_edges for i in idxs)
+
+
+class TestAnalysedFilesChanged(unittest.TestCase):
+    @staticmethod
+    def analysis(files, components=None):
+        return {
+            "files": {path: {"content_hash": digest} for path, digest in files.items()},
+            "components": components or [],
+        }
+
+    def test_the_same_code_grouped_differently_changes_no_file(self):
+        base = self.analysis({"a.py": "h1", "b.py": "h2"}, [comp("A", {"a.py": ["f"]}), comp("B", {"b.py": ["g"]})])
+        head = self.analysis({"a.py": "h1", "b.py": "h2"}, [comp("A", {"a.py": ["f"], "b.py": ["g"]})])
+        self.assertEqual(dm.analysed_files_changed(base, head), 0)
+
+    def test_every_edited_added_or_removed_file_counts(self):
+        base = self.analysis({"a.py": "h1", "b.py": "h2", "gone.py": "h3"})
+        head = self.analysis({"a.py": "h1", "b.py": "h2-edited", "new.py": "h4"})
+        self.assertEqual(dm.analysed_files_changed(base, head), 3)
+
+    def test_an_analysis_that_cannot_vouch_for_its_files_gives_no_count(self):
+        full = self.analysis({"a.py": "h1"})
+        self.assertIsNone(dm.analysed_files_changed({"components": []}, full))
+        self.assertIsNone(dm.analysed_files_changed(full, self.analysis({"a.py": ""})))
+
+    def test_the_count_rides_on_the_machine_readable_summary(self):
+        loaded = {"base.json": self.analysis({"a.py": "h1"}), "head.json": self.analysis({"a.py": "h2"})}
+        with tempfile.TemporaryDirectory() as tmp:
+            argv = ["diff_to_mermaid.py", "--base", "base.json", "--head", "head.json", "--out", f"{tmp}/diagram.md"]
+            with (
+                patch.object(sys, "argv", argv),
+                patch.object(dm, "load_analysis", side_effect=lambda path: loaded[str(path)]),
+                patch("sys.stdout", new_callable=io.StringIO) as stdout,
+            ):
+                dm.main()
+        self.assertEqual(json.loads(stdout.getvalue())["analysed_files_changed"], 1)
 
 
 class TestDiff(unittest.TestCase):

@@ -333,6 +333,8 @@ runs:
 
           ⏳ CodeBoarding is analyzing this pull request's architecture changes.
 
+          Open it in [CodeBoarding](https://app.codeboarding.org/${{ github.repository }}/pull/${{ steps.guard.outputs.pr_number }}?utm_source=github&utm_medium=pr_comment&utm_campaign=gh_action) meanwhile: the files, comments and review are there already, and the diff appears when the run finishes.
+
           <sub>run [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) · attempt ${{ github.run_attempt }}</sub>
 
     - name: Checkout analysis target
@@ -357,7 +359,7 @@ runs:
       if: steps.guard.outputs.skip != 'true'
       shell: bash
       run: |
-        python -m pip install --disable-pip-version-check 'codeboarding==0.14.1'
+        python -m pip install --disable-pip-version-check 'codeboarding==0.14.4'
         # Fail here, with the reason, rather than mid-analysis with a traceback:
         # pinning a release does not pin what its dependencies resolve to. Run
         # the console script, not `python -c`, which would put the analyzed
@@ -618,6 +620,7 @@ runs:
         PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
         SEED_SOURCE: ${{ steps.review_analyze.outputs.seed_source }}
         CHAIN_DEPTH: ${{ steps.review_analyze.outputs.chain_depth }}
+        ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-artifact.sh"
 
     - name: Upload review artifact
@@ -646,6 +649,9 @@ runs:
         BEHIND_BY: ${{ steps.guard.outputs.behind_by }}
         BASE_REF: ${{ steps.guard.outputs.base_ref }}
         MERGE_BASE_RESOLVED: ${{ steps.guard.outputs.merge_base_resolved }}
+        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
+        # Analysed files whose content hash differs between base and head, from the render step.
+        ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
         DIAGNOSTICS_MD: ${{ steps.review_diagnostics.outputs.markdown_path }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-comment.sh"
 
