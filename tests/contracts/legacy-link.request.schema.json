@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/legacy-link.request.schema.json",
+  "title": "Body of POST /legacy/link: the extension hands over the license key it had stored",
+  "type": "object",
+  "properties": {
+    "license_key": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "license_key"
+  ],
+  "additionalProperties": false
+}

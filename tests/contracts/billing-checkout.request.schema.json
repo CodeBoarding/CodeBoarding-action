@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/billing-checkout.request.schema.json",
+  "title": "Body of POST /billing/checkout (the webview server, for the signed-in person)",
+  "type": "object",
+  "properties": {
+    "interval": {
+      "enum": [
+        "month",
+        "year"
+      ]
+    },
+    "success_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Where Stripe sends the person after paying; must be on the app origin (APP_BASE_URL, and http://localhost:3000 on the dev stack)"
+    },
+    "cancel_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Where Stripe sends the person when they leave Checkout; the same origin rule"
+    }
+  },
+  "required": [
+    "interval",
+    "success_url",
+    "cancel_url"
+  ],
+  "additionalProperties": false
+}

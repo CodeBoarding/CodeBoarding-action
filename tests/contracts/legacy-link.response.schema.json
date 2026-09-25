@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/legacy-link.response.schema.json",
+  "title": "Answer of POST /legacy/link, always 200 for any key: only linked true means the license is now the account's",
+  "type": "object",
+  "properties": {
+    "linked": {
+      "type": "boolean"
+    },
+    "plan": {
+      "enum": [
+        "free",
+        "pro",
+        "max",
+        "team",
+        "enterprise"
+      ],
+      "description": "The account's plan after the call"
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "description": "When the linked license's paid period ends; null when nothing was linked"
+    },
+    "reason": {
+      "enum": [
+        null,
+        "already_linked",
+        "not_found",
+        "expired",
+        "linked_elsewhere",
+        "custom_license",
+        "account_has_license"
+      ],
+      "description": "null: linked now. already_linked: this account had it (linked true). not_found: no such key. expired: canceled or past its end. linked_elsewhere: another account or a Team plan holds it. custom_license: converted to a Team plan with us. account_has_license: this account already holds another license"
+    }
+  },
+  "required": [
+    "linked",
+    "plan",
+    "expires_at",
+    "reason"
+  ],
+  "additionalProperties": false
+}

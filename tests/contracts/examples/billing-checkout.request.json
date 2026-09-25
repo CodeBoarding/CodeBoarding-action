@@ -1,0 +1,5 @@
+{
+  "interval": "year",
+  "success_url": "https://app.codeboarding.org/dashboard/plan?checkout=success",
+  "cancel_url": "https://app.codeboarding.org/dashboard/plan?checkout=cancelled"
+}

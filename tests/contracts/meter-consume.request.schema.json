@@ -42,6 +42,11 @@
     "pr": {
       "type": "integer",
       "minimum": 1
+    },
+    "run": {
+      "type": "string",
+      "pattern": "^run[0-9]{1,20}$",
+      "description": "Set when the map's artifact names no pull request: the reading is keyed on this workflow run instead of on pr"
     }
   },
   "required": [

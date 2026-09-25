@@ -290,31 +290,10 @@
       "properties": {
         "cancel_personal_pro": {
           "type": "boolean"
-        },
-        "legacy_link": {
-          "anyOf": [
-            {
-              "type": "object",
-              "properties": {
-                "license": {
-                  "type": "string",
-                  "description": "e.g. 'Pro license from May 2026'"
-                }
-              },
-              "required": [
-                "license"
-              ],
-              "additionalProperties": false
-            },
-            {
-              "type": "null"
-            }
-          ]
         }
       },
       "required": [
-        "cancel_personal_pro",
-        "legacy_link"
+        "cancel_personal_pro"
       ],
       "additionalProperties": false
     },

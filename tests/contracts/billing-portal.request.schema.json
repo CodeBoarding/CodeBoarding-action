@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/billing-portal.request.schema.json",
+  "title": "Body of POST /billing/portal (the webview server, for the signed-in person)",
+  "type": "object",
+  "properties": {
+    "return_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Where the portal's back link goes; must be on the app origin"
+    }
+  },
+  "required": [
+    "return_url"
+  ],
+  "additionalProperties": false
+}

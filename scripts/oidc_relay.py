@@ -49,6 +49,7 @@ class RelayConfig:
     id_token_request_token: str
     license_file: Path | None = None
     run_id_file: Path | None = None
+    wall_file: Path | None = None
 
 
 def _with_audience(url: str) -> str:
@@ -146,11 +147,27 @@ class _RelayHandler(BaseHTTPRequestHandler):
                 with urlopen(request, timeout=310) as response:  # nosec B310 - configured proxy URL
                     self._send(response.status, dict(response.headers.items()), response.read())
             except HTTPError as response:
-                self._send(response.code, dict(response.headers.items()), response.read())
+                body = response.read()
+                if response.code == 402:
+                    self._keep_wall(body)
+                self._send(response.code, dict(response.headers.items()), body)
         except (RuntimeError, URLError, OSError) as exc:
             body = json.dumps({"error": {"message": "CodeBoarding OIDC relay request failed."}}).encode()
             self._send(502, {"Content-Type": "application/json"}, body)
             print(f"OIDC relay request failed: {exc}", file=sys.stderr)
+
+    def _keep_wall(self, body: bytes) -> None:
+        """A 402 mid-run (the token ceiling, no live run) is the plan's wall, not a fault. The
+        engine only sees an error, so the wall is kept for the action to end the run neutral."""
+        if self.config.wall_file is None:
+            return
+        try:
+            wall = json.loads(body).get("wall")
+        except (ValueError, AttributeError):
+            return
+        if isinstance(wall, dict):
+            self.config.wall_file.parent.mkdir(parents=True, exist_ok=True)
+            self.config.wall_file.write_text(json.dumps(wall), encoding="utf-8")
 
     do_GET = _handle
     do_POST = _handle
@@ -174,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ready-file", required=True, type=Path)
     parser.add_argument("--license-file", type=Path)
     parser.add_argument("--run-id-file", type=Path)
+    parser.add_argument("--wall-file", type=Path)
     args = parser.parse_args(argv)
 
     request_url = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL", "")
@@ -183,7 +201,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     server = RelayServer(
-        RelayConfig(args.upstream_base_url, request_url, request_token, args.license_file, args.run_id_file)
+        RelayConfig(
+            args.upstream_base_url, request_url, request_token, args.license_file, args.run_id_file, args.wall_file
+        )
     )
     args.ready_file.write_text(str(server.server_port), encoding="utf-8")
     try:

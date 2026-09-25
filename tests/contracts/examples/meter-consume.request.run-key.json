@@ -1,0 +1,12 @@
+{
+  "meter": "reading",
+  "repository": {
+    "provider": "github",
+    "id": 1296269,
+    "owner": "acme-corp",
+    "name": "billing-service",
+    "private": true
+  },
+  "pr": 482,
+  "run": "run11809532110"
+}

@@ -72,10 +72,7 @@
     }
   ],
   "offers": {
-    "cancel_personal_pro": false,
-    "legacy_link": {
-      "license": "Pro license from May 2026"
-    }
+    "cancel_personal_pro": false
   },
   "billing": {
     "customer": false

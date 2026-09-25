@@ -10,6 +10,7 @@ import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 
@@ -137,6 +138,60 @@ class TestOidcRelay(unittest.TestCase):
                 "Bearer jwt~codeboarding-license~LIC~codeboarding-run~github:o/r#42",
             )
             self.assertEqual(bearer(license_file=license_file), "Bearer jwt~codeboarding-license~LIC")
+
+    def test_a_402_wall_is_kept_for_the_action_and_still_relayed(self):
+        answers = [
+            {
+                "error": {"message": "Weekly token ceiling reached", "type": "quota"},
+                "wall": {"reason": "token_ceiling"},
+            },
+            {"error": {"message": "Resource exhausted: token limit reached"}},
+        ]
+
+        class Issuer(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self._reply(200, {"value": "jwt"})
+
+            def do_POST(self):
+                self.rfile.read(int(self.headers["Content-Length"]))
+                self._reply(402, answers.pop(0))
+
+            def _reply(self, code, payload):
+                data = json.dumps(payload).encode()
+                self.send_response(code)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *_args):
+                pass
+
+        server = _Server(Issuer)
+        server.start()
+        self.addCleanup(server.close)
+        with tempfile.TemporaryDirectory() as temp:
+            wall_file = Path(temp) / "codeboarding-wall" / "wall.json"
+            relay = oidc_relay.RelayServer(
+                oidc_relay.RelayConfig(server.url, f"{server.url}/token", "request-token", wall_file=wall_file)
+            )
+            thread = threading.Thread(target=relay.serve_forever, daemon=True)
+            thread.start()
+            try:
+                statuses = []
+                for _ in range(2):
+                    wall_file.unlink(missing_ok=True)
+                    request = Request(f"http://127.0.0.1:{relay.server_port}/chat/completions", data=b"{}")
+                    with self.assertRaises(HTTPError) as caught:
+                        urlopen(request)
+                    statuses.append((caught.exception.code, wall_file.exists()))
+                    caught.exception.close()
+                    if wall_file.exists():
+                        self.assertEqual(json.loads(wall_file.read_text()), {"reason": "token_ceiling"})
+            finally:
+                relay.shutdown()
+                relay.server_close()
+                thread.join(timeout=2)
+        self.assertEqual(statuses, [(402, True), (402, False)], "a 402 without a wall is today's quota, not a wall")
 
     def test_audience_replaces_an_existing_value(self):
         self.assertEqual(

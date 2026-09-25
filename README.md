@@ -186,6 +186,13 @@ ahead and how deep it may go. A final step reports whether a map was produced.
   checked: own-key runs still call `/run/start` and count the same, with no token ceiling,
   since the model bill is yours. A job without `id-token: write` skips the check with a
   warning.
+- **At the wall the check stays green.** A run over its allowance is not analysed: the
+  review comment says so in one sentence, for example "CodeBoarding map not drawn: m.koch
+  has used 5 of 5 free runs this week (resets Monday 00:00 UTC). Pro gives 40 a week; a
+  Team plan covers everyone in acme-corp.", the job summary repeats it, and the job exits
+  0. The same happens when a hosted run reaches its weekly token ceiling mid-analysis. The
+  wall payload is uploaded as the `codeboarding-wall` artifact (`wall.json`), so the web app
+  shows the same sentence on the pull request. A baseline sync at its ceiling skips silently.
 - **CodeBoarding down is never your problem.** If the proxy cannot be reached, the run goes
   ahead at up to 3 levels with a warning.
 - **Update pinned versions.** Action versions from before this release do not start runs
