@@ -31,6 +31,12 @@ if [ "$ANALYSED_FILES_CHANGED" = "0" ] && [ "$N_CHANGED" != "0" ]; then
   printf '\nNo file CodeBoarding analyses changed in this pull request, so the components marked below differ only because the analysis grouped the same code differently.\n' >> "$BODY"
 fi
 printf '\nSee the full change in [CodeBoarding](%s).\n' "$WEBVIEW_URL" >> "$BODY"
+# Above the diagram, not below it: the whole point is that the picture that follows
+# is missing something, and a caveat under it is read after the picture is believed.
+if [ -n "${DIAGNOSTICS_MD:-}" ] && [ -s "${DIAGNOSTICS_MD}" ]; then
+  printf '\n' >> "$BODY"
+  cat "${DIAGNOSTICS_MD}" >> "$BODY"
+fi
 # The diagram compares against the merge base, so commits landed on the base
 # branch since this PR forked are excluded. Say so rather than hide it.
 BEHIND="${BEHIND_BY:-0}"

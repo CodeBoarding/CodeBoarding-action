@@ -32,6 +32,13 @@ metadata = json.load(open(analysis))["metadata"] if os.path.isfile(analysis) els
 if argv[0] == "incremental" and os.environ.get("CB_REQUIRE_FULL") == "true":
     print(json.dumps({"requiresFullAnalysis": True}))
     sys.exit(0)
+if os.environ.get("CB_ENGINE_ABORT"):
+    # The engine's refusal contract: a JSON verdict on stdout, no analysis written, exit 3.
+    print("Analyzing repository...")
+    print(json.dumps({"mode": argv[0], "error": "LLM quota exhausted: Resource exhausted: token limit reached",
+                      "kind": os.environ["CB_ENGINE_ABORT"], "statusCode": 402, "provider": "openai",
+                      "requiresFullAnalysis": False}))
+    sys.exit(3)
 if argv[0] == "full":
     metadata = {"depth_cap": int(argv[argv.index("--depth-cap") + 1])}
 with open(analysis, "w") as handle:
@@ -176,8 +183,20 @@ class ReviewChainTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def _analyze(self, **extra: str) -> dict[str, str]:
+        result = self._invoke(**extra)
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        return self._outputs()
+
+    def _outputs(self) -> dict[str, str]:
+        values: dict[str, str] = {}
+        for line in self.output.read_text(encoding="utf-8").splitlines():
+            key, _, value = line.partition("=")
+            values[key] = value
+        return values
+
+    def _invoke(self, **extra: str) -> subprocess.CompletedProcess[str]:
         self.output.write_text("", encoding="utf-8")
-        result = subprocess.run(
+        return subprocess.run(
             [str(ANALYZE)],
             env={
                 "PATH": f"{self.bin_dir}:{os.environ['PATH']}",
@@ -203,12 +222,6 @@ class ReviewChainTests(unittest.TestCase):
             text=True,
             check=False,
         )
-        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-        values: dict[str, str] = {}
-        for line in self.output.read_text(encoding="utf-8").splitlines():
-            key, _, value = line.partition("=")
-            values[key] = value
-        return values
 
     def _engine_calls(self) -> list[dict[str, str]]:
         return [json.loads(line) for line in self.engine_log.read_text(encoding="utf-8").splitlines()]
@@ -327,6 +340,37 @@ class ReviewChainTests(unittest.TestCase):
         self._analyze(ANALYSIS_KIND="sync", FORCE_FULL="false", DEPTH_CAP="4")
         self.assertEqual([c["mode"] for c in self._engine_calls()], ["full"])
         self.assertEqual(self._engine_calls()[0]["depth"], "4")
+
+    def test_a_quota_abort_fails_sync_and_leaves_nothing_to_deliver(self) -> None:
+        """Deliver baseline and both base publishes read what this step outputs and stages.
+        A refusal must leave neither, so a map without AI naming is never committed."""
+        (self.checkout / ".codeboarding").mkdir()
+        (self.checkout / ".codeboarding" / "analysis.json").write_text("{}", encoding="utf-8")
+        result = self._invoke(
+            ANALYSIS_KIND="sync", FORCE_FULL="true", DEPTH_CAP="2", CB_ENGINE_ABORT="llm_quota_exhausted"
+        )
+
+        self.assertEqual(result.returncode, 3, result.stderr or result.stdout)
+        self.assertIn("::error title=CodeBoarding LLM quota exhausted::", result.stderr)
+        self.assertEqual(self._outputs(), {})
+        self.assertFalse((self.stage_dir / "base").exists())
+        error = json.loads((self.runner_temp / "codeboarding-engine-error.json").read_text(encoding="utf-8"))
+        self.assertEqual((error["kind"], error["exitCode"]), ("llm_quota_exhausted", 3))
+
+    def test_a_quota_abort_fails_review_and_publishes_no_state(self) -> None:
+        _state(self.base_dir)
+        result = self._invoke(CB_ENGINE_ABORT="llm_quota_exhausted")
+
+        self.assertEqual(result.returncode, 3, result.stderr or result.stdout)
+        self.assertEqual(self._outputs(), {})
+        self.assertFalse(self.stage_dir.exists())
+
+    def test_a_refusal_left_by_an_earlier_run_is_cleared(self) -> None:
+        stale = self.runner_temp / "codeboarding-engine-error.json"
+        stale.write_text('{"kind": "llm_quota_exhausted"}', encoding="utf-8")
+        _state(self.base_dir)
+        self._analyze()
+        self.assertFalse(stale.exists())
 
     def test_a_run_that_stopped_short_of_its_cap_keeps_the_chain(self) -> None:
         # Core resolves incremental depth from depth_cap, so a realized

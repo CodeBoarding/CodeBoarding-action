@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,65 @@ PROG = "codeboarding"
 
 class AnalysisError(RuntimeError):
     pass
+
+
+# The engine's own verdict on a run it refused to finish: exit 3 when the LLM quota ran out,
+# exit 2 when the credentials were rejected. Both are aborts by design, because a map drawn
+# without the LLM would be published as though it were a real one.
+ENGINE_ABORT_TITLES = {
+    "llm_quota_exhausted": "CodeBoarding LLM quota exhausted",
+    "llm_auth": "CodeBoarding LLM credentials rejected",
+}
+ENGINE_ERROR_FILE = "codeboarding-engine-error.json"
+
+
+class EngineAbort(AnalysisError):
+    def __init__(self, exit_code: int, payload: dict) -> None:
+        super().__init__(str(payload.get("error") or payload["kind"]))
+        self.exit_code = exit_code
+        self.payload = payload
+
+    def annotation(self) -> str:
+        # Workflow commands end at the first newline, so the engine's message is kept to one line.
+        message = " ".join(str(self).split())
+        # A plan's wall (codeboarding-wall/wall.json, written by the paywall relay) ends the run
+        # neutral, so a red annotation would contradict the green check.
+        runner_temp = os.environ.get("RUNNER_TEMP")
+        walled = bool(runner_temp) and (Path(runner_temp) / "codeboarding-wall" / "wall.json").is_file()
+        return f"::{'notice' if walled else 'error'} title={ENGINE_ABORT_TITLES[self.payload['kind']]}::{message}"
+
+
+def _find_json(raw: str) -> object:
+    """The engine's JSON object, which may follow log lines on stdout."""
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        payload = None
+        lines = raw.splitlines()
+        for index, line in enumerate(lines):
+            if line.lstrip().startswith("{"):
+                try:
+                    payload = json.loads("\n".join(lines[index:]))
+                except json.JSONDecodeError:
+                    continue
+        if payload is None:
+            raise exc
+        return payload
+
+
+def _engine_abort(stdout: str, return_code: int) -> EngineAbort | None:
+    """Recognise a refusal the engine explained, and keep it for the steps that report it."""
+    try:
+        payload = _find_json(stdout)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict) or payload.get("kind") not in ENGINE_ABORT_TITLES:
+        return None
+    runner_temp = os.environ.get("RUNNER_TEMP")
+    if runner_temp:
+        record = {**payload, "exitCode": return_code}
+        (Path(runner_temp) / ENGINE_ERROR_FILE).write_text(json.dumps(record), encoding="utf-8")
+    return EngineAbort(return_code, payload)
 
 
 def _parse_bool(value: object, *, field: str) -> bool:
@@ -34,18 +94,9 @@ def _parse_cli_response(raw: str, working_dir: str) -> tuple[bool, Path | None, 
         raise AnalysisError("CodeBoarding command produced no JSON output")
 
     try:
-        payload = json.loads(raw)
+        payload = _find_json(raw)
     except json.JSONDecodeError as exc:
-        payload = None
-        lines = raw.splitlines()
-        for index, line in enumerate(lines):
-            if line.lstrip().startswith("{"):
-                try:
-                    payload = json.loads("\n".join(lines[index:]))
-                except json.JSONDecodeError:
-                    continue
-        if payload is None:
-            raise AnalysisError(f"Invalid CodeBoarding JSON response: {exc}") from exc
+        raise AnalysisError(f"Invalid CodeBoarding JSON response: {exc}") from exc
 
     if not isinstance(payload, dict):
         raise AnalysisError("CodeBoarding JSON response is not an object")
@@ -84,6 +135,9 @@ def _run_command(args: list[str], output_dir: Path) -> str:
     return_code = process.wait()
     stdout = "".join(stdout_lines)
     if return_code != 0:
+        abort = _engine_abort(stdout, return_code)
+        if abort is not None:
+            raise abort
         details = stdout.strip() or f"exit code {return_code}; see command logs above"
         raise AnalysisError(f"Command failed ({' '.join(args)}): {details}")
 
@@ -140,6 +194,9 @@ def main(argv: list[str] | None = None) -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
+    except EngineAbort as exc:
+        print(exc.annotation(), file=sys.stderr)
+        raise SystemExit(exc.exit_code)
     except AnalysisError as exc:
         print(f"::error::{exc}", file=sys.stderr)
         raise SystemExit(1)

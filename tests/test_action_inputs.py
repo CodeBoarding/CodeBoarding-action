@@ -139,6 +139,47 @@ class ActionInputTests(unittest.TestCase):
         self.assertLess(report, stop, "the run fails before it explains why")
         self.assertIn("continue-on-error: true", ACTION[ACTION.index("id: llm") : report])
 
+    def test_an_engine_refusal_is_explained_and_not_buried(self) -> None:
+        """The engine stops on a used-up quota rather than publish a map without AI naming.
+        The run stays red; the pull request is told why, in the review's own sticky comment,
+        and the generic "see the workflow logs" must not be posted over it."""
+        read = ACTION.index("- name: Read engine failure")
+        report = ACTION.index("- name: Report engine failure")
+        generic = ACTION.index("- name: Post review failure")
+        for analyze in ("- name: Analyze baseline", "- name: Analyze pull request"):
+            self.assertLess(ACTION.index(analyze), read)
+        self.assertLess(read, report)
+        self.assertLess(report, generic, "the generic step reads the reason, so it must exist first")
+
+        read_block = ACTION[read:report]
+        self.assertIn("failure()", read_block)
+        self.assertIn("steps.sync_analyze.outcome == 'failure'", read_block)
+        self.assertIn("steps.review_analyze.outcome == 'failure'", read_block)
+        self.assertIn("continue-on-error: true", read_block)
+
+        report_block = ACTION[report:generic]
+        self.assertIn("steps.engine_failure.outputs.reason != ''", report_block)
+        self.assertIn("steps.guard.outputs.mode == 'review'", report_block)
+        self.assertIn("header: ${{ steps.guard.outputs.comment_id }}", report_block)
+        self.assertIn("path: ${{ steps.engine_failure.outputs.body_path }}", report_block)
+
+        condition = ACTION[generic : ACTION.index("message:", generic)]
+        self.assertIn("steps.engine_failure.outputs.reason == ''", condition)
+
+    def test_a_failed_analysis_delivers_and_publishes_nothing(self) -> None:
+        """Delivery and the base publishes run only on success, so a sync the engine refused
+        commits no baseline and leaves no base for a review to start from."""
+        for name in (
+            "- name: Deliver baseline",
+            "- name: Publish baseline analysis",
+            "- name: Publish baseline analysis for the analyzed commit",
+            "- name: Publish this analysis for the next run",
+        ):
+            start = ACTION.index(name + "\n")
+            condition = ACTION[start : ACTION.index("\n", ACTION.index("if:", start))]
+            self.assertNotIn("always()", condition, name)
+            self.assertNotIn("failure()", condition, name)
+
 
 if __name__ == "__main__":
     unittest.main()

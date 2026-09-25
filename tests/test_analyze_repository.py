@@ -2,13 +2,16 @@
 
 import io
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
+sys.path.insert(0, str(SCRIPTS))
 
 import analyze_repository as ar
 
@@ -182,6 +185,87 @@ class AnalyzeRepositoryTests(unittest.TestCase):
                             str(out_dir),
                         ]
                     )
+
+
+class EngineAbortTests(unittest.TestCase):
+    """The script run as the action runs it, against a stand-in engine that refuses."""
+
+    def _run(self, exit_code: int, stdout: str, walled: bool = False) -> tuple[subprocess.CompletedProcess[str], Path]:
+        tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        bin_dir = tmp / "bin"
+        bin_dir.mkdir()
+        engine = bin_dir / "codeboarding"
+        engine.write_text(
+            f"#!/usr/bin/env python3\nimport sys\nsys.stdout.write({stdout!r})\nsys.exit({exit_code})\n",
+            encoding="utf-8",
+        )
+        engine.chmod(0o755)
+        (tmp / "repo").mkdir()
+        runner_temp = tmp / "runner"
+        runner_temp.mkdir()
+        if walled:
+            (runner_temp / "codeboarding-wall").mkdir()
+            (runner_temp / "codeboarding-wall" / "wall.json").write_text(
+                '{"reason": "token_ceiling"}', encoding="utf-8"
+            )
+        result = subprocess.run(
+            [sys.executable, str(SCRIPTS / "analyze_repository.py"), "incremental"]
+            + ["--checkout", str(tmp / "repo"), "--output-dir", str(tmp / "out")],
+            env={"PATH": f"{bin_dir}:{os.environ['PATH']}", "RUNNER_TEMP": str(runner_temp)},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result, runner_temp / "codeboarding-engine-error.json"
+
+    @staticmethod
+    def _verdict(kind: str, status: int) -> str:
+        payload = {
+            "mode": "incremental",
+            "error": "LLM quota exhausted:\nResource exhausted: token limit reached",
+            "kind": kind,
+            "statusCode": status,
+            "provider": "openai",
+            "requiresFullAnalysis": False,
+        }
+        return "Analyzing repository...\n" + json.dumps(payload, indent=2) + "\n"
+
+    def test_quota_exhaustion_keeps_the_engine_exit_code_and_its_reason(self) -> None:
+        result, error_file = self._run(3, self._verdict("llm_quota_exhausted", 402))
+
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.assertIn(
+            "::error title=CodeBoarding LLM quota exhausted::LLM quota exhausted: Resource exhausted: token limit reached\n",
+            result.stderr,
+        )
+        self.assertNotIn("Command failed", result.stderr)
+        self.assertEqual(result.stdout, "", "no analysis_path for analyze.sh to pick up")
+        error = json.loads(error_file.read_text(encoding="utf-8"))
+        self.assertEqual(error["kind"], "llm_quota_exhausted")
+        self.assertEqual(error["statusCode"], 402)
+        self.assertEqual(error["exitCode"], 3)
+
+    def test_a_plan_wall_turns_the_annotation_into_a_notice(self) -> None:
+        # The run ends neutral on a wall; a red annotation on a green check misleads.
+        result, _ = self._run(3, self._verdict("llm_quota_exhausted", 402), walled=True)
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.assertIn("::notice title=CodeBoarding LLM quota exhausted::", result.stderr)
+        self.assertNotIn("::error", result.stderr)
+
+    def test_rejected_credentials_are_reported_by_name(self) -> None:
+        result, error_file = self._run(2, self._verdict("llm_auth", 401))
+
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("::error title=CodeBoarding LLM credentials rejected::", result.stderr)
+        self.assertEqual(json.loads(error_file.read_text(encoding="utf-8"))["kind"], "llm_auth")
+
+    def test_any_other_failure_keeps_the_generic_path(self) -> None:
+        for stdout in ("Traceback: boom\n", json.dumps({"error": "boom", "kind": "something_else"})):
+            with self.subTest(stdout=stdout):
+                result, error_file = self._run(1, stdout)
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("::error::Command failed", result.stderr)
+                self.assertFalse(error_file.exists())
 
 
 if __name__ == "__main__":
