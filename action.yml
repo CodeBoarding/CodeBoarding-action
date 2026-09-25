@@ -678,12 +678,37 @@ runs:
         BODY: ${{ steps.review_body.outputs.path }}
       run: cat "$BODY" >> "$GITHUB_STEP_SUMMARY"
 
-    # Skipped when the run stopped on a credential problem: that path already replaced
-    # this same sticky comment with the input and secret to fix, and "see the workflow
+    # The engine stops rather than publish a map without AI naming when the LLM quota runs
+    # out or its credentials are refused. The run stays failed; this says why, in the job
+    # summary and (below) in the pull request, instead of "see the workflow logs".
+    - name: Read engine failure
+      id: engine_failure
+      if: failure() && steps.guard.outputs.skip != 'true' && (steps.sync_analyze.outcome == 'failure' || steps.review_analyze.outcome == 'failure')
+      continue-on-error: true
+      shell: bash
+      env:
+        MODE: ${{ steps.guard.outputs.mode }}
+        LLM: ${{ inputs.llm }}
+        PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
+        HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
+      run: 'python3 "$GITHUB_ACTION_PATH/scripts/action/engine_failure.py"'
+
+    - name: Report engine failure
+      if: failure() && steps.engine_failure.outputs.reason != '' && steps.guard.outputs.mode == 'review' && steps.guard.outputs.pr_number != ''
+      continue-on-error: true
+      uses: marocchino/sticky-pull-request-comment@v2
+      with:
+        header: ${{ steps.guard.outputs.comment_id }}
+        number: ${{ steps.guard.outputs.pr_number }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        path: ${{ steps.engine_failure.outputs.body_path }}
+
+    # Skipped when the run stopped on a credential problem or an engine refusal: those
+    # paths replaced this same sticky comment with what to fix, and "see the workflow
     # logs" posted over the top of it would send the reader hunting for what they had
     # just been told.
     - name: Post review failure
-      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_comment.outcome != 'success' && steps.llm.outputs.error == ''
+      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_comment.outcome != 'success' && steps.llm.outputs.error == '' && steps.engine_failure.outputs.reason == ''
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:

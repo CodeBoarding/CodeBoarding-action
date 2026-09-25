@@ -207,13 +207,35 @@ result as though nothing happened:
 
 - a `::warning::` annotation per degradation, on the run page;
 - the same list in the job summary (sync) and at the top of the review comment, above the
-  diagram — a caveat printed under a picture is read after the picture is believed;
+  diagram, since a caveat printed under a picture is read after the picture is believed;
 - each entry carries what to do about it. Where nothing on your side would have changed
   the outcome, it says so and links Discord instead of inventing an instruction.
 
 Diagnostics never fail the run: a degraded analysis is still worth having, and the whole
 point is that you learn it is degraded. The webview reads the same field out of the
-analysis it loads, so a diagram opened there carries the same warning.
+analysis it loads, so a diagram opened there carries the same warning. The one
+degradation that does fail the run is a used-up LLM quota, below.
+
+### When the LLM quota runs out
+
+If the LLM provider refuses the analysis because the token quota is used up (HTTP 402),
+CodeBoarding stops rather than publish a map without AI naming. The run fails, and:
+
+- the annotation on the run page says why (`CodeBoarding LLM quota exhausted`);
+- in review mode, the review's sticky comment is replaced with the reason and what to change,
+  and ends with the machine-readable line carrying `failure=llm_quota_exhausted`;
+- the job summary carries the same text;
+- nothing is published: sync commits no baseline and uploads no base analysis, and review
+  posts no diagram.
+
+On `llm: hosted` the free tier's allowance is per GitHub owner per week and resets Monday
+00:00 UTC. To analyze before then, use your own key (`llm: anthropic` with
+`anthropic_api_key`, or any provider above), or a CodeBoarding license (`llm: license` with
+`license_key`). Credentials the provider rejects outright stop the run the same way, as
+`failure=llm_auth`.
+
+This needs a CodeBoarding release that stops on quota; with an older engine the run
+finishes on folder-named components instead.
 
 ## Model selection
 

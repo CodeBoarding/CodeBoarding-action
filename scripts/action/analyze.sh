@@ -6,6 +6,9 @@ if [[ ! "$DEPTH_CAP" =~ ^[1-9][0-9]*$ ]]; then
   echo "::error::depth_cap must be a positive integer."
   exit 1
 fi
+# analyze_repository.py records an engine refusal here for the steps that report it; one
+# left by an earlier use of the action in this job is not this run's.
+rm -f "$RUNNER_TEMP/codeboarding-engine-error.json"
 parse_output() {
   local output="$1"
   ANALYSIS_MODE="$(awk -F= '$1 == "analysis_mode" {print $2; exit}' <<< "$output")"
