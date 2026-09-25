@@ -61,7 +61,8 @@ def _auth(llm: str) -> list[str]:
 def render(error: dict, env: dict[str, str]) -> str:
     kind = error["kind"]
     mode = env.get("MODE", "review")
-    llm = env.get("LLM", "") or "hosted"
+    # credential_check.py accepts any case, so `Hosted` must read as hosted here too.
+    llm = env.get("LLM", "").strip().lower() or "hosted"
     lines = [f"### CodeBoarding {mode} · {HEADINGS[kind]}", ""]
     lines.append("CodeBoarding stopped instead of publishing a map without AI naming.")
     lines += _quota(llm) if kind == "llm_quota_exhausted" else _auth(llm)

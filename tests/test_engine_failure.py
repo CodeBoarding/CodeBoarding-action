@@ -79,6 +79,10 @@ class EngineFailureTests(unittest.TestCase):
         self.assertIn("On `llm: openai` that is the quota of your own provider account", body)
         self.assertNotIn("Monday", body)
 
+    def test_llm_input_is_case_insensitive_like_the_credential_check(self) -> None:
+        _, body, _ = self._run(QUOTA, LLM=" Hosted ")
+        self.assertIn("resets Monday 00:00 UTC", body)
+
     def test_quota_on_a_license_offers_your_own_key(self) -> None:
         _, body, _ = self._run(QUOTA, LLM="license")
         self.assertIn("your CodeBoarding plan's allowance", body)
