@@ -37,7 +37,11 @@ class EngineAbort(AnalysisError):
     def annotation(self) -> str:
         # Workflow commands end at the first newline, so the engine's message is kept to one line.
         message = " ".join(str(self).split())
-        return f"::error title={ENGINE_ABORT_TITLES[self.payload['kind']]}::{message}"
+        # A plan's wall (codeboarding-wall/wall.json, written by the paywall relay) ends the run
+        # neutral, so a red annotation would contradict the green check.
+        runner_temp = os.environ.get("RUNNER_TEMP")
+        walled = bool(runner_temp) and (Path(runner_temp) / "codeboarding-wall" / "wall.json").is_file()
+        return f"::{'notice' if walled else 'error'} title={ENGINE_ABORT_TITLES[self.payload['kind']]}::{message}"
 
 
 def _find_json(raw: str) -> object:

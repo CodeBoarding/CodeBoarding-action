@@ -190,7 +190,7 @@ class AnalyzeRepositoryTests(unittest.TestCase):
 class EngineAbortTests(unittest.TestCase):
     """The script run as the action runs it, against a stand-in engine that refuses."""
 
-    def _run(self, exit_code: int, stdout: str) -> tuple[subprocess.CompletedProcess[str], Path]:
+    def _run(self, exit_code: int, stdout: str, walled: bool = False) -> tuple[subprocess.CompletedProcess[str], Path]:
         tmp = Path(self.enterContext(tempfile.TemporaryDirectory()))
         bin_dir = tmp / "bin"
         bin_dir.mkdir()
@@ -203,6 +203,11 @@ class EngineAbortTests(unittest.TestCase):
         (tmp / "repo").mkdir()
         runner_temp = tmp / "runner"
         runner_temp.mkdir()
+        if walled:
+            (runner_temp / "codeboarding-wall").mkdir()
+            (runner_temp / "codeboarding-wall" / "wall.json").write_text(
+                '{"reason": "token_ceiling"}', encoding="utf-8"
+            )
         result = subprocess.run(
             [sys.executable, str(SCRIPTS / "analyze_repository.py"), "incremental"]
             + ["--checkout", str(tmp / "repo"), "--output-dir", str(tmp / "out")],
@@ -239,6 +244,13 @@ class EngineAbortTests(unittest.TestCase):
         self.assertEqual(error["kind"], "llm_quota_exhausted")
         self.assertEqual(error["statusCode"], 402)
         self.assertEqual(error["exitCode"], 3)
+
+    def test_a_plan_wall_turns_the_annotation_into_a_notice(self) -> None:
+        # The run ends neutral on a wall; a red annotation on a green check misleads.
+        result, _ = self._run(3, self._verdict("llm_quota_exhausted", 402), walled=True)
+        self.assertEqual(result.returncode, 3, result.stderr)
+        self.assertIn("::notice title=CodeBoarding LLM quota exhausted::", result.stderr)
+        self.assertNotIn("::error", result.stderr)
 
     def test_rejected_credentials_are_reported_by_name(self) -> None:
         result, error_file = self._run(2, self._verdict("llm_auth", 401))
