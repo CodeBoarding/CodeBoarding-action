@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -18,6 +19,7 @@ run_meter = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(run_meter)
 STATE_NAMES = ROOT / "scripts" / "action" / "state-names.sh"
 ANALYZE = ROOT / "scripts" / "action" / "analyze.sh"
+WITH_AUTH = ROOT / "scripts" / "action" / "with-auth.sh"
 
 ENGINE_STUB = '''#!/usr/bin/env python3
 """CodeBoarding CLI stand-in: records each call and writes a minimal analysis."""
@@ -39,6 +41,16 @@ if argv[0] == "incremental" and os.environ.get("CB_REQUIRE_FULL") == "true":
         json.dump({"metadata": metadata, "components": []}, open(analysis, "w"))
     print(json.dumps({"requiresFullAnalysis": True}))
     sys.exit(0)
+if os.environ.get("CB_ENGINE_ABORT"):
+    # A 402 mid-run: the relay keeps the body's `wall` when it has one, then the engine
+    # stops with its refusal contract (a JSON verdict, no analysis written, exit 3).
+    if os.environ.get("CB_RELAY_WALL"):
+        wall = os.path.join(os.environ["RUNNER_TEMP"], "codeboarding-wall", "wall.json")
+        os.makedirs(os.path.dirname(wall), exist_ok=True)
+        open(wall, "w").write(os.environ["CB_RELAY_WALL"])
+    print(json.dumps({"mode": argv[0], "error": "LLM quota exhausted", "kind": os.environ["CB_ENGINE_ABORT"],
+                      "statusCode": 402, "provider": "codeboarding", "requiresFullAnalysis": False}))
+    sys.exit(3)
 if argv[0] == "full":
     if os.environ.get("CB_FULL_CRASHES") == "before_write":
         sys.exit(1)
@@ -186,10 +198,10 @@ class ReviewChainTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def _analyze(self, *, check: bool = True, **extra: str) -> dict[str, str]:
+    def _analyze(self, *, check: bool = True, with_auth: bool = False, **extra: str) -> dict[str, str]:
         self.output.write_text("", encoding="utf-8")
         result = subprocess.run(
-            [str(ANALYZE)],
+            [str(WITH_AUTH), str(ANALYZE)] if with_auth else [str(ANALYZE)],
             env={
                 "PATH": f"{self.bin_dir}:{os.environ['PATH']}",
                 "GITHUB_OUTPUT": str(self.output),
@@ -216,6 +228,7 @@ class ReviewChainTests(unittest.TestCase):
         )
         if check:
             self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        self.returncode = result.returncode
         values: dict[str, str] = {}
         for line in self.output.read_text(encoding="utf-8").splitlines():
             key, _, value = line.partition("=")
@@ -319,6 +332,62 @@ class ReviewChainTests(unittest.TestCase):
         )
         self.assertEqual([c["mode"] for c in self._engine_calls()], ["incremental", "full"])
         self.assertFalse(self._map_written())
+
+    def _finish_body(self, values: dict[str, str], job_status: str) -> dict:
+        """What the finish step would report for this analysis step's outputs."""
+        environ = {
+            "RUN_ID": "github:o/r#1",
+            "RUNNER_TEMP": str(self.runner_temp),
+            "JOB_STATUS": job_status,
+            "ANALYSIS_PATH": values.get("analysis_path", ""),
+            "MAP_MARKER": str(self.runner_temp / "codeboarding-map"),
+        }
+        with mock.patch.object(run_meter, "post", return_value={}) as post, mock.patch("sys.stdout"):
+            run_meter.finish(environ)
+        return post.call_args.args[2]
+
+    def _mid_run_402(self, kind: str, **extra: str) -> dict[str, str]:
+        # with-auth.sh reads the plan configure-auth.sh would have written.
+        auth = self.runner_temp / "codeboarding-auth"
+        auth.mkdir()
+        (auth / "tier").write_text("hosted", encoding="utf-8")
+        (auth / "provider-name").write_text("codeboarding", encoding="utf-8")
+        _state(self.base_dir, cap=4)
+        if kind == "sync":
+            _state(self.checkout / ".codeboarding", cap=4)
+            extra = {"ANALYSIS_KIND": "sync", "FORCE_FULL": "false", **extra}
+        return self._analyze(check=False, with_auth=True, DEPTH_CAP="4", CB_ENGINE_ABORT="llm_quota_exhausted", **extra)
+
+    def test_a_mid_run_402_with_a_wall_ends_neutral_and_is_not_charged(self) -> None:
+        """The engine now exits 3 on a 402 instead of drawing a folder-named map. With the
+        relay holding the plan's wall, that is the neutral path: walled, green, no map."""
+        wall = json.dumps({"reason": "token_ceiling", "message": "m"})
+        for kind in ("review", "sync"):
+            with self.subTest(kind=kind):
+                self.tearDown()
+                self.setUp()
+                values = self._mid_run_402(kind, CB_RELAY_WALL=wall)
+                self.assertEqual(self.returncode, 0)
+                self.assertEqual(values.get("walled"), "true")
+                self.assertNotIn("analysis_path", values)
+                self.assertFalse(self.stage_dir.exists(), "nothing staged for delivery or publishing")
+                body = self._finish_body(values, job_status="success")
+                self.assertEqual((body["outcome"], body["error"]), ("failed", "token_ceiling"))
+
+    def test_a_mid_run_402_without_a_wall_fails_red_and_names_the_quota(self) -> None:
+        """A 402 the plan did not explain (today's legacy quota) is a failure, not a wall."""
+        values = self._mid_run_402("review")
+        self.assertNotEqual(self.returncode, 0)
+        self.assertNotIn("walled", values)
+        self.assertFalse(self.stage_dir.exists())
+        self.assertEqual(self._finish_body(values, job_status="failure")["outcome"], "failed")
+        # analyze_repository.py records the refusal once it reads the engine's verdict (#124);
+        # the finish step names it from that record.
+        (self.runner_temp / "codeboarding-engine-error.json").write_text(
+            json.dumps({"kind": "llm_quota_exhausted", "statusCode": 402, "exitCode": 3}), encoding="utf-8"
+        )
+        body = self._finish_body(values, job_status="failure")
+        self.assertEqual((body["outcome"], body["error"]), ("failed", "quota_exhausted"))
 
     def test_the_head_analysis_is_named_for_the_finish_step_before_it_runs(self) -> None:
         _state(self.base_dir, cap=4)

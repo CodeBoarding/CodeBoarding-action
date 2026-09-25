@@ -282,6 +282,21 @@ class RunMeterTests(unittest.TestCase):
         body, _ = self._finish(JOB_STATUS="success")
         self.assertEqual((body["outcome"], body["error"]), ("failed", "token_ceiling"))
 
+    def test_a_quota_the_plan_did_not_explain_is_reported_as_a_quota(self) -> None:
+        """A 402 with no `wall` fails red; its release still says why, from the engine's record."""
+        (self.runner_temp / "codeboarding-engine-error.json").write_text(json.dumps({"kind": "llm_quota_exhausted"}))
+        body, _ = self._finish(JOB_STATUS="failure")
+        self.assertEqual((body["outcome"], body["error"]), ("failed", "quota_exhausted"))
+
+    def test_the_plan_wall_outranks_the_engine_record(self) -> None:
+        (self.runner_temp / "codeboarding-wall").mkdir()
+        (self.runner_temp / "codeboarding-wall" / "wall.json").write_text(
+            json.dumps(example("wall.token-ceiling.json"))
+        )
+        (self.runner_temp / "codeboarding-engine-error.json").write_text(json.dumps({"kind": "llm_quota_exhausted"}))
+        body, _ = self._finish(JOB_STATUS="success")
+        self.assertEqual(body["error"], "token_ceiling")
+
     # -- the finish --------------------------------------------------------
 
     def _finish(self, **environ: str) -> tuple[dict, str]:

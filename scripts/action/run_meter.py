@@ -220,16 +220,30 @@ def outcome(environ: dict[str, str]) -> str:
     return "failed"
 
 
+#: The engine's own refusals, which analyze_repository.py records when it stops on one. A 402
+#: without a `wall` (a quota the plan did not explain) is still a quota, and says so here.
+ENGINE_ERRORS = {"llm_quota_exhausted": "quota_exhausted", "llm_auth": "llm_auth_rejected"}
+
+
+def failure_reason(environ: dict[str, str]) -> str | None:
+    """The plan's wall reason when there is one, else the engine's recorded refusal."""
+    runner_temp = Path(environ["RUNNER_TEMP"])
+    try:
+        return json.loads((runner_temp / "codeboarding-wall" / "wall.json").read_text(encoding="utf-8"))["reason"][:200]
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    try:
+        kind = json.loads((runner_temp / "codeboarding-engine-error.json").read_text(encoding="utf-8"))["kind"]
+        return ENGINE_ERRORS.get(kind)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
 def finish(environ: dict[str, str]) -> int:
     """Always 0: reporting the outcome must never be what fails the job."""
     body = {"run_id": environ["RUN_ID"], "outcome": outcome(environ), "error": None}
     if body["outcome"] != "produced":
-        try:
-            body["error"] = json.loads(
-                (Path(environ["RUNNER_TEMP"]) / "codeboarding-wall" / "wall.json").read_text(encoding="utf-8")
-            )["reason"][:200]
-        except (OSError, ValueError, KeyError, TypeError):
-            pass
+        body["error"] = failure_reason(environ)
     try:
         answer = post(environ, "/run/finish", body)
     except Exception as exc:  # noqa: BLE001 - an unreported run is released after the stale-hold timeout
