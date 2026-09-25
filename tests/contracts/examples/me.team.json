@@ -47,6 +47,7 @@
       "login": "acme-corp",
       "plan": "team",
       "covered": true,
+      "admin": true,
       "members_permission": true,
       "bot_runs": {
         "meter": "bot_runs",

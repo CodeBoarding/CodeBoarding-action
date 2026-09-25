@@ -1,0 +1,75 @@
+{
+  "period": "2026-W39",
+  "resets_at": "2026-09-28T00:00:00+00:00",
+  "runs": {
+    "used": 4,
+    "limit": 5,
+    "by_you": 3,
+    "by_bots": 1,
+    "items": [
+      {
+        "key": "github:5550101#pr12",
+        "surface": "github",
+        "repository": "fresh-dev/todo-api",
+        "pr": 12,
+        "by": {
+          "kind": "person",
+          "login": "fresh-dev"
+        },
+        "first_run_at": "2026-09-23T10:15:00+00:00",
+        "updates": 0
+      },
+      {
+        "key": "vscode:1b3d5f7092a4c6e8f0a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d0e2f4a6b8c0d2e4",
+        "surface": "vscode",
+        "repository": "todo-api",
+        "pr": null,
+        "by": {
+          "kind": "person",
+          "login": "fresh-dev"
+        },
+        "first_run_at": "2026-09-22T19:40:00+00:00",
+        "updates": 1
+      },
+      {
+        "key": "github:5550101#pr11",
+        "surface": "github",
+        "repository": "fresh-dev/todo-api",
+        "pr": 11,
+        "by": {
+          "kind": "bot",
+          "login": "renovate[bot]"
+        },
+        "first_run_at": "2026-09-22T06:00:00+00:00",
+        "updates": 0
+      },
+      {
+        "key": "github:5550102#pr3",
+        "surface": "github",
+        "repository": null,
+        "pr": 3,
+        "by": null,
+        "first_run_at": null,
+        "updates": 0
+      }
+    ]
+  },
+  "reviews": {
+    "used": 2,
+    "limit": 3,
+    "items": [
+      {
+        "key": "github:5550101#pr12",
+        "repository": "fresh-dev/todo-api",
+        "pr": 12,
+        "opened_at": "2026-09-23T10:40:00+00:00"
+      },
+      {
+        "key": "github:5550101#pr10",
+        "repository": "fresh-dev/todo-api",
+        "pr": 10,
+        "opened_at": "2026-09-21T13:05:00+00:00"
+      }
+    ]
+  }
+}

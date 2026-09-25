@@ -45,6 +45,11 @@
       "minimum": 1,
       "description": "Action: the depth of the default-branch baseline, when one exists"
     },
+    "pull_request": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Action: the pull request a comment-triggered run (issue_comment, or any run not on refs/pull/<n>/merge that is not a sync) is for. The run then counts once a week per pull request, charged to the commenter, when our GitHub App confirms the pull request is in the repository; otherwise it counts on its own run. Honour system"
+    },
     "client": {
       "type": "object",
       "properties": {

@@ -1,0 +1,44 @@
+{
+  "workspace": "workspace:github:9919",
+  "login": "CodeBoarding",
+  "plan": "team",
+  "period": "2026-W39",
+  "resets_at": "2026-09-28T00:00:00+00:00",
+  "runs": {
+    "total": 31,
+    "by_people": 24,
+    "by_bots": 7,
+    "people": [
+      {
+        "login": "Svilen-Stefanov",
+        "kind": "person",
+        "runs": 12
+      },
+      {
+        "login": "ivanmilevtues",
+        "kind": "person",
+        "runs": 9
+      },
+      {
+        "login": "dependabot[bot]",
+        "kind": "bot",
+        "runs": 7
+      },
+      {
+        "login": "brovatten",
+        "kind": "person",
+        "runs": 2
+      },
+      {
+        "login": "tsvetan-codes",
+        "kind": "person",
+        "runs": 1
+      }
+    ]
+  },
+  "seats": {
+    "month": "2026-09",
+    "active": 4,
+    "limit": 10
+  }
+}

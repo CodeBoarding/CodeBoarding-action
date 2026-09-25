@@ -1,0 +1,120 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/workspace-usage.schema.json",
+  "title": "Answer of GET /workspaces/{workspace}/usage: an organisation's week and month, for its admins while it has a Team or Enterprise plan (403 otherwise)",
+  "type": "object",
+  "properties": {
+    "workspace": {
+      "type": "string",
+      "pattern": "^workspace:github:[0-9]+$"
+    },
+    "login": {
+      "type": "string"
+    },
+    "plan": {
+      "enum": [
+        "team",
+        "enterprise"
+      ]
+    },
+    "period": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-W[0-9]{2}$"
+    },
+    "resets_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "runs": {
+      "type": "object",
+      "description": "This week's charged runs in the organisation's repositories: each pull request (or other run) counts once, whoever pays for it",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_people": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_bots": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "people": {
+          "type": "array",
+          "description": "Most runs first",
+          "items": {
+            "type": "object",
+            "properties": {
+              "login": {
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "person",
+                  "bot"
+                ]
+              },
+              "runs": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "login",
+              "kind",
+              "runs"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "total",
+        "by_people",
+        "by_bots",
+        "people"
+      ],
+      "additionalProperties": false
+    },
+    "seats": {
+      "type": "object",
+      "description": "This billing month's active developers of the plan's subject (the organisation, or its Enterprise company)",
+      "properties": {
+        "month": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}$"
+        },
+        "active": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "description": "The plan's seats (Team's default 10); null for an Enterprise contract without seats"
+        }
+      },
+      "required": [
+        "month",
+        "active",
+        "limit"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "workspace",
+    "login",
+    "plan",
+    "period",
+    "resets_at",
+    "runs",
+    "seats"
+  ],
+  "additionalProperties": false
+}

@@ -6,6 +6,8 @@ JSON Schemas (draft 2020-12) for the wire shapes licensing-aws answers and accep
 | --- | --- |
 | `session.schema.json` | answer of `POST /session/github` and `POST /session/extension` |
 | `me.schema.json` | answer of `GET /me` |
+| `usage.schema.json` | answer of `GET /me/usage`: this week's counted runs and opened private reviews, item by item |
+| `workspace-usage.schema.json` | answer of `GET /workspaces/{workspace}/usage` (admins of a Team or Enterprise organisation; 403 `reason: not_admin` or `no_plan` otherwise) |
 | `run-start.request.schema.json`, `run-start.response.schema.json` | `POST /run/start` on gha_proxy (OIDC) and license_proxy (extension token) |
 | `run-finish.request.schema.json`, `run-finish.response.schema.json` | `POST /run/finish` on both |
 | `meter-consume.request.schema.json`, `meter-consume.response.schema.json` | `POST /meter/consume` |
