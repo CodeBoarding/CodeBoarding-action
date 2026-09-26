@@ -150,9 +150,52 @@ The same rule makes the combinations explicit rather than order-dependent:
 
 A licence alongside your own key is deliberately allowed: it says "my CodeBoarding plan,
 my own tokens". **Your key always wins.** A direct provider call never reaches
-CodeBoarding, so the licence is recorded and reported but not spent, and nothing meters
-that combination today. The job summary says so on every run, rather than leaving you to
+CodeBoarding, so the licence is never spent on a model call. It only tells the run's
+check whose plan the run is on, and the run is counted like any own-key run (see
+[Plans and allowances](#plans-and-allowances)). The job summary says so on every run, rather than leaving you to
 infer it from the tier name.
+
+### Plans and allowances
+
+Every run asks CodeBoarding first. Before the engine is installed, the action calls the
+proxy's `/run/start` with the job's OIDC token, which names the repository, the pull
+request and the GitHub user who triggered the run; the answer says whether the run goes
+ahead and how deep it may go. A final step reports whether a map was produced.
+
+| | Free | Pro |
+|---|---|---|
+| Runs a week, across the Action and VS Code | 5 | 40 |
+| Private pull request reviews a week, in the web app | 3 | 60 |
+| Map depth | up to 3 levels | no cap |
+
+- **A run is one pull request a week.** The first map that week counts; every push after
+  it that week is included, even once the allowance is used up. Allowances reset Monday
+  00:00 UTC.
+- **Failed runs are never charged.** Only a run that writes its map counts. A failed or
+  cancelled run releases its place, and so does a runner that disappears (after six hours).
+- **Who is charged.** The GitHub user who triggered the run: whoever opened the pull
+  request or pushed the commit, on their own CodeBoarding account (created the first time
+  they are seen, and theirs to claim by signing in with GitHub). Bot pull requests
+  (`dependabot[bot]`, `renovate[bot]`) are charged to the organisation's bot allowance.
+  Baseline syncs are not counted. A Team plan covers everyone in the organisation.
+- **Depth.** `depth_cap` chooses how deep the map goes and the plan of whoever is charged
+  caps it: 3 on Free, no cap on Pro, the trial, Team and Enterprise. With the default of 2
+  nothing differs between plans. When an author may go deeper than the committed baseline
+  was drawn, the review is analysed in full at their cap instead of incrementally.
+- **Your own key.** A provider key changes where the model calls go, not whether the run is
+  checked: own-key runs still call `/run/start` and count the same, with no token ceiling,
+  since the model bill is yours. A job without `id-token: write` skips the check with a
+  warning.
+- **CodeBoarding down is never your problem.** If the proxy cannot be reached, the run goes
+  ahead at up to 3 levels with a warning.
+- **Update pinned versions.** Action versions from before this release do not start runs
+  with the proxy, so their hosted calls fail once it enforces plans. `@v1` gets this
+  release automatically; a workflow pinned to an older tag or SHA must update.
+
+`license_key` is deprecated: plans now follow your GitHub account. It keeps working until
+the license key cutoff and is ignored after it; each run that sets it says so. Link the key
+to your account on the [plan page](https://app.codeboarding.org/dashboard/plan), then
+remove it (and use `llm: hosted` instead of `llm: license`).
 
 ### Providers
 
@@ -309,11 +352,11 @@ With the default `github.token`, the repository or organization must allow GitHu
 | `<provider>_api_key` | both | empty | That provider's key, e.g. `anthropic_api_key`. See [Providers](#providers). |
 | `<provider>_base_url` | both | empty | That provider's endpoint, where it has one. |
 | `aws_bedrock_region` | both | empty | Bedrock region. Core defaults to `us-east-1`. |
-| `license_key` | both | empty | CodeBoarding license. Required by `llm: license`. |
+| `license_key` | both | empty | Deprecated. CodeBoarding license, required by `llm: license`; ignored after the license key cutoff. |
 | `model` | both | empty | Default model for both analysis and parsing. |
 | `agent_model` | both | empty | Analysis-only override for `model`. |
 | `parsing_model` | both | empty | Parsing-only override for `model`. |
-| `depth_cap` | both | `2` | Positive integer maximum analysis depth, including full-analysis fallbacks. Changing it rebuilds incompatible state. |
+| `depth_cap` | both | `2` | Positive integer maximum analysis depth, including full-analysis fallbacks, capped by the plan of whoever the run is charged to (3 on Free). Changing it rebuilds incompatible state. |
 | `github_token` | both | `${{ github.token }}` | Token for comments and sync delivery. |
 | `sync_strategy` | sync | `push` | `push` or `pull_request`. |
 | `target_branch` | sync | event branch | Branch receiving the baseline or rolling PR. |
@@ -329,7 +372,8 @@ runs prefer compatible prior PR state for incremental updates, while the review
 still compares the merge base with the current head.
 
 Set `depth_cap` in the action's `with:` block (for example, `depth_cap: 4`).
-This configuration is authoritative: stored `metadata.depth_cap` is checked for
+The run uses it as given unless the plan caps it lower (see
+[Plans and allowances](#plans-and-allowances)). Stored `metadata.depth_cap` is checked for
 compatibility, not inherited, and legacy `metadata.depth_level` is not used as a
 fallback. Missing or incompatible baseline depth triggers a rebuild.
 

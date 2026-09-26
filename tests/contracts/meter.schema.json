@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/meter.schema.json",
+  "title": "A weekly allowance and how much of it is used",
+  "type": "object",
+  "properties": {
+    "meter": {
+      "enum": [
+        "runs",
+        "reading",
+        "bot_runs"
+      ]
+    },
+    "used": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "limit": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "description": "null when the plan includes the meter without a count"
+    },
+    "resets_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "meter",
+    "used",
+    "limit",
+    "resets_at"
+  ],
+  "additionalProperties": false
+}

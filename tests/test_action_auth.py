@@ -285,6 +285,7 @@ done
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
         self.assertEqual(outputs["tier"], "license")
         self.assertIn("::add-mask::a-license", result.stdout)
+        self.assertIn("license_key is deprecated", result.stdout, "still honoured, but said to be going")
 
         configured = subprocess.run(
             [str(CONFIGURE_AUTH)],
@@ -305,6 +306,7 @@ done
         upstream = args[args.index("--upstream-base-url") + 1]
         self.assertEqual(upstream, "https://auduihjmm4b735zci7vyabuikq0hppqn.lambda-url.us-east-1.on.aws")
         self.assertIn("--license-file", args)
+        self.assertEqual(args[args.index("--run-id-file") + 1], str(auth_dir / "run-id"))
         self.assertEqual((auth_dir / "env" / "OPENROUTER_API_KEY").read_text(), "github-actions-oidc-relay")
         self.assertEqual((auth_dir / "env" / "OPENROUTER_BASE_URL").read_text(), "http://127.0.0.1:12345")
 
@@ -333,7 +335,9 @@ done
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
         self.assertEqual(outputs["tier"], "byok+license")
         self.assertEqual((auth_dir / "env" / "ANTHROPIC_API_KEY").read_text(), "my-own-key")
-        self.assertFalse((auth_dir / "license.txt").exists(), "no licence is staged for the relay")
+        # Staged for the preflight, which tells the proxy whose plan the run is on; the relay
+        # that would spend it on a model call is never started (asserted below).
+        self.assertEqual((auth_dir / "license.txt").read_text(), "a-licence")
         self.assertNotIn("a-licence", (auth_dir / "env" / "ANTHROPIC_API_KEY").read_text())
 
         configured = subprocess.run(

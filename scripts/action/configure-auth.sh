@@ -6,7 +6,10 @@
 # nothing to do here: its key never leaves the runner.
 set -euo pipefail
 AUTH_DIR="${RUNNER_TEMP}/codeboarding-auth"
-HOSTED_PROXY_URL="https://auduihjmm4b735zci7vyabuikq0hppqn.lambda-url.us-east-1.on.aws"
+# One URL for the model calls here and the run's start and finish in run_meter.py.
+# CODEBOARDING_PROXY_URL points a workflow at the dev stack; it only redirects that
+# workflow's own OIDC tokens, so it grants nothing.
+HOSTED_PROXY_URL="${CODEBOARDING_PROXY_URL:-$(cat "$ACTION_PATH/scripts/action/hosted-proxy-url")}"
 umask 077
 
 if [ ! -s "$AUTH_DIR/tier" ]; then
@@ -28,6 +31,8 @@ RELAY_ARGS=(--upstream-base-url "$HOSTED_PROXY_URL" --ready-file "$READY")
 if [ -s "$AUTH_DIR/license.txt" ]; then
   RELAY_ARGS+=(--license-file "$AUTH_DIR/license.txt")
 fi
+# Written by the preflight when the proxy gave this run an id; read per request.
+RELAY_ARGS+=(--run-id-file "$AUTH_DIR/run-id")
 
 python3 "$ACTION_PATH/scripts/oidc_relay.py" "${RELAY_ARGS[@]}" > "$LOG" 2>&1 &
 echo $! > "$PID"

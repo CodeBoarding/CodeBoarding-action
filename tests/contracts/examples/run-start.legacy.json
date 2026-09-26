@@ -1,0 +1,23 @@
+{
+  "depth_reason": null,
+  "plan": "free",
+  "trial": false,
+  "charged_to": {
+    "kind": "none",
+    "subject": null,
+    "login": null
+  },
+  "meter": null,
+  "resets_at": "2026-09-28T00:00:00+00:00",
+  "full_analysis": false,
+  "mode": "legacy",
+  "fail_open": false,
+  "wall": null,
+  "allowed": true,
+  "run_id": "github:acme-corp/billing-service#11809532110",
+  "depth_cap": 2,
+  "counted": false,
+  "used": null,
+  "limit": null,
+  "remaining": null
+}

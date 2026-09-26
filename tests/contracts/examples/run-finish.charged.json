@@ -1,0 +1,12 @@
+{
+  "run_id": "github:acme-corp/billing-service#11809532110",
+  "charged": true,
+  "cause": "produced",
+  "meter": {
+    "meter": "runs",
+    "used": 5,
+    "limit": 5,
+    "resets_at": "2026-09-28T00:00:00+00:00"
+  },
+  "mode": "enforce"
+}

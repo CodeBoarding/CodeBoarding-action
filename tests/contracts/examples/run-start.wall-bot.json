@@ -1,0 +1,37 @@
+{
+  "depth_reason": null,
+  "plan": "free",
+  "trial": false,
+  "charged_to": {
+    "kind": "workspace",
+    "subject": "workspace:github:9919",
+    "login": "acme-corp"
+  },
+  "meter": "bot_runs",
+  "resets_at": "2026-09-28T00:00:00+00:00",
+  "full_analysis": false,
+  "mode": "enforce",
+  "fail_open": false,
+  "wall": {
+    "reason": "bot_runs_exhausted",
+    "meter": "bot_runs",
+    "used": 5,
+    "limit": 5,
+    "resets_at": "2026-09-28T00:00:00+00:00",
+    "plan": "free",
+    "subject": {
+      "kind": "workspace",
+      "login": "acme-corp"
+    },
+    "message": "CodeBoarding map not drawn: acme-corp has used 5 of 5 free bot pull requests this week (resets Monday 00:00 UTC). A Team plan includes bot pull requests.",
+    "upgrade_url": "https://app.codeboarding.org/dashboard/plan",
+    "plans_url": "https://codeboarding.org/pricing"
+  },
+  "allowed": false,
+  "run_id": null,
+  "depth_cap": 3,
+  "counted": false,
+  "used": 5,
+  "limit": 5,
+  "remaining": 0
+}

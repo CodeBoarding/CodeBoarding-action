@@ -1,0 +1,15 @@
+{
+  "token": "cbx_EXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEE",
+  "session_id": "ses_ext_1",
+  "kind": "extension",
+  "expires_at": null,
+  "account": {
+    "id": "acc_3qk2m7x9p4t8w1v6r5ya",
+    "login": "svilen",
+    "provider": "github",
+    "provider_id": 1296269,
+    "claimed": true,
+    "email": "svilen@example.com"
+  },
+  "trial_started": false
+}

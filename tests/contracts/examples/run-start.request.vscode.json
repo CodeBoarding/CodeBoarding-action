@@ -1,0 +1,14 @@
+{
+  "run_id": "5b0c1b1e-7f7e-4f3a-9d1a-0d6f2a1c9e11",
+  "repository": {
+    "key": "github.com/codeboarding/codeboarding",
+    "name": "CodeBoarding"
+  },
+  "depth": 3,
+  "credential": "hosted",
+  "client": {
+    "surface": "vscode",
+    "version": "0.15.0",
+    "editor": "cursor"
+  }
+}
