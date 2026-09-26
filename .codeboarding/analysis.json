@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-09-22T21:49:36.257381+00:00",
-    "source_tree_hash": "e655552762a8af1bc87e1c0354b45b83a2828d01832655c95b78287d77064469",
+    "generated_at": "2026-09-26T19:18:22.409396+00:00",
+    "source_tree_hash": "5ea7bf6b743bc7588349267effae03593d59704a1ff04dde25834cb17bd42cf6",
     "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
@@ -87,8 +87,8 @@
         "scripts/analyze_repository.py|scripts.analyze_repository._run_command",
         "scripts/analyze_repository.py|scripts.analyze_repository.main"
       ],
-      "content_hash": "d56aa23d28b155df",
-      "module_hash": "621ccc2626ad8f2a"
+      "content_hash": "26a634a9fd719378",
+      "module_hash": "c6a74c9860d1b100"
     },
     "scripts/diff_to_mermaid.py": {
       "method_keys": [
@@ -351,40 +351,40 @@
     "scripts/analyze_repository.py|scripts.analyze_repository.AnalysisError": {
       "file_path": "scripts/analyze_repository.py",
       "qualified_name": "scripts.analyze_repository.AnalysisError",
-      "start_line": 16,
-      "end_line": 17,
+      "start_line": 23,
+      "end_line": 24,
       "type": "CLASS",
       "content_hash": "e23f18bc0d32e21b"
     },
     "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool": {
       "file_path": "scripts/analyze_repository.py",
       "qualified_name": "scripts.analyze_repository._parse_bool",
-      "start_line": 20,
-      "end_line": 29,
+      "start_line": 27,
+      "end_line": 36,
       "type": "FUNCTION",
       "content_hash": "3de011b556fa2edb"
     },
     "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response": {
       "file_path": "scripts/analyze_repository.py",
       "qualified_name": "scripts.analyze_repository._parse_cli_response",
-      "start_line": 32,
-      "end_line": 66,
+      "start_line": 39,
+      "end_line": 73,
       "type": "FUNCTION",
       "content_hash": "064ec779cc59420b"
     },
     "scripts/analyze_repository.py|scripts.analyze_repository._run_command": {
       "file_path": "scripts/analyze_repository.py",
       "qualified_name": "scripts.analyze_repository._run_command",
-      "start_line": 69,
-      "end_line": 90,
+      "start_line": 76,
+      "end_line": 103,
       "type": "FUNCTION",
-      "content_hash": "001ae1f8af80eaf8"
+      "content_hash": "6eedbd67b1ffd860"
     },
     "scripts/analyze_repository.py|scripts.analyze_repository.main": {
       "file_path": "scripts/analyze_repository.py",
       "qualified_name": "scripts.analyze_repository.main",
-      "start_line": 93,
-      "end_line": 137,
+      "start_line": 106,
+      "end_line": 150,
       "type": "FUNCTION",
       "content_hash": "884750cb5fd6b713"
     },
@@ -819,14 +819,20 @@
         {
           "qualified_name": "scripts.analyze_repository._parse_cli_response",
           "reference_file": "scripts/analyze_repository.py",
-          "reference_start_line": 32,
-          "reference_end_line": 66
+          "reference_start_line": 39,
+          "reference_end_line": 73
         },
         {
           "qualified_name": "scripts.diff_to_mermaid.load_analysis",
           "reference_file": "scripts/diff_to_mermaid.py",
           "reference_start_line": 92,
           "reference_end_line": 110
+        },
+        {
+          "qualified_name": "scripts.analyze_repository._run_command",
+          "reference_file": "scripts/analyze_repository.py",
+          "reference_start_line": 76,
+          "reference_end_line": 103
         }
       ],
       "source_cluster_ids": [
