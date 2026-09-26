@@ -196,6 +196,9 @@ Every run reports what it resolved, so the answer never has to be inferred from 
 - a job-summary table naming the tier and provider;
 - on a configuration failure, an error annotation and — in review mode — a pull request
   comment with the fix, so the person who has to add the secret sees it where they are.
+- when the provider rejects the key or its quota runs out during the analysis, the run fails
+  with an error annotation saying which, and in review mode the failure comment says it too.
+  No partial analysis is published.
 
 ## Model selection
 

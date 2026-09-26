@@ -5,12 +5,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 PROG = "codeboarding"
+
+# The engine's exit codes for an LLM refusal the user has to fix, and what to tell them.
+ENGINE_REFUSALS = {
+    2: "The LLM provider rejected the API key. Check the key's secret and re-run.",
+    3: "The LLM provider's token or credit quota is exhausted. Add credits or raise the quota, then re-run.",
+}
 
 
 class AnalysisError(RuntimeError):
@@ -84,6 +91,12 @@ def _run_command(args: list[str], output_dir: Path) -> str:
     return_code = process.wait()
     stdout = "".join(stdout_lines)
     if return_code != 0:
+        reason = ENGINE_REFUSALS.get(return_code)
+        if reason:
+            # Written straight to the step's outputs: the shell never sees this script's stdout on failure.
+            with open(os.environ.get("GITHUB_OUTPUT", os.devnull), "a", encoding="utf-8") as outputs:
+                outputs.write(f"failure_reason={reason}\n")
+            raise AnalysisError(reason)
         details = stdout.strip() or f"exit code {return_code}; see command logs above"
         raise AnalysisError(f"Command failed ({' '.join(args)}): {details}")
 

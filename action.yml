@@ -668,4 +668,6 @@ runs:
         message: |
           ### CodeBoarding review · failed
 
+          ${{ steps.review_analyze.outputs.failure_reason }}
+
           See the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).

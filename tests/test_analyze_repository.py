@@ -70,6 +70,37 @@ class AnalyzeRepositoryTests(unittest.TestCase):
             self.assertIn('{"requiresFullAnalysis": true}', stderr.getvalue())
             self.assertEqual(stdout, 'Analyzing repository...\n{"requiresFullAnalysis": true}\n')
 
+    def _fail_with(self, exit_code: int, outputs: Path) -> ar.AnalysisError:
+        command = [sys.executable, "-c", f"import sys; sys.exit({exit_code})"]
+        with patch.dict("os.environ", {"GITHUB_OUTPUT": str(outputs)}), patch("sys.stderr", io.StringIO()):
+            with self.assertRaises(ar.AnalysisError) as caught:
+                ar._run_command(command, outputs.parent / "out")
+        return caught.exception
+
+    def test_run_command_names_an_exhausted_quota(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            outputs = Path(tmp) / "github_output"
+
+            error = self._fail_with(3, outputs)
+
+            self.assertIn("quota is exhausted", str(error))
+            self.assertEqual(outputs.read_text(encoding="utf-8"), f"failure_reason={error}\n")
+
+    def test_run_command_names_a_rejected_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            error = self._fail_with(2, Path(tmp) / "github_output")
+
+            self.assertIn("rejected the API key", str(error))
+
+    def test_run_command_leaves_other_failures_unnamed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            outputs = Path(tmp) / "github_output"
+
+            error = self._fail_with(1, outputs)
+
+            self.assertIn("exit code 1", str(error))
+            self.assertFalse(outputs.exists())
+
     def test_parse_main_incremental_success(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
