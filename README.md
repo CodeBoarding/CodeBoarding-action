@@ -173,6 +173,7 @@ without knowing any precedence rules.
 | `openai` | OpenAI | `openai_api_key`, `openai_base_url` | `openai_api_key` or `openai_base_url` |
 | `openrouter` | OpenRouter | `openrouter_api_key` | `openrouter_api_key` |
 | `orcarouter` | OrcaRouter | `orcarouter_api_key` | `orcarouter_api_key` |
+| `requesty` | Requesty | `requesty_api_key`, `requesty_base_url` | `requesty_api_key` |
 | `vercel` | Vercel AI Gateway | `vercel_api_key`, `vercel_base_url` | `vercel_api_key` or `vercel_base_url` |
 
 Each provider has exactly one accepted spelling, and its inputs are named after it, so

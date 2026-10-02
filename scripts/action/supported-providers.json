@@ -39,6 +39,16 @@
         "orcarouter_api_key": "ORCAROUTER_API_KEY"
       }
     },
+    "requesty": {
+      "label": "Requesty",
+      "selection_envs": [
+        "REQUESTY_API_KEY"
+      ],
+      "inputs": {
+        "requesty_api_key": "REQUESTY_API_KEY",
+        "requesty_base_url": "REQUESTY_BASE_URL"
+      }
+    },
     "anthropic": {
       "label": "Anthropic",
       "selection_envs": [

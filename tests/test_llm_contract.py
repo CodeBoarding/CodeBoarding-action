@@ -105,6 +105,20 @@ class ContractTests(unittest.TestCase):
                 plan = self.resolve(CB_IN_LLM=name, **{f"CB_IN_{name.upper()}_BASE_URL": "http://host:1234"})
                 self.assertEqual(plan["env"][endpoint], "http://host:1234")
 
+    def test_requesty_endpoint_override_still_requires_its_key(self) -> None:
+        inputs = {"CB_IN_LLM": "requesty", "CB_IN_REQUESTY_BASE_URL": "https://router.eu.requesty.ai/v1"}
+        error = self.refuse(**inputs)
+        self.assertEqual(error.code, "missing_provider_key")
+        self.assertIn("requesty_api_key", error.message)
+
+        plan = self.resolve(**inputs, CB_IN_REQUESTY_API_KEY="test-requesty")
+        self.assertEqual(plan["tier"], "byok")
+        self.assertEqual(plan["provider"], "requesty")
+        self.assertEqual(
+            plan["env"],
+            {"REQUESTY_API_KEY": "test-requesty", "REQUESTY_BASE_URL": "https://router.eu.requesty.ai/v1"},
+        )
+
     # -- refused shapes ----------------------------------------------------
 
     def test_an_undeclared_workflow_is_refused_rather_than_defaulted(self) -> None:
