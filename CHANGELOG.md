@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.15.3](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.15.2...v1.15.3) (2026-10-02)
+
+
+### Features
+
+* **action:** attribute PR-comment clicks to the Action ([#129](https://github.com/CodeBoarding/CodeBoarding-action/issues/129)) ([67b92de](https://github.com/CodeBoarding/CodeBoarding-action/commit/67b92deaab1336df98335193888a8c0580724186))
+* **review:** relay the engine's early-exit verdict, a machine-readable comment line, and the platform link in the progress comment ([#131](https://github.com/CodeBoarding/CodeBoarding-action/issues/131)) ([bce7a16](https://github.com/CodeBoarding/CodeBoarding-action/commit/bce7a16dce014f525f14114d25e56c29f429a557))
+* say why a run failed when the LLM quota runs out or the key is rejected ([#136](https://github.com/CodeBoarding/CodeBoarding-action/issues/136)) ([9c586bb](https://github.com/CodeBoarding/CodeBoarding-action/commit/9c586bb9ac1a34834a50daca4423c22c7b49f721))
+
+
+### Bug Fixes
+
+* update CodeBoarding dependency to 0.14.5 ([#137](https://github.com/CodeBoarding/CodeBoarding-action/issues/137)) ([28a5718](https://github.com/CodeBoarding/CodeBoarding-action/commit/28a57180bce03614fa2d8036451a48f3926c492e))
+
+
+### Miscellaneous Chores
+
+* release 1.15.3 ([1df7012](https://github.com/CodeBoarding/CodeBoarding-action/commit/1df701292719b93496af3918daad576d28d21268))
+
 ## [1.15.2](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.15.1...v1.15.2) (2026-09-20)
 
 
