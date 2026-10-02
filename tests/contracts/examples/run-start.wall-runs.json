@@ -1,0 +1,37 @@
+{
+  "depth_reason": null,
+  "plan": "free",
+  "trial": false,
+  "charged_to": {
+    "kind": "person",
+    "subject": "account:acc_3qk2m7x9p4t8w1v6r5ya",
+    "login": "m.koch"
+  },
+  "meter": "runs",
+  "resets_at": "2026-09-28T00:00:00+00:00",
+  "full_analysis": false,
+  "mode": "enforce",
+  "fail_open": false,
+  "wall": {
+    "reason": "runs_exhausted",
+    "meter": "runs",
+    "used": 5,
+    "limit": 5,
+    "resets_at": "2026-09-28T00:00:00+00:00",
+    "plan": "free",
+    "subject": {
+      "kind": "person",
+      "login": "m.koch"
+    },
+    "message": "CodeBoarding map not drawn: m.koch has used 5 of 5 free runs this week (resets Monday 00:00 UTC). Pro gives 40 a week; a Team plan covers everyone in acme-corp.",
+    "upgrade_url": "https://app.codeboarding.org/dashboard/plan",
+    "plans_url": "https://codeboarding.org/pricing"
+  },
+  "allowed": false,
+  "run_id": null,
+  "depth_cap": 3,
+  "counted": false,
+  "used": 5,
+  "limit": 5,
+  "remaining": 0
+}

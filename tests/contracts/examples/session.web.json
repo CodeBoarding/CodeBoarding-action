@@ -1,0 +1,15 @@
+{
+  "token": "cbs_EXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEEXAMPLEE",
+  "session_id": "ses_web_1",
+  "kind": "web",
+  "expires_at": "2026-09-24T14:05:00+00:00",
+  "account": {
+    "id": "acc_3qk2m7x9p4t8w1v6r5ya",
+    "login": "svilen",
+    "provider": "github",
+    "provider_id": 1296269,
+    "claimed": true,
+    "email": "svilen@example.com"
+  },
+  "trial_started": true
+}

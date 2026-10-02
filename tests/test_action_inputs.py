@@ -64,12 +64,55 @@ class ActionInputTests(unittest.TestCase):
         self.assertNotIn("default:", block)
 
     def test_depth_is_wired_to_state_identity_and_both_analysis_modes(self) -> None:
+        """The workflow's depth_cap is only a request: the preflight's answer, clamped to the
+        payer's plan, is what the identity and both analyses run at (R4, R5)."""
         self.assertIn("default: '2'", self.inputs["depth_cap"])
         self.assertNotIn("depth_level", self.inputs)
         for identifier in ("id: state", "id: sync_analyze", "id: review_analyze"):
             start = ACTION.index(identifier)
             block = ACTION[start : ACTION.index("\n      run:", start)]
-            self.assertIn("DEPTH_CAP: ${{ inputs.depth_cap }}", block)
+            self.assertIn("DEPTH_CAP: ${{ steps.preflight.outputs.depth_cap }}", block)
+        preflight = ACTION[ACTION.index("id: preflight") :]
+        self.assertIn("DEPTH_CAP: ${{ inputs.depth_cap }}", preflight[: preflight.index("\n      run:")])
+        self.assertEqual(ACTION.count("${{ inputs.depth_cap }}"), 1, "only the preflight reads the input")
+
+    def test_the_preflight_runs_before_the_engine_install_in_every_mode(self) -> None:
+        start = ACTION.index("- name: Start the run with CodeBoarding")
+        self.assertLess(ACTION.index("- name: Stop on LLM configuration failure"), start, "it reads the resolved tier")
+        self.assertLess(ACTION.index("- name: Checkout analysis target"), start, "it reads the baseline's depth")
+        self.assertLess(start, ACTION.index("- name: Install CodeBoarding"))
+        condition = ACTION[start : ACTION.index("shell:", start)]
+        self.assertIn("if: steps.guard.outputs.skip != 'true'\n", condition, "no credential mode is exempt")
+
+    def test_a_refused_run_does_no_analysis_work(self) -> None:
+        for step in (
+            "Setup Java for CodeBoarding",
+            "Install CodeBoarding",
+            "Configure analysis authentication",
+            "Resolve analysis identity",
+            "Analyze baseline",
+            "Deliver baseline",
+            "Analyze pull request",
+            "Render review diagram",
+            "Post review comment",
+        ):
+            with self.subTest(step=step):
+                start = ACTION.index(f"- name: {step}\n")
+                condition = ACTION[start : ACTION.index("\n", ACTION.index("if:", start))]
+                self.assertIn("steps.preflight.outputs.allowed != 'false'", condition)
+
+    def test_the_finish_runs_last_on_every_outcome_and_never_fails_the_job(self) -> None:
+        start = ACTION.index("- name: Finish the run with CodeBoarding")
+        self.assertEqual(ACTION[start:].count("- name:"), 1, "the finish is the last step")
+        block = ACTION[start:]
+        self.assertIn("if: always() && steps.preflight.outputs.run_id != ''", block)
+        self.assertIn("continue-on-error: true", block)
+        self.assertIn("steps.review_analyze.outputs.analysis_path || steps.sync_analyze.outputs.analysis_path", block)
+        self.assertIn("JOB_STATUS: ${{ job.status }}", block)
+
+    def test_license_key_is_deprecated_but_still_wired(self) -> None:
+        self.assertIn("Deprecated", self.inputs["license_key"])
+        self.assertIn("CB_IN_LICENSE_KEY: ${{ inputs.license_key }}", ACTION)
 
     def test_default_workflow_reviews_drafts_on_open_and_new_commits(self) -> None:
         self.assertNotIn("github.event.pull_request.draft", DOGFOOD)

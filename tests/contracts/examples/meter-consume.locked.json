@@ -1,0 +1,28 @@
+{
+  "allowed": false,
+  "consumed": false,
+  "already_opened": false,
+  "meter": {
+    "meter": "reading",
+    "used": 3,
+    "limit": 3,
+    "resets_at": "2026-09-28T00:00:00+00:00"
+  },
+  "mode": "enforce",
+  "fail_open": false,
+  "wall": {
+    "reason": "reviews_exhausted",
+    "meter": "reading",
+    "used": 3,
+    "limit": 3,
+    "resets_at": "2026-09-28T00:00:00+00:00",
+    "plan": "free",
+    "subject": {
+      "kind": "person",
+      "login": "svilen"
+    },
+    "message": "This is your 4th private review this week. Free includes 3 a week; the next one unlocks Monday 00:00 UTC.",
+    "upgrade_url": "https://app.codeboarding.org/dashboard/plan",
+    "plans_url": "https://codeboarding.org/pricing"
+  }
+}

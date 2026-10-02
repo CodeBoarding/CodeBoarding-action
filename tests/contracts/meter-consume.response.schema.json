@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/meter-consume.response.schema.json",
+  "title": "Answer of POST /meter/consume",
+  "type": "object",
+  "properties": {
+    "allowed": {
+      "type": "boolean"
+    },
+    "consumed": {
+      "type": "boolean",
+      "description": "this call used one review"
+    },
+    "already_opened": {
+      "type": "boolean"
+    },
+    "meter": {
+      "$ref": "https://codeboarding.org/schemas/licensing/v1/meter.schema.json"
+    },
+    "mode": {
+      "enum": [
+        "legacy",
+        "shadow",
+        "enforce"
+      ]
+    },
+    "fail_open": {
+      "type": "boolean"
+    },
+    "wall": {
+      "anyOf": [
+        {
+          "$ref": "https://codeboarding.org/schemas/licensing/v1/wall.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "allowed",
+    "consumed",
+    "already_opened",
+    "meter",
+    "mode",
+    "fail_open",
+    "wall"
+  ],
+  "additionalProperties": false
+}

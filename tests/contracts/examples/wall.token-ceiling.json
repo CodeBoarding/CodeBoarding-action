@@ -1,0 +1,15 @@
+{
+  "reason": "token_ceiling",
+  "meter": "tokens",
+  "used": 1500000,
+  "limit": 1500000,
+  "resets_at": "2026-09-28T00:00:00+00:00",
+  "plan": "free",
+  "subject": {
+    "kind": "person",
+    "login": "svilen"
+  },
+  "message": "This repository is large: free runs cover about 1.5M tokens a week and this one needs more. It resets Monday 00:00 UTC; Pro covers it.",
+  "upgrade_url": "https://app.codeboarding.org/dashboard/plan",
+  "plans_url": "https://codeboarding.org/pricing"
+}

@@ -1,0 +1,12 @@
+{
+  "run_id": "vscode:acc_3qk2m7x9p4t8w1v6r5ya#5b0c1b1e-7f7e-4f3a-9d1a-0d6f2a1c9e11",
+  "charged": false,
+  "cause": "failed",
+  "meter": {
+    "meter": "runs",
+    "used": 4,
+    "limit": 5,
+    "resets_at": "2026-09-28T00:00:00+00:00"
+  },
+  "mode": "enforce"
+}

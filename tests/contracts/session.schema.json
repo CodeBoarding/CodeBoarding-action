@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/session.schema.json",
+  "title": "Answer of POST /session/github and POST /session/extension",
+  "type": "object",
+  "properties": {
+    "token": {
+      "type": "string",
+      "pattern": "^cb[sx]_"
+    },
+    "session_id": {
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "web",
+        "extension"
+      ]
+    },
+    "expires_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "account": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^acc_"
+        },
+        "login": {
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "github"
+          ]
+        },
+        "provider_id": {
+          "type": "integer"
+        },
+        "claimed": {
+          "type": "boolean"
+        },
+        "email": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "login",
+        "provider",
+        "provider_id",
+        "claimed",
+        "email"
+      ],
+      "additionalProperties": false
+    },
+    "trial_started": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "token",
+    "session_id",
+    "kind",
+    "expires_at",
+    "account",
+    "trial_started"
+  ],
+  "additionalProperties": false
+}

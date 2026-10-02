@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/run-finish.request.schema.json",
+  "title": "Body of POST /run/finish",
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "produced",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 200
+    }
+  },
+  "required": [
+    "run_id",
+    "outcome"
+  ],
+  "additionalProperties": false
+}

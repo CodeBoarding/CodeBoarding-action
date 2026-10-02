@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/run-finish.response.schema.json",
+  "title": "Answer of POST /run/finish",
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string"
+    },
+    "charged": {
+      "type": "boolean"
+    },
+    "cause": {
+      "enum": [
+        "produced",
+        "already_counted",
+        "failed",
+        "cancelled",
+        "lapsed",
+        "over_allowance",
+        "uncounted",
+        "legacy",
+        "not_found",
+        "fail_open"
+      ]
+    },
+    "meter": {
+      "anyOf": [
+        {
+          "$ref": "https://codeboarding.org/schemas/licensing/v1/meter.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "mode": {
+      "enum": [
+        "legacy",
+        "shadow",
+        "enforce"
+      ]
+    }
+  },
+  "required": [
+    "run_id",
+    "charged",
+    "cause",
+    "meter",
+    "mode"
+  ],
+  "additionalProperties": false
+}

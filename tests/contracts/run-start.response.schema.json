@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/run-start.response.schema.json",
+  "title": "Answer of POST /run/start",
+  "type": "object",
+  "properties": {
+    "allowed": {
+      "type": "boolean"
+    },
+    "run_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Carry on every hosted model call and on /run/finish; null only when refused"
+    },
+    "depth_cap": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The requested depth clamped to the payer's plan; use it as the run's depth"
+    },
+    "depth_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "e.g. '3 levels: m.koch is on Free'; null when nothing was clamped"
+    },
+    "plan": {
+      "enum": [
+        "free",
+        "pro",
+        "max",
+        "team",
+        "enterprise"
+      ]
+    },
+    "trial": {
+      "type": "boolean"
+    },
+    "charged_to": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "person",
+            "workspace",
+            "none"
+          ]
+        },
+        "subject": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "login": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "subject",
+        "login"
+      ],
+      "additionalProperties": false
+    },
+    "counted": {
+      "type": "boolean",
+      "description": "true when this pull request or repository already counted this week, so the run is free"
+    },
+    "meter": {
+      "enum": [
+        "runs",
+        "bot_runs",
+        null
+      ]
+    },
+    "used": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "limit": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "remaining": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "resets_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "full_analysis": {
+      "type": "boolean",
+      "description": "Action: analyse in full because the cap is deeper than the baseline"
+    },
+    "mode": {
+      "enum": [
+        "legacy",
+        "shadow",
+        "enforce"
+      ]
+    },
+    "fail_open": {
+      "type": "boolean"
+    },
+    "wall": {
+      "anyOf": [
+        {
+          "$ref": "https://codeboarding.org/schemas/licensing/v1/wall.schema.json"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "allowed",
+    "run_id",
+    "depth_cap",
+    "depth_reason",
+    "plan",
+    "trial",
+    "charged_to",
+    "counted",
+    "meter",
+    "used",
+    "limit",
+    "remaining",
+    "resets_at",
+    "full_analysis",
+    "mode",
+    "fail_open",
+    "wall"
+  ],
+  "additionalProperties": false
+}

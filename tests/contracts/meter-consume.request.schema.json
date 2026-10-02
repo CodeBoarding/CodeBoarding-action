@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/meter-consume.request.schema.json",
+  "title": "Body of POST /meter/consume (the webview server, only when the answer carries a private map)",
+  "type": "object",
+  "properties": {
+    "meter": {
+      "enum": [
+        "reading"
+      ]
+    },
+    "repository": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "enum": [
+            "github"
+          ]
+        },
+        "id": {
+          "type": "integer"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "private": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "provider",
+        "id",
+        "owner",
+        "name",
+        "private"
+      ],
+      "additionalProperties": false
+    },
+    "pr": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "required": [
+    "meter",
+    "repository",
+    "pr"
+  ],
+  "additionalProperties": false
+}

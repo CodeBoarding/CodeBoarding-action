@@ -13,7 +13,7 @@ inputs:
     description: 'Required. Where analysis credentials come from: hosted, license, or a provider name (anthropic, aws_bedrock, cerebras, deepseek, glm, google, kimi, litellm, ollama, openai, openrouter, orcarouter, requesty, vercel).'
     required: true
   license_key:
-    description: 'CodeBoarding license key. Required by llm: license; optional alongside a provider key.'
+    description: 'Deprecated: plans now follow your GitHub account. A CodeBoarding license key, required by llm: license and optional alongside a provider key; it keeps working until the license key cutoff and is ignored after it.'
     required: false
     default: ''
   # Anthropic - selected by llm: anthropic
@@ -359,15 +359,28 @@ runs:
         persist-credentials: false
         path: .codeboarding-target
 
-    - name: Setup Java for CodeBoarding
+    # Before the engine install, in every credential mode: the plan of whoever this run is
+    # charged to decides whether it runs and caps how deep, so nothing below reads
+    # inputs.depth_cap directly. Own-key runs ask too, although their model calls never reach
+    # CodeBoarding. After the checkout only because it reads the committed baseline's depth.
+    - name: Start the run with CodeBoarding
+      id: preflight
       if: steps.guard.outputs.skip != 'true'
+      shell: bash
+      env:
+        DEPTH_CAP: ${{ inputs.depth_cap }}
+        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
+      run: python3 "$GITHUB_ACTION_PATH/scripts/action/run_meter.py" start
+
+    - name: Setup Java for CodeBoarding
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false'
       uses: actions/setup-java@v5
       with:
         distribution: temurin
         java-version: '21'
 
     - name: Install CodeBoarding
-      if: steps.guard.outputs.skip != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false'
       shell: bash
       run: |
         python -m pip install --disable-pip-version-check 'codeboarding==0.14.5'
@@ -381,7 +394,7 @@ runs:
         }
 
     - name: Configure analysis authentication
-      if: steps.guard.outputs.skip != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -389,7 +402,7 @@ runs:
 
     - name: Resolve analysis identity
       id: state
-      if: steps.guard.outputs.skip != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false'
       continue-on-error: true
       shell: bash
       env:
@@ -399,7 +412,7 @@ runs:
         IS_FORK: ${{ steps.guard.outputs.is_fork }}
         LLM_PROVIDER: ${{ steps.llm.outputs.provider }}
         BACKEND_ID: ${{ steps.llm.outputs.backend_id }}
-        DEPTH_CAP: ${{ inputs.depth_cap }}
+        DEPTH_CAP: ${{ steps.preflight.outputs.depth_cap }}
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
@@ -440,7 +453,7 @@ runs:
 
     - name: Analyze baseline
       id: sync_analyze
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.guard.outputs.mode == 'sync'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -448,7 +461,7 @@ runs:
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
         STAGE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/out
         FORCE_FULL: ${{ inputs.force_full }}
-        DEPTH_CAP: ${{ inputs.depth_cap }}
+        DEPTH_CAP: ${{ steps.preflight.outputs.depth_cap }}
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
@@ -456,7 +469,7 @@ runs:
 
     - name: Deliver baseline
       id: sync_commit
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.guard.outputs.mode == 'sync'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -522,7 +535,7 @@ runs:
 
     - name: Analyze pull request
       id: review_analyze
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.guard.outputs.mode == 'review'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -540,7 +553,7 @@ runs:
         CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
         GIT_TOKEN: ${{ inputs.github_token }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
-        DEPTH_CAP: ${{ inputs.depth_cap }}
+        DEPTH_CAP: ${{ steps.preflight.outputs.depth_cap }}
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
@@ -581,7 +594,7 @@ runs:
 
     - name: Render review diagram
       id: review_render
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.guard.outputs.mode == 'review'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
@@ -591,7 +604,7 @@ runs:
 
     - name: Build review artifact
       id: review_artifact
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.guard.outputs.mode == 'review'
       shell: bash
       env:
         ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
@@ -612,7 +625,7 @@ runs:
 
     - name: Upload review artifact
       id: upload_review_artifact_dotcom
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && github.server_url == 'https://github.com'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.guard.outputs.mode == 'review' && github.server_url == 'https://github.com'
       uses: actions/upload-artifact@v4
       with:
         name: codeboarding-review-${{ github.run_id }}-${{ github.run_attempt }}
@@ -626,7 +639,7 @@ runs:
 
     - name: Build review comment
       id: review_body
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.guard.outputs.mode == 'review'
       shell: bash
       env:
         DIAGRAM: ${{ steps.review_render.outputs.diagram_md }}
@@ -643,7 +656,7 @@ runs:
 
     - name: Post review comment
       id: review_comment
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      if: steps.guard.outputs.skip != 'true' && steps.preflight.outputs.allowed != 'false' && steps.guard.outputs.mode == 'review'
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         header: ${{ steps.guard.outputs.comment_id }}
@@ -682,3 +695,16 @@ runs:
           ${{ steps.review_analyze.outputs.failure_reason }}
 
           See the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
+
+    # Last, and on every outcome, so the hold is charged or released now rather than lapsing
+    # after six hours. Its own OIDC token, because the auth directory went with the analysis.
+    - name: Finish the run with CodeBoarding
+      if: always() && steps.preflight.outputs.run_id != ''
+      continue-on-error: true
+      shell: bash
+      env:
+        RUN_ID: ${{ steps.preflight.outputs.run_id }}
+        JOB_STATUS: ${{ job.status }}
+        ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path || steps.sync_analyze.outputs.analysis_path }}
+        MAP_MARKER: ${{ runner.temp }}/codeboarding-map
+      run: python3 "$GITHUB_ACTION_PATH/scripts/action/run_meter.py" finish

@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import tempfile
 import threading
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -100,6 +101,42 @@ class TestOidcRelay(unittest.TestCase):
         self.assertEqual(issued_tokens, ["/token?existing=value&audience=codeboarding-proxy"] * 2)
         self.assertEqual([auth for _, auth, _ in received], ["Bearer jwt-1", "Bearer jwt-2"])
         self.assertEqual([path for path, _, _ in received], ["/api/v1/chat/completions?model=test"] * 2)
+
+    def test_the_run_id_rides_last_in_the_bearer_with_or_without_a_licence(self):
+        """The proxy splits `~codeboarding-run~` off from the right, then the licence."""
+
+        class OidcIssuer(BaseHTTPRequestHandler):
+            def do_GET(self):
+                payload = b'{"value": "jwt"}'
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, *_args):
+                pass
+
+        issuer = _Server(OidcIssuer)
+        issuer.start()
+        self.addCleanup(issuer.close)
+        with tempfile.TemporaryDirectory() as temp:
+            license_file, run_id_file = Path(temp) / "license.txt", Path(temp) / "run-id"
+            license_file.write_text("LIC\n")
+
+            def bearer(**files):
+                config = oidc_relay.RelayConfig(
+                    "https://proxy.example", f"{issuer.url}/token", "request-token", **files
+                )
+                return oidc_relay.authorization(config)
+
+            self.assertEqual(bearer(run_id_file=run_id_file), "Bearer jwt", "no run id until the preflight wrote one")
+            run_id_file.write_text("github:o/r#42\n")
+            self.assertEqual(bearer(run_id_file=run_id_file), "Bearer jwt~codeboarding-run~github:o/r#42")
+            self.assertEqual(
+                bearer(license_file=license_file, run_id_file=run_id_file),
+                "Bearer jwt~codeboarding-license~LIC~codeboarding-run~github:o/r#42",
+            )
+            self.assertEqual(bearer(license_file=license_file), "Bearer jwt~codeboarding-license~LIC")
 
     def test_audience_replaces_an_existing_value(self):
         self.assertEqual(

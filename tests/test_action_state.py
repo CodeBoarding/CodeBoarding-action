@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -11,6 +12,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
+_SPEC = importlib.util.spec_from_file_location("run_meter", ROOT / "scripts" / "action" / "run_meter.py")
+assert _SPEC and _SPEC.loader
+run_meter = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(run_meter)
 STATE_NAMES = ROOT / "scripts" / "action" / "state-names.sh"
 ANALYZE = ROOT / "scripts" / "action" / "analyze.sh"
 
@@ -30,12 +35,18 @@ with open(os.environ["CB_ENGINE_LOG"], "a") as log:
 analysis = os.path.join(output, "analysis.json")
 metadata = json.load(open(analysis))["metadata"] if os.path.isfile(analysis) else {}
 if argv[0] == "incremental" and os.environ.get("CB_REQUIRE_FULL") == "true":
+    if os.environ.get("CB_INCREMENTAL_WRITES") == "true":
+        json.dump({"metadata": metadata, "components": []}, open(analysis, "w"))
     print(json.dumps({"requiresFullAnalysis": True}))
     sys.exit(0)
 if argv[0] == "full":
+    if os.environ.get("CB_FULL_CRASHES") == "before_write":
+        sys.exit(1)
     metadata = {"depth_cap": int(argv[argv.index("--depth-cap") + 1])}
 with open(analysis, "w") as handle:
     json.dump({"metadata": metadata, "components": [], "components_relations": []}, handle)
+if argv[0] == "full" and os.environ.get("CB_FULL_CRASHES") == "after_write":
+    sys.exit(139)
 print(json.dumps({"requiresFullAnalysis": False, "analysis_path": analysis}))
 '''
 
@@ -175,7 +186,7 @@ class ReviewChainTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
 
-    def _analyze(self, **extra: str) -> dict[str, str]:
+    def _analyze(self, *, check: bool = True, **extra: str) -> dict[str, str]:
         self.output.write_text("", encoding="utf-8")
         result = subprocess.run(
             [str(ANALYZE)],
@@ -203,7 +214,8 @@ class ReviewChainTests(unittest.TestCase):
             text=True,
             check=False,
         )
-        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        if check:
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
         values: dict[str, str] = {}
         for line in self.output.read_text(encoding="utf-8").splitlines():
             key, _, value = line.partition("=")
@@ -285,6 +297,35 @@ class ReviewChainTests(unittest.TestCase):
         sha = self._commit_base(cap=4)
         self._analyze(REVIEW_BASE_SHA=sha, DEPTH_CAP="4")
         self.assertEqual([c["mode"] for c in self._engine_calls()], ["incremental", "incremental"])
+
+    def _map_written(self) -> bool:
+        """The finish step's verdict on what this analysis left behind."""
+        return run_meter.map_written({"ANALYSIS_PATH": "", "MAP_MARKER": str(self.runner_temp / "codeboarding-map")})
+
+    def test_a_full_fallback_that_crashes_after_writing_the_map_still_produced_it(self) -> None:
+        _state(self.base_dir, cap=4)
+        self._analyze(check=False, DEPTH_CAP="4", CB_REQUIRE_FULL="true", CB_FULL_CRASHES="after_write")
+        self.assertTrue(self._map_written())
+
+    def test_an_incremental_map_does_not_count_when_the_full_fallback_fails(self) -> None:
+        """A 402 mid-run fails the pass the same way, so this also covers a walled fallback."""
+        _state(self.base_dir, cap=4)
+        self._analyze(
+            check=False,
+            DEPTH_CAP="4",
+            CB_REQUIRE_FULL="true",
+            CB_INCREMENTAL_WRITES="true",
+            CB_FULL_CRASHES="before_write",
+        )
+        self.assertEqual([c["mode"] for c in self._engine_calls()], ["incremental", "full"])
+        self.assertFalse(self._map_written())
+
+    def test_the_head_analysis_is_named_for_the_finish_step_before_it_runs(self) -> None:
+        _state(self.base_dir, cap=4)
+        values = self._analyze(DEPTH_CAP="4")
+        marker = self.runner_temp / "codeboarding-map"
+        self.assertEqual(marker.read_text(), values["analysis_path"])
+        self.assertGreaterEqual(Path(values["analysis_path"]).stat().st_mtime_ns, marker.stat().st_mtime_ns)
 
     def test_legacy_committed_depth_is_not_inherited(self) -> None:
         sha = self._commit_base(legacy=True)

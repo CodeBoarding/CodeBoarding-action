@@ -1,0 +1,10 @@
+{
+  "depth": 5,
+  "credential": "hosted",
+  "baseline_depth": 2,
+  "client": {
+    "surface": "action",
+    "version": "1.16.0",
+    "editor": null
+  }
+}

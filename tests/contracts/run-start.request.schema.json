@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://codeboarding.org/schemas/licensing/v1/run-start.request.schema.json",
+  "title": "Body of POST /run/start (both proxies)",
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 8,
+      "description": "VS Code: a client uuid for this run. The Action omits it; gha_proxy takes run_id from the OIDC token"
+    },
+    "repository": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "description": "VS Code: a stable key for the local repository (normalised origin URL, else absolute path)"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "additionalProperties": false
+    },
+    "depth": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "The depth the setting asks for"
+    },
+    "credential": {
+      "enum": [
+        "hosted",
+        "own_key"
+      ]
+    },
+    "baseline_depth": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "description": "Action: the depth of the default-branch baseline, when one exists"
+    },
+    "client": {
+      "type": "object",
+      "properties": {
+        "surface": {
+          "enum": [
+            "vscode",
+            "action"
+          ]
+        },
+        "version": {
+          "type": "string"
+        },
+        "editor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "surface"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "depth",
+    "credential",
+    "client"
+  ],
+  "additionalProperties": false
+}
