@@ -10,7 +10,7 @@ inputs:
     required: false
     default: 'review'
   llm:
-    description: 'Required. Where analysis credentials come from: hosted, license, or a provider name (anthropic, aws_bedrock, cerebras, deepseek, glm, google, kimi, litellm, ollama, openai, openrouter, orcarouter, vercel).'
+    description: 'Required. Where analysis credentials come from: hosted, license, or a provider name (anthropic, aws_bedrock, cerebras, deepseek, glm, google, kimi, litellm, ollama, openai, openrouter, orcarouter, requesty, vercel).'
     required: true
   license_key:
     description: 'CodeBoarding license key. Required by llm: license; optional alongside a provider key.'
@@ -102,6 +102,15 @@ inputs:
   # OrcaRouter - selected by llm: orcarouter
   orcarouter_api_key:
     description: 'OrcaRouter API key, used when llm is orcarouter. Sets ORCAROUTER_API_KEY.'
+    required: false
+    default: ''
+  # Requesty - selected by llm: requesty
+  requesty_api_key:
+    description: 'Requesty API key, used when llm is requesty. Sets REQUESTY_API_KEY.'
+    required: false
+    default: ''
+  requesty_base_url:
+    description: 'Optional Requesty endpoint, used when llm is requesty. Sets REQUESTY_BASE_URL.'
     required: false
     default: ''
   # Vercel AI Gateway - selected by llm: vercel
@@ -278,6 +287,8 @@ runs:
         CB_IN_OPENAI_BASE_URL: ${{ inputs.openai_base_url }}
         CB_IN_OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
         CB_IN_ORCAROUTER_API_KEY: ${{ inputs.orcarouter_api_key }}
+        CB_IN_REQUESTY_API_KEY: ${{ inputs.requesty_api_key }}
+        CB_IN_REQUESTY_BASE_URL: ${{ inputs.requesty_base_url }}
         CB_IN_VERCEL_API_KEY: ${{ inputs.vercel_api_key }}
         CB_IN_VERCEL_BASE_URL: ${{ inputs.vercel_base_url }}
       run: "$GITHUB_ACTION_PATH/scripts/action/verify-credentials.sh"
@@ -359,7 +370,7 @@ runs:
       if: steps.guard.outputs.skip != 'true'
       shell: bash
       run: |
-        python -m pip install --disable-pip-version-check 'codeboarding==0.14.4'
+        python -m pip install --disable-pip-version-check 'codeboarding==0.14.5'
         # Fail here, with the reason, rather than mid-analysis with a traceback:
         # pinning a release does not pin what its dependencies resolve to. Run
         # the console script, not `python -c`, which would put the analyzed

@@ -173,6 +173,7 @@ without knowing any precedence rules.
 | `openai` | OpenAI | `openai_api_key`, `openai_base_url` | `openai_api_key` or `openai_base_url` |
 | `openrouter` | OpenRouter | `openrouter_api_key` | `openrouter_api_key` |
 | `orcarouter` | OrcaRouter | `orcarouter_api_key` | `orcarouter_api_key` |
+| `requesty` | Requesty | `requesty_api_key`, `requesty_base_url` | `requesty_api_key` |
 | `vercel` | Vercel AI Gateway | `vercel_api_key`, `vercel_base_url` | `vercel_api_key` or `vercel_base_url` |
 
 Each provider has exactly one accepted spelling, and its inputs are named after it, so
@@ -320,7 +321,7 @@ With the default `github.token`, the repository or organization must allow GitHu
 | `force_full` | sync | `false` | Ignore the committed baseline for this run. |
 | `warmstart_retention_days` | review | `1` | Days to keep the reusable analysis. Only the next run reads it. |
 
-The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted webview URL, rolling sync branch, commit message, and CodeBoarding 0.14.4 version are intentionally fixed rather than exposed as configuration.
+The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted webview URL, rolling sync branch, commit message, and CodeBoarding 0.14.5 version are intentionally fixed rather than exposed as configuration.
 
 Review mode needs no sync workflow or committed `.codeboarding` directory. If no
 usable merge-base analysis exists, it runs full analysis there directly, then
@@ -379,7 +380,7 @@ Run the local analysis pipeline:
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...
-python -m pip install codeboarding==0.14.4
+python -m pip install codeboarding==0.14.5
 tests/run_local.sh --repo /path/to/repo --base main --head feature
 ```
 

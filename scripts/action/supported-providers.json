@@ -18,7 +18,7 @@
     "a selection env (AWS_DEFAULT_REGION, OLLAMA_API_KEY) therefore cannot select a provider",
     "on its own, which is why ollama and litellm need their base URL and not just a key."
   ],
-  "engine": "0.14.4",
+  "engine": "0.14.5",
   "hosted_provider": "openrouter",
   "providers": {
     "openrouter": {
@@ -37,6 +37,16 @@
       ],
       "inputs": {
         "orcarouter_api_key": "ORCAROUTER_API_KEY"
+      }
+    },
+    "requesty": {
+      "label": "Requesty",
+      "selection_envs": [
+        "REQUESTY_API_KEY"
+      ],
+      "inputs": {
+        "requesty_api_key": "REQUESTY_API_KEY",
+        "requesty_base_url": "REQUESTY_BASE_URL"
       }
     },
     "anthropic": {
