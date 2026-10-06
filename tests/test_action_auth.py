@@ -364,6 +364,53 @@ done
                 self.assertEqual(scoped.returncode, code, scoped.stderr or scoped.stdout)
                 self.assertEqual("walled=true" in output.read_text(encoding="utf-8"), walled)
 
+    # -- a workflow without `llm` ----------------------------------------------
+
+    _OIDC = {
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "https://oidc.example/token",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "request-token",
+    }
+
+    def test_an_unnamed_workflow_says_which_source_it_got_and_why(self) -> None:
+        """A secret that does not exist reads as empty, so a workflow meant for its own key
+        can land on hosting. The log's first line and the summary are how anyone finds out."""
+        result, _, outputs = self._preflight(**self._OIDC)
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        self.assertEqual(outputs["tier"], "hosted")
+        self.assertIn("because no provider key is set", result.stdout)
+        summary = (Path(self.temp_dir.name) / "summary.md").read_text(encoding="utf-8")
+        self.assertIn("| Chosen | because no provider key is set |", summary)
+
+        self.temp_dir.cleanup()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        _, _, keyed = self._preflight(CB_IN_ANTHROPIC_API_KEY="k")
+        self.assertEqual((keyed["tier"], keyed["provider"]), ("byok", "anthropic"))
+
+    # -- model choice ------------------------------------------------------
+
+    def test_a_hosting_run_that_names_a_model_is_refused_before_anything_runs(self) -> None:
+        """Hosting runs on CodeBoarding's models. A model named anyway fails the run in its
+        first seconds, in the log, the summary and the comment's text, and stages nothing."""
+        result, auth_dir, outputs = self._preflight(CB_IN_MODEL="big-model", **self._OIDC)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(outputs["error"], "hosted_with_model")
+        self.assertIn("check that its secret exists", outputs["message"])
+        self.assertFalse(auth_dir.exists(), "credentials were staged for a refused run")
+        summary = (Path(self.temp_dir.name) / "summary.md").read_text(encoding="utf-8")
+        self.assertIn("CodeBoarding could not start", summary)
+
+    def test_a_model_inherited_from_the_job_counts_as_naming_one(self) -> None:
+        """The engine reads AGENT_MODEL from its environment, so a job-level one would pick a
+        model on CodeBoarding's account as surely as the input."""
+        _, _, outputs = self._preflight(CB_IN_LLM="hosted", AGENT_MODEL="inherited", **self._OIDC)
+        self.assertEqual(outputs["error"], "hosted_with_model")
+        self.assertIn("AGENT_MODEL", outputs["message"])
+
+    def test_your_own_key_keeps_its_model_inputs(self) -> None:
+        result, _, outputs = self._preflight(CB_IN_ANTHROPIC_API_KEY="k", CB_IN_MODEL="m")
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        self.assertEqual(outputs["provider"], "anthropic")
+
     def test_analysis_refuses_to_run_without_a_resolved_plan(self) -> None:
         scoped = self._with_auth("true")
         self.assertNotEqual(scoped.returncode, 0)

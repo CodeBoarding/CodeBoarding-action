@@ -58,10 +58,11 @@ class ActionInputTests(unittest.TestCase):
         declared = {n for n in self.inputs if n.endswith(suffixes) and n != "github_token"}
         self.assertEqual(sorted(declared - table_inputs()), [])
 
-    def test_llm_is_required_and_has_no_default(self) -> None:
+    def test_llm_is_optional_and_empty_by_default(self) -> None:
+        """Empty means "decide from the inputs that are set"; the resolver owns that rule."""
         block = self.inputs["llm"]
-        self.assertIn("required: true", block)
-        self.assertNotIn("default:", block)
+        self.assertIn("required: false", block)
+        self.assertIn("default: ''", block)
 
     def test_depth_is_wired_to_state_identity_and_both_analysis_modes(self) -> None:
         """The workflow's depth_cap is only a request: the preflight's answer, clamped to the
@@ -146,6 +147,12 @@ class ActionInputTests(unittest.TestCase):
     def test_license_key_is_retired(self) -> None:
         self.assertNotIn("license_key", self.inputs)
         self.assertNotIn("CB_IN_LICENSE_KEY", ACTION)
+
+    def test_model_inputs_reach_the_resolver(self) -> None:
+        """Hosting refuses a named model, which it can only do if it sees the inputs."""
+        for name in ("model", "agent_model", "parsing_model"):
+            with self.subTest(input=name):
+                self.assertIn(f"CB_IN_{name.upper()}: ${{{{ inputs.{name} }}}}", ACTION)
 
     def test_default_workflow_reviews_drafts_on_open_and_new_commits(self) -> None:
         self.assertNotIn("github.event.pull_request.draft", DOGFOOD)

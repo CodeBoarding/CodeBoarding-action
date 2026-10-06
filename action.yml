@@ -10,8 +10,9 @@ inputs:
     required: false
     default: 'review'
   llm:
-    description: 'Required. Where analysis credentials come from: hosted or a provider name (anthropic, aws_bedrock, cerebras, deepseek, glm, google, kimi, litellm, ollama, openai, openrouter, orcarouter, vercel).'
-    required: true
+    description: 'Optional. Where analysis credentials come from: hosted or a provider name (anthropic, aws_bedrock, cerebras, deepseek, glm, google, kimi, litellm, ollama, openai, openrouter, orcarouter, vercel). Without it, the provider inputs that are set decide: none means hosted, one provider means that provider. A named provider never falls back.'
+    required: false
+    default: ''
   # Anthropic - selected by llm: anthropic
   anthropic_api_key:
     description: 'Anthropic API key, used when llm is anthropic. Sets ANTHROPIC_API_KEY.'
@@ -110,15 +111,15 @@ inputs:
     required: false
     default: ''
   model:
-    description: 'Optional model used for both analysis and parsing.'
+    description: 'Optional model used for both analysis and parsing. Not allowed on CodeBoarding hosting, which chooses its own models: the run is refused.'
     required: false
     default: ''
   agent_model:
-    description: 'Optional analysis-model override. Takes precedence over model.'
+    description: 'Optional analysis-model override. Takes precedence over model. Not allowed on CodeBoarding hosting.'
     required: false
     default: ''
   parsing_model:
-    description: 'Optional parsing-model override. Takes precedence over model.'
+    description: 'Optional parsing-model override. Takes precedence over model. Not allowed on CodeBoarding hosting.'
     required: false
     default: ''
   depth_cap:
@@ -254,6 +255,9 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         CB_IN_LLM: ${{ inputs.llm }}
+        CB_IN_MODEL: ${{ inputs.model }}
+        CB_IN_AGENT_MODEL: ${{ inputs.agent_model }}
+        CB_IN_PARSING_MODEL: ${{ inputs.parsing_model }}
         CB_IN_ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
         CB_IN_AWS_BEDROCK_API_KEY: ${{ inputs.aws_bedrock_api_key }}
         CB_IN_AWS_BEDROCK_REGION: ${{ inputs.aws_bedrock_region }}

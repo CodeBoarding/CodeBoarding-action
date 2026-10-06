@@ -54,6 +54,11 @@ Protected tests:
   hosted tier, so a repository that had not added its secret yet went green
   while running on another vendor's model and CodeBoarding's money, silently.
   Any change that reintroduces a credential fallback breaks this test.
+  Since 7 October 2026 (licensing spec D-16, Svilen's call), a workflow that
+  names no `llm` is resolved from the provider inputs that are set, and runs on
+  hosting when none is. That covers only workflows that named nothing; a named
+  provider still runs on that provider or fails, and the job summary says which
+  source an unnamed workflow got and why.
 
 ## Releases
 

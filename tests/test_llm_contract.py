@@ -97,10 +97,72 @@ class ContractTests(unittest.TestCase):
 
     # -- refused shapes ----------------------------------------------------
 
-    def test_an_undeclared_workflow_is_refused_rather_than_defaulted(self) -> None:
+    # -- no `llm`: the inputs that are set decide ---------------------------
+
+    def test_a_workflow_with_nothing_set_runs_on_hosting_and_says_why(self) -> None:
+        plan = self.resolve(**OIDC)
+        self.assertEqual(plan["tier"], "hosted")
+        self.assertEqual(plan["reason"], "no provider key is set")
+
+    def test_hosting_without_an_oidc_token_points_at_a_missing_secret(self) -> None:
+        """Someone who meant to use their own key and has no secret yet lands here, with no
+        `id-token: write` either: the refusal is the one place to tell them."""
         error = self.refuse()
-        self.assertEqual(error.code, "missing_llm")
-        self.assertIn("required", error.message)
+        self.assertEqual(error.code, "missing_id_token")
+        self.assertIn("no provider key is set", error.message)
+        self.assertIn("check that its secret exists", error.message)
+
+    def test_one_providers_key_selects_that_provider(self) -> None:
+        plan = self.resolve(CB_IN_ANTHROPIC_API_KEY="k")
+        self.assertEqual((plan["tier"], plan["provider"]), ("byok", "anthropic"))
+        self.assertEqual(plan["env"], {"ANTHROPIC_API_KEY": "k"})
+        self.assertEqual(plan["reason"], "only Anthropic's inputs are set")
+
+    def test_several_inputs_of_one_provider_still_select_it(self) -> None:
+        plan = self.resolve(CB_IN_AWS_BEDROCK_API_KEY="k", CB_IN_AWS_BEDROCK_REGION="eu-west-1")
+        self.assertEqual(plan["provider"], "aws_bedrock")
+        self.assertEqual(plan["env"]["AWS_DEFAULT_REGION"], "eu-west-1")
+
+    def test_an_endpoint_selects_its_provider(self) -> None:
+        plan = self.resolve(CB_IN_OLLAMA_BASE_URL="http://host:11434")
+        self.assertEqual(plan["provider"], "ollama")
+
+    def test_inputs_that_cannot_select_their_provider_are_refused_not_ignored(self) -> None:
+        """A region alone says "Bedrock" but configures nothing; hosting would be a guess."""
+        error = self.refuse(CB_IN_AWS_BEDROCK_REGION="eu-west-1")
+        self.assertEqual(error.code, "missing_provider_key")
+        self.assertIn("aws_bedrock_api_key", error.message)
+
+    def test_two_providers_are_refused_with_the_inputs_named(self) -> None:
+        error = self.refuse(CB_IN_ANTHROPIC_API_KEY="k", CB_IN_OPENAI_API_KEY="o")
+        self.assertEqual(error.code, "several_provider_keys")
+        self.assertIn("anthropic_api_key", error.message)
+        self.assertIn("openai_api_key", error.message)
+        self.assertIn("`llm`", error.message)
+
+    def test_llm_settles_which_of_several_providers_runs(self) -> None:
+        error = self.refuse(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k", CB_IN_OPENAI_API_KEY="o")
+        self.assertEqual(error.code, "foreign_provider_key")
+
+    def test_hosting_refuses_a_named_model_whichever_way_it_was_chosen(self) -> None:
+        for environ, hint in (
+            ({"CB_IN_LLM": "hosted", "CB_IN_MODEL": "m"}, "set `llm` to your provider"),
+            ({"CB_IN_AGENT_MODEL": "m"}, "check that its secret exists"),
+            ({"CB_IN_PARSING_MODEL": "m", "PARSING_MODEL": "m"}, "`PARSING_MODEL` in the job's environment"),
+        ):
+            with self.subTest(environ=environ):
+                error = self.refuse(**environ, **OIDC)
+                self.assertEqual(error.code, "hosted_with_model")
+                self.assertIn(hint, error.message)
+
+    def test_own_key_runs_choose_their_model_freely(self) -> None:
+        plan = self.resolve(CB_IN_ANTHROPIC_API_KEY="k", CB_IN_MODEL="m", AGENT_MODEL="a")
+        self.assertEqual(plan["provider"], "anthropic")
+
+    def test_a_named_llm_carries_no_reason(self) -> None:
+        """The workflow said what it wanted; there is nothing to explain."""
+        self.assertEqual(self.resolve(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k")["reason"], "")
+        self.assertEqual(self.resolve(CB_IN_LLM="hosted", **OIDC)["reason"], "")
 
     def test_a_named_provider_without_its_key_names_the_input_and_the_secret(self) -> None:
         error = self.refuse(CB_IN_LLM="anthropic")
@@ -290,8 +352,9 @@ class ContractTests(unittest.TestCase):
         it produces is exactly the set the module declares it can raise, so adding a code
         without a case here fails rather than going unnoticed."""
         cases = [
-            {},
+            {"CB_IN_ANTHROPIC_API_KEY": "k", "CB_IN_OPENAI_API_KEY": "o"},
             {"CB_IN_LLM": "not_a_provider"},
+            {"CB_IN_LLM": "hosted", "CB_IN_MODEL": "m", **OIDC},
             {"CB_IN_LLM": "anthropic"},
             {"CB_IN_LLM": "license", **OIDC},
             {"CB_IN_LLM": "hosted"},
