@@ -50,9 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: CodeBoarding/CodeBoarding-action@v1
-        with:
-          llm: hosted   # or a provider name -- see Authentication
+      - uses: CodeBoarding/CodeBoarding-action@v1   # CodeBoarding hosting; to use your own key, see Authentication
 ```
 
 Automatic runs review both draft and non-draft pull requests and update one sticky **CodeBoarding review** comment. Opening, reopening, or pushing a commit runs analysis; changing only the draft state does not. A trusted repository owner, member, or collaborator can comment `/codeboarding` to analyze the current PR head again, including on fork PRs; every command creates a new result comment.
@@ -106,35 +104,39 @@ Every review comment ends with a machine-readable HTML comment, `<!-- codeboardi
 
 ## Authentication and providers
 
-The `llm` input is required and says where analysis credentials come from. There are
-two answers, and the action never picks one for you:
+Wire the key you want to use, and the action uses it. Wire nothing, and it runs on
+CodeBoarding hosting:
 
 ```yaml
-    with:
-      llm: hosted                                        # CodeBoarding's hosted tier, on your plan
+    - uses: CodeBoarding/CodeBoarding-action@v1          # CodeBoarding hosting, on your plan
 ```
 ```yaml
-    with:
-      llm: anthropic                                     # your own provider key
-      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+    - uses: CodeBoarding/CodeBoarding-action@v1
+      with:
+        anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}   # your own key, called directly
 ```
 
-`hosted` runs through CodeBoarding's proxy and needs `id-token: write`, which
+The optional `llm` input names the source outright: `hosted` or a provider. You need it
+only when inputs for more than one provider are set, or when you want a missing key to
+fail the run rather than fall back to hosting.
+
+Hosting runs through CodeBoarding's proxy and needs `id-token: write`, which
 mints short-lived credentials per request and stores no LLM secret in your repository. A
 provider key is used directly and needs no OIDC permission.
 
-**An empty value is never a fallback.** If you name a provider and its key is missing --
-because the secret does not exist yet, or is misspelt — the run fails in its first
-seconds and says which input and which secret to fix. It does not quietly analyze on
-CodeBoarding's hosted tier instead. That was the old behaviour, and it meant a repository
-could report an Anthropic review that Anthropic never produced.
-
-The same rule makes the combinations explicit rather than order-dependent:
+**Check the first line of the job summary after adding a key.** GitHub reads a secret that
+does not exist, or is misspelt, as an empty string, so a workflow without `llm` whose only
+key is missing runs on hosting. The log's first line and the summary's "Chosen" row say
+which source the run used and why. **A named provider never falls back:** with
+`llm: anthropic` and the key missing, the run fails in its first seconds and says which
+input and which secret to fix.
 
 | Workflow says | Result |
 |---|---|
-| nothing | refused: `llm` is required |
-| `llm: hosted` | CodeBoarding's hosted tier, on the plan of whoever the run is charged to |
+| nothing | CodeBoarding hosting, on the plan of whoever the run is charged to |
+| `anthropic_api_key` only | Anthropic, directly |
+| `anthropic_api_key` + `openai_api_key` | refused: set `llm` to pick one |
+| `llm: hosted` | CodeBoarding hosting |
 | `llm: hosted` + any provider key | refused: pick one |
 | `llm: license` | refused: license keys are retired, use `llm: hosted` |
 | `llm: anthropic` + `anthropic_api_key` | Anthropic, directly |
@@ -253,6 +255,8 @@ Precedence is intentionally simple:
 
 Set only `model` when both jobs should use the same model. Set either specialized input only when that job needs a different model. Model identifiers are not secrets and can be stored in GitHub repository variables.
 
+On CodeBoarding hosting, CodeBoarding pays for the tokens and chooses the models. The three model inputs are ignored there, and so is an `AGENT_MODEL` or `PARSING_MODEL` set in the job's environment; the run's annotations and job summary say which inputs were ignored. They apply when the run uses your own provider key.
+
 ## Keep the baseline current
 
 Sync mode commits only Core's persisted incremental-analysis state under `.codeboarding/`:
@@ -303,7 +307,6 @@ jobs:
       - uses: CodeBoarding/CodeBoarding-action@v1
         with:
           mode: sync
-          llm: hosted
           target_branch: main
           force_full: ${{ inputs.force_full || false }}
 ```
@@ -324,7 +327,6 @@ permissions:
       - uses: CodeBoarding/CodeBoarding-action@v1
         with:
           mode: sync
-          llm: hosted
           target_branch: main
           sync_strategy: pull_request
 ```
@@ -338,11 +340,11 @@ With the default `github.token`, the repository or organization must allow GitHu
 | Input | Mode | Default | Description |
 |---|---|---|---|
 | `mode` | both | `review` | `review` or `sync`. |
-| `llm` | both | **required** | `hosted` or a provider name. No default. |
+| `llm` | both | empty | `hosted` or a provider name. Empty: the provider inputs that are set decide. |
 | `<provider>_api_key` | both | empty | That provider's key, e.g. `anthropic_api_key`. See [Providers](#providers). |
 | `<provider>_base_url` | both | empty | That provider's endpoint, where it has one. |
 | `aws_bedrock_region` | both | empty | Bedrock region. Core defaults to `us-east-1`. |
-| `model` | both | empty | Default model for both analysis and parsing. |
+| `model` | both | empty | Default model for both analysis and parsing. Ignored on CodeBoarding hosting. |
 | `agent_model` | both | empty | Analysis-only override for `model`. |
 | `parsing_model` | both | empty | Parsing-only override for `model`. |
 | `depth_cap` | both | `2` | Positive integer maximum analysis depth, including full-analysis fallbacks, capped by the plan of whoever the run is charged to (3 on Free). Changing it rebuilds incompatible state. |

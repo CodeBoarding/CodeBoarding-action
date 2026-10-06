@@ -58,10 +58,11 @@ class ActionInputTests(unittest.TestCase):
         declared = {n for n in self.inputs if n.endswith(suffixes) and n != "github_token"}
         self.assertEqual(sorted(declared - table_inputs()), [])
 
-    def test_llm_is_required_and_has_no_default(self) -> None:
+    def test_llm_is_optional_and_empty_by_default(self) -> None:
+        """Empty means "decide from the inputs that are set"; the resolver owns that rule."""
         block = self.inputs["llm"]
-        self.assertIn("required: true", block)
-        self.assertNotIn("default:", block)
+        self.assertIn("required: false", block)
+        self.assertIn("default: ''", block)
 
     def test_depth_is_wired_to_state_identity_and_both_analysis_modes(self) -> None:
         """The workflow's depth_cap is only a request: the preflight's answer, clamped to the
@@ -146,6 +147,21 @@ class ActionInputTests(unittest.TestCase):
     def test_license_key_is_retired(self) -> None:
         self.assertNotIn("license_key", self.inputs)
         self.assertNotIn("CB_IN_LICENSE_KEY", ACTION)
+
+    def test_hosted_runs_name_their_stored_analysis_without_the_ignored_model_inputs(self) -> None:
+        """with-auth.sh drops the model inputs on the hosted tier; the analysis name must too,
+        or it would claim a model the run never used."""
+        start = ACTION.index("id: state")
+        block = ACTION[start : ACTION.index("\n      run:", start)]
+        for name, var in (
+            ("model", "MODEL"),
+            ("agent_model", "AGENT_MODEL_INPUT"),
+            ("parsing_model", "PARSING_MODEL_INPUT"),
+        ):
+            with self.subTest(input=name):
+                self.assertIn(
+                    f"{var}: ${{{{ steps.llm.outputs.model_inputs != 'ignored' && inputs.{name} || '' }}}}", block
+                )
 
     def test_default_workflow_reviews_drafts_on_open_and_new_commits(self) -> None:
         self.assertNotIn("github.event.pull_request.draft", DOGFOOD)

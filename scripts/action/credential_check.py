@@ -6,10 +6,11 @@ user actually reads -- verify-credentials.sh puts it in the step output, and act
 that same string as the pull request comment, the error annotation and the job summary --
 so the rule and its explanation are written together and cannot drift apart.
 
-One provider, chosen explicitly by the `llm` input, and nothing is ever reached by an
-empty string falling through to a default. A misconfigured run fails here -- before the
-checkout and the engine install -- naming the input and the secret to fix, rather than
-succeeding on someone else's credentials or failing later inside the engine.
+One provider per run. A workflow that names it with `llm` gets that provider or a refusal,
+never a default. A workflow without `llm` gets whatever its set inputs describe: none means
+CodeBoarding hosting, one provider's inputs mean that provider, several are refused. A
+misconfigured run fails here -- before the checkout and the engine install -- naming the
+input and the secret to fix, rather than failing later inside the engine.
 
 Reads the action's inputs from CB_IN_* environment variables (prefixed so that wiring an
 input can never itself set a provider selection variable), and writes the resolved
@@ -31,6 +32,10 @@ DOCS = "https://github.com/CodeBoarding/CodeBoarding-action#authentication-and-p
 SETTINGS_HINT = "Settings -> Secrets and variables -> Actions"
 TABLE = Path(__file__).resolve().parent / "supported-providers.json"
 
+#: The action's model inputs. On hosting CodeBoarding pays for the tokens, so it chooses the
+#: models: these inputs apply only where the run's own provider key pays (spec D-13).
+MODEL_INPUTS = ("model", "agent_model", "parsing_model")
+
 
 #: Every reason this module can refuse a configuration.
 #:
@@ -41,7 +46,7 @@ TABLE = Path(__file__).resolve().parent / "supported-providers.json"
 #: `test_llm_contract.py` asserts every entry here is exercised.
 ERROR_CODES = frozenset(
     {
-        "missing_llm",
+        "several_provider_keys",
         "unknown_llm",
         "missing_provider_key",
         "missing_id_token",
@@ -172,20 +177,29 @@ def _reject_provider_inputs(table: dict, given: dict[str, str]) -> None:
     )
 
 
-def _require_id_token(llm: str, environ: dict[str, str]) -> None:
+def _require_id_token(llm: str, environ: dict[str, str], reason: str = "") -> None:
     # Both, because the relay needs both (oidc_relay.py refuses to start without either)
     # and a runner can expose one without the other. Checking only the URL let that case
     # through preflight and turned it into a generic failure after the engine install,
     # which is the whole thing this check exists to prevent.
     if environ.get("ACTIONS_ID_TOKEN_REQUEST_URL") and environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN"):
         return
+    # A run that chose hosting because no key is set may have meant to use a key whose
+    # secret does not exist yet; this is the one refusal that can say so.
+    if reason:
+        problem = (
+            f"This run uses CodeBoarding hosting because {reason}. Hosting authenticates with a "
+            "GitHub OIDC token, which this job cannot mint. If you meant to use your own provider "
+            "key, check that its secret exists."
+        )
+    else:
+        problem = f"`llm: {llm}` authenticates with a GitHub OIDC token, which this job cannot mint."
     raise ConfigError(
         "missing_id_token",
-        f"`llm: {llm}` authenticates with a GitHub OIDC token, which this job cannot mint. "
-        "Add `permissions:` with `id-token: write` to the job that uses this action.",
+        f"{problem} Add `permissions:` with `id-token: write` to the job that uses this action.",
         "\n\n".join(
             [
-                f"`llm: {llm}` authenticates with a GitHub OIDC token, which this job cannot mint.",
+                problem,
                 f"In `{workflow_path(environ)}`, the job running this action needs:",
                 "```yaml\n    permissions:\n      id-token: write\n```",
                 "No secret is involved: the token is minted per request and never stored.",
@@ -246,18 +260,35 @@ def resolve(table: dict, environ: dict[str, str]) -> dict:
     llm = environ.get("CB_IN_LLM", "").strip().lower()
     given = read_inputs(table, environ)
 
+    # Without `llm`, the inputs that are set decide (spec D-16), and the plan carries the
+    # reason so the log and the summary say how the run chose. A named `llm` is never
+    # second-guessed: it takes the strict paths below exactly as written.
+    reason = ""
     if not llm:
-        raise ConfigError(
-            "missing_llm",
-            "The `llm` input is required and has no default. Set it to `hosted` "
-            "(CodeBoarding's hosted tier, on your CodeBoarding plan) or one of: "
-            f"{_provider_list(table)}. See {DOCS}.",
-        )
+        providers = sorted({owner_of(table, i) for i in given})
+        if len(providers) > 1:
+            raise ConfigError(
+                "several_provider_keys",
+                f"Inputs for more than one provider are set ({', '.join(f'`{i}`' for i in sorted(given))}). "
+                f"Set `llm` to the one this run should use: {', '.join(providers)}.",
+            )
+        if providers:
+            llm = providers[0]
+            reason = f"only {table['providers'][llm].get('label', llm)}'s inputs are set"
+        else:
+            llm = "hosted"
+            reason = "no provider key is set"
 
     if llm == "hosted":
         _reject_provider_inputs(table, given)
-        _require_id_token(llm, environ)
-        return {"tier": "hosted", "provider": table["hosted_provider"], "env": {}}
+        _require_id_token(llm, environ, reason)
+        return {
+            "tier": "hosted",
+            "provider": table["hosted_provider"],
+            "env": {},
+            "ignored_model_inputs": [n for n in MODEL_INPUTS if environ.get(f"CB_IN_{n.upper()}", "").strip()],
+            "reason": reason,
+        }
 
     # Keys were retired completely, so the answer that ran on one is refused by name rather
     # than as an unknown value: the fix is one word, and the plan it paid for now follows
@@ -288,7 +319,7 @@ def resolve(table: dict, environ: dict[str, str]) -> dict:
         )
 
     env = _resolve_byok(table, name, given, environ)
-    return {"tier": "byok", "provider": name, "env": env}
+    return {"tier": "byok", "provider": name, "env": env, "reason": reason}
 
 
 def _is_endpoint(var: str) -> bool:
@@ -350,8 +381,28 @@ def reported_provider(plan: dict) -> str:
     return "" if plan["tier"] == "hosted" else plan["provider"]
 
 
+def model_inputs(plan: dict) -> str:
+    """`ignored` on the hosted tier, else `apply`. action.yml and with-auth.sh both key on it."""
+    return "ignored" if plan["tier"] == "hosted" else "apply"
+
+
+def model_notice(plan: dict) -> str:
+    """The sentence for a hosted run whose workflow set model inputs, or empty."""
+    ignored = plan.get("ignored_model_inputs") or []
+    if not ignored:
+        return ""
+    names = ", ".join(f"`{name}`" for name in ignored)
+    verb = "is" if len(ignored) == 1 else "are"
+    return (
+        f"{names} {verb} ignored: on CodeBoarding hosting, CodeBoarding chooses the models. "
+        "Model inputs apply when the run uses your own provider key."
+    )
+
+
 def plan_headline(table: dict, plan: dict) -> str:
     """The one line the log opens with. Same source as the summary, so they cannot drift."""
+    if plan.get("reason"):
+        return f"CodeBoarding is running on {_pays(table, plan)}, because {plan['reason']}."
     return f"CodeBoarding is running on {_pays(table, plan)}."
 
 
@@ -366,6 +417,12 @@ def plan_summary(table: dict, plan: dict) -> list[tuple[str, str]]:
     if shown:
         rows.append(("Provider", f"`{shown}`"))
     rows.append(("Credentials", _pays(table, plan)))
+    # Without `llm`, a secret that does not exist reads as empty and the run goes hosted.
+    # This row is how someone who meant to use their own key finds out.
+    rows.append(("Chosen", f"because {plan['reason']}" if plan.get("reason") else "by `llm`"))
+    if plan.get("ignored_model_inputs"):
+        ignored = ", ".join(f"`{name}`" for name in plan["ignored_model_inputs"])
+        rows.append(("Models", f"chosen by CodeBoarding on hosting; {ignored} ignored"))
     # Only where the run was pointed somewhere other than the default, since that is the
     # setting most likely to be wrong and least likely to be noticed.
     for var, value in sorted(plan["env"].items()):
@@ -381,6 +438,7 @@ def write_auth_dir(table: dict, plan: dict, auth_dir: Path) -> None:
     env_dir.mkdir(parents=True, exist_ok=True)
     (auth_dir / "tier").write_text(plan["tier"], encoding="utf-8")
     (auth_dir / "provider-name").write_text(plan["provider"], encoding="utf-8")
+    (auth_dir / "model-inputs").write_text(model_inputs(plan), encoding="utf-8")
     for var, value in plan["env"].items():
         (env_dir / var).write_text(value, encoding="utf-8")
     # Every variable core knows about, minus the ones this run actually resolved, so
@@ -448,6 +506,8 @@ def main(argv: list[str]) -> int:
             "provider": reported_provider(plan),
             "summary": "\n".join(f"| {k} | {v} |" for k, v in plan_summary(table, plan)),
             "headline": plan_headline(table, plan),
+            "model_inputs": model_inputs(plan),
+            "notice": model_notice(plan),
         },
         sys.stdout,
     )

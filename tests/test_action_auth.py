@@ -364,6 +364,72 @@ done
                 self.assertEqual(scoped.returncode, code, scoped.stderr or scoped.stdout)
                 self.assertEqual("walled=true" in output.read_text(encoding="utf-8"), walled)
 
+    # -- a workflow without `llm` ----------------------------------------------
+
+    def test_an_unnamed_workflow_says_which_source_it_got_and_why(self) -> None:
+        """A secret that does not exist reads as empty, so a workflow meant for its own key
+        can land on hosting. The log's first line and the summary are how anyone finds out."""
+        result, _, outputs = self._preflight(**self._OIDC)
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        self.assertEqual(outputs["tier"], "hosted")
+        self.assertIn("because no provider key is set", result.stdout)
+        summary = (Path(self.temp_dir.name) / "summary.md").read_text(encoding="utf-8")
+        self.assertIn("| Chosen | because no provider key is set |", summary)
+
+        self.temp_dir.cleanup()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        _, _, keyed = self._preflight(CB_IN_ANTHROPIC_API_KEY="k")
+        self.assertEqual((keyed["tier"], keyed["provider"]), ("byok", "anthropic"))
+
+    # -- model choice ------------------------------------------------------
+
+    _OIDC = {
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "https://oidc.example/token",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "request-token",
+    }
+
+    def test_the_hosted_tier_never_lets_the_workflow_pick_a_model(self) -> None:
+        """CodeBoarding pays for hosted tokens, so the model is CodeBoarding's choice.
+
+        Inputs and an inherited variable alike: a job-level `AGENT_MODEL` reaches the engine
+        as surely as the input does.
+        """
+        result, auth_dir, outputs = self._preflight(CB_IN_LLM="hosted", CB_IN_MODEL="big-model", **self._OIDC)
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        self.assertEqual(outputs["model_inputs"], "ignored")
+        self.assertEqual((auth_dir / "model-inputs").read_text(), "ignored")
+
+        scoped = self._with_auth(
+            'test -z "${AGENT_MODEL:-}" && test -z "${PARSING_MODEL:-}"',
+            MODEL="big-model",
+            AGENT_MODEL_INPUT="analysis-model",
+            PARSING_MODEL_INPUT="parsing-model",
+            AGENT_MODEL="inherited-model",
+            PARSING_MODEL="inherited-model",
+        )
+        self.assertEqual(scoped.returncode, 0, scoped.stderr or scoped.stdout)
+
+    def test_ignored_model_inputs_are_named_in_the_log_and_the_summary(self) -> None:
+        result, _, _ = self._preflight(CB_IN_LLM="hosted", CB_IN_MODEL="m", CB_IN_PARSING_MODEL="p", **self._OIDC)
+        notice = next(
+            line for line in result.stdout.splitlines() if line.startswith("::notice title=CodeBoarding models::")
+        )
+        self.assertIn("`model`, `parsing_model` are ignored", notice)
+        self.assertNotIn("agent_model", notice)
+        summary = (Path(self.temp_dir.name) / "summary.md").read_text(encoding="utf-8")
+        self.assertIn("| Models |", summary)
+
+    def test_a_hosted_run_without_model_inputs_says_nothing_about_models(self) -> None:
+        result, _, outputs = self._preflight(CB_IN_LLM="hosted", **self._OIDC)
+        self.assertEqual(outputs["model_inputs"], "ignored")
+        self.assertNotIn("::notice title=CodeBoarding models::", result.stdout)
+        summary = (Path(self.temp_dir.name) / "summary.md").read_text(encoding="utf-8")
+        self.assertNotIn("| Models |", summary)
+
+    def test_your_own_key_keeps_its_model_inputs(self) -> None:
+        _, _, outputs = self._preflight(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k", CB_IN_MODEL="m")
+        self.assertEqual(outputs["model_inputs"], "apply")
+
     def test_analysis_refuses_to_run_without_a_resolved_plan(self) -> None:
         scoped = self._with_auth("true")
         self.assertNotEqual(scoped.returncode, 0)

@@ -10,8 +10,9 @@ inputs:
     required: false
     default: 'review'
   llm:
-    description: 'Required. Where analysis credentials come from: hosted or a provider name (anthropic, aws_bedrock, cerebras, deepseek, glm, google, kimi, litellm, ollama, openai, openrouter, orcarouter, vercel).'
-    required: true
+    description: 'Optional. Where analysis credentials come from: hosted or a provider name (anthropic, aws_bedrock, cerebras, deepseek, glm, google, kimi, litellm, ollama, openai, openrouter, orcarouter, vercel). Without it, the provider inputs that are set decide: none means hosted, one provider means that provider. A named provider never falls back.'
+    required: false
+    default: ''
   # Anthropic - selected by llm: anthropic
   anthropic_api_key:
     description: 'Anthropic API key, used when llm is anthropic. Sets ANTHROPIC_API_KEY.'
@@ -110,15 +111,15 @@ inputs:
     required: false
     default: ''
   model:
-    description: 'Optional model used for both analysis and parsing.'
+    description: 'Optional model used for both analysis and parsing. Ignored on CodeBoarding hosting, where CodeBoarding chooses the models.'
     required: false
     default: ''
   agent_model:
-    description: 'Optional analysis-model override. Takes precedence over model.'
+    description: 'Optional analysis-model override. Takes precedence over model. Ignored on CodeBoarding hosting.'
     required: false
     default: ''
   parsing_model:
-    description: 'Optional parsing-model override. Takes precedence over model.'
+    description: 'Optional parsing-model override. Takes precedence over model. Ignored on CodeBoarding hosting.'
     required: false
     default: ''
   depth_cap:
@@ -398,9 +399,11 @@ runs:
         LLM_PROVIDER: ${{ steps.llm.outputs.provider }}
         BACKEND_ID: ${{ steps.llm.outputs.backend_id }}
         DEPTH_CAP: ${{ steps.preflight.outputs.depth_cap }}
-        MODEL: ${{ inputs.model }}
-        AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
-        PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
+        # Empty on hosting, where with-auth.sh drops them too: the stored analysis is named
+        # for the models that actually ran.
+        MODEL: ${{ steps.llm.outputs.model_inputs != 'ignored' && inputs.model || '' }}
+        AGENT_MODEL_INPUT: ${{ steps.llm.outputs.model_inputs != 'ignored' && inputs.agent_model || '' }}
+        PARSING_MODEL_INPUT: ${{ steps.llm.outputs.model_inputs != 'ignored' && inputs.parsing_model || '' }}
       run: "$GITHUB_ACTION_PATH/scripts/action/state-names.sh"
 
     # Both lookups are best effort. Without them the run derives the base from
