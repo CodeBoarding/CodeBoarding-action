@@ -138,6 +138,7 @@ input and which secret to fix.
 | `anthropic_api_key` + `openai_api_key` | refused: set `llm` to pick one |
 | `llm: hosted` | CodeBoarding hosting |
 | `llm: hosted` + any provider key | refused: pick one |
+| hosting + `model`, `agent_model` or `parsing_model` | refused: hosting chooses its own models |
 | `llm: license` | refused: license keys are retired, use `llm: hosted` |
 | `llm: anthropic` + `anthropic_api_key` | Anthropic, directly |
 | `llm: anthropic`, key empty or absent | refused: names the input and the secret |
@@ -255,7 +256,7 @@ Precedence is intentionally simple:
 
 Set only `model` when both jobs should use the same model. Set either specialized input only when that job needs a different model. Model identifiers are not secrets and can be stored in GitHub repository variables.
 
-On CodeBoarding hosting, CodeBoarding pays for the tokens and chooses the models. The three model inputs are ignored there, and so is an `AGENT_MODEL` or `PARSING_MODEL` set in the job's environment; the run's annotations and job summary say which inputs were ignored. They apply when the run uses your own provider key.
+On CodeBoarding hosting, CodeBoarding pays for the tokens and chooses the models. A hosting run that sets any of the three model inputs, or an `AGENT_MODEL` or `PARSING_MODEL` in the job's environment, is refused in its first seconds with the line to remove. A workflow without `llm` that sets a model but whose key secret is missing lands here too, so the refusal also says to check the secret. The model inputs apply when the run uses your own provider key.
 
 ## Keep the baseline current
 
@@ -344,7 +345,7 @@ With the default `github.token`, the repository or organization must allow GitHu
 | `<provider>_api_key` | both | empty | That provider's key, e.g. `anthropic_api_key`. See [Providers](#providers). |
 | `<provider>_base_url` | both | empty | That provider's endpoint, where it has one. |
 | `aws_bedrock_region` | both | empty | Bedrock region. Core defaults to `us-east-1`. |
-| `model` | both | empty | Default model for both analysis and parsing. Ignored on CodeBoarding hosting. |
+| `model` | both | empty | Default model for both analysis and parsing. Own key only: a hosting run that sets it is refused. |
 | `agent_model` | both | empty | Analysis-only override for `model`. |
 | `parsing_model` | both | empty | Parsing-only override for `model`. |
 | `depth_cap` | both | `2` | Positive integer maximum analysis depth, including full-analysis fallbacks, capped by the plan of whoever the run is charged to (3 on Free). Changing it rebuilds incompatible state. |

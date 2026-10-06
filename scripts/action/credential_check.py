@@ -32,9 +32,11 @@ DOCS = "https://github.com/CodeBoarding/CodeBoarding-action#authentication-and-p
 SETTINGS_HINT = "Settings -> Secrets and variables -> Actions"
 TABLE = Path(__file__).resolve().parent / "supported-providers.json"
 
-#: The action's model inputs. On hosting CodeBoarding pays for the tokens, so it chooses the
-#: models: these inputs apply only where the run's own provider key pays (spec D-13).
+#: The action's model inputs, and the variables the engine reads a model from. On hosting
+#: CodeBoarding pays for the tokens, so it chooses the models (spec D-13): a run that names
+#: one there is refused. They apply where the run's own provider key pays.
 MODEL_INPUTS = ("model", "agent_model", "parsing_model")
+MODEL_ENVS = ("AGENT_MODEL", "PARSING_MODEL")
 
 
 #: Every reason this module can refuse a configuration.
@@ -47,6 +49,7 @@ MODEL_INPUTS = ("model", "agent_model", "parsing_model")
 ERROR_CODES = frozenset(
     {
         "several_provider_keys",
+        "hosted_with_model",
         "unknown_llm",
         "missing_provider_key",
         "missing_id_token",
@@ -177,6 +180,33 @@ def _reject_provider_inputs(table: dict, given: dict[str, str]) -> None:
     )
 
 
+def _reject_model_choice(environ: dict[str, str], reason: str) -> None:
+    """Hosting runs on CodeBoarding's models, so a run there that names one is refused.
+
+    Refused rather than ignored: a model named on a hosting run usually means the workflow
+    meant to use its own key and its secret is missing, and an analysis on a model nobody
+    asked for would hide that. The job environment counts too, since the engine reads it.
+    """
+    chosen = [f"`{n}`" for n in MODEL_INPUTS if environ.get(f"CB_IN_{n.upper()}", "").strip()]
+    chosen += [f"`{v}` in the job's environment" for v in MODEL_ENVS if environ.get(v, "").strip()]
+    if not chosen:
+        return
+    what = ", ".join(chosen)
+    verb = "is" if len(chosen) == 1 else "are"
+    if reason:
+        message = (
+            f"{what} {verb} set, but this run uses CodeBoarding hosting because {reason}, and "
+            "hosting runs on CodeBoarding's models. If you meant to use your own provider key, "
+            f"check that its secret exists; otherwise remove {what}."
+        )
+    else:
+        message = (
+            f"`llm: hosted` runs on CodeBoarding's models, but {what} {verb} set. Remove {what}, "
+            "or set `llm` to your provider and wire its key to choose a model."
+        )
+    raise ConfigError("hosted_with_model", message)
+
+
 def _require_id_token(llm: str, environ: dict[str, str], reason: str = "") -> None:
     # Both, because the relay needs both (oidc_relay.py refuses to start without either)
     # and a runner can expose one without the other. Checking only the URL let that case
@@ -281,14 +311,9 @@ def resolve(table: dict, environ: dict[str, str]) -> dict:
 
     if llm == "hosted":
         _reject_provider_inputs(table, given)
+        _reject_model_choice(environ, reason)
         _require_id_token(llm, environ, reason)
-        return {
-            "tier": "hosted",
-            "provider": table["hosted_provider"],
-            "env": {},
-            "ignored_model_inputs": [n for n in MODEL_INPUTS if environ.get(f"CB_IN_{n.upper()}", "").strip()],
-            "reason": reason,
-        }
+        return {"tier": "hosted", "provider": table["hosted_provider"], "env": {}, "reason": reason}
 
     # Keys were retired completely, so the answer that ran on one is refused by name rather
     # than as an unknown value: the fix is one word, and the plan it paid for now follows
@@ -381,24 +406,6 @@ def reported_provider(plan: dict) -> str:
     return "" if plan["tier"] == "hosted" else plan["provider"]
 
 
-def model_inputs(plan: dict) -> str:
-    """`ignored` on the hosted tier, else `apply`. action.yml and with-auth.sh both key on it."""
-    return "ignored" if plan["tier"] == "hosted" else "apply"
-
-
-def model_notice(plan: dict) -> str:
-    """The sentence for a hosted run whose workflow set model inputs, or empty."""
-    ignored = plan.get("ignored_model_inputs") or []
-    if not ignored:
-        return ""
-    names = ", ".join(f"`{name}`" for name in ignored)
-    verb = "is" if len(ignored) == 1 else "are"
-    return (
-        f"{names} {verb} ignored: on CodeBoarding hosting, CodeBoarding chooses the models. "
-        "Model inputs apply when the run uses your own provider key."
-    )
-
-
 def plan_headline(table: dict, plan: dict) -> str:
     """The one line the log opens with. Same source as the summary, so they cannot drift."""
     if plan.get("reason"):
@@ -420,9 +427,6 @@ def plan_summary(table: dict, plan: dict) -> list[tuple[str, str]]:
     # Without `llm`, a secret that does not exist reads as empty and the run goes hosted.
     # This row is how someone who meant to use their own key finds out.
     rows.append(("Chosen", f"because {plan['reason']}" if plan.get("reason") else "by `llm`"))
-    if plan.get("ignored_model_inputs"):
-        ignored = ", ".join(f"`{name}`" for name in plan["ignored_model_inputs"])
-        rows.append(("Models", f"chosen by CodeBoarding on hosting; {ignored} ignored"))
     # Only where the run was pointed somewhere other than the default, since that is the
     # setting most likely to be wrong and least likely to be noticed.
     for var, value in sorted(plan["env"].items()):
@@ -438,7 +442,6 @@ def write_auth_dir(table: dict, plan: dict, auth_dir: Path) -> None:
     env_dir.mkdir(parents=True, exist_ok=True)
     (auth_dir / "tier").write_text(plan["tier"], encoding="utf-8")
     (auth_dir / "provider-name").write_text(plan["provider"], encoding="utf-8")
-    (auth_dir / "model-inputs").write_text(model_inputs(plan), encoding="utf-8")
     for var, value in plan["env"].items():
         (env_dir / var).write_text(value, encoding="utf-8")
     # Every variable core knows about, minus the ones this run actually resolved, so
@@ -506,8 +509,6 @@ def main(argv: list[str]) -> int:
             "provider": reported_provider(plan),
             "summary": "\n".join(f"| {k} | {v} |" for k, v in plan_summary(table, plan)),
             "headline": plan_headline(table, plan),
-            "model_inputs": model_inputs(plan),
-            "notice": model_notice(plan),
         },
         sys.stdout,
     )

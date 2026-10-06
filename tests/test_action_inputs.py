@@ -148,20 +148,11 @@ class ActionInputTests(unittest.TestCase):
         self.assertNotIn("license_key", self.inputs)
         self.assertNotIn("CB_IN_LICENSE_KEY", ACTION)
 
-    def test_hosted_runs_name_their_stored_analysis_without_the_ignored_model_inputs(self) -> None:
-        """with-auth.sh drops the model inputs on the hosted tier; the analysis name must too,
-        or it would claim a model the run never used."""
-        start = ACTION.index("id: state")
-        block = ACTION[start : ACTION.index("\n      run:", start)]
-        for name, var in (
-            ("model", "MODEL"),
-            ("agent_model", "AGENT_MODEL_INPUT"),
-            ("parsing_model", "PARSING_MODEL_INPUT"),
-        ):
+    def test_model_inputs_reach_the_resolver(self) -> None:
+        """Hosting refuses a named model, which it can only do if it sees the inputs."""
+        for name in ("model", "agent_model", "parsing_model"):
             with self.subTest(input=name):
-                self.assertIn(
-                    f"{var}: ${{{{ steps.llm.outputs.model_inputs != 'ignored' && inputs.{name} || '' }}}}", block
-                )
+                self.assertIn(f"CB_IN_{name.upper()}: ${{{{ inputs.{name} }}}}", ACTION)
 
     def test_default_workflow_reviews_drafts_on_open_and_new_commits(self) -> None:
         self.assertNotIn("github.event.pull_request.draft", DOGFOOD)

@@ -36,11 +36,6 @@ done
 
 export CODEBOARDING_SOURCE=github_action
 unset ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN
-# On the hosted tier CodeBoarding chooses the models. Neither the workflow's model inputs nor
-# a model variable inherited from the job environment may pick one on CodeBoarding's account.
-if [ "$(cat "$AUTH_DIR/model-inputs" 2>/dev/null)" = ignored ]; then
-  unset MODEL AGENT_MODEL_INPUT PARSING_MODEL_INPUT AGENT_MODEL PARSING_MODEL
-fi
 if [ -n "${MODEL:-}" ]; then
   export AGENT_MODEL="$MODEL"
   export PARSING_MODEL="$MODEL"

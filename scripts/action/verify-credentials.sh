@@ -39,7 +39,6 @@ backend_id=""
   echo "tier=$tier"
   echo "backend_id=$backend_id"
   echo "provider=$provider"
-  echo "model_inputs=$(field model_inputs)"
   echo "error=$error"
   echo "message<<CB_EOF"
   echo "$message"
@@ -81,8 +80,6 @@ fi
 # and the summary cannot end up claiming different things -- which they did: this said
 # "your own openai key" for an endpoint-only run that resolved no key at all.
 field headline
-notice="$(field notice)"
-[ -z "$notice" ] || echo "::notice title=CodeBoarding models::${notice}"
 # The rows come from the check, which is the only thing that knows what it resolved.
 {
   echo "### CodeBoarding configuration"

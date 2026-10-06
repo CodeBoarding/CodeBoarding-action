@@ -144,6 +144,21 @@ class ContractTests(unittest.TestCase):
         error = self.refuse(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k", CB_IN_OPENAI_API_KEY="o")
         self.assertEqual(error.code, "foreign_provider_key")
 
+    def test_hosting_refuses_a_named_model_whichever_way_it_was_chosen(self) -> None:
+        for environ, hint in (
+            ({"CB_IN_LLM": "hosted", "CB_IN_MODEL": "m"}, "set `llm` to your provider"),
+            ({"CB_IN_AGENT_MODEL": "m"}, "check that its secret exists"),
+            ({"CB_IN_PARSING_MODEL": "m", "PARSING_MODEL": "m"}, "`PARSING_MODEL` in the job's environment"),
+        ):
+            with self.subTest(environ=environ):
+                error = self.refuse(**environ, **OIDC)
+                self.assertEqual(error.code, "hosted_with_model")
+                self.assertIn(hint, error.message)
+
+    def test_own_key_runs_choose_their_model_freely(self) -> None:
+        plan = self.resolve(CB_IN_ANTHROPIC_API_KEY="k", CB_IN_MODEL="m", AGENT_MODEL="a")
+        self.assertEqual(plan["provider"], "anthropic")
+
     def test_a_named_llm_carries_no_reason(self) -> None:
         """The workflow said what it wanted; there is nothing to explain."""
         self.assertEqual(self.resolve(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k")["reason"], "")
@@ -339,6 +354,7 @@ class ContractTests(unittest.TestCase):
         cases = [
             {"CB_IN_ANTHROPIC_API_KEY": "k", "CB_IN_OPENAI_API_KEY": "o"},
             {"CB_IN_LLM": "not_a_provider"},
+            {"CB_IN_LLM": "hosted", "CB_IN_MODEL": "m", **OIDC},
             {"CB_IN_LLM": "anthropic"},
             {"CB_IN_LLM": "license", **OIDC},
             {"CB_IN_LLM": "hosted"},

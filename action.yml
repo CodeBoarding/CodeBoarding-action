@@ -111,15 +111,15 @@ inputs:
     required: false
     default: ''
   model:
-    description: 'Optional model used for both analysis and parsing. Ignored on CodeBoarding hosting, where CodeBoarding chooses the models.'
+    description: 'Optional model used for both analysis and parsing. Not allowed on CodeBoarding hosting, which chooses its own models: the run is refused.'
     required: false
     default: ''
   agent_model:
-    description: 'Optional analysis-model override. Takes precedence over model. Ignored on CodeBoarding hosting.'
+    description: 'Optional analysis-model override. Takes precedence over model. Not allowed on CodeBoarding hosting.'
     required: false
     default: ''
   parsing_model:
-    description: 'Optional parsing-model override. Takes precedence over model. Ignored on CodeBoarding hosting.'
+    description: 'Optional parsing-model override. Takes precedence over model. Not allowed on CodeBoarding hosting.'
     required: false
     default: ''
   depth_cap:
@@ -255,6 +255,9 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         CB_IN_LLM: ${{ inputs.llm }}
+        CB_IN_MODEL: ${{ inputs.model }}
+        CB_IN_AGENT_MODEL: ${{ inputs.agent_model }}
+        CB_IN_PARSING_MODEL: ${{ inputs.parsing_model }}
         CB_IN_ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
         CB_IN_AWS_BEDROCK_API_KEY: ${{ inputs.aws_bedrock_api_key }}
         CB_IN_AWS_BEDROCK_REGION: ${{ inputs.aws_bedrock_region }}
@@ -399,11 +402,9 @@ runs:
         LLM_PROVIDER: ${{ steps.llm.outputs.provider }}
         BACKEND_ID: ${{ steps.llm.outputs.backend_id }}
         DEPTH_CAP: ${{ steps.preflight.outputs.depth_cap }}
-        # Empty on hosting, where with-auth.sh drops them too: the stored analysis is named
-        # for the models that actually ran.
-        MODEL: ${{ steps.llm.outputs.model_inputs != 'ignored' && inputs.model || '' }}
-        AGENT_MODEL_INPUT: ${{ steps.llm.outputs.model_inputs != 'ignored' && inputs.agent_model || '' }}
-        PARSING_MODEL_INPUT: ${{ steps.llm.outputs.model_inputs != 'ignored' && inputs.parsing_model || '' }}
+        MODEL: ${{ inputs.model }}
+        AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
+        PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
       run: "$GITHUB_ACTION_PATH/scripts/action/state-names.sh"
 
     # Both lookups are best effort. Without them the run derives the base from
