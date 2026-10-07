@@ -438,6 +438,18 @@ class SyncDeliveryTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
         return result
 
+    GENERATED = "".join(
+        f".codeboarding/{name} linguist-generated=true\n"
+        for name in (
+            "analysis.json",
+            "fingerprint.json",
+            "static_analysis.pkl",
+            "static_analysis.sha",
+            "codeboarding_version.json",
+            "health/health_report.json",
+        )
+    )
+
     def _committed_attributes(self, ref: str = "HEAD") -> str:
         return self._git(self.checkout, "show", f"{ref}:.gitattributes") + "\n"
 
@@ -452,7 +464,7 @@ class SyncDeliveryTests(unittest.TestCase):
         # language stats, which is what a reviewer wants from a baseline.
         self._deliver()
 
-        self.assertEqual(self._committed_attributes(), ".codeboarding/** linguist-generated=true\n")
+        self.assertEqual(self._committed_attributes(), self.GENERATED)
         changed = self._git(self.checkout, "show", "--name-only", "--format=", "HEAD").splitlines()
         self.assertIn(".gitattributes", changed)
         self.assertIn(".codeboarding/analysis.json", changed)
@@ -462,16 +474,18 @@ class SyncDeliveryTests(unittest.TestCase):
 
         self._deliver()
 
-        self.assertEqual(
-            self._committed_attributes(), "*.png binary\n*.sh text eol=lf\n.codeboarding/** linguist-generated=true\n"
-        )
+        self.assertEqual(self._committed_attributes(), "*.png binary\n*.sh text eol=lf\n" + self.GENERATED)
 
     def test_a_line_that_already_covers_it_is_left_alone(self) -> None:
         self._commit_attributes("/.codeboarding/* linguist-generated\n")
 
         self._deliver()
 
-        self.assertEqual(self._committed_attributes(), "/.codeboarding/* linguist-generated\n")
+        # The top-level files are covered already; only the health report is not.
+        self.assertEqual(
+            self._committed_attributes(),
+            "/.codeboarding/* linguist-generated\n.codeboarding/health/health_report.json linguist-generated=true\n",
+        )
 
     def test_an_explicit_opt_out_is_respected(self) -> None:
         self._commit_attributes(".codeboarding/** -linguist-generated\n")
@@ -504,4 +518,27 @@ class SyncDeliveryTests(unittest.TestCase):
         self.assertIn("analysis cache", create)
         self.assertIn("start from the saved diagram", create)
         self._git(self.checkout, "fetch", "--quiet", "origin", "codeboarding/sync")
-        self.assertEqual(self._committed_attributes("FETCH_HEAD"), ".codeboarding/** linguist-generated=true\n")
+        self.assertEqual(self._committed_attributes("FETCH_HEAD"), self.GENERATED)
+
+    def test_attributes_alone_never_make_a_commit(self) -> None:
+        # The baseline is already committed and unchanged; without this the run
+        # would push an attributes-only commit, or open a sync PR for it each time.
+        board = self.checkout / ".codeboarding"
+        for name in ("analysis.json", "fingerprint.json", "static_analysis.pkl"):
+            (board / name).write_text((self.analysis / name).read_text(), encoding="utf-8")
+        self._git(self.checkout, "add", "-A")
+        self._git(self.checkout, "commit", "-m", "baseline")
+        self._git(self.checkout, "push", "--quiet", "origin", "main")
+        before = self._git(self.checkout, "rev-parse", "HEAD")
+
+        self._deliver()
+
+        self.assertEqual(self._git(self.remote, "rev-parse", "main"), before)
+        self.assertFalse((self.checkout / ".gitattributes").exists())
+
+    def test_files_people_write_are_not_marked_generated(self) -> None:
+        self._deliver()
+
+        for path in (".codeboarding/.codeboardingignore", ".codeboarding/health/health_config.json"):
+            attribute = self._git(self.checkout, "check-attr", "linguist-generated", "--", path)
+            self.assertTrue(attribute.endswith(": unspecified"), attribute)

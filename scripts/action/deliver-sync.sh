@@ -64,14 +64,6 @@ classify_push_failure() {
 }
 
 "$ACTION_PATH/scripts/action/install-sync.sh" > "$GENERATED_PATHS"
-# Marked generated, so GitHub collapses the baseline's diffs and leaves it out of
-# the language stats. Only when nothing in .gitattributes decides it already: an
-# explicit opt-out is as deliberate as an opt-in, and other lines are not ours.
-if [ "$(git check-attr linguist-generated -- .codeboarding/analysis.json | awk '{print $NF}')" = unspecified ]; then
-  [ ! -s .gitattributes ] || [ -z "$(tail -c 1 .gitattributes)" ] || printf '\n' >> .gitattributes
-  printf '.codeboarding/** linguist-generated=true\n' >> .gitattributes
-  echo .gitattributes >> "$GENERATED_PATHS"
-fi
 stage_paths=()
 while IFS= read -r path; do
   if [ -e "$path" ] || git ls-files --error-unmatch "$path" >/dev/null 2>&1; then
@@ -104,6 +96,25 @@ if git diff --cached --quiet || git diff --cached --quiet -I '"generated_at"' -I
   echo "::notice::The CodeBoarding baseline is unchanged."
   exit 0
 fi
+
+# Marked generated, so GitHub collapses the baseline's diffs and leaves it out of
+# the language stats. Added only alongside a real baseline change, so it never
+# makes a commit or a sync pull request of its own. Each generated path is named,
+# since .codeboarding/ also holds configuration people write; a path some line
+# already decides (an opt-out included) is left to that line, and no other line
+# is touched.
+mark_generated() {
+  local path missing=()
+  for path in .codeboarding/analysis.json .codeboarding/fingerprint.json .codeboarding/static_analysis.pkl \
+    .codeboarding/static_analysis.sha .codeboarding/codeboarding_version.json .codeboarding/health/health_report.json; do
+    [ "$(git check-attr linguist-generated -- "$path" | awk '{print $NF}')" != unspecified ] || missing+=("$path")
+  done
+  [ "${#missing[@]}" -gt 0 ] || return 0
+  [ ! -s .gitattributes ] || [ -z "$(tail -c 1 .gitattributes)" ] || printf '\n' >> .gitattributes
+  printf '%s linguist-generated=true\n' "${missing[@]}" >> .gitattributes
+  git add .gitattributes
+}
+mark_generated
 
 git commit -m 'chore(codeboarding): sync analysis baseline' >/dev/null
 
