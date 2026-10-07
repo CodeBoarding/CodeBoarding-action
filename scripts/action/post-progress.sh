@@ -52,4 +52,9 @@ body="$(printf '%s\n\n%s\n   %s\n%s\n\n%s\n\n%s\n%s' \
   "Open it in [CodeBoarding]($platform) meanwhile: the files, comments and review are there already, and the diff appears when the run finishes." \
   "<sub>run [${GITHUB_RUN_ID:-}]($run_url) · attempt ${GITHUB_RUN_ATTEMPT:-1}</sub>" \
   "$marker")"
+# Checked last: the ticker may have been stopped while this ran, and a stale
+# "running" edit must not land on top of the next step.
+if [ "$step" = base ] && [ -n "${PROGRESS_STOP_FILE:-}" ] && [ -e "$PROGRESS_STOP_FILE" ]; then
+  exit 0
+fi
 gh api -X PATCH "repos/$REPOSITORY/issues/comments/$id" -f body="$body" >/dev/null

@@ -58,9 +58,14 @@ duration() {
 }
 BASE_SOURCE="${BASE_SOURCE:-}"
 BASE_BRANCH="${BASE_REF:-the base branch}"
-BASE_AT="${BASE_FROM_SHA:-${MERGE_BASE_SHA:-}}"
+BASE_FROM="${BASE_FROM_SHA:-}"
+CATCHUP="${CATCHUP_COMMITS:-}"
+case "$CATCHUP" in *[!0-9]*) CATCHUP="" ;; esac
 CHANGES="changes $(duration "${HEAD_SECONDS:-}")"
+TOOK="$(duration "${BASE_SECONDS:-}")"
 BASE_LINE=""
+# An empty sha or count is unknown, not zero: the line then says it caught up
+# without claiming the base was exact.
 case "$BASE_SOURCE" in
   computed)
     case "${BASE_REASON:-}" in
@@ -68,17 +73,22 @@ case "$BASE_SOURCE" in
       too_far_behind) WHY="saved diagram too far behind" ;;
       *) WHY="no saved diagram" ;;
     esac
-    BASE_LINE="Base: built from scratch (${WHY}), $(duration "${BASE_SECONDS:-}") · ${CHANGES}"
+    BASE_LINE="Base: built from scratch (${WHY}), ${TOOK} · ${CHANGES}"
     ;;
-  saved | committed | ancestor)
-    CATCHUP="${CATCHUP_COMMITS:-}"
-    case "$CATCHUP" in ''|*[!0-9]*) CATCHUP=0 ;; esac
-    if [ "$CATCHUP" -gt 0 ]; then
+  saved)
+    BASE_LINE="Base: saved diagram of ${BASE_BRANCH} @${BASE_FROM:0:7} · ${CHANGES}"
+    ;;
+  committed | ancestor)
+    if [ -z "$BASE_FROM" ] || [ -z "$CATCHUP" ]; then
+      BASE_LINE="Base: saved diagram of ${BASE_BRANCH}, caught up, ${TOOK} · ${CHANGES}"
+    elif [ "$CATCHUP" -gt 0 ]; then
       COMMIT_NOUN="commits"
       [ "$CATCHUP" != 1 ] || COMMIT_NOUN="commit"
-      BASE_LINE="Base: caught up ${CATCHUP} ${COMMIT_NOUN} from ${BASE_BRANCH} @${BASE_AT:0:7}, $(duration "${BASE_SECONDS:-}") · ${CHANGES}"
+      BASE_LINE="Base: caught up ${CATCHUP} ${COMMIT_NOUN} from ${BASE_BRANCH} @${BASE_FROM:0:7}, ${TOOK} · ${CHANGES}"
+    elif [ "$BASE_SOURCE" = ancestor ]; then
+      BASE_LINE="Base: caught up from ${BASE_BRANCH} @${BASE_FROM:0:7}, ${TOOK} · ${CHANGES}"
     else
-      BASE_LINE="Base: saved diagram of ${BASE_BRANCH} @${BASE_AT:0:7} · ${CHANGES}"
+      BASE_LINE="Base: saved diagram of ${BASE_BRANCH} @${BASE_FROM:0:7} · ${CHANGES}"
     fi
     ;;
 esac

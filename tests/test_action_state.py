@@ -334,21 +334,30 @@ class ReviewChainTests(unittest.TestCase):
             text=True,
         ).stdout.strip()
 
-    def _commit(self, message: str, files: dict[str, str]) -> str:
+    def _commit(self, message: str, files: dict[str, str], *, bot: bool = False) -> str:
         for name, content in files.items():
             (self.checkout / name).parent.mkdir(parents=True, exist_ok=True)
             (self.checkout / name).write_text(content, encoding="utf-8")
         self._git("add", "-A")
-        self._git("commit", "-q", "-m", message)
+        committer = ("-c", "user.email=codeboarding-review[bot]@users.noreply.github.com") if bot else ()
+        self._git(*committer, "commit", "-q", "-m", message)
         return self._git("rev-parse", "HEAD")
 
     def _sync_history(self) -> tuple[str, str]:
         """An analysed commit with a sync commit on top that writes only .codeboarding/."""
-        self._git("init", "-q")
+        self._git("init", "-q", "-b", "main")
         analysed = self._commit("feat: code", {"code.py": "pass\n"})
         _state(self.checkout / ".codeboarding", cap=2)
-        sync = self._commit("chore(codeboarding): sync analysis baseline", {})
+        sync = self._commit("chore(codeboarding): sync analysis baseline", {}, bot=True)
         return analysed, sync
+
+    def _merge(self, branch: str, files: dict[str, str], *, bot: bool = False) -> str:
+        """A commit on `branch` merged into main with --no-ff."""
+        self._git("checkout", "-q", "-b", branch)
+        self._commit(f"work on {branch}", files, bot=bot)
+        self._git("checkout", "-q", "main")
+        self._git("merge", "-q", "--no-ff", "-m", f"Merge {branch}", branch)
+        return self._git("rev-parse", "HEAD")
 
     def _provenance(self, values: dict[str, str]) -> dict[str, str]:
         keys = ("base_source", "base_reason", "base_from_sha", "catchup_commits")
@@ -426,6 +435,61 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(values["base_source"], "committed")
         self.assertEqual(values["base_from_sha"], analysed)
         self.assertEqual(values["catchup_commits"], "2")
+
+    def test_merged_pull_requests_count_as_commits_to_catch_up(self) -> None:
+        # Merged with --no-ff, the first-parent chain is merge commits only, and
+        # each one brings code in even though it changes nothing against itself.
+        analysed, _sync = self._sync_history()
+        self._merge("feature-a", {"a.py": "pass\n"})
+        merge_base = self._merge("feature-b", {"b.py": "pass\n"})
+
+        values = self._analyze(REVIEW_BASE_SHA=merge_base)
+
+        self.assertEqual(values["base_from_sha"], analysed)
+        self.assertEqual(values["catchup_commits"], "2")
+
+    def test_a_merged_sync_pull_request_describes_its_own_parent(self) -> None:
+        # sync_strategy: pull_request. The sync commit sits on codeboarding/sync on
+        # top of the analysed commit; main moved on before the merge.
+        self._git("init", "-q", "-b", "main")
+        analysed = self._commit("feat: code", {"code.py": "pass\n"})
+        self._git("checkout", "-q", "-b", "codeboarding/sync")
+        _state(self.checkout / ".codeboarding", cap=2)
+        self._commit("chore(codeboarding): sync analysis baseline", {}, bot=True)
+        self._git("checkout", "-q", "main")
+        self._commit("feat: meanwhile", {"later.py": "pass\n"})
+        self._git("merge", "-q", "--no-ff", "-m", "Merge codeboarding/sync", "codeboarding/sync")
+        merge_base = self._git("rev-parse", "HEAD")
+
+        values = self._analyze(REVIEW_BASE_SHA=merge_base)
+
+        self.assertEqual(values["base_source"], "committed")
+        self.assertEqual(values["base_from_sha"], analysed)
+        self.assertEqual(values["catchup_commits"], "1")
+
+    def test_a_baseline_sync_did_not_write_is_of_unknown_origin(self) -> None:
+        # A squash or a hand edit: its parent is not known to be what was analysed.
+        self._git("init", "-q", "-b", "main")
+        self._commit("feat: code", {"code.py": "pass\n"})
+        _state(self.checkout / ".codeboarding", cap=2)
+        merge_base = self._commit("chore(codeboarding): sync analysis baseline (#7)", {})
+
+        values = self._analyze(REVIEW_BASE_SHA=merge_base)
+
+        self.assertEqual(values["base_source"], "committed")
+        self.assertEqual(values["base_from_sha"], "")
+        self.assertEqual(values["catchup_commits"], "")
+
+    def test_an_attributes_line_is_not_code_to_catch_up(self) -> None:
+        analysed, _sync = self._sync_history()
+        merge_base = self._commit(
+            "chore: attributes", {".gitattributes": ".codeboarding/analysis.json linguist-generated=true\n"}
+        )
+
+        values = self._analyze(REVIEW_BASE_SHA=merge_base)
+
+        self.assertEqual(values["base_from_sha"], analysed)
+        self.assertEqual(values["catchup_commits"], "0")
 
     def _progress_stub(self) -> Path:
         calls = self.root / "gh-calls"

@@ -155,12 +155,24 @@ fetch_commit() {
     "${GITHUB_SERVER_URL%/}/${repository}.git" "$sha" --depth="$depth"
 }
 
-# The commit a baseline committed at $1 describes. Sync writes it in a commit of
-# its own on top of the analysed one, so that commit's parent is the answer.
-# Empty when nothing within the fetched history wrote it.
+# The commit a baseline committed at $1 describes, or empty when that cannot be
+# told. Sync writes the baseline in a commit of its own on top of the analysed
+# commit, pushed straight to the branch or merged in from its pull request's
+# branch. A writer sync did not make (a squash, a rebase, a hand edit) says
+# nothing about which commit was analysed.
 baseline_commit() {
-  local tip="$1" writer shallow
-  writer="$(git -C "$CHECKOUT_DIR" log --first-parent -1 --format=%H "$tip" -- .codeboarding/analysis.json 2>/dev/null || true)"
+  local writer
+  writer="$(baseline_writer "$1")"
+  if [ -n "$writer" ] && git -C "$CHECKOUT_DIR" rev-parse -q --verify "$writer^2" >/dev/null; then
+    writer="$(baseline_writer "$writer^2")"
+  fi
+  [ -n "$writer" ] && is_sync_commit "$writer" || return 0
+  git -C "$CHECKOUT_DIR" rev-parse -q --verify "$writer^1" || true
+}
+# The newest first-parent commit at or below $1 that wrote the baseline.
+baseline_writer() {
+  local writer shallow
+  writer="$(git -C "$CHECKOUT_DIR" log --first-parent -1 --format=%H "$1" -- .codeboarding/analysis.json 2>/dev/null || true)"
   [ -n "$writer" ] || return 0
   # A shallow boundary looks like it added every file, so it proves nothing.
   shallow="$(git -C "$CHECKOUT_DIR" rev-parse --git-path shallow)"
@@ -168,17 +180,27 @@ baseline_commit() {
   if [ -f "$shallow" ] && grep -qx "$writer" "$shallow"; then
     return 0
   fi
-  if [ -z "$(code_paths_changed "$writer")" ] && git -C "$CHECKOUT_DIR" rev-parse -q --verify "$writer^1" >/dev/null; then
-    git -C "$CHECKOUT_DIR" rev-parse "$writer^1"
+  echo "$writer"
+}
+is_sync_commit() {
+  case "$(git -C "$CHECKOUT_DIR" log -1 --format=%ce "$1")" in
+    'codeboarding-review[bot]@users.noreply.github.com' | 'codeboarding[bot]@users.noreply.github.com') ;;
+    *) return 1 ;;
+  esac
+  [ -z "$(code_paths_changed "$1")" ]
+}
+# Against the first parent, so a merge counts as the change it brought in. The
+# baseline and the attributes line sync may add are not code.
+code_paths_changed() {
+  local exclude=(-- . ':(exclude).codeboarding' ':(exclude).gitattributes')
+  if git -C "$CHECKOUT_DIR" rev-parse -q --verify "$1^1" >/dev/null; then
+    git -C "$CHECKOUT_DIR" diff --name-only "$1^1" "$1" "${exclude[@]}" 2>/dev/null || true
   else
-    echo "$writer"
+    git -C "$CHECKOUT_DIR" diff-tree --root --no-commit-id --name-only -r "$1" "${exclude[@]}" 2>/dev/null || true
   fi
 }
-code_paths_changed() {
-  git -C "$CHECKOUT_DIR" diff-tree --no-commit-id --name-only -r "$1" -- . ':(exclude).codeboarding' 2>/dev/null || true
-}
-# First-parent commits from $1 to $2 that change anything outside .codeboarding/:
-# a sync commit changes nothing the analysis reads, so it is nothing to catch up.
+# First-parent commits from $1 to $2 that change code: a sync commit changes
+# nothing the analysis reads, so it is nothing to catch up.
 catchup_count() {
   local from="$1" to="$2" commit count=0
   for commit in $(git -C "$CHECKOUT_DIR" rev-list --first-parent "$from..$to" 2>/dev/null); do
@@ -190,20 +212,25 @@ catchup_count() {
 # Rewrites the sticky progress comment while the base is built from scratch. A
 # fork's read-only token makes every call fail, which costs nothing.
 PROGRESS_PID=""
+PROGRESS_STOP="${RUNNER_TEMP:-}/codeboarding-progress-stop"
 progress() {
   GH_TOKEN="${GIT_TOKEN:-}" GH_ENTERPRISE_TOKEN="${GIT_TOKEN:-}" BASE_REASON="$base_reason" \
-    "$ACTION_PATH/scripts/action/post-progress.sh" "$@" >/dev/null 2>&1 || true
+    PROGRESS_STOP_FILE="$PROGRESS_STOP" "$ACTION_PATH/scripts/action/post-progress.sh" "$@" >/dev/null 2>&1 || true
 }
 progress_start() {
   local started="$1"
+  rm -f "$PROGRESS_STOP"
   progress base 0
-  ( while sleep 60; do progress base "$(( $(date +%s) - started ))"; done ) >/dev/null 2>&1 &
+  ( while sleep 60 && [ ! -e "$PROGRESS_STOP" ]; do progress base "$(( $(date +%s) - started ))"; done ) >/dev/null 2>&1 &
   PROGRESS_PID=$!
 }
+# Stops the ticker and waits for it, so no "still running" edit can land after the
+# next one. Only its sleep is killed: an edit in flight finishes or, having seen
+# the stop file, never starts.
 progress_stop() {
   [ -n "$PROGRESS_PID" ] || return 0
-  pkill -P "$PROGRESS_PID" 2>/dev/null || true
-  kill "$PROGRESS_PID" 2>/dev/null || true
+  touch "$PROGRESS_STOP"
+  pkill -x sleep -P "$PROGRESS_PID" 2>/dev/null || true
   wait "$PROGRESS_PID" 2>/dev/null || true
   PROGRESS_PID=""
 }

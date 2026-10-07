@@ -111,8 +111,21 @@ class BaseLineTests(unittest.TestCase):
         self.assertEqual(line, "<sub>Base: saved diagram of main @a1b2c3d · changes 2 m 39 s</sub>")
 
     def test_a_committed_base_at_the_merge_base_reads_as_saved(self) -> None:
-        line = self._base_line(BASE_SOURCE="committed", BASE_FROM_SHA="", CATCHUP_COMMITS="", HEAD_SECONDS="4")
-        self.assertEqual(line, "<sub>Base: saved diagram of main @f00dfee · changes 4 s</sub>")
+        line = self._base_line(BASE_SOURCE="committed", BASE_FROM_SHA="a1b2c3d4", CATCHUP_COMMITS="0", HEAD_SECONDS="4")
+        self.assertEqual(line, "<sub>Base: saved diagram of main @a1b2c3d · changes 4 s</sub>")
+
+    def test_an_unknown_catch_up_does_not_claim_an_exact_base(self) -> None:
+        for sha, count in (("", ""), ("a1b2c3d4", ""), ("", "3")):
+            line = self._base_line(
+                BASE_SOURCE="committed", BASE_FROM_SHA=sha, CATCHUP_COMMITS=count, BASE_SECONDS="41", HEAD_SECONDS="4"
+            )
+            self.assertEqual(line, "<sub>Base: saved diagram of main, caught up, 41 s · changes 4 s</sub>")
+
+    def test_an_ancestor_never_reads_as_saved(self) -> None:
+        line = self._base_line(
+            BASE_SOURCE="ancestor", BASE_FROM_SHA="a1b2c3d4", CATCHUP_COMMITS="0", BASE_SECONDS="41", HEAD_SECONDS="4"
+        )
+        self.assertEqual(line, "<sub>Base: caught up from main @a1b2c3d, 41 s · changes 4 s</sub>")
 
     def test_a_caught_up_base_counts_the_commits(self) -> None:
         line = self._base_line(

@@ -76,6 +76,13 @@ class ProgressCommentTests(unittest.TestCase):
         lookups = [c for c in self.calls.read_text().split("\n----\n") if "/comments?per_page" in c]
         self.assertEqual(len(lookups), 1)
 
+    def test_a_stopped_ticker_never_edits_after_the_next_step(self) -> None:
+        stop = self.root / "stop"
+        stop.touch()
+        self.assertEqual(self._post("base", 120, PROGRESS_STOP_FILE=str(stop)), [])
+        # The step-2 edit is the one that follows the stop, so it still lands.
+        self.assertEqual(len(self._post("head", 120, PROGRESS_STOP_FILE=str(stop))), 1)
+
     def test_no_progress_comment_means_no_edit(self) -> None:
         self.assertEqual(self._post("base", 0, comment_id=""), [])
 

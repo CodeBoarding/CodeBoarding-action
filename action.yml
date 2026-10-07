@@ -654,7 +654,6 @@ runs:
         HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
         # Analysed files whose content hash differs between base and head, from the render step.
         ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
-        MERGE_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
         BASE_SOURCE: ${{ steps.review_analyze.outputs.base_source }}
         BASE_REASON: ${{ steps.review_analyze.outputs.base_reason }}
         BASE_FROM_SHA: ${{ steps.review_analyze.outputs.base_from_sha }}
