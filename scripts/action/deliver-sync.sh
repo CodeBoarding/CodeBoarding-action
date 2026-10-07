@@ -64,6 +64,14 @@ classify_push_failure() {
 }
 
 "$ACTION_PATH/scripts/action/install-sync.sh" > "$GENERATED_PATHS"
+# Marked generated, so GitHub collapses the baseline's diffs and leaves it out of
+# the language stats. Only when nothing in .gitattributes decides it already: an
+# explicit opt-out is as deliberate as an opt-in, and other lines are not ours.
+if [ "$(git check-attr linguist-generated -- .codeboarding/analysis.json | awk '{print $NF}')" = unspecified ]; then
+  [ ! -s .gitattributes ] || [ -z "$(tail -c 1 .gitattributes)" ] || printf '\n' >> .gitattributes
+  printf '.codeboarding/** linguist-generated=true\n' >> .gitattributes
+  echo .gitattributes >> "$GENERATED_PATHS"
+fi
 stage_paths=()
 while IFS= read -r path; do
   if [ -e "$path" ] || git ls-files --error-unmatch "$path" >/dev/null 2>&1; then
@@ -123,7 +131,7 @@ fi
 if [ -z "$pr_json" ]; then
   gh pr create --repo "$REPOSITORY" --base "$TARGET_BRANCH" --head "$SYNC_BRANCH" \
     --title 'chore(codeboarding): sync analysis baseline' \
-    --body "Updates the versioned CodeBoarding analysis for \`$TARGET_BRANCH\`."
+    --body "Updates the CodeBoarding files in \`.codeboarding/\` for \`$TARGET_BRANCH\`. They are generated, not written by hand: the data behind the architecture diagram, and an analysis cache that lets the next run analyze only what changed. Merging this lets pull request reviews start from the saved diagram instead of building one first."
   pr_json="$(gh api --method GET "repos/$REPOSITORY/pulls" \
     -f state=open -f base="$TARGET_BRANCH" \
     -f head="${REPOSITORY%%/*}:$SYNC_BRANCH" --jq '.[0]')"
