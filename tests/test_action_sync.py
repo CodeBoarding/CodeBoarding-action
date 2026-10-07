@@ -410,3 +410,135 @@ class SyncDeliveryTests(unittest.TestCase):
         self.assertEqual(values["baseline_sha"], baseline_sha)
         self.assertEqual(values["analyzed_sha"], self.analyzed_sha)
         self.assertNotEqual(values["baseline_sha"], values["analyzed_sha"])
+
+    def _deliver(self, strategy: str = "push", path: str = os.environ["PATH"]) -> subprocess.CompletedProcess:
+        output = self.root / "github-output"
+        output.write_text("", encoding="utf-8")
+        result = subprocess.run(
+            [str(ROOT / "scripts" / "action" / "deliver-sync.sh")],
+            env={
+                "PATH": path,
+                "PYTHONPATH": str(self.core),
+                "ACTION_PATH": str(ROOT),
+                "ANALYSIS_DIR": str(self.analysis),
+                "CHECKOUT_DIR": str(self.checkout),
+                "GITHUB_OUTPUT": str(output),
+                "RUNNER_TEMP": str(self.root),
+                "GITHUB_SERVER_URL": str(self.root),
+                "GITHUB_TOKEN": "unused",
+                "GH_HOST": "github.com",
+                "REPOSITORY": "owner/repo",
+                "TARGET_BRANCH": "main",
+                "SYNC_STRATEGY": strategy,
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        return result
+
+    GENERATED = "".join(
+        f".codeboarding/{name} linguist-generated=true\n"
+        for name in (
+            "analysis.json",
+            "fingerprint.json",
+            "static_analysis.pkl",
+            "static_analysis.sha",
+            "codeboarding_version.json",
+            "health/health_report.json",
+        )
+    )
+
+    def _committed_attributes(self, ref: str = "HEAD") -> str:
+        return self._git(self.checkout, "show", f"{ref}:.gitattributes") + "\n"
+
+    def _commit_attributes(self, content: str) -> None:
+        (self.checkout / ".gitattributes").write_text(content, encoding="utf-8")
+        self._git(self.checkout, "add", ".gitattributes")
+        self._git(self.checkout, "commit", "-m", "attributes")
+        self._git(self.checkout, "push", "--quiet", "origin", "main")
+
+    def test_the_baseline_is_marked_generated_in_the_sync_commit(self) -> None:
+        # GitHub collapses generated files in a diff and leaves them out of the
+        # language stats, which is what a reviewer wants from a baseline.
+        self._deliver()
+
+        self.assertEqual(self._committed_attributes(), self.GENERATED)
+        changed = self._git(self.checkout, "show", "--name-only", "--format=", "HEAD").splitlines()
+        self.assertIn(".gitattributes", changed)
+        self.assertIn(".codeboarding/analysis.json", changed)
+
+    def test_existing_attributes_are_kept_and_appended_to(self) -> None:
+        self._commit_attributes("*.png binary\n*.sh text eol=lf")
+
+        self._deliver()
+
+        self.assertEqual(self._committed_attributes(), "*.png binary\n*.sh text eol=lf\n" + self.GENERATED)
+
+    def test_a_line_that_already_covers_it_is_left_alone(self) -> None:
+        self._commit_attributes("/.codeboarding/* linguist-generated\n")
+
+        self._deliver()
+
+        # The top-level files are covered already; only the health report is not.
+        self.assertEqual(
+            self._committed_attributes(),
+            "/.codeboarding/* linguist-generated\n.codeboarding/health/health_report.json linguist-generated=true\n",
+        )
+
+    def test_an_explicit_opt_out_is_respected(self) -> None:
+        self._commit_attributes(".codeboarding/** -linguist-generated\n")
+
+        self._deliver()
+
+        self.assertEqual(self._committed_attributes(), ".codeboarding/** -linguist-generated\n")
+
+    def test_the_sync_pull_request_says_what_the_files_are(self) -> None:
+        bin_dir = self.root / "bin"
+        bin_dir.mkdir()
+        calls = self.root / "gh-calls"
+        created = self.root / "gh-created"
+        pr = '{"html_url": "https://github.com/owner/repo/pull/1", "number": 1, "base": {"ref": "main"}}'
+        (bin_dir / "gh").write_text(
+            "#!/usr/bin/env bash\n"
+            f'printf "%s\\n----\\n" "$*" >> "{calls}"\n'
+            'case "$1" in\n'
+            f'  pr) touch "{created}" ;;\n'
+            f"  api) [ ! -f \"{created}\" ] || echo '{pr}' ;;\n"
+            "esac\n",
+            encoding="utf-8",
+        )
+        (bin_dir / "gh").chmod(0o755)
+
+        self._deliver("pull_request", path=f"{bin_dir}:{os.environ['PATH']}")
+
+        create = next(c for c in calls.read_text().split("\n----\n") if c.startswith("pr create"))
+        self.assertIn("They are generated, not written by hand", create)
+        self.assertIn("analysis cache", create)
+        self.assertIn("start from the saved diagram", create)
+        self._git(self.checkout, "fetch", "--quiet", "origin", "codeboarding/sync")
+        self.assertEqual(self._committed_attributes("FETCH_HEAD"), self.GENERATED)
+
+    def test_attributes_alone_never_make_a_commit(self) -> None:
+        # The baseline is already committed and unchanged; without this the run
+        # would push an attributes-only commit, or open a sync PR for it each time.
+        board = self.checkout / ".codeboarding"
+        for name in ("analysis.json", "fingerprint.json", "static_analysis.pkl"):
+            (board / name).write_text((self.analysis / name).read_text(), encoding="utf-8")
+        self._git(self.checkout, "add", "-A")
+        self._git(self.checkout, "commit", "-m", "baseline")
+        self._git(self.checkout, "push", "--quiet", "origin", "main")
+        before = self._git(self.checkout, "rev-parse", "HEAD")
+
+        self._deliver()
+
+        self.assertEqual(self._git(self.remote, "rev-parse", "main"), before)
+        self.assertFalse((self.checkout / ".gitattributes").exists())
+
+    def test_files_people_write_are_not_marked_generated(self) -> None:
+        self._deliver()
+
+        for path in (".codeboarding/.codeboardingignore", ".codeboarding/health/health_config.json"):
+            attribute = self._git(self.checkout, "check-attr", "linguist-generated", "--", path)
+            self.assertTrue(attribute.endswith(": unspecified"), attribute)

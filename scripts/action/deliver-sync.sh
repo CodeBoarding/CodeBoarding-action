@@ -97,6 +97,25 @@ if git diff --cached --quiet || git diff --cached --quiet -I '"generated_at"' -I
   exit 0
 fi
 
+# Marked generated, so GitHub collapses the baseline's diffs and leaves it out of
+# the language stats. Added only alongside a real baseline change, so it never
+# makes a commit or a sync pull request of its own. Each generated path is named,
+# since .codeboarding/ also holds configuration people write; a path some line
+# already decides (an opt-out included) is left to that line, and no other line
+# is touched.
+mark_generated() {
+  local path missing=()
+  for path in .codeboarding/analysis.json .codeboarding/fingerprint.json .codeboarding/static_analysis.pkl \
+    .codeboarding/static_analysis.sha .codeboarding/codeboarding_version.json .codeboarding/health/health_report.json; do
+    [ "$(git check-attr linguist-generated -- "$path" | awk '{print $NF}')" != unspecified ] || missing+=("$path")
+  done
+  [ "${#missing[@]}" -gt 0 ] || return 0
+  [ ! -s .gitattributes ] || [ -z "$(tail -c 1 .gitattributes)" ] || printf '\n' >> .gitattributes
+  printf '%s linguist-generated=true\n' "${missing[@]}" >> .gitattributes
+  git add .gitattributes
+}
+mark_generated
+
 git commit -m 'chore(codeboarding): sync analysis baseline' >/dev/null
 
 if [ "$SYNC_STRATEGY" = push ]; then
@@ -123,7 +142,7 @@ fi
 if [ -z "$pr_json" ]; then
   gh pr create --repo "$REPOSITORY" --base "$TARGET_BRANCH" --head "$SYNC_BRANCH" \
     --title 'chore(codeboarding): sync analysis baseline' \
-    --body "Updates the versioned CodeBoarding analysis for \`$TARGET_BRANCH\`."
+    --body "Updates the CodeBoarding files in \`.codeboarding/\` for \`$TARGET_BRANCH\`. They are generated, not written by hand: the data behind the architecture diagram, and an analysis cache that lets the next run analyze only what changed. Merging this lets pull request reviews start from the saved diagram instead of building one first."
   pr_json="$(gh api --method GET "repos/$REPOSITORY/pulls" \
     -f state=open -f base="$TARGET_BRANCH" \
     -f head="${REPOSITORY%%/*}:$SYNC_BRANCH" --jq '.[0]')"
