@@ -65,6 +65,46 @@ class ReviewArtifactMetadataTests(unittest.TestCase):
             metadata, _outputs = _build(Path(tmp))
             self.assertEqual(metadata["analysed_files_changed"], "unknown")
 
+    def test_how_the_base_was_obtained_is_recorded_as_strings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            metadata, _outputs = _build(
+                Path(tmp),
+                BASE_SOURCE="committed",
+                BASE_REASON="",
+                BASE_FROM_SHA="abc",
+                CATCHUP_COMMITS="3",
+                BASE_SECONDS="41",
+                HEAD_SECONDS="159",
+            )
+            self.assertEqual(
+                {key: metadata[key] for key in metadata if key.startswith("base_") or key.endswith("_seconds")}
+                | {"catchup_commits": metadata["catchup_commits"]},
+                {
+                    "base_sha": "tip-sha",
+                    "base_artifact": "codeboarding-base-cfg-mergebasesha",
+                    "base_artifact_id": "4242",
+                    "base_source": "committed",
+                    "base_reason": "",
+                    "base_from_sha": "abc",
+                    "catchup_commits": "3",
+                    "base_seconds": "41",
+                    "head_seconds": "159",
+                },
+            )
+
+    def test_an_older_run_without_provenance_records_empty_strings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            metadata, _outputs = _build(Path(tmp))
+            for key in (
+                "base_source",
+                "base_reason",
+                "base_from_sha",
+                "catchup_commits",
+                "base_seconds",
+                "head_seconds",
+            ):
+                self.assertEqual(metadata[key], "", key)
+
 
 if __name__ == "__main__":
     unittest.main()

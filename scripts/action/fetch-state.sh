@@ -4,6 +4,10 @@
 # leave the directory absent, and the caller derives from the base instead.
 set -euo pipefail
 [ -n "${ARTIFACT_NAME:-}" ] || exit 0
+# A review reports how long obtaining its base took, and this lookup is part of it.
+started="$(date +%s)"
+report_seconds() { [ -z "${GITHUB_OUTPUT:-}" ] || echo "seconds=$(( $(date +%s) - started ))" >> "$GITHUB_OUTPUT"; }
+trap report_seconds EXIT
 
 # Clear first, on every path. These destinations are fixed, so a second use of
 # the action in one job would otherwise inherit the first one's files and treat

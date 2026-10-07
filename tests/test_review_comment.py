@@ -82,5 +82,71 @@ class ReviewCommentTests(unittest.TestCase):
             self.assertIn("changed=0 analysed_files_changed=2 head=abc123", body)
 
 
+class BaseLineTests(unittest.TestCase):
+    """One line saying how the base was obtained, with measured times and never an estimate."""
+
+    def _base_line(self, **extra: str) -> str:
+        with tempfile.TemporaryDirectory() as tmp:
+            body = _build(Path(tmp), BASE_REF="main", MERGE_BASE_SHA="f00dfeed" * 5, **extra)
+        lines = [line for line in body.splitlines() if line.startswith("<sub>Base: ")]
+        self.assertEqual(len(lines), 1, body)
+        return lines[0]
+
+    def test_a_computed_base_says_why_and_how_long(self) -> None:
+        line = self._base_line(
+            BASE_SOURCE="computed", BASE_REASON="no_baseline", BASE_SECONDS="534", HEAD_SECONDS="192"
+        )
+        self.assertEqual(line, "<sub>Base: built from scratch (no saved diagram), 8 m 54 s · changes 3 m 12 s</sub>")
+
+    def test_an_incompatible_base_says_so(self) -> None:
+        line = self._base_line(BASE_SOURCE="computed", BASE_REASON="incompatible", BASE_SECONDS="60", HEAD_SECONDS="5")
+        self.assertEqual(
+            line, "<sub>Base: built from scratch (saved diagram incompatible), 1 m 0 s · changes 5 s</sub>"
+        )
+
+    def test_a_saved_base_names_the_commit(self) -> None:
+        line = self._base_line(
+            BASE_SOURCE="saved", BASE_FROM_SHA="a1b2c3d4e5", CATCHUP_COMMITS="0", BASE_SECONDS="3", HEAD_SECONDS="159"
+        )
+        self.assertEqual(line, "<sub>Base: saved diagram of main @a1b2c3d · changes 2 m 39 s</sub>")
+
+    def test_a_committed_base_at_the_merge_base_reads_as_saved(self) -> None:
+        line = self._base_line(BASE_SOURCE="committed", BASE_FROM_SHA="", CATCHUP_COMMITS="", HEAD_SECONDS="4")
+        self.assertEqual(line, "<sub>Base: saved diagram of main @f00dfee · changes 4 s</sub>")
+
+    def test_a_caught_up_base_counts_the_commits(self) -> None:
+        line = self._base_line(
+            BASE_SOURCE="committed",
+            BASE_FROM_SHA="a1b2c3d4e5",
+            CATCHUP_COMMITS="4",
+            BASE_SECONDS="41",
+            HEAD_SECONDS="159",
+        )
+        self.assertEqual(line, "<sub>Base: caught up 4 commits from main @a1b2c3d, 41 s · changes 2 m 39 s</sub>")
+
+    def test_the_marker_carries_the_base_after_the_existing_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            body = _build(
+                Path(tmp), BASE_SOURCE="computed", BASE_REASON="no_baseline", BASE_SECONDS="534", HEAD_SECONDS="192"
+            )
+        self.assertTrue(
+            body.rstrip("\n").endswith(
+                "head=abc123 base=computed base_reason=no_baseline base_seconds=534 head_seconds=192 -->"
+            ),
+            body,
+        )
+
+    def test_the_marker_omits_an_empty_reason(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            body = _build(Path(tmp), BASE_SOURCE="saved", BASE_REASON="", BASE_SECONDS="2", HEAD_SECONDS="9")
+        self.assertIn("head=abc123 base=saved base_seconds=2 head_seconds=9 -->", body)
+
+    def test_without_a_base_source_there_is_no_line_and_no_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            body = _build(Path(tmp))
+        self.assertNotIn("Base:", body)
+        self.assertNotIn(" base=", body)
+
+
 if __name__ == "__main__":
     unittest.main()

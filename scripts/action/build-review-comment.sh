@@ -45,6 +45,44 @@ elif [ "$BEHIND" -gt 0 ] 2>/dev/null; then
   printf '\n<sub>Compared against the merge base: this branch is %s %s behind `%s`.</sub>\n' \
     "$BEHIND" "$COMMIT_NOUN" "${BASE_REF:-the base branch}" >> "$BODY"
 fi
+# How the base was obtained, with measured times only: an estimate would be wrong for
+# exactly the slow runs it is meant to explain.
+duration() {
+  local seconds="${1:-0}"
+  case "$seconds" in ''|*[!0-9]*) seconds=0 ;; esac
+  if [ "$seconds" -ge 60 ]; then
+    printf '%s m %s s' "$(( seconds / 60 ))" "$(( seconds % 60 ))"
+  else
+    printf '%s s' "$seconds"
+  fi
+}
+BASE_SOURCE="${BASE_SOURCE:-}"
+BASE_BRANCH="${BASE_REF:-the base branch}"
+BASE_AT="${BASE_FROM_SHA:-${MERGE_BASE_SHA:-}}"
+CHANGES="changes $(duration "${HEAD_SECONDS:-}")"
+BASE_LINE=""
+case "$BASE_SOURCE" in
+  computed)
+    case "${BASE_REASON:-}" in
+      incompatible) WHY="saved diagram incompatible" ;;
+      too_far_behind) WHY="saved diagram too far behind" ;;
+      *) WHY="no saved diagram" ;;
+    esac
+    BASE_LINE="Base: built from scratch (${WHY}), $(duration "${BASE_SECONDS:-}") · ${CHANGES}"
+    ;;
+  saved | committed | ancestor)
+    CATCHUP="${CATCHUP_COMMITS:-}"
+    case "$CATCHUP" in ''|*[!0-9]*) CATCHUP=0 ;; esac
+    if [ "$CATCHUP" -gt 0 ]; then
+      COMMIT_NOUN="commits"
+      [ "$CATCHUP" != 1 ] || COMMIT_NOUN="commit"
+      BASE_LINE="Base: caught up ${CATCHUP} ${COMMIT_NOUN} from ${BASE_BRANCH} @${BASE_AT:0:7}, $(duration "${BASE_SECONDS:-}") · ${CHANGES}"
+    else
+      BASE_LINE="Base: saved diagram of ${BASE_BRANCH} @${BASE_AT:0:7} · ${CHANGES}"
+    fi
+    ;;
+esac
+[ -z "$BASE_LINE" ] || printf '\n<sub>%s</sub>\n' "$BASE_LINE" >> "$BODY"
 {
   printf '\n'
   cat "$DIAGRAM"
@@ -56,7 +94,13 @@ fi
   # The machine-readable line: what a reader of the comment (the web platform's dashboard, an
   # agent) needs without parsing the prose or the diagram. An HTML comment renders as nothing.
   # Keep it one line, `key=value` pairs, values without spaces, so a regex over it stays trivial.
-  printf '<!-- codeboarding: platform_url=%s changed=%s analysed_files_changed=%s head=%s -->\n' \
-    "$PLATFORM_URL" "$N_CHANGED" "$ANALYSED_FILES_CHANGED" "${HEAD_SHA:-}"
+  BASE_KEYS=""
+  if [ -n "$BASE_SOURCE" ]; then
+    BASE_KEYS=" base=${BASE_SOURCE}"
+    [ -z "${BASE_REASON:-}" ] || BASE_KEYS="${BASE_KEYS} base_reason=${BASE_REASON}"
+    BASE_KEYS="${BASE_KEYS} base_seconds=${BASE_SECONDS:-} head_seconds=${HEAD_SECONDS:-}"
+  fi
+  printf '<!-- codeboarding: platform_url=%s changed=%s analysed_files_changed=%s head=%s%s -->\n' \
+    "$PLATFORM_URL" "$N_CHANGED" "$ANALYSED_FILES_CHANGED" "${HEAD_SHA:-}" "$BASE_KEYS"
 } >> "$BODY"
 echo "path=$BODY" >> "$GITHUB_OUTPUT"

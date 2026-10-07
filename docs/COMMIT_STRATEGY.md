@@ -70,7 +70,15 @@ never fires.
 | `base_artifact_id` | string | **which one**, since two artifacts can share that name and disagree: the engine is not deterministic, and a sync run publishes bases for the same commit |
 | `merge_base_resolved` | **boolean** | `false` means the merge base could not be resolved, so the comparison is against `base_sha` |
 | `base_sha` | string | the base branch tip when the event fired — *not* what was compared against |
-| `pr_number`, `mode`, `seed_source`, `chain_depth` | string | provenance; nothing rendering a diagram needs them |
+| `kind` | string | always `review`, so a reader can tell this artifact from a base or warm-start bundle |
+| `analysed_files_changed` | string | analysed files whose content hash differs between base and head; `unknown` when the analyses cannot say |
+| `base_source` | string | how this run obtained the base graph: `saved` (the artifact for the merge base), `committed` (`.codeboarding/` committed at the merge base, caught up), or `computed` (full analysis in this run) |
+| `base_reason` | string | only with `computed`: `no_baseline` (nothing to seed from) or `incompatible` (a candidate existed but its depth cap differed, or the engine demanded a full run); empty otherwise |
+| `base_from_sha` | string | the commit whose saved analysis seeded the base; the merge base for `saved`, empty for `computed` or when it lies beyond the fetched history |
+| `catchup_commits` | string | first-parent commits from `base_from_sha` to the merge base that change anything outside `.codeboarding/`; `0` when exact, empty when unknown |
+| `base_seconds` | string | wall time spent obtaining the base, the artifact lookup included |
+| `head_seconds` | string | wall time of the head analysis |
+| `pr_number`, `mode`, `seed_source`, `chain_depth` | string | provenance; nothing rendering a diagram needs them. `mode` is the head's engine mode; `base_source` answers for the base |
 
 **A sync run** publishes the base graph under both the commit it analyzed and the
 baseline commit it writes on top, because a pull request opened either side of
@@ -104,7 +112,10 @@ them:
 | no compatible committed baseline either | full analysis directly, at the configured `depth_cap` |
 
 A trusted run that computed the base publishes it, so the next pull request
-forking from that commit gets the first row.
+forking from that commit gets the first row. The rows are `base_source` `saved`,
+`committed` and `computed` in the review metadata, and the review comment says
+which one ran, with measured times. While a base is computed, the progress
+comment says so in two steps, with the elapsed time and the reason.
 
 The configuration hash includes `depth_cap`. The workflow input controls depth
 for both fresh and fallback analyses; stored legacy depth values never override it.

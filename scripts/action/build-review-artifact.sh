@@ -23,7 +23,8 @@ HEALTH_REPORT="$(dirname "$ANALYSIS_PATH")/health/health_report.json"
 # pr_base_sha carries the same value under the name the webview already reads:
 # its lookup is base_commit_sha || pr_base_sha || base_sha, so without it the
 # webview silently falls through to the branch tip and compares against a base
-# this review never used.
+# this review never used. The base_* fields say how this run obtained the base
+# graph; all strings, empty when not applicable.
 jq -n \
   --arg kind review \
   --arg mode "$ANALYSIS_MODE" \
@@ -37,10 +38,18 @@ jq -n \
   --arg base_artifact "$BASE_ARTIFACT_NAME" \
   --arg base_artifact_id "$BASE_ARTIFACT_ID" \
   --arg analysed_files_changed "${ANALYSED_FILES_CHANGED:-unknown}" \
+  --arg base_source "${BASE_SOURCE:-}" \
+  --arg base_reason "${BASE_REASON:-}" \
+  --arg base_from_sha "${BASE_FROM_SHA:-}" \
+  --arg catchup_commits "${CATCHUP_COMMITS:-}" \
+  --arg base_seconds "${BASE_SECONDS:-}" \
+  --arg head_seconds "${HEAD_SECONDS:-}" \
   '{kind: $kind, mode: $mode, base_sha: $base_sha, merge_base_sha: $merge_base_sha, pr_base_sha: $merge_base_sha,
     merge_base_resolved: $merge_base_resolved, head_sha: $head_sha,
     pr_number: $pr_number, seed_source: $seed_source, chain_depth: $chain_depth,
     base_artifact: $base_artifact, base_artifact_id: $base_artifact_id,
-    analysed_files_changed: $analysed_files_changed}' \
+    analysed_files_changed: $analysed_files_changed,
+    base_source: $base_source, base_reason: $base_reason, base_from_sha: $base_from_sha,
+    catchup_commits: $catchup_commits, base_seconds: $base_seconds, head_seconds: $head_seconds}' \
   > "${RUNNER_TEMP}/cb-review-artifact/metadata.json"
 echo "artifact_dir=${RUNNER_TEMP}/cb-review-artifact" >> "$GITHUB_OUTPUT"
