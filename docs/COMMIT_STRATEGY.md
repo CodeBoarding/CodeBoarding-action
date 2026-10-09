@@ -72,7 +72,7 @@ never fires.
 | `base_sha` | string | the base branch tip when the event fired — *not* what was compared against |
 | `kind` | string | always `review`, so a reader can tell this artifact from a base or warm-start bundle |
 | `analysed_files_changed` | string | analysed files whose content hash differs between base and head; `unknown` when the analyses cannot say |
-| `base_analysis_method` | string | how this run obtained the analysis of the merge base: `reused` (the merge base already had one: its saved artifact, or a committed baseline with nothing to catch up), `incremental` (an earlier commit's analysis updated to the merge base) or `full` (analyzed from scratch in this run). Whichever, the base graph is the merge base's own analysis |
+| `base_analysis_method` | string | how this run obtained the analysis of the merge base: `reused` (the merge base already had one: its saved artifact, or a committed baseline with nothing to catch up), `incremental` (an earlier commit's analysis, committed or saved, updated to the merge base) or `full` (analyzed from scratch in this run). Whichever, the base graph is the merge base's own analysis |
 | `base_analysis_reason` | string | the method in words, e.g. `updated the analysis of 9f8e7d6 to a1b2c3d, 4 commits caught up`; where an incremental run started and how far it caught up are detail here, present when known |
 | `base_seconds` | string | wall time spent obtaining the base, the artifact lookup included |
 | `head_seconds` | string | wall time of the head analysis |
@@ -107,14 +107,28 @@ them:
 |---|---|
 | the published `codeboarding-base-<cfg>-<merge_base>` artifact with a compatible depth cap | none |
 | no usable artifact — check out the merge base, seed from a compatible baseline committed there, catch up | one incremental, full if Core requires it |
-| no compatible committed baseline either | full analysis directly, at the configured `depth_cap` |
+| no compatible committed baseline either: the nearest `codeboarding-base-<cfg>-<sha>` artifact among the merge base's last 100 first-parent ancestors | one incremental from that commit to the merge base |
+| none within 100 commits either | full analysis directly, at the configured `depth_cap` |
 
 A trusted run that computed the base publishes it, so the next pull request
-forking from that commit gets the first row. The review metadata reports the
+forking from that commit gets the first row; that includes a base caught up from
+an ancestor. The review metadata reports the
 row as `base_analysis_method` (`reused`, `incremental` or `full`) with a
 `base_analysis_reason`, and the review comment repeats both under the diagram,
 with measured times. While a base is computed, the progress
 comment says so in two steps, with the elapsed time and the reason.
+
+The ancestor lookup walks the merge base's first-parent history, deepening the
+shallow checkout to 101 commits, then pages through the repository's artifacts
+newest first, keeping those named for this configuration and produced by a run on
+the repository's own code. It stops at the first page holding one of the walked
+commits (usually the first; at most 50 pages) and takes the nearest commit seen.
+The merge base's own `.codeboardingignore` and health configuration replace the
+seed's. A base caught up this way reports `incremental`, its reason naming the
+ancestor and the commits caught up. Sync uses the same lookup when the branch has
+no usable committed baseline, so the first sync after the setup pull request
+merges catches up from the base that pull request's review saved, instead of
+analyzing from scratch.
 
 The configuration hash includes `depth_cap`. The workflow input controls depth
 for both fresh and fallback analyses; stored legacy depth values never override it.

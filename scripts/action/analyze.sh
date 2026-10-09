@@ -124,13 +124,23 @@ analyze_sync() {
   rm -rf "$work"
   seed_state "$CHECKOUT_DIR" "$state"
 
-  if [ "${FORCE_FULL,,}" = true ] || [ "$(depth_cap_from "$state/analysis.json")" != "$DEPTH_CAP" ]; then
-    full "$CHECKOUT_DIR" "$state" "$DEPTH_CAP"
-  else
-    incremental "$CHECKOUT_DIR" "$state"
-    if [ "$REQUIRES_FULL" = true ]; then
-      full "$CHECKOUT_DIR" "$state" "$DEPTH_CAP"
+  REQUIRES_FULL=true
+  if [ "$(printf '%s' "${FORCE_FULL:-false}" | tr '[:upper:]' '[:lower:]')" != true ]; then
+    if [ "$(depth_cap_from "$state/analysis.json")" = "$DEPTH_CAP" ]; then
+      incremental "$CHECKOUT_DIR" "$state"
     fi
+    # A branch with no usable committed baseline, such as the first sync after the
+    # setup pull request merged, catches up from that pull request's saved base.
+    if [ "$REQUIRES_FULL" = true ] &&
+      seed_from_ancestor "${REPOSITORY:-}" "$(git -C "$CHECKOUT_DIR" rev-parse HEAD 2>/dev/null || true)" "$state" true "$CHECKOUT_DIR"; then
+      incremental "$CHECKOUT_DIR" "$state"
+      [ "$REQUIRES_FULL" = true ] ||
+        echo "::notice::Caught up from the saved analysis of $ANCESTOR_SHA instead of analyzing from scratch."
+    fi
+  fi
+  unset GIT_TOKEN
+  if [ "$REQUIRES_FULL" = true ]; then
+    full "$CHECKOUT_DIR" "$state" "$DEPTH_CAP"
   fi
   # Sync already computes the graph every review of this branch compares against,
   # so publish it instead of making the first pull request recompute it.
@@ -140,8 +150,9 @@ analyze_sync() {
 }
 
 # How far below the merge base this run looks for the commit a saved analysis
-# describes. Past it, a catch-up count is reported as unknown.
-CATCHUP_BOUND=100
+# describes, and for a saved ancestor to catch up from. Past it, a catch-up count
+# is unknown and no ancestor is used. It is also the fetch depth.
+CATCHUP_BOUND="${CATCHUP_BOUND:-100}"
 
 # A depth above 1 also deepens a commit the shallow checkout already holds.
 fetch_commit() {
@@ -207,6 +218,46 @@ catchup_count() {
     [ -z "$(code_paths_changed "$commit")" ] || count=$(( count + 1 ))
   done
   echo "$count"
+}
+
+# Replaces $3 with the saved analysis of the nearest first-parent ancestor of $2
+# (or of $2 itself when $4 is true), keeping the user-authored configuration of
+# checkout $5. Sets ANCESTOR_SHA, or ANCESTOR_REASON=incompatible when the only
+# candidate was saved under another configuration or depth.
+ANCESTOR_SHA="" ANCESTOR_REASON=""
+seed_from_ancestor() {
+  local repository="$1" tip="$2" state="$3" include_tip="$4" config_from="$5" found dest="$RUNNER_TEMP/codeboarding-ancestor"
+  ANCESTOR_SHA="" ANCESTOR_REASON=""
+  [ "${ANCESTOR_LOOKUP:-false}" = true ] && [ -n "${CFG_HASH:-}" ] && [ -n "${REPOSITORY:-}" ] && [ -n "$tip" ] || return 1
+  fetch_commit "$repository" "$tip" "$(( CATCHUP_BOUND + 1 ))" || true
+  found="$(GH_TOKEN="${GIT_TOKEN:-}" GH_ENTERPRISE_TOKEN="${GIT_TOKEN:-}" TIP_SHA="$tip" DEST="$dest" \
+    INCLUDE_TIP="$include_tip" CATCHUP_BOUND="$CATCHUP_BOUND" \
+    "$ACTION_PATH/scripts/action/find-ancestor-base.sh" || true)"
+  ANCESTOR_SHA="$(awk -F= '$1 == "ancestor_sha" {print $2; exit}' <<< "$found")"
+  if [ -z "$ANCESTOR_SHA" ]; then
+    ! grep -qx 'other_cfg_at_tip=true' <<< "$found" || ANCESTOR_REASON=incompatible
+    return 1
+  fi
+  if [ "$(depth_cap_from "$dest/analysis.json")" != "$DEPTH_CAP" ]; then
+    ANCESTOR_SHA="" ANCESTOR_REASON=incompatible
+    return 1
+  fi
+  rm -rf "$state"
+  cp -a "$dest" "$state"
+  keep_user_config "$config_from" "$state"
+}
+# What the user writes under .codeboarding/ belongs to the commit being analysed,
+# not to whichever analysis seeded it.
+USER_CONFIG=(.codeboardingignore health/health_config.json health/.healthignore)
+keep_user_config() {
+  local checkout="$1" state="$2" file
+  for file in "${USER_CONFIG[@]}"; do
+    rm -f "${state:?}/$file"
+    [ ! -f "$checkout/.codeboarding/$file" ] || {
+      mkdir -p "$(dirname "$state/$file")"
+      cp "$checkout/.codeboarding/$file" "$state/$file"
+    }
+  done
 }
 
 # Rewrites the sticky progress comment while the base is built from scratch. A
@@ -291,9 +342,20 @@ analyze_review() {
     elif [ -f "$base_state/analysis.json" ]; then
       full_cause=incompatible
     fi
+    # Nothing at the merge base to grow from: catch up from the nearest saved
+    # ancestor, and publish the result under the merge base's own name below.
+    if [ "$REQUIRES_FULL" = true ] && seed_from_ancestor "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA" "$base_state" false "$base_checkout"; then
+      incremental "$base_checkout" "$base_state"
+      if [ "$REQUIRES_FULL" = true ]; then
+        full_cause=incompatible
+      else
+        base_method=incremental base_from_sha="$ANCESTOR_SHA"
+        catchup_commits="$(catchup_count "$ANCESTOR_SHA" "$REVIEW_BASE_SHA")"
+      fi
+    fi
     if [ "$REQUIRES_FULL" = true ]; then
       base_method=full
-      full_cause="${full_cause:-no_baseline}"
+      full_cause="${full_cause:-${ANCESTOR_REASON:-no_baseline}}"
       trap progress_stop EXIT
       progress_start "$base_started"
       full "$base_checkout" "$base_state" "$DEPTH_CAP"
@@ -365,7 +427,7 @@ base_reason() {
       else
         reason="updated the analysis of ${from:0:7} to $base"
         case "$count" in
-          '') ;;
+          '' | 0) ;;
           1) reason="$reason, 1 commit caught up" ;;
           *) reason="$reason, $count commits caught up" ;;
         esac
