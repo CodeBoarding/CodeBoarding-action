@@ -143,11 +143,15 @@ inputs:
     required: false
     default: ${{ github.token }}
   sync_strategy:
-    description: 'Sync delivery method: push or pull_request.'
+    description: 'Where sync saves the analysis: push (a commit on target_branch), pull_request (a rolling PR into target_branch), or branch (commits on analysis_branch; target_branch is never written).'
     required: false
     default: 'push'
+  analysis_branch:
+    description: 'Branch in this repository that sync_strategy branch saves the analysis to, one commit per sync. Reviews read their base analysis from it when it exists.'
+    required: false
+    default: 'codeboarding/analysis'
   target_branch:
-    description: 'Branch updated by sync mode. Defaults to the event branch.'
+    description: 'Code branch sync mode analyzes. With sync_strategy push or pull_request the analysis is also committed to it; with branch it is only read. Defaults to the event branch.'
     required: false
     default: ''
   force_full:
@@ -223,6 +227,7 @@ runs:
         HEAD_AUTHOR_EMAIL: ${{ github.event.head_commit.author.email }}
         TARGET_BRANCH_INPUT: ${{ inputs.target_branch }}
         SYNC_STRATEGY: ${{ inputs.sync_strategy }}
+        ANALYSIS_BRANCH: ${{ inputs.analysis_branch }}
         COMMENT_BODY: ${{ github.event.comment.body }}
         AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
         ISSUE_PR_URL: ${{ github.event.issue.pull_request.url }}
@@ -451,6 +456,8 @@ runs:
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
         STAGE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/out
         FORCE_FULL: ${{ inputs.force_full }}
+        SYNC_STRATEGY: ${{ inputs.sync_strategy }}
+        ANALYSIS_BRANCH: ${{ inputs.analysis_branch }}
         CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
         # Lets a branch without a usable committed baseline catch up from a saved analysis.
         ANCESTOR_LOOKUP: ${{ github.server_url == 'https://github.com' && steps.state.outputs.cfg_hash != '' }}
@@ -475,6 +482,10 @@ runs:
         TARGET_BRANCH: ${{ steps.guard.outputs.target_branch }}
         SYNC_BRANCH_START_SHA: ${{ steps.guard.outputs.sync_branch_start_sha }}
         SYNC_STRATEGY: ${{ inputs.sync_strategy }}
+        ANALYSIS_BRANCH: ${{ inputs.analysis_branch }}
+        ENGINE_VERSION: ${{ steps.state.outputs.engine_version }}
+        # Recorded with each analysis-branch commit, so a reader can tell which configuration made it.
+        CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         GH_TOKEN: ${{ inputs.github_token }}
         GH_ENTERPRISE_TOKEN: ${{ inputs.github_token }}
@@ -550,6 +561,7 @@ runs:
         ANCESTOR_LOOKUP: ${{ github.server_url == 'https://github.com' && steps.state.outputs.cfg_hash != '' }}
         # For rewriting the progress comment while a base is built from scratch.
         PROGRESS_HEADER: ${{ steps.guard.outputs.comment_id }}
+        ANALYSIS_BRANCH: ${{ inputs.analysis_branch }}
         BASE_REF: ${{ steps.guard.outputs.base_ref }}
         REPOSITORY: ${{ github.repository }}
         GH_HOST: ${{ github.server_url }}

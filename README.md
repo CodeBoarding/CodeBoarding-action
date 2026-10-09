@@ -301,6 +301,41 @@ Generation is identical to direct push. Only delivery changes: the same commit i
 
 With the default `github.token`, the repository or organization must allow GitHub Actions to create pull requests. A GitHub App token or PAT can instead be passed as `github_token`. The same input is used for review comments and sync delivery.
 
+### Save the diagram to a branch of its own
+
+Set `sync_strategy: branch` to keep the analysis off your code branches entirely:
+
+```yaml
+      - uses: CodeBoarding/CodeBoarding-action@v1
+        with:
+          mode: sync
+          llm: hosted
+          target_branch: main
+          sync_strategy: branch
+```
+
+Here `target_branch` is the code branch sync analyzes, and it is only read. Each sync adds one commit to `codeboarding/analysis` in the same repository (set `analysis_branch` to change the name), an orphan branch that shares no history with `main`. It holds the same `.codeboarding/` files sync would otherwise commit to `main`, plus `.codeboarding/source.json` naming the commit they describe and the configuration that made them; the commit message carries both as `CodeBoarding-Source:` and `CodeBoarding-Config:` trailers. Pushes only ever fast-forward, `main` is never written, and no pull request is opened. Reviews read their base from the branch, and the web platform reads the latest diagram from it. The [analysis branch section](docs/COMMIT_STRATEGY.md#the-analysis-branch) covers what happens if the branch is deleted, and a ruleset you should import to protect it: sync and review load a pickle from it.
+
+**Moving an existing setup.** Nothing changes until you opt in: `push` and `pull_request` keep working as before. To switch, paste this into your coding agent:
+
+```text
+Move this repository's CodeBoarding sync to sync_strategy: branch.
+1. In the workflow that runs CodeBoarding/CodeBoarding-action with mode: sync, set
+   `sync_strategy: branch` in its `with:` block (replace push or pull_request).
+   Keep every other input.
+2. Delete the generated files under .codeboarding/ from the default branch, keeping
+   the user configuration: .codeboarding/.codeboardingignore,
+   .codeboarding/health/health_config.json and .codeboarding/health/.healthignore.
+   Reviews prefer a baseline committed on the branch, so a stale one left there
+   would keep being used.
+3. Remove any .gitattributes lines that mark .codeboarding/ files as
+   linguist-generated, if nothing else is left under .codeboarding/ for them.
+4. Open a pull request with these changes. After it merges, close any open
+   pull request from the codeboarding/sync branch and delete that branch.
+```
+
+The first sync after the merge creates `codeboarding/analysis`, catching up from a saved analysis when there is one.
+
 ## Inputs
 
 | Input | Mode | Default | Description |
@@ -316,8 +351,9 @@ With the default `github.token`, the repository or organization must allow GitHu
 | `parsing_model` | both | empty | Parsing-only override for `model`. |
 | `depth_cap` | both | `2` | Positive integer maximum analysis depth, including full-analysis fallbacks. Changing it rebuilds incompatible state. |
 | `github_token` | both | `${{ github.token }}` | Token for comments and sync delivery. |
-| `sync_strategy` | sync | `push` | `push` or `pull_request`. |
-| `target_branch` | sync | event branch | Branch receiving the baseline or rolling PR. |
+| `sync_strategy` | sync | `push` | Where sync saves the analysis: `push` (a commit on `target_branch`), `pull_request` (a rolling PR into it), or `branch` (commits on `analysis_branch`). |
+| `analysis_branch` | both | `codeboarding/analysis` | Branch in this repository that `sync_strategy: branch` saves the analysis to; reviews read their base from it when it exists. |
+| `target_branch` | sync | event branch | Code branch sync analyzes. With `push` or `pull_request` it also receives the analysis commit or rolling PR; with `branch` it is only read. |
 | `force_full` | sync | `false` | Ignore the committed baseline for this run. |
 | `warmstart_retention_days` | review | `1` | Days to keep the reusable analysis. Only the next run reads it. |
 

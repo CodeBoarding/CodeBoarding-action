@@ -9,6 +9,11 @@ case "$MODE" in
   *) fail "mode must be review or sync." ;;
 esac
 printf 'mode=%s\nskip=false\nevent=%s\n' "$MODE" "$EVENT" >> "$GITHUB_OUTPUT"
+# Both modes read the analysis branch, so a name git cannot use fails here, before
+# anything is analyzed, rather than reading as a missing branch and costing a full run.
+if [ -n "${ANALYSIS_BRANCH:-}" ] && ! git check-ref-format "refs/heads/$ANALYSIS_BRANCH"; then
+  fail "analysis_branch '$ANALYSIS_BRANCH' is not a valid branch name."
+fi
 if [ "$MODE" = sync ]; then
   case "$EVENT" in
     push|workflow_dispatch|schedule) ;;
@@ -16,8 +21,8 @@ if [ "$MODE" = sync ]; then
   esac
   [ "$REF_TYPE" != tag ] || skip "Sync mode ignores tag pushes."
   case "$SYNC_STRATEGY" in
-    push|pull_request) ;;
-    *) fail "sync_strategy must be push or pull_request." ;;
+    push|pull_request|branch) ;;
+    *) fail "sync_strategy must be push, pull_request or branch." ;;
   esac
   case "$HEAD_AUTHOR_EMAIL" in
     codeboarding-review\[bot\]@users.noreply.github.com|codeboarding\[bot\]@users.noreply.github.com)
@@ -27,6 +32,12 @@ if [ "$MODE" = sync ]; then
   target_branch="${TARGET_BRANCH_INPUT:-$REF_NAME}"
   [ -n "$target_branch" ] || fail "target_branch is required for this event."
   [ "$SYNC_STRATEGY" != pull_request ] || [ "$target_branch" != codeboarding/sync ] || fail "target_branch must differ from codeboarding/sync."
+  if [ "$SYNC_STRATEGY" = branch ]; then
+    [ -n "${ANALYSIS_BRANCH:-}" ] || fail "analysis_branch is required with sync_strategy: branch."
+    # The analysis branch holds only analysis; a workflow that also fires on it must not analyze it.
+    [ "$REF_NAME" != "$ANALYSIS_BRANCH" ] || skip "Ignoring a push to the analysis branch $ANALYSIS_BRANCH."
+    [ "$target_branch" != "$ANALYSIS_BRANCH" ] || fail "target_branch must differ from analysis_branch."
+  fi
   sync_branch_start_sha=""
   if [ "$SYNC_STRATEGY" = pull_request ]; then
     sync_branch_start_sha="$(gh api "repos/$REPOSITORY/branches/codeboarding%2Fsync" --jq '.commit.sha' 2>/dev/null || true)"

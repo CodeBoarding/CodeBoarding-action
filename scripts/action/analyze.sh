@@ -126,6 +126,20 @@ analyze_sync() {
 
   REQUIRES_FULL=true
   if [ "$(printf '%s' "${FORCE_FULL:-false}" | tr '[:upper:]' '[:lower:]')" != true ]; then
+    # The analysis branch's tip is this branch's last analysis. Without a usable
+    # one, the run below seeds from a saved ancestor or analyzes in full, and
+    # delivery creates the branch again.
+    if [ "${SYNC_STRATEGY:-}" = branch ]; then
+      local tip_entry
+      tip_entry="$(analysis_branch_index "${REPOSITORY:-}" | awk '{print $1, $3; exit}')"
+      if [ -z "$tip_entry" ]; then
+        echo "::notice::$ANALYSIS_BRANCH has no analysis to continue from; this sync creates it."
+      elif ! usable_config "${tip_entry#* }"; then
+        echo "::notice::The analysis on $ANALYSIS_BRANCH was made with another engine version or settings; not continuing from it."
+      elif ! restore_analysis_branch "${REPOSITORY:-}" "${tip_entry%% *}" "$state" "$CHECKOUT_DIR"; then
+        echo "::notice::Could not read the analysis on $ANALYSIS_BRANCH; not continuing from it."
+      fi
+    fi
     if [ "$(depth_cap_from "$state/analysis.json")" = "$DEPTH_CAP" ]; then
       incremental "$CHECKOUT_DIR" "$state"
     fi
@@ -260,6 +274,73 @@ keep_user_config() {
   done
 }
 
+# sync_strategy: branch keeps one commit per sync on ANALYSIS_BRANCH, each with
+# trailers naming the commit it analysed (CodeBoarding-Source) and the
+# configuration it ran under (CodeBoarding-Config). Lists them as
+# "<branch commit> <source sha> <config>", newest first, at most
+# ANALYSIS_BRANCH_DEPTH of them; an entry without a config has none to compare.
+# Fetched without blobs into a scratch repository: the lookup needs messages, and
+# a hundred pickles would cost more than it saves.
+ANALYSIS_BRANCH_DEPTH="${ANALYSIS_BRANCH_DEPTH:-100}"
+analysis_branch_index() {
+  local repository="$1" scratch="$RUNNER_TEMP/codeboarding-analysis-index.git" auth
+  [ -n "${ANALYSIS_BRANCH:-}" ] || return 0
+  rm -rf "$scratch"
+  git init -q --bare "$scratch"
+  auth="$(printf 'x-access-token:%s' "${GIT_TOKEN:-}" | base64 -w0)"
+  git -C "$scratch" -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --filter=blob:none \
+    --depth="$ANALYSIS_BRANCH_DEPTH" "${GITHUB_SERVER_URL%/}/${repository}.git" "refs/heads/$ANALYSIS_BRANCH" 2>/dev/null ||
+    return 0
+  git -C "$scratch" log --format='%H %(trailers:key=CodeBoarding-Source,valueonly,separator=%x20) %(trailers:key=CodeBoarding-Config,valueonly,separator=%x20)' FETCH_HEAD |
+    awk 'NF >= 2 {print $1, $2, (NF >= 3 ? $3 : "-")}'
+}
+# An entry is only as good as the configuration it ran under: the artifact name
+# pins it for saved analyses, the trailer does here. Without a configuration hash
+# this run cannot tell, so it uses none, as it reuses no artifact either.
+usable_config() {
+  [ -n "${CFG_HASH:-}" ] && [ "$1" = "$CFG_HASH" ]
+}
+# Replaces the generated state in $3 with an analysis-branch commit's, keeping the
+# user configuration of checkout $4. source.json is provenance, not engine state.
+restore_analysis_branch() {
+  local repository="$1" commit="$2" state="$3" config_from="$4" scratch="$RUNNER_TEMP/codeboarding-analysis-restore"
+  fetch_commit "$repository" "$commit" || return 1
+  rm -rf "$scratch"
+  mkdir -p "$scratch"
+  git -C "$CHECKOUT_DIR" archive "$commit" .codeboarding | tar -x -C "$scratch" || return 1
+  [ -f "$scratch/.codeboarding/analysis.json" ] || return 1
+  rm -f "$scratch/.codeboarding/source.json"
+  rm -rf "$state"
+  cp -a "$scratch/.codeboarding" "$state"
+  keep_user_config "$config_from" "$state"
+}
+# Seeds $3 from the analysis branch's entry for $2, or for its nearest first-parent
+# ancestor that has one under this configuration, keeping checkout $4's user
+# configuration. Sets BRANCH_SOURCE to the commit it describes and BRANCH_DISTANCE
+# to how far below $2 that is; BRANCH_REASON=incompatible when the only entries
+# found were made under another configuration.
+BRANCH_SOURCE="" BRANCH_DISTANCE="" BRANCH_REASON=""
+seed_from_analysis_branch() {
+  local repository="$1" tip="$2" state="$3" config_from="$4" index commit line entry="" distance=0
+  BRANCH_SOURCE="" BRANCH_DISTANCE="" BRANCH_REASON=""
+  index="$(analysis_branch_index "$repository")"
+  [ -n "$index" ] || return 1
+  fetch_commit "$repository" "$tip" "$(( CATCHUP_BOUND + 1 ))" || true
+  for commit in $(git -C "$CHECKOUT_DIR" rev-list --first-parent --max-count=$(( CATCHUP_BOUND + 1 )) "$tip" 2>/dev/null); do
+    while read -r line; do
+      if usable_config "${line#* }"; then
+        entry="${line%% *}"
+        break
+      fi
+      BRANCH_REASON=incompatible
+    done < <(awk -v source="$commit" '$2 == source {print $1, $3}' <<< "$index")
+    [ -z "$entry" ] || break
+    distance=$(( distance + 1 ))
+  done
+  [ -n "$entry" ] && restore_analysis_branch "$repository" "$entry" "$state" "$config_from" || return 1
+  BRANCH_SOURCE="$commit" BRANCH_DISTANCE="$distance" BRANCH_REASON=""
+}
+
 # Rewrites the sticky progress comment while the base is built from scratch. A
 # fork's read-only token makes every call fail, which costs nothing.
 PROGRESS_PID=""
@@ -342,6 +423,26 @@ analyze_review() {
     elif [ -f "$base_state/analysis.json" ]; then
       full_cause=incompatible
     fi
+    # The analysis branch: its entry for the merge base is that commit's own
+    # analysis, and an entry for an ancestor is caught up like a committed one.
+    if [ "$REQUIRES_FULL" = true ] &&
+      seed_from_analysis_branch "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA" "$base_state" "$base_checkout"; then
+      if [ "$(depth_cap_from "$base_state/analysis.json")" != "$DEPTH_CAP" ]; then
+        full_cause=incompatible
+      elif [ "$BRANCH_DISTANCE" -eq 0 ]; then
+        REQUIRES_FULL=false base_method=reused
+      else
+        incremental "$base_checkout" "$base_state"
+        if [ "$REQUIRES_FULL" = true ]; then
+          full_cause=incompatible
+        else
+          base_method=incremental base_from_sha="$BRANCH_SOURCE"
+          catchup_commits="$(catchup_count "$BRANCH_SOURCE" "$REVIEW_BASE_SHA")"
+        fi
+      fi
+    elif [ "$BRANCH_REASON" = incompatible ]; then
+      full_cause=incompatible
+    fi
     # Nothing at the merge base to grow from: catch up from the nearest saved
     # ancestor, and publish the result under the merge base's own name below.
     if [ "$REQUIRES_FULL" = true ] && seed_from_ancestor "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA" "$base_state" false "$base_checkout"; then
@@ -400,7 +501,8 @@ analyze_review() {
   # under the same name every run, so normally only a run that produced one
   # publishes it. The exception is lifetime: a review artifact references a base
   # by id for its whole retention, so one about to expire is renewed rather than
-  # left dangling under a review that outlives it.
+  # left dangling under a review that outlives it. A base read from the baseline
+  # branch is published too: no artifact holds it yet.
   local publish_base=false
   if [ "$base_published" != true ] || [ "${RENEW_BASE:-false}" = true ]; then
     stage "$base_state" base

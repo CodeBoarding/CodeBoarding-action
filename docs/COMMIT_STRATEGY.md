@@ -107,6 +107,7 @@ them:
 |---|---|
 | the published `codeboarding-base-<cfg>-<merge_base>` artifact with a compatible depth cap | none |
 | no usable artifact — check out the merge base, seed from a compatible baseline committed there, catch up | one incremental, full if Core requires it |
+| the analysis branch (`sync_strategy: branch`): its commit for the merge base, else for the nearest of the merge base's last 100 first-parent ancestors, made under this configuration | none for the merge base itself (`reused`), one incremental otherwise (`incremental`) |
 | no compatible committed baseline either: the nearest `codeboarding-base-<cfg>-<sha>` artifact among the merge base's last 100 first-parent ancestors | one incremental from that commit to the merge base |
 | none within 100 commits either | full analysis directly, at the configured `depth_cap` |
 
@@ -144,6 +145,72 @@ A restored bundle is used only when it grew from the very base graph this run
 diffs against, recorded as a digest in `origin.json`. Two runs of the engine over
 one commit need not name components identically, so a head descended from one
 base and a diagram drawn against another would report changes nobody made.
+
+## The analysis branch
+
+`sync_strategy: branch` saves the analysis to a branch of its own in the same
+repository, `codeboarding/analysis` unless `analysis_branch` names another.
+`target_branch` is then the code branch sync analyzes; it is never written.
+
+**What lives where.** The branch is an orphan: it shares no history with the code.
+Each sync adds one commit holding the same `.codeboarding/` files the `push`
+strategy would commit to the target branch, plus `.codeboarding/source.json`:
+
+```json
+{"schema": 1, "source_branch": "main", "source_sha": "<sha analysed>", "generated_at": "<iso>", "engine_version": "<v>", "config": "<cfg hash>"}
+```
+
+The commit is `chore(codeboarding): diagram of main @<sha7>` with two trailers:
+`CodeBoarding-Source: <sha>` and `CodeBoarding-Config: <cfg hash>`, the same
+configuration hash that names the base artifacts (engine version, provider, model,
+depth cap). Engine output is never edited; which commit it describes and how it was
+made live only in `source.json` and the trailers. The target branch is never
+written, not even `.gitattributes`. The base artifacts are still published, named
+for the analysed commit.
+
+**How a sync writes it.** It seeds from the branch tip when the tip was made under
+this configuration, and runs incrementally. The generated files are replaced
+wholesale; only the checkout's own `.codeboardingignore` and health configuration
+are kept. The push is a fast-forward onto the tip it fetched, never forced. Sync
+refuses to write to an existing branch that is not an analysis branch (its tip has
+no `CodeBoarding-Source` trailer, or holds anything besides `.codeboarding/`), so
+pointing `analysis_branch` at a code branch fails instead of emptying it. If the
+target branch moved during the analysis, the result is dropped, as with `push`. If
+another sync moved the analysis branch, it builds on that tip once. A push the
+remote refuses while the tip did not move is a branch rule, and the run fails
+saying so.
+
+The target branch is checked just before the push, not in the same transaction:
+if it moves in that window, the branch can end on an analysis of the older commit.
+Its trailer still names that commit, so no reader takes it for newer, and the run
+queued for the newer commit replaces it.
+
+**How a review reads it.** After an exact artifact and a baseline committed at the
+merge base, a review lists the newest 100 commits of the branch (fetched without
+file contents, so the listing costs commit messages only) and matches their
+trailers against the merge base's first-parent history, up to 100 commits deep.
+Only entries made under this run's configuration count: an entry for the merge
+base itself is reused as is, so nothing else would catch a different engine or
+model. An entry for an ancestor is caught up incrementally. Entries found only
+under another configuration make a full run's reason `incompatible`. Only then
+does it look for ancestor artifacts.
+
+**If the branch is deleted**, the next sync creates it again as a new orphan,
+seeding from a saved ancestor artifact when there is one and analyzing in full
+otherwise. The history is lost; the current diagram is not.
+
+**Protecting it.** Sync and review load `static_analysis.pkl` from this branch, and
+a pickle runs code when loaded, so whoever can write the branch can run code in
+the sync and review workflows. Import
+[`analysis-branch-ruleset.json`](analysis-branch-ruleset.json) under Settings,
+Rules, Rulesets, New ruleset, Import a ruleset. It blocks creating, updating,
+deleting and force-pushing `codeboarding/analysis` for everyone except its bypass
+actor, GitHub Actions (integration `15368`), which is what the default
+`github.token` pushes as. If sync pushes with a GitHub App token instead, such as
+the CodeBoarding Review app (`4021464`), make that app the only bypass actor:
+any workflow can use `github.token`, while only the workflows you give the app's
+key can push as the app. Rulesets on a private repository need a paid GitHub plan
+(Pro, Team or Enterprise); on Free they apply to public repositories only.
 
 ## Trust boundary
 
