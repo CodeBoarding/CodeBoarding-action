@@ -312,6 +312,241 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual([c["mode"] for c in calls], ["incremental", "full", "incremental", "full"])
         self.assertEqual([c["depth"] for c in calls if c["mode"] == "full"], ["4", "4"])
 
+    # How the base was obtained is reported, not just used: the review comment and
+    # the webview explain a slow run by it.
+
+    def _git(self, *args: str) -> str:
+        return subprocess.run(
+            [
+                "git",
+                "-C",
+                str(self.checkout),
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "commit.gpgsign=false",
+                *args,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    def _commit(self, message: str, files: dict[str, str], *, bot: bool = False) -> str:
+        for name, content in files.items():
+            (self.checkout / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.checkout / name).write_text(content, encoding="utf-8")
+        self._git("add", "-A")
+        committer = ("-c", "user.email=codeboarding-review[bot]@users.noreply.github.com") if bot else ()
+        self._git(*committer, "commit", "-q", "-m", message)
+        return self._git("rev-parse", "HEAD")
+
+    def _sync_history(self) -> tuple[str, str]:
+        """An analysed commit with a sync commit on top that writes only .codeboarding/."""
+        self._git("init", "-q", "-b", "main")
+        analysed = self._commit("feat: code", {"code.py": "pass\n"})
+        _state(self.checkout / ".codeboarding", cap=2)
+        sync = self._commit("chore(codeboarding): sync analysis baseline", {}, bot=True)
+        return analysed, sync
+
+    def _merge(self, branch: str, files: dict[str, str], *, bot: bool = False) -> str:
+        """A commit on `branch` merged into main with --no-ff."""
+        self._git("checkout", "-q", "-b", branch)
+        self._commit(f"work on {branch}", files, bot=bot)
+        self._git("checkout", "-q", "main")
+        self._git("merge", "-q", "--no-ff", "-m", f"Merge {branch}", branch)
+        return self._git("rev-parse", "HEAD")
+
+    def _provenance(self, values: dict[str, str]) -> dict[str, str]:
+        keys = ("base_analysis_method", "base_analysis_reason")
+        for key in ("base_seconds", "head_seconds"):
+            self.assertRegex(values[key], r"^[0-9]+$", key)
+        return {key: values[key] for key in keys}
+
+    def test_a_saved_base_is_reused(self) -> None:
+        _state(self.base_dir)
+
+        values = self._analyze(BASE_FETCH_SECONDS="7")
+
+        self.assertEqual(
+            self._provenance(values),
+            {"base_analysis_method": "reused", "base_analysis_reason": "merge-b already has a saved analysis"},
+        )
+        # The download happened in the step before; it is still time spent on the base.
+        self.assertGreaterEqual(int(values["base_seconds"]), 7)
+
+    def test_a_base_with_nothing_to_seed_it_is_a_full_analysis(self) -> None:
+        sha = self._commit_base()
+
+        values = self._analyze(REVIEW_BASE_SHA=sha)
+
+        self.assertEqual(
+            self._provenance(values),
+            {"base_analysis_method": "full", "base_analysis_reason": "no usable analysis was available"},
+        )
+
+    def _assert_incompatible(self, values: dict[str, str]) -> None:
+        self.assertEqual(
+            self._provenance(values),
+            {
+                "base_analysis_method": "full",
+                "base_analysis_reason": "the existing analysis was incompatible or could not be updated incrementally",
+            },
+        )
+
+    def test_a_committed_baseline_with_another_depth_is_incompatible(self) -> None:
+        sha = self._commit_base(legacy=True)
+
+        self._assert_incompatible(self._analyze(REVIEW_BASE_SHA=sha))
+
+    def test_a_saved_base_with_another_depth_is_incompatible(self) -> None:
+        sha = self._commit_base()
+        _state(self.base_dir, cap=1)
+
+        self._assert_incompatible(self._analyze(REVIEW_BASE_SHA=sha))
+
+    def test_an_engine_that_demands_a_full_run_makes_the_baseline_incompatible(self) -> None:
+        sha = self._commit_base(cap=2)
+
+        self._assert_incompatible(self._analyze(REVIEW_BASE_SHA=sha, CB_REQUIRE_FULL="true"))
+
+    def test_a_baseline_committed_at_the_merge_base_is_reused(self) -> None:
+        # The sync commit changes only .codeboarding/, which the analysis ignores,
+        # so a merge base on it is exactly the commit the baseline describes.
+        _analysed, sync = self._sync_history()
+
+        values = self._analyze(REVIEW_BASE_SHA=sync)
+
+        self.assertEqual(
+            self._provenance(values),
+            {"base_analysis_method": "reused", "base_analysis_reason": f"{sync[:7]} already has a saved analysis"},
+        )
+        # Not under the merge base's name yet, so this run publishes it.
+        self.assertEqual(values["publish_base"], "true")
+
+    def test_a_committed_baseline_counts_the_commits_it_caught_up(self) -> None:
+        analysed, _sync = self._sync_history()
+        self._commit("feat: more", {"more.py": "pass\n"})
+        merge_base = self._commit("feat: again", {"code.py": "print()\n"})
+
+        values = self._analyze(REVIEW_BASE_SHA=merge_base)
+
+        self.assertEqual(
+            self._provenance(values),
+            {
+                "base_analysis_method": "incremental",
+                "base_analysis_reason": f"updated the analysis of {analysed[:7]} to {merge_base[:7]}, 2 commits caught up",
+            },
+        )
+
+    def test_merged_pull_requests_count_as_commits_to_catch_up(self) -> None:
+        # Merged with --no-ff, the first-parent chain is merge commits only, and
+        # each one brings code in even though it changes nothing against itself.
+        analysed, _sync = self._sync_history()
+        self._merge("feature-a", {"a.py": "pass\n"})
+        merge_base = self._merge("feature-b", {"b.py": "pass\n"})
+
+        values = self._analyze(REVIEW_BASE_SHA=merge_base)
+
+        self.assertEqual(
+            values["base_analysis_reason"],
+            f"updated the analysis of {analysed[:7]} to {merge_base[:7]}, 2 commits caught up",
+        )
+
+    def test_a_merged_sync_pull_request_describes_its_own_parent(self) -> None:
+        # sync_strategy: pull_request. The sync commit sits on codeboarding/sync on
+        # top of the analysed commit; main moved on before the merge.
+        self._git("init", "-q", "-b", "main")
+        analysed = self._commit("feat: code", {"code.py": "pass\n"})
+        self._git("checkout", "-q", "-b", "codeboarding/sync")
+        _state(self.checkout / ".codeboarding", cap=2)
+        self._commit("chore(codeboarding): sync analysis baseline", {}, bot=True)
+        self._git("checkout", "-q", "main")
+        self._commit("feat: meanwhile", {"later.py": "pass\n"})
+        self._git("merge", "-q", "--no-ff", "-m", "Merge codeboarding/sync", "codeboarding/sync")
+        merge_base = self._git("rev-parse", "HEAD")
+
+        values = self._analyze(REVIEW_BASE_SHA=merge_base)
+
+        self.assertEqual(
+            self._provenance(values),
+            {
+                "base_analysis_method": "incremental",
+                "base_analysis_reason": f"updated the analysis of {analysed[:7]} to {merge_base[:7]}, 1 commit caught up",
+            },
+        )
+
+    def test_a_baseline_sync_did_not_write_is_of_unknown_origin(self) -> None:
+        # A squash or a hand edit: its parent is not known to be what was analysed,
+        # so the reason names no starting commit and claims nothing was exact.
+        self._git("init", "-q", "-b", "main")
+        self._commit("feat: code", {"code.py": "pass\n"})
+        _state(self.checkout / ".codeboarding", cap=2)
+        merge_base = self._commit("chore(codeboarding): sync analysis baseline (#7)", {})
+
+        values = self._analyze(REVIEW_BASE_SHA=merge_base)
+
+        self.assertEqual(
+            self._provenance(values),
+            {
+                "base_analysis_method": "incremental",
+                "base_analysis_reason": f"updated an existing analysis to {merge_base[:7]}",
+            },
+        )
+
+    def test_an_attributes_line_is_not_code_to_catch_up(self) -> None:
+        _analysed, _sync = self._sync_history()
+        merge_base = self._commit(
+            "chore: attributes", {".gitattributes": ".codeboarding/analysis.json linguist-generated=true\n"}
+        )
+
+        values = self._analyze(REVIEW_BASE_SHA=merge_base)
+
+        self.assertEqual(values["base_analysis_method"], "reused")
+
+    def _progress_stub(self) -> Path:
+        calls = self.root / "gh-calls"
+        gh = self.bin_dir / "gh"
+        gh.write_text(
+            "#!/usr/bin/env bash\n"
+            f'printf "%s\\n----\\n" "$*" >> "{calls}"\n'
+            'case "$*" in *"/comments?per_page"*) echo 77 ;; esac\n',
+            encoding="utf-8",
+        )
+        gh.chmod(0o755)
+        return calls
+
+    def test_building_the_base_from_scratch_rewrites_the_progress_comment(self) -> None:
+        calls = self._progress_stub()
+        sha = self._commit_base()
+
+        self._analyze(
+            REVIEW_BASE_SHA=sha,
+            PROGRESS_HEADER="codeboarding-review",
+            REPOSITORY="owner/repo",
+            BASE_REF="develop",
+            GIT_TOKEN="token",
+        )
+
+        patches = [call for call in calls.read_text().split("\n----\n") if "PATCH" in call]
+        self.assertGreaterEqual(len(patches), 2, calls.read_text())
+        self.assertIn("repos/owner/repo/issues/comments/77", patches[0])
+        self.assertIn(f"Building the diagram of `develop` @{sha[:7]} from scratch", patches[0])
+        self.assertIn("`develop` has no saved diagram yet", patches[0])
+        self.assertIn("2. ⏳ Analysing this PR's changes", patches[-1])
+        # The sticky-comment action finds its comment by this line on the final write.
+        self.assertIn("<!-- Sticky Pull Request Commentcodeboarding-review -->", patches[-1])
+
+    def test_a_saved_base_leaves_the_progress_comment_alone(self) -> None:
+        calls = self._progress_stub()
+        _state(self.base_dir)
+
+        self._analyze(PROGRESS_HEADER="codeboarding-review", REPOSITORY="owner/repo", GIT_TOKEN="token")
+
+        self.assertFalse(calls.exists())
+
     def test_invalid_depth_fails_before_analysis(self) -> None:
         result = subprocess.run(
             [str(ANALYZE)],

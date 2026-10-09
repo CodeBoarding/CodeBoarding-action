@@ -70,7 +70,13 @@ never fires.
 | `base_artifact_id` | string | **which one**, since two artifacts can share that name and disagree: the engine is not deterministic, and a sync run publishes bases for the same commit |
 | `merge_base_resolved` | **boolean** | `false` means the merge base could not be resolved, so the comparison is against `base_sha` |
 | `base_sha` | string | the base branch tip when the event fired — *not* what was compared against |
-| `pr_number`, `mode`, `seed_source`, `chain_depth` | string | provenance; nothing rendering a diagram needs them |
+| `kind` | string | always `review`, so a reader can tell this artifact from a base or warm-start bundle |
+| `analysed_files_changed` | string | analysed files whose content hash differs between base and head; `unknown` when the analyses cannot say |
+| `base_analysis_method` | string | how this run obtained the analysis of the merge base: `reused` (the merge base already had one: its saved artifact, or a committed baseline with nothing to catch up), `incremental` (an earlier commit's analysis updated to the merge base) or `full` (analyzed from scratch in this run). Whichever, the base graph is the merge base's own analysis |
+| `base_analysis_reason` | string | the method in words, e.g. `updated the analysis of 9f8e7d6 to a1b2c3d, 4 commits caught up`; where an incremental run started and how far it caught up are detail here, present when known |
+| `base_seconds` | string | wall time spent obtaining the base, the artifact lookup included |
+| `head_seconds` | string | wall time of the head analysis |
+| `pr_number`, `mode`, `seed_source`, `chain_depth` | string | provenance; nothing rendering a diagram needs them. `mode` is the head's engine mode; `base_analysis_method` answers for the base |
 
 **A sync run** publishes the base graph under both the commit it analyzed and the
 baseline commit it writes on top, because a pull request opened either side of
@@ -104,7 +110,11 @@ them:
 | no compatible committed baseline either | full analysis directly, at the configured `depth_cap` |
 
 A trusted run that computed the base publishes it, so the next pull request
-forking from that commit gets the first row.
+forking from that commit gets the first row. The review metadata reports the
+row as `base_analysis_method` (`reused`, `incremental` or `full`) with a
+`base_analysis_reason`, and the review comment repeats both under the diagram,
+with measured times. While a base is computed, the progress
+comment says so in two steps, with the elapsed time and the reason.
 
 The configuration hash includes `depth_cap`. The workflow input controls depth
 for both fresh and fallback analyses; stored legacy depth values never override it.
