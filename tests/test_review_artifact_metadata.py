@@ -69,24 +69,19 @@ class ReviewArtifactMetadataTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             metadata, _outputs = _build(
                 Path(tmp),
-                BASE_SOURCE="committed",
-                BASE_REASON="",
-                BASE_FROM_SHA="abc",
-                CATCHUP_COMMITS="3",
+                BASE_ANALYSIS_METHOD="incremental",
+                BASE_ANALYSIS_REASON="updated the analysis of 9f8e7d6 to a1b2c3d, 3 commits caught up",
                 BASE_SECONDS="41",
                 HEAD_SECONDS="159",
             )
             self.assertEqual(
-                {key: metadata[key] for key in metadata if key.startswith("base_") or key.endswith("_seconds")}
-                | {"catchup_commits": metadata["catchup_commits"]},
+                {key: metadata[key] for key in metadata if key.startswith("base_") or key.endswith("_seconds")},
                 {
                     "base_sha": "tip-sha",
                     "base_artifact": "codeboarding-base-cfg-mergebasesha",
                     "base_artifact_id": "4242",
-                    "base_source": "committed",
-                    "base_reason": "",
-                    "base_from_sha": "abc",
-                    "catchup_commits": "3",
+                    "base_analysis_method": "incremental",
+                    "base_analysis_reason": "updated the analysis of 9f8e7d6 to a1b2c3d, 3 commits caught up",
                     "base_seconds": "41",
                     "head_seconds": "159",
                 },
@@ -95,14 +90,7 @@ class ReviewArtifactMetadataTests(unittest.TestCase):
     def test_an_older_run_without_provenance_records_empty_strings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             metadata, _outputs = _build(Path(tmp))
-            for key in (
-                "base_source",
-                "base_reason",
-                "base_from_sha",
-                "catchup_commits",
-                "base_seconds",
-                "head_seconds",
-            ):
+            for key in ("base_analysis_method", "base_analysis_reason", "base_seconds", "head_seconds"):
                 self.assertEqual(metadata[key], "", key)
 
 

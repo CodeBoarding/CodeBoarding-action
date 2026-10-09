@@ -50,7 +50,7 @@ class ProgressCommentTests(unittest.TestCase):
         return [c for c in self.calls.read_text().split("\n----\n") if "PATCH" in c] if self.calls.exists() else []
 
     def test_the_base_step_shows_elapsed_minutes_and_the_reason(self) -> None:
-        (patch,) = self._post("base", 125, BASE_REASON="no_baseline")
+        (patch,) = self._post("base", 125, FULL_CAUSE="no_baseline")
         self.assertIn("1. ⏳ Building the diagram of `main` @a1b2c3d from scratch · running for 2 min\n", patch)
         self.assertIn("   `main` has no saved diagram yet, so this review builds one first.", patch)
         self.assertIn("\n2. Analysing this PR's changes\n", patch)
@@ -61,7 +61,7 @@ class ProgressCommentTests(unittest.TestCase):
         self.assertIn("running for less than a minute", patch)
 
     def test_an_incompatible_base_says_why(self) -> None:
-        (patch,) = self._post("base", 60, BASE_REASON="incompatible")
+        (patch,) = self._post("base", 60, FULL_CAUSE="incompatible")
         self.assertIn("The saved diagram of `main` was made by a different engine version or settings", patch)
 
     def test_the_head_step_reports_the_measured_base_time(self) -> None:

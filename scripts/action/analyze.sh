@@ -214,7 +214,7 @@ catchup_count() {
 PROGRESS_PID=""
 PROGRESS_STOP="${RUNNER_TEMP:-}/codeboarding-progress-stop"
 progress() {
-  GH_TOKEN="${GIT_TOKEN:-}" GH_ENTERPRISE_TOKEN="${GIT_TOKEN:-}" BASE_REASON="$base_reason" \
+  GH_TOKEN="${GIT_TOKEN:-}" GH_ENTERPRISE_TOKEN="${GIT_TOKEN:-}" FULL_CAUSE="$full_cause" \
     PROGRESS_STOP_FILE="$PROGRESS_STOP" "$ACTION_PATH/scripts/action/post-progress.sh" "$@" >/dev/null 2>&1 || true
 }
 progress_start() {
@@ -262,16 +262,17 @@ analyze_review() {
   # A published base graph is this merge base's own analysis, named for it, so it
   # needs no engine run at all. Without one, the merge base is checked out and
   # analyzed from whatever baseline the repository committed there. Each path
-  # records how the base was obtained, for the comment and the review artifact.
-  local base_started base_source=saved base_reason="" base_from_sha="" catchup_commits=""
+  # records how the base analysis was obtained, for the comment and the review
+  # artifact: reused, incremental or full.
+  local base_started base_method=reused base_published=true full_cause="" base_from_sha="" catchup_commits=""
   base_started="$(date +%s)"
   if [ "$(depth_cap_from "${BASE_DIR:-}/analysis.json")" = "$DEPTH_CAP" ]; then
     mkdir -p "$base_state"
     cp -a "$BASE_DIR/." "$base_state/"
-    base_from_sha="$REVIEW_BASE_SHA" catchup_commits=0
   else
+    base_published=false
     # A bundle under this exact name that the run cannot use was made with another cap.
-    [ ! -f "${BASE_DIR:-}/analysis.json" ] || base_reason=incompatible
+    [ ! -f "${BASE_DIR:-}/analysis.json" ] || full_cause=incompatible
     fetch_commit "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA"
     git -C "$CHECKOUT_DIR" worktree add --detach "$base_checkout" "$REVIEW_BASE_SHA" >/dev/null
     seed_state "$base_checkout" "$base_state"
@@ -279,19 +280,20 @@ analyze_review() {
     if [ "$(depth_cap_from "$base_state/analysis.json")" = "$DEPTH_CAP" ]; then
       incremental "$base_checkout" "$base_state"
       if [ "$REQUIRES_FULL" = true ]; then
-        base_reason=incompatible
+        full_cause=incompatible
       else
-        base_source=committed
         fetch_commit "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA" "$(( CATCHUP_BOUND + 1 ))" || true
         base_from_sha="$(baseline_commit "$REVIEW_BASE_SHA")"
         [ -z "$base_from_sha" ] || catchup_commits="$(catchup_count "$base_from_sha" "$REVIEW_BASE_SHA")"
+        # Nothing to catch up means the committed analysis already describes this code.
+        [ "$catchup_commits" = 0 ] || base_method=incremental
       fi
     elif [ -f "$base_state/analysis.json" ]; then
-      base_reason=incompatible
+      full_cause=incompatible
     fi
     if [ "$REQUIRES_FULL" = true ]; then
-      base_source=computed
-      base_reason="${base_reason:-no_baseline}"
+      base_method=full
+      full_cause="${full_cause:-no_baseline}"
       trap progress_stop EXIT
       progress_start "$base_started"
       full "$base_checkout" "$base_state" "$DEPTH_CAP"
@@ -299,7 +301,6 @@ analyze_review() {
       progress head "$(( $(date +%s) - base_started ))"
     fi
   fi
-  [ "$base_source" = computed ] || base_reason=""
   # The lookup in the step before this one is part of obtaining the base too.
   local base_seconds=$(( $(date +%s) - base_started + ${BASE_FETCH_SECONDS:-0} ))
   unset GIT_TOKEN
@@ -339,15 +340,46 @@ analyze_review() {
   # by id for its whole retention, so one about to expire is renewed rather than
   # left dangling under a review that outlives it.
   local publish_base=false
-  if [ "$base_source" != saved ] || [ "${RENEW_BASE:-false}" = true ]; then
+  if [ "$base_published" != true ] || [ "${RENEW_BASE:-false}" = true ]; then
     stage "$base_state" base
     publish_base=true
   fi
 
   printf 'analysis_mode=%s\nanalysis_path=%s\nbase_analysis_path=%s\nseed_source=%s\nchain_depth=%s\npublish_base=%s\n' \
     "$ANALYSIS_MODE" "$ANALYSIS_PATH" "$base_analysis" "$seed_source" "$chain_depth" "$publish_base" >> "$GITHUB_OUTPUT"
-  printf 'base_source=%s\nbase_reason=%s\nbase_from_sha=%s\ncatchup_commits=%s\nbase_seconds=%s\nhead_seconds=%s\n' \
-    "$base_source" "$base_reason" "$base_from_sha" "$catchup_commits" "$base_seconds" "$head_seconds" >> "$GITHUB_OUTPUT"
+  printf 'base_analysis_method=%s\nbase_analysis_reason=%s\nbase_seconds=%s\nhead_seconds=%s\n' \
+    "$base_method" "$(base_reason "$base_method" "$full_cause" "$base_from_sha" "$catchup_commits")" \
+    "$base_seconds" "$head_seconds" >> "$GITHUB_OUTPUT"
+}
+
+# Why the base analysis was obtained the way it was, in words. Whichever way, the
+# result is an analysis of the merge base itself, so where an incremental run
+# started is detail for this sentence, not a field of its own.
+base_reason() {
+  local method="$1" cause="$2" from="$3" count="$4" base="${REVIEW_BASE_SHA:0:7}" reason
+  case "$method" in
+    reused) reason="$base already has a saved analysis" ;;
+    incremental)
+      if [ -z "$from" ]; then
+        reason="updated an existing analysis to $base"
+      else
+        reason="updated the analysis of ${from:0:7} to $base"
+        case "$count" in
+          '') ;;
+          1) reason="$reason, 1 commit caught up" ;;
+          *) reason="$reason, $count commits caught up" ;;
+        esac
+      fi
+      ;;
+    full)
+      if [ "$cause" = incompatible ]; then
+        reason="the existing analysis was incompatible or could not be updated incrementally"
+      else
+        reason="no usable analysis was available"
+      fi
+      ;;
+  esac
+  echo "$reason"
 }
 
 case "$ANALYSIS_KIND" in

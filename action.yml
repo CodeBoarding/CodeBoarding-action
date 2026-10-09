@@ -183,9 +183,9 @@ outputs:
   seed_source:
     description: 'Which state the review head analysis grew from: pr-chain or base.'
     value: ${{ steps.review_analyze.outputs.seed_source }}
-  base_source:
-    description: 'How the review base was obtained: saved, committed, or computed.'
-    value: ${{ steps.review_analyze.outputs.base_source }}
+  base_analysis_method:
+    description: 'How the analysis of the review base commit was obtained: reused, incremental, or full.'
+    value: ${{ steps.review_analyze.outputs.base_analysis_method }}
   merge_base_sha:
     description: 'Merge base used as the review comparison baseline.'
     value: ${{ steps.guard.outputs.merge_base_sha }}
@@ -617,10 +617,8 @@ runs:
         SEED_SOURCE: ${{ steps.review_analyze.outputs.seed_source }}
         CHAIN_DEPTH: ${{ steps.review_analyze.outputs.chain_depth }}
         ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
-        BASE_SOURCE: ${{ steps.review_analyze.outputs.base_source }}
-        BASE_REASON: ${{ steps.review_analyze.outputs.base_reason }}
-        BASE_FROM_SHA: ${{ steps.review_analyze.outputs.base_from_sha }}
-        CATCHUP_COMMITS: ${{ steps.review_analyze.outputs.catchup_commits }}
+        BASE_ANALYSIS_METHOD: ${{ steps.review_analyze.outputs.base_analysis_method }}
+        BASE_ANALYSIS_REASON: ${{ steps.review_analyze.outputs.base_analysis_reason }}
         BASE_SECONDS: ${{ steps.review_analyze.outputs.base_seconds }}
         HEAD_SECONDS: ${{ steps.review_analyze.outputs.head_seconds }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-artifact.sh"
@@ -654,10 +652,8 @@ runs:
         HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
         # Analysed files whose content hash differs between base and head, from the render step.
         ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
-        BASE_SOURCE: ${{ steps.review_analyze.outputs.base_source }}
-        BASE_REASON: ${{ steps.review_analyze.outputs.base_reason }}
-        BASE_FROM_SHA: ${{ steps.review_analyze.outputs.base_from_sha }}
-        CATCHUP_COMMITS: ${{ steps.review_analyze.outputs.catchup_commits }}
+        BASE_ANALYSIS_METHOD: ${{ steps.review_analyze.outputs.base_analysis_method }}
+        BASE_ANALYSIS_REASON: ${{ steps.review_analyze.outputs.base_analysis_reason }}
         BASE_SECONDS: ${{ steps.review_analyze.outputs.base_seconds }}
         HEAD_SECONDS: ${{ steps.review_analyze.outputs.head_seconds }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-comment.sh"

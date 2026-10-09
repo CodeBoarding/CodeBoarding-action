@@ -360,69 +360,70 @@ class ReviewChainTests(unittest.TestCase):
         return self._git("rev-parse", "HEAD")
 
     def _provenance(self, values: dict[str, str]) -> dict[str, str]:
-        keys = ("base_source", "base_reason", "base_from_sha", "catchup_commits")
+        keys = ("base_analysis_method", "base_analysis_reason")
         for key in ("base_seconds", "head_seconds"):
             self.assertRegex(values[key], r"^[0-9]+$", key)
         return {key: values[key] for key in keys}
 
-    def test_a_saved_base_reports_itself_as_exact(self) -> None:
+    def test_a_saved_base_is_reused(self) -> None:
         _state(self.base_dir)
 
         values = self._analyze(BASE_FETCH_SECONDS="7")
 
         self.assertEqual(
             self._provenance(values),
-            {"base_source": "saved", "base_reason": "", "base_from_sha": "merge-base-sha", "catchup_commits": "0"},
+            {"base_analysis_method": "reused", "base_analysis_reason": "merge-b already has a saved analysis"},
         )
         # The download happened in the step before; it is still time spent on the base.
         self.assertGreaterEqual(int(values["base_seconds"]), 7)
 
-    def test_a_base_with_nothing_to_seed_it_is_computed_for_lack_of_a_baseline(self) -> None:
+    def test_a_base_with_nothing_to_seed_it_is_a_full_analysis(self) -> None:
         sha = self._commit_base()
 
         values = self._analyze(REVIEW_BASE_SHA=sha)
 
         self.assertEqual(
             self._provenance(values),
-            {"base_source": "computed", "base_reason": "no_baseline", "base_from_sha": "", "catchup_commits": ""},
+            {"base_analysis_method": "full", "base_analysis_reason": "no usable analysis was available"},
+        )
+
+    def _assert_incompatible(self, values: dict[str, str]) -> None:
+        self.assertEqual(
+            self._provenance(values),
+            {
+                "base_analysis_method": "full",
+                "base_analysis_reason": "the existing analysis was incompatible or could not be updated incrementally",
+            },
         )
 
     def test_a_committed_baseline_with_another_depth_is_incompatible(self) -> None:
         sha = self._commit_base(legacy=True)
 
-        values = self._analyze(REVIEW_BASE_SHA=sha)
-
-        self.assertEqual(values["base_source"], "computed")
-        self.assertEqual(values["base_reason"], "incompatible")
+        self._assert_incompatible(self._analyze(REVIEW_BASE_SHA=sha))
 
     def test_a_saved_base_with_another_depth_is_incompatible(self) -> None:
         sha = self._commit_base()
         _state(self.base_dir, cap=1)
 
-        values = self._analyze(REVIEW_BASE_SHA=sha)
-
-        self.assertEqual(values["base_source"], "computed")
-        self.assertEqual(values["base_reason"], "incompatible")
+        self._assert_incompatible(self._analyze(REVIEW_BASE_SHA=sha))
 
     def test_an_engine_that_demands_a_full_run_makes_the_baseline_incompatible(self) -> None:
         sha = self._commit_base(cap=2)
 
-        values = self._analyze(REVIEW_BASE_SHA=sha, CB_REQUIRE_FULL="true")
+        self._assert_incompatible(self._analyze(REVIEW_BASE_SHA=sha, CB_REQUIRE_FULL="true"))
 
-        self.assertEqual(values["base_source"], "computed")
-        self.assertEqual(values["base_reason"], "incompatible")
-
-    def test_a_baseline_committed_at_the_merge_base_needs_no_catching_up(self) -> None:
+    def test_a_baseline_committed_at_the_merge_base_is_reused(self) -> None:
         # The sync commit changes only .codeboarding/, which the analysis ignores,
         # so a merge base on it is exactly the commit the baseline describes.
-        analysed, sync = self._sync_history()
+        _analysed, sync = self._sync_history()
 
         values = self._analyze(REVIEW_BASE_SHA=sync)
 
         self.assertEqual(
             self._provenance(values),
-            {"base_source": "committed", "base_reason": "", "base_from_sha": analysed, "catchup_commits": "0"},
+            {"base_analysis_method": "reused", "base_analysis_reason": f"{sync[:7]} already has a saved analysis"},
         )
+        # Not under the merge base's name yet, so this run publishes it.
         self.assertEqual(values["publish_base"], "true")
 
     def test_a_committed_baseline_counts_the_commits_it_caught_up(self) -> None:
@@ -432,9 +433,13 @@ class ReviewChainTests(unittest.TestCase):
 
         values = self._analyze(REVIEW_BASE_SHA=merge_base)
 
-        self.assertEqual(values["base_source"], "committed")
-        self.assertEqual(values["base_from_sha"], analysed)
-        self.assertEqual(values["catchup_commits"], "2")
+        self.assertEqual(
+            self._provenance(values),
+            {
+                "base_analysis_method": "incremental",
+                "base_analysis_reason": f"updated the analysis of {analysed[:7]} to {merge_base[:7]}, 2 commits caught up",
+            },
+        )
 
     def test_merged_pull_requests_count_as_commits_to_catch_up(self) -> None:
         # Merged with --no-ff, the first-parent chain is merge commits only, and
@@ -445,8 +450,10 @@ class ReviewChainTests(unittest.TestCase):
 
         values = self._analyze(REVIEW_BASE_SHA=merge_base)
 
-        self.assertEqual(values["base_from_sha"], analysed)
-        self.assertEqual(values["catchup_commits"], "2")
+        self.assertEqual(
+            values["base_analysis_reason"],
+            f"updated the analysis of {analysed[:7]} to {merge_base[:7]}, 2 commits caught up",
+        )
 
     def test_a_merged_sync_pull_request_describes_its_own_parent(self) -> None:
         # sync_strategy: pull_request. The sync commit sits on codeboarding/sync on
@@ -463,12 +470,17 @@ class ReviewChainTests(unittest.TestCase):
 
         values = self._analyze(REVIEW_BASE_SHA=merge_base)
 
-        self.assertEqual(values["base_source"], "committed")
-        self.assertEqual(values["base_from_sha"], analysed)
-        self.assertEqual(values["catchup_commits"], "1")
+        self.assertEqual(
+            self._provenance(values),
+            {
+                "base_analysis_method": "incremental",
+                "base_analysis_reason": f"updated the analysis of {analysed[:7]} to {merge_base[:7]}, 1 commit caught up",
+            },
+        )
 
     def test_a_baseline_sync_did_not_write_is_of_unknown_origin(self) -> None:
-        # A squash or a hand edit: its parent is not known to be what was analysed.
+        # A squash or a hand edit: its parent is not known to be what was analysed,
+        # so the reason names no starting commit and claims nothing was exact.
         self._git("init", "-q", "-b", "main")
         self._commit("feat: code", {"code.py": "pass\n"})
         _state(self.checkout / ".codeboarding", cap=2)
@@ -476,20 +488,23 @@ class ReviewChainTests(unittest.TestCase):
 
         values = self._analyze(REVIEW_BASE_SHA=merge_base)
 
-        self.assertEqual(values["base_source"], "committed")
-        self.assertEqual(values["base_from_sha"], "")
-        self.assertEqual(values["catchup_commits"], "")
+        self.assertEqual(
+            self._provenance(values),
+            {
+                "base_analysis_method": "incremental",
+                "base_analysis_reason": f"updated an existing analysis to {merge_base[:7]}",
+            },
+        )
 
     def test_an_attributes_line_is_not_code_to_catch_up(self) -> None:
-        analysed, _sync = self._sync_history()
+        _analysed, _sync = self._sync_history()
         merge_base = self._commit(
             "chore: attributes", {".gitattributes": ".codeboarding/analysis.json linguist-generated=true\n"}
         )
 
         values = self._analyze(REVIEW_BASE_SHA=merge_base)
 
-        self.assertEqual(values["base_from_sha"], analysed)
-        self.assertEqual(values["catchup_commits"], "0")
+        self.assertEqual(values["base_analysis_method"], "reused")
 
     def _progress_stub(self) -> Path:
         calls = self.root / "gh-calls"

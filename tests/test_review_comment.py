@@ -83,82 +83,76 @@ class ReviewCommentTests(unittest.TestCase):
 
 
 class BaseLineTests(unittest.TestCase):
-    """One line saying how the base was obtained, with measured times and never an estimate."""
+    """One line under the diagram saying how the base analysis was obtained, with measured times only."""
+
+    def _body(self, **extra: str) -> str:
+        with tempfile.TemporaryDirectory() as tmp:
+            return _build(Path(tmp), BASE_REF="main", MERGE_BASE_SHA="f00dfeed" * 5, **extra)
 
     def _base_line(self, **extra: str) -> str:
-        with tempfile.TemporaryDirectory() as tmp:
-            body = _build(Path(tmp), BASE_REF="main", MERGE_BASE_SHA="f00dfeed" * 5, **extra)
+        body = self._body(**extra)
         lines = [line for line in body.splitlines() if line.startswith("<sub>Base: ")]
         self.assertEqual(len(lines), 1, body)
         return lines[0]
 
-    def test_a_computed_base_says_why_and_how_long(self) -> None:
+    def test_a_full_analysis_says_why_and_how_long(self) -> None:
         line = self._base_line(
-            BASE_SOURCE="computed", BASE_REASON="no_baseline", BASE_SECONDS="534", HEAD_SECONDS="192"
+            BASE_ANALYSIS_METHOD="full",
+            BASE_ANALYSIS_REASON="no usable analysis was available",
+            BASE_SECONDS="534",
+            HEAD_SECONDS="192",
         )
-        self.assertEqual(line, "<sub>Base: built from scratch (no saved diagram), 8 m 54 s · changes 3 m 12 s</sub>")
-
-    def test_an_incompatible_base_says_so(self) -> None:
-        line = self._base_line(BASE_SOURCE="computed", BASE_REASON="incompatible", BASE_SECONDS="60", HEAD_SECONDS="5")
         self.assertEqual(
-            line, "<sub>Base: built from scratch (saved diagram incompatible), 1 m 0 s · changes 5 s</sub>"
+            line, "<sub>Base: full in 8 m 54 s (no usable analysis was available) · changes 3 m 12 s</sub>"
         )
 
-    def test_a_saved_base_names_the_commit(self) -> None:
+    def test_a_reused_analysis_has_no_base_time(self) -> None:
         line = self._base_line(
-            BASE_SOURCE="saved", BASE_FROM_SHA="a1b2c3d4e5", CATCHUP_COMMITS="0", BASE_SECONDS="3", HEAD_SECONDS="159"
+            BASE_ANALYSIS_METHOD="reused",
+            BASE_ANALYSIS_REASON="a1b2c3d already has a saved analysis",
+            BASE_SECONDS="3",
+            HEAD_SECONDS="159",
         )
-        self.assertEqual(line, "<sub>Base: saved diagram of main @a1b2c3d · changes 2 m 39 s</sub>")
+        self.assertEqual(line, "<sub>Base: reused (a1b2c3d already has a saved analysis) · changes 2 m 39 s</sub>")
 
-    def test_a_committed_base_at_the_merge_base_reads_as_saved(self) -> None:
-        line = self._base_line(BASE_SOURCE="committed", BASE_FROM_SHA="a1b2c3d4", CATCHUP_COMMITS="0", HEAD_SECONDS="4")
-        self.assertEqual(line, "<sub>Base: saved diagram of main @a1b2c3d · changes 4 s</sub>")
-
-    def test_an_unknown_catch_up_does_not_claim_an_exact_base(self) -> None:
-        for sha, count in (("", ""), ("a1b2c3d4", ""), ("", "3")):
-            line = self._base_line(
-                BASE_SOURCE="committed", BASE_FROM_SHA=sha, CATCHUP_COMMITS=count, BASE_SECONDS="41", HEAD_SECONDS="4"
-            )
-            self.assertEqual(line, "<sub>Base: saved diagram of main, caught up, 41 s · changes 4 s</sub>")
-
-    def test_an_ancestor_never_reads_as_saved(self) -> None:
+    def test_an_incremental_analysis_carries_where_it_started(self) -> None:
         line = self._base_line(
-            BASE_SOURCE="ancestor", BASE_FROM_SHA="a1b2c3d4", CATCHUP_COMMITS="0", BASE_SECONDS="41", HEAD_SECONDS="4"
-        )
-        self.assertEqual(line, "<sub>Base: caught up from main @a1b2c3d, 41 s · changes 4 s</sub>")
-
-    def test_a_caught_up_base_counts_the_commits(self) -> None:
-        line = self._base_line(
-            BASE_SOURCE="committed",
-            BASE_FROM_SHA="a1b2c3d4e5",
-            CATCHUP_COMMITS="4",
+            BASE_ANALYSIS_METHOD="incremental",
+            BASE_ANALYSIS_REASON="updated the analysis of 9f8e7d6 to a1b2c3d, 4 commits caught up",
             BASE_SECONDS="41",
             HEAD_SECONDS="159",
         )
-        self.assertEqual(line, "<sub>Base: caught up 4 commits from main @a1b2c3d, 41 s · changes 2 m 39 s</sub>")
+        self.assertEqual(
+            line,
+            "<sub>Base: incremental in 41 s (updated the analysis of 9f8e7d6 to a1b2c3d, 4 commits caught up)"
+            " · changes 2 m 39 s</sub>",
+        )
 
-    def test_the_marker_carries_the_base_after_the_existing_keys(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            body = _build(
-                Path(tmp), BASE_SOURCE="computed", BASE_REASON="no_baseline", BASE_SECONDS="534", HEAD_SECONDS="192"
-            )
+    def test_the_base_line_sits_under_the_diagram_above_the_run_links(self) -> None:
+        body = self._body(BASE_ANALYSIS_METHOD="reused", BASE_ANALYSIS_REASON="r", HEAD_SECONDS="4")
+        diagram = body.index("```mermaid")
+        base = body.index("<sub>Base: ")
+        footer = body.index("<sub>run [1234]")
+        self.assertLess(diagram, base)
+        self.assertLess(base, footer)
+        self.assertIn("· changes 4 s</sub>\n\n<sub>run [1234]", body)
+
+    def test_the_marker_carries_the_method_after_the_existing_keys(self) -> None:
+        body = self._body(
+            BASE_ANALYSIS_METHOD="full",
+            BASE_ANALYSIS_REASON="no usable analysis was available",
+            BASE_SECONDS="534",
+            HEAD_SECONDS="192",
+        )
         self.assertTrue(
-            body.rstrip("\n").endswith(
-                "head=abc123 base=computed base_reason=no_baseline base_seconds=534 head_seconds=192 -->"
-            ),
+            body.rstrip("\n").endswith("head=abc123 base_analysis_method=full base_seconds=534 head_seconds=192 -->"),
             body,
         )
 
-    def test_the_marker_omits_an_empty_reason(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            body = _build(Path(tmp), BASE_SOURCE="saved", BASE_REASON="", BASE_SECONDS="2", HEAD_SECONDS="9")
-        self.assertIn("head=abc123 base=saved base_seconds=2 head_seconds=9 -->", body)
-
-    def test_without_a_base_source_there_is_no_line_and_no_keys(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            body = _build(Path(tmp))
+    def test_without_a_method_there_is_no_line_and_no_keys(self) -> None:
+        body = self._body()
         self.assertNotIn("Base:", body)
-        self.assertNotIn(" base=", body)
+        self.assertNotIn("base_analysis_method=", body)
 
 
 if __name__ == "__main__":

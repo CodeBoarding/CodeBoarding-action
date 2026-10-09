@@ -26,9 +26,8 @@ else
   branch="the base branch"
 fi
 sha7="${REVIEW_BASE_SHA:0:7}"
-case "${BASE_REASON:-}" in
+case "${FULL_CAUSE:-}" in
   incompatible) why="The saved diagram of $branch was made by a different engine version or settings, so this review builds a new one." ;;
-  too_far_behind) why="The nearest saved diagram of $branch is too far behind this pull request's base, so this review builds one from scratch." ;;
   *) why="$branch has no saved diagram yet, so this review builds one first. Once a diagram of $branch is saved, reviews start from it and skip this step." ;;
 esac
 minutes=$(( elapsed / 60 ))

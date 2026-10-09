@@ -72,13 +72,11 @@ never fires.
 | `base_sha` | string | the base branch tip when the event fired — *not* what was compared against |
 | `kind` | string | always `review`, so a reader can tell this artifact from a base or warm-start bundle |
 | `analysed_files_changed` | string | analysed files whose content hash differs between base and head; `unknown` when the analyses cannot say |
-| `base_source` | string | how this run obtained the base graph: `saved` (the artifact for the merge base), `committed` (`.codeboarding/` committed at the merge base, caught up), or `computed` (full analysis in this run) |
-| `base_reason` | string | only with `computed`: `no_baseline` (nothing to seed from) or `incompatible` (a candidate existed but its depth cap differed, or the engine demanded a full run); empty otherwise |
-| `base_from_sha` | string | the commit whose saved analysis seeded the base; the merge base for `saved`, empty for `computed` or when it lies beyond the fetched history |
-| `catchup_commits` | string | first-parent commits from `base_from_sha` to the merge base that change anything outside `.codeboarding/`; `0` when exact, empty when unknown |
+| `base_analysis_method` | string | how this run obtained the analysis of the merge base: `reused` (the merge base already had one: its saved artifact, or a committed baseline with nothing to catch up), `incremental` (an earlier commit's analysis updated to the merge base) or `full` (analyzed from scratch in this run). Whichever, the base graph is the merge base's own analysis |
+| `base_analysis_reason` | string | the method in words, e.g. `updated the analysis of 9f8e7d6 to a1b2c3d, 4 commits caught up`; where an incremental run started and how far it caught up are detail here, present when known |
 | `base_seconds` | string | wall time spent obtaining the base, the artifact lookup included |
 | `head_seconds` | string | wall time of the head analysis |
-| `pr_number`, `mode`, `seed_source`, `chain_depth` | string | provenance; nothing rendering a diagram needs them. `mode` is the head's engine mode; `base_source` answers for the base |
+| `pr_number`, `mode`, `seed_source`, `chain_depth` | string | provenance; nothing rendering a diagram needs them. `mode` is the head's engine mode; `base_analysis_method` answers for the base |
 
 **A sync run** publishes the base graph under both the commit it analyzed and the
 baseline commit it writes on top, because a pull request opened either side of
@@ -112,9 +110,10 @@ them:
 | no compatible committed baseline either | full analysis directly, at the configured `depth_cap` |
 
 A trusted run that computed the base publishes it, so the next pull request
-forking from that commit gets the first row. The rows are `base_source` `saved`,
-`committed` and `computed` in the review metadata, and the review comment says
-which one ran, with measured times. While a base is computed, the progress
+forking from that commit gets the first row. The review metadata reports the
+row as `base_analysis_method` (`reused`, `incremental` or `full`) with a
+`base_analysis_reason`, and the review comment repeats both under the diagram,
+with measured times. While a base is computed, the progress
 comment says so in two steps, with the elapsed time and the reason.
 
 The configuration hash includes `depth_cap`. The workflow input controls depth

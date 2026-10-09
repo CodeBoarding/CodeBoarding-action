@@ -45,8 +45,9 @@ elif [ "$BEHIND" -gt 0 ] 2>/dev/null; then
   printf '\n<sub>Compared against the merge base: this branch is %s %s behind `%s`.</sub>\n' \
     "$BEHIND" "$COMMIT_NOUN" "${BASE_REF:-the base branch}" >> "$BODY"
 fi
-# How the base was obtained, with measured times only: an estimate would be wrong for
-# exactly the slow runs it is meant to explain.
+# How the base analysis was obtained, with measured times only: an estimate would be
+# wrong for exactly the slow runs it is meant to explain. Supporting detail, so it
+# sits under the diagram with the run links.
 duration() {
   local seconds="${1:-0}"
   case "$seconds" in ''|*[!0-9]*) seconds=0 ;; esac
@@ -56,47 +57,21 @@ duration() {
     printf '%s s' "$seconds"
   fi
 }
-BASE_SOURCE="${BASE_SOURCE:-}"
-BASE_BRANCH="${BASE_REF:-the base branch}"
-BASE_FROM="${BASE_FROM_SHA:-}"
-CATCHUP="${CATCHUP_COMMITS:-}"
-case "$CATCHUP" in *[!0-9]*) CATCHUP="" ;; esac
-CHANGES="changes $(duration "${HEAD_SECONDS:-}")"
-TOOK="$(duration "${BASE_SECONDS:-}")"
+BASE_METHOD="${BASE_ANALYSIS_METHOD:-}"
 BASE_LINE=""
-# An empty sha or count is unknown, not zero: the line then says it caught up
-# without claiming the base was exact.
-case "$BASE_SOURCE" in
-  computed)
-    case "${BASE_REASON:-}" in
-      incompatible) WHY="saved diagram incompatible" ;;
-      too_far_behind) WHY="saved diagram too far behind" ;;
-      *) WHY="no saved diagram" ;;
-    esac
-    BASE_LINE="Base: built from scratch (${WHY}), ${TOOK} · ${CHANGES}"
-    ;;
-  saved)
-    BASE_LINE="Base: saved diagram of ${BASE_BRANCH} @${BASE_FROM:0:7} · ${CHANGES}"
-    ;;
-  committed | ancestor)
-    if [ -z "$BASE_FROM" ] || [ -z "$CATCHUP" ]; then
-      BASE_LINE="Base: saved diagram of ${BASE_BRANCH}, caught up, ${TOOK} · ${CHANGES}"
-    elif [ "$CATCHUP" -gt 0 ]; then
-      COMMIT_NOUN="commits"
-      [ "$CATCHUP" != 1 ] || COMMIT_NOUN="commit"
-      BASE_LINE="Base: caught up ${CATCHUP} ${COMMIT_NOUN} from ${BASE_BRANCH} @${BASE_FROM:0:7}, ${TOOK} · ${CHANGES}"
-    elif [ "$BASE_SOURCE" = ancestor ]; then
-      BASE_LINE="Base: caught up from ${BASE_BRANCH} @${BASE_FROM:0:7}, ${TOOK} · ${CHANGES}"
-    else
-      BASE_LINE="Base: saved diagram of ${BASE_BRANCH} @${BASE_FROM:0:7} · ${CHANGES}"
-    fi
-    ;;
-esac
-[ -z "$BASE_LINE" ] || printf '\n<sub>%s</sub>\n' "$BASE_LINE" >> "$BODY"
+if [ -n "$BASE_METHOD" ]; then
+  BASE_LINE="Base: ${BASE_METHOD}"
+  # A reused analysis had nothing to catch up, so its time is not worth a figure.
+  [ "$BASE_METHOD" = reused ] || BASE_LINE="${BASE_LINE} in $(duration "${BASE_SECONDS:-}")"
+  [ -z "${BASE_ANALYSIS_REASON:-}" ] || BASE_LINE="${BASE_LINE} (${BASE_ANALYSIS_REASON})"
+  BASE_LINE="${BASE_LINE} · changes $(duration "${HEAD_SECONDS:-}")"
+fi
 {
   printf '\n'
   cat "$DIAGRAM"
-  printf '\n\n<sub>'
+  printf '\n'
+  [ -z "$BASE_LINE" ] || printf '\n<sub>%s</sub>\n' "$BASE_LINE"
+  printf '\n<sub>'
   if [ -n "$ARTIFACT_URL" ]; then
     printf '[download artifacts](%s) · ' "$ARTIFACT_URL"
   fi
@@ -104,11 +79,10 @@ esac
   # The machine-readable line: what a reader of the comment (the web platform's dashboard, an
   # agent) needs without parsing the prose or the diagram. An HTML comment renders as nothing.
   # Keep it one line, `key=value` pairs, values without spaces, so a regex over it stays trivial.
+  # The reason is prose, so it stays out of here: it is in the review artifact's metadata.
   BASE_KEYS=""
-  if [ -n "$BASE_SOURCE" ]; then
-    BASE_KEYS=" base=${BASE_SOURCE}"
-    [ -z "${BASE_REASON:-}" ] || BASE_KEYS="${BASE_KEYS} base_reason=${BASE_REASON}"
-    BASE_KEYS="${BASE_KEYS} base_seconds=${BASE_SECONDS:-} head_seconds=${HEAD_SECONDS:-}"
+  if [ -n "$BASE_METHOD" ]; then
+    BASE_KEYS=" base_analysis_method=${BASE_METHOD} base_seconds=${BASE_SECONDS:-} head_seconds=${HEAD_SECONDS:-}"
   fi
   printf '<!-- codeboarding: platform_url=%s changed=%s analysed_files_changed=%s head=%s%s -->\n' \
     "$PLATFORM_URL" "$N_CHANGED" "$ANALYSED_FILES_CHANGED" "${HEAD_SHA:-}" "$BASE_KEYS"
