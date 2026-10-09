@@ -654,6 +654,297 @@ class ReviewChainTests(unittest.TestCase):
         self.assertFalse((self.stage_dir / "base").exists(), "a published base needs no republishing")
 
 
+GH_STUB = """#!/usr/bin/env python3
+\"\"\"gh stand-in: serves an artifact listing and one zip from a JSON config.\"\"\"
+import json, os, sys
+from urllib.parse import parse_qs, urlparse
+
+config = json.load(open(os.environ["CB_GH_CONFIG"]))
+with open(os.environ["CB_GH_LOG"], "a") as log:
+    log.write(" ".join(sys.argv[1:]) + "\\n")
+path = next(a for a in sys.argv[1:] if a.startswith("repos/"))
+url = urlparse(path)
+query = parse_qs(url.query)
+if url.path.endswith("/zip"):
+    sys.stdout.buffer.write(open(config["zip"], "rb").read())
+elif url.path.endswith("/actions/artifacts"):
+    artifacts = config["artifacts"]
+    if "name" in query:
+        artifacts = [a for a in artifacts if a["name"] == query["name"][0]]
+    page = int(query.get("page", ["1"])[0])
+    if "name" not in query and "pages" in config:
+        pages = config["pages"]
+        print(json.dumps({"artifacts": pages[page - 1] if page <= len(pages) else []}))
+    else:
+        print(json.dumps({"artifacts": artifacts if page == 1 else []}))
+"""
+
+
+class AncestorSeedTests(unittest.TestCase):
+    """With no saved base for the merge base and nothing committed there, a review
+    catches up from the nearest saved ancestor on the base branch's first-parent
+    history instead of analyzing the merge base from scratch."""
+
+    def setUp(self) -> None:
+        import zipfile
+
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.bin_dir = self.root / "bin"
+        self.bin_dir.mkdir()
+        for name, body in (("codeboarding", ENGINE_STUB), ("gh", GH_STUB)):
+            (self.bin_dir / name).write_text(body, encoding="utf-8")
+            (self.bin_dir / name).chmod(0o755)
+        self.engine_log = self.root / "engine.log"
+        self.engine_log.write_text("", encoding="utf-8")
+        self.gh_log = self.root / "gh.log"
+        self.gh_log.write_text("", encoding="utf-8")
+        self.gh_config = self.root / "gh.json"
+        self.output = self.root / "github-output"
+        self.runner_temp = self.root / "runner"
+        self.runner_temp.mkdir()
+        self.stage_dir = self.root / "state" / "out"
+        self.origin = self.root / "origin"
+        self.origin.mkdir()
+        self.bundle = self.root / "bundle.zip"
+        with zipfile.ZipFile(self.bundle, "w") as archive:
+            archive.writestr("analysis.json", json.dumps({"metadata": {"depth_cap": 2}, "components": []}))
+            archive.writestr("static_analysis.pkl", "pickle")
+            archive.writestr("metadata.json", json.dumps({"kind": "base", "merge_base_sha": "ancestor"}))
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _history(self, commits: int) -> list[str]:
+        """A base branch of `commits` code commits, oldest first, in origin/ (the checkout)."""
+        git = ["git", "-C", str(self.origin), "-c", "user.name=T", "-c", "user.email=t@example.com"]
+        subprocess.run([*git, "init", "-q"], check=True)
+        shas = []
+        for index in range(commits):
+            (self.origin / f"file{index}.py").write_text("pass\n", encoding="utf-8")
+            subprocess.run([*git, "add", "-A"], check=True)
+            subprocess.run([*git, "-c", "commit.gpgsign=false", "commit", "-q", "-m", f"c{index}"], check=True)
+            shas.append(subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip())
+        return shas
+
+    @staticmethod
+    def _artifact(name: str, *, fork: bool = False) -> dict:
+        return {
+            "id": abs(hash(name)) % 100000,
+            "name": name,
+            "expired": False,
+            "created_at": "2026-10-01T00:00:00Z",
+            "expires_at": "2027-01-01T00:00:00Z",
+            "workflow_run": {"id": 1, "repository_id": 1, "head_repository_id": 2 if fork else 1},
+        }
+
+    def _serve(self, artifacts: list[dict], pages: list | None = None) -> None:
+        config = {"artifacts": artifacts, "zip": str(self.bundle)}
+        if pages is not None:
+            config["pages"] = pages
+        self.gh_config.write_text(json.dumps(config), encoding="utf-8")
+
+    def _analyze(self, checkout: Path, **extra: str) -> dict[str, str]:
+        self.output.write_text("", encoding="utf-8")
+        result = subprocess.run(
+            [str(ANALYZE)],
+            env={
+                "PATH": f"{self.bin_dir}:{os.environ['PATH']}",
+                "GITHUB_OUTPUT": str(self.output),
+                "RUNNER_TEMP": str(self.runner_temp),
+                "CB_ENGINE_LOG": str(self.engine_log),
+                "CB_GH_CONFIG": str(self.gh_config),
+                "CB_GH_LOG": str(self.gh_log),
+                "ACTION_PATH": str(ROOT),
+                "ANALYSIS_KIND": "review",
+                "CHECKOUT_DIR": str(checkout),
+                "REVIEW_HEAD_SHA": "head-sha",
+                "REVIEW_BASE_REPO": "origin",
+                "REPOSITORY": "owner/repo",
+                "GITHUB_SERVER_URL": f"file://{self.root}",
+                "PR_NUMBER": "42",
+                "ENGINE_VERSION": "0.14.5",
+                "CFG_HASH": "cfg",
+                "ANCESTOR_LOOKUP": "true",
+                "BASE_DIR": str(self.root / "state" / "base"),
+                "WARMSTART_DIR": str(self.root / "state" / "warmstart"),
+                "STAGE_DIR": str(self.stage_dir),
+                "DEPTH_CAP": "2",
+                **extra,
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        values: dict[str, str] = {}
+        for line in self.output.read_text(encoding="utf-8").splitlines():
+            key, _, value = line.partition("=")
+            values[key] = value
+        return values
+
+    def _modes(self) -> list[str]:
+        return [json.loads(line)["mode"] for line in self.engine_log.read_text().splitlines()]
+
+    def _assert_full(self, values: dict[str, str], reason: str = "no usable analysis was available") -> None:
+        self.assertEqual(values["base_analysis_method"], "full")
+        self.assertEqual(values["base_analysis_reason"], reason)
+
+    def test_it_catches_up_from_the_nearest_saved_ancestor(self) -> None:
+        shas = self._history(5)
+        merge_base = shas[-1]
+        # Two saved ancestors: the nearer one wins.
+        self._serve(
+            [self._artifact(f"codeboarding-base-cfg-{shas[0]}"), self._artifact(f"codeboarding-base-cfg-{shas[2]}")]
+        )
+
+        values = self._analyze(self.origin, REVIEW_BASE_SHA=merge_base)
+
+        self.assertEqual(values["base_analysis_method"], "incremental")
+        self.assertEqual(
+            values["base_analysis_reason"],
+            f"updated the analysis of {shas[2][:7]} to {merge_base[:7]}, 2 commits caught up",
+        )
+        self.assertEqual(self._modes(), ["incremental", "incremental"])
+        # Published under the merge base's own name, so the next review hits it exactly.
+        self.assertEqual(values["publish_base"], "true")
+        staged = json.loads((self.stage_dir / "base" / "metadata.json").read_text())
+        self.assertEqual(staged["merge_base_sha"], merge_base)
+
+    def test_an_ancestor_beyond_the_bound_is_not_used(self) -> None:
+        shas = self._history(5)
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
+
+        values = self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1], CATCHUP_BOUND="2")
+
+        self._assert_full(values)
+        self.assertEqual(self._modes(), ["full", "incremental"])
+        self.assertNotIn("/zip", self.gh_log.read_text())
+
+    def test_a_saved_analysis_off_this_history_is_not_used(self) -> None:
+        shas = self._history(2)
+        self._serve([self._artifact("codeboarding-base-cfg-" + "e" * 40)])
+
+        values = self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1])
+
+        self._assert_full(values)
+
+    def test_a_busy_artifact_store_is_paged_until_a_saved_ancestor_appears(self) -> None:
+        shas = self._history(3)
+        noise = [self._artifact(f"codeboarding-review-{i}-1") for i in range(100)]
+        found = self._artifact(f"codeboarding-base-cfg-{shas[0]}")
+        later = [self._artifact(f"codeboarding-warmstart-cfg-pr{i}") for i in range(100)]
+        self._serve([found], pages=[noise] * 11 + [noise[:99] + [found], later])
+
+        values = self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1])
+
+        self.assertEqual(values["base_analysis_method"], "incremental")
+        self.assertIn(f"updated the analysis of {shas[0][:7]} ", values["base_analysis_reason"])
+        listings = [
+            line
+            for line in self.gh_log.read_text().splitlines()
+            if "per_page=100&page=" in line and "name=" not in line
+        ]
+        self.assertEqual(len(listings), 12, "paging stops at the page holding the ancestor")
+
+    def test_a_failed_deepen_falls_back_to_a_full_analysis(self) -> None:
+        # The deepen fails, so the shallow checkout walks no ancestor at all.
+        shas = self._history(4)
+        bare = self.root / "origin.git"
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.origin), str(bare)], check=True)
+        checkout = self.root / "shallow"
+        subprocess.run(["git", "clone", "-q", "--depth=1", f"file://{bare}", str(checkout)], check=True)
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
+
+        values = self._analyze(checkout, REVIEW_BASE_SHA=shas[-1], GITHUB_SERVER_URL=f"file://{self.root}/missing")
+
+        self._assert_full(values)
+
+    def test_the_merge_bases_own_configuration_survives_the_seed(self) -> None:
+        shas = self._history(2)
+        (self.origin / ".codeboarding").mkdir()
+        (self.origin / ".codeboarding" / ".codeboardingignore").write_text("docs/\n", encoding="utf-8")
+        git = ["git", "-C", str(self.origin), "-c", "user.name=T", "-c", "user.email=t@example.com"]
+        subprocess.run([*git, "add", "-A"], check=True)
+        subprocess.run([*git, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "ignore docs"], check=True)
+        merge_base = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        import zipfile
+
+        with zipfile.ZipFile(self.bundle, "a") as archive:
+            archive.writestr(".codeboardingignore", "stale/\n")
+            archive.writestr("health/health_config.json", "{}")
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
+
+        values = self._analyze(self.origin, REVIEW_BASE_SHA=merge_base)
+
+        self.assertEqual(values["base_analysis_method"], "incremental")
+        staged = self.stage_dir / "base"
+        self.assertEqual((staged / ".codeboardingignore").read_text(), "docs/\n")
+        self.assertFalse((staged / "health" / "health_config.json").exists(), "the merge base has none")
+
+    def test_an_ancestor_saved_by_a_run_on_forked_code_is_never_read(self) -> None:
+        shas = self._history(3)
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}", fork=True)])
+
+        values = self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1])
+
+        self._assert_full(values)
+        self.assertNotIn("/zip", self.gh_log.read_text(), "a fork's bundle was downloaded")
+
+    def test_another_configuration_saved_at_the_merge_base_is_incompatible(self) -> None:
+        shas = self._history(2)
+        self._serve([self._artifact(f"codeboarding-base-othercfg-{shas[-1]}")])
+
+        values = self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1])
+
+        self._assert_full(values, "the existing analysis was incompatible or could not be updated incrementally")
+
+    def test_a_shallow_checkout_is_deepened_to_find_the_ancestor(self) -> None:
+        shas = self._history(4)
+        bare = self.root / "origin.git"
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.origin), str(bare)], check=True)
+        subprocess.run(["git", "-C", str(bare), "config", "uploadpack.allowAnySHA1InWant", "true"], check=True)
+        checkout = self.root / "shallow"
+        subprocess.run(["git", "clone", "-q", "--depth=1", f"file://{bare}", str(checkout)], check=True)
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
+
+        values = self._analyze(checkout, REVIEW_BASE_SHA=shas[-1])
+
+        self.assertEqual(
+            values["base_analysis_reason"],
+            f"updated the analysis of {shas[0][:7]} to {shas[-1][:7]}, 3 commits caught up",
+        )
+
+    def test_without_the_lookup_nothing_is_listed(self) -> None:
+        # GHES has no artifact store, so the action turns the lookup off there.
+        shas = self._history(2)
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
+
+        values = self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1], ANCESTOR_LOOKUP="false")
+
+        self.assertEqual(values["base_analysis_method"], "full")
+        self.assertEqual(self.gh_log.read_text(), "")
+
+    def test_a_first_sync_catches_up_from_the_setup_reviews_base(self) -> None:
+        # Merging the setup pull request leaves no committed baseline, but its
+        # preview review saved the base at its merge base, the new tip's parent.
+        shas = self._history(3)
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[1]}")])
+
+        self._analyze(self.origin, ANALYSIS_KIND="sync", FORCE_FULL="false")
+
+        self.assertEqual(self._modes(), ["incremental"])
+
+    def test_a_forced_sync_never_seeds(self) -> None:
+        shas = self._history(2)
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
+
+        self._analyze(self.origin, ANALYSIS_KIND="sync", FORCE_FULL="True")
+
+        self.assertEqual(self._modes(), ["full"])
+        self.assertEqual(self.gh_log.read_text(), "")
+
+
 class ReviewArtifactTests(unittest.TestCase):
     """The artifact is the only channel a reader outside the run can use: cache
     entries have no download API, so whatever the webview needs must ship here."""

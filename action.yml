@@ -451,6 +451,13 @@ runs:
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
         STAGE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/out
         FORCE_FULL: ${{ inputs.force_full }}
+        CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
+        # Lets a branch without a usable committed baseline catch up from a saved analysis.
+        ANCESTOR_LOOKUP: ${{ github.server_url == 'https://github.com' && steps.state.outputs.cfg_hash != '' }}
+        GIT_TOKEN: ${{ inputs.github_token }}
+        REPOSITORY: ${{ github.repository }}
+        GH_HOST: ${{ github.server_url }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
         DEPTH_CAP: ${{ inputs.depth_cap }}
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
@@ -539,6 +546,8 @@ runs:
         BASE_FETCH_SECONDS: ${{ steps.fetch_base.outputs.seconds }}
         WARMSTART_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/warmstart
         RENEW_BASE: ${{ steps.fetch_base.outputs.renew }}
+        # Lets a branch without a usable committed baseline catch up from a saved analysis.
+        ANCESTOR_LOOKUP: ${{ github.server_url == 'https://github.com' && steps.state.outputs.cfg_hash != '' }}
         # For rewriting the progress comment while a base is built from scratch.
         PROGRESS_HEADER: ${{ steps.guard.outputs.comment_id }}
         BASE_REF: ${{ steps.guard.outputs.base_ref }}
