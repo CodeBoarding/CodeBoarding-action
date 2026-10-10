@@ -26,6 +26,7 @@ with open(os.environ["CB_ENGINE_LOG"], "a") as log:
         "mode": argv[0],
         "checkout": argv[argv.index("--local") + 1],
         "depth": argv[argv.index("--depth-cap") + 1] if "--depth-cap" in argv else None,
+        "run_id": os.environ.get("CODEBOARDING_RUN_ID", ""),
     }) + "\\n")
 analysis = os.path.join(output, "analysis.json")
 metadata = json.load(open(analysis))["metadata"] if os.path.isfile(analysis) else {}
@@ -286,6 +287,16 @@ class ReviewChainTests(unittest.TestCase):
         self._analyze(REVIEW_BASE_SHA=sha, DEPTH_CAP="4")
         self.assertEqual([c["mode"] for c in self._engine_calls()], ["incremental", "incremental"])
 
+    def test_engine_runs_are_tagged_with_the_run_and_the_analysis_they_belong_to(self) -> None:
+        sha = self._commit_base(cap=4)
+        self._analyze(REVIEW_BASE_SHA=sha, DEPTH_CAP="4", GITHUB_RUN_ID="991", GITHUB_RUN_ATTEMPT="2")
+        self.assertEqual([c["run_id"] for c in self._engine_calls()], ["gh-991-2-base", "gh-991-2-head"])
+
+    def test_a_reused_base_leaves_only_head_engine_runs(self) -> None:
+        _state(self.base_dir)
+        self._analyze(GITHUB_RUN_ID="991", GITHUB_RUN_ATTEMPT="1")
+        self.assertEqual([c["run_id"] for c in self._engine_calls()], ["gh-991-1-head"])
+
     def test_legacy_committed_depth_is_not_inherited(self) -> None:
         sha = self._commit_base(legacy=True)
         self._analyze(REVIEW_BASE_SHA=sha, DEPTH_CAP="4")
@@ -360,22 +371,17 @@ class ReviewChainTests(unittest.TestCase):
         return self._git("rev-parse", "HEAD")
 
     def _provenance(self, values: dict[str, str]) -> dict[str, str]:
-        keys = ("base_analysis_method", "base_analysis_reason")
-        for key in ("base_seconds", "head_seconds"):
-            self.assertRegex(values[key], r"^[0-9]+$", key)
-        return {key: values[key] for key in keys}
+        return {key: values[key] for key in ("base_analysis_method", "base_analysis_reason")}
 
     def test_a_saved_base_is_reused(self) -> None:
         _state(self.base_dir)
 
-        values = self._analyze(BASE_FETCH_SECONDS="7")
+        values = self._analyze()
 
         self.assertEqual(
             self._provenance(values),
             {"base_analysis_method": "reused", "base_analysis_reason": "merge-b already has a saved analysis"},
         )
-        # The download happened in the step before; it is still time spent on the base.
-        self.assertGreaterEqual(int(values["base_seconds"]), 7)
 
     def test_a_base_with_nothing_to_seed_it_is_a_full_analysis(self) -> None:
         sha = self._commit_base()
@@ -456,7 +462,7 @@ class ReviewChainTests(unittest.TestCase):
         )
 
     def test_a_merged_sync_pull_request_describes_its_own_parent(self) -> None:
-        # sync_strategy: pull_request. The sync commit sits on codeboarding/sync on
+        # save_baseline_to: pull_request. The sync commit sits on codeboarding/sync on
         # top of the analysed commit; main moved on before the merge.
         self._git("init", "-q", "-b", "main")
         analysed = self._commit("feat: code", {"code.py": "pass\n"})

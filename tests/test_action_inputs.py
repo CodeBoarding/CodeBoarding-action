@@ -86,6 +86,14 @@ class ActionInputTests(unittest.TestCase):
             self.assertNotIn(stale, self.inputs)
             self.assertNotIn(f"inputs.{stale}", ACTION)
 
+    def test_deprecated_inputs_are_read_only_by_the_migrator(self) -> None:
+        """Backward compatibility lives in one script; every other step reads its outputs."""
+        for old, new in (("target_branch", "synced_branch"), ("sync_strategy", "save_baseline_to")):
+            self.assertIn("deprecationMessage:", self.inputs[old])
+            self.assertEqual(ACTION.count(f"inputs.{old} }}}}"), 1, f"only the migrator may read {old}")
+            self.assertEqual(ACTION.count(f"inputs.{new} }}}}"), 1, f"only the migrator may read {new}")
+        self.assertLess(ACTION.index("- name: Translate deprecated inputs"), ACTION.index("- name: Resolve event"))
+
     def test_credentials_resolve_before_the_checkout_and_the_engine_install(self) -> None:
         """Fail-fast is positional: preflight is worth little after a minute of setup."""
         preflight = ACTION.index("- name: Check LLM configuration")
