@@ -3,11 +3,12 @@
 Where CodeBoarding keeps analysis state, and how a review run finds the two
 graphs it compares.
 
-## Three stores
+## Where analysis is stored
 
 | Store | Holds | Lifetime | Who can read it |
 |---|---|---|---|
-| **Git** (`sync` commits) | `.codeboarding/` on the target branch | forever | anyone with repo read |
+| **Git, synced branch** (`save_baseline_to: synced_branch` or `pull_request`) | `.codeboarding/` on the synced branch | forever | anyone with repo read |
+| **Git, baseline branch** (`save_baseline_to: baseline_branch`) | one commit per sync on `codeboarding/baseline` | forever | anyone with repo read |
 | **Workflow artifacts** | every analysis this action reuses or publishes | a retention window | any run with `actions: read`, plus humans |
 | ~~Actions cache~~ | — | — | not used |
 
@@ -74,8 +75,6 @@ never fires.
 | `analysed_files_changed` | string | analysed files whose content hash differs between base and head; `unknown` when the analyses cannot say |
 | `base_analysis_method` | string | how this run obtained the analysis of the merge base: `reused` (the merge base already had one: its saved artifact, or a committed baseline with nothing to catch up), `incremental` (an earlier commit's analysis, committed or saved, updated to the merge base) or `full` (analyzed from scratch in this run). Whichever, the base graph is the merge base's own analysis |
 | `base_analysis_reason` | string | the method in words, e.g. `updated the analysis of 9f8e7d6 to a1b2c3d, 4 commits caught up`; where an incremental run started and how far it caught up are detail here, present when known |
-| `base_seconds` | string | wall time spent obtaining the base, the artifact lookup included |
-| `head_seconds` | string | wall time of the head analysis |
 | `pr_number`, `mode`, `seed_source`, `chain_depth` | string | provenance; nothing rendering a diagram needs them. `mode` is the head's engine mode; `base_analysis_method` answers for the base |
 
 **A sync run** publishes the base graph under both the commit it analyzed and the
@@ -107,7 +106,7 @@ them:
 |---|---|
 | the published `codeboarding-base-<cfg>-<merge_base>` artifact with a compatible depth cap | none |
 | no usable artifact — check out the merge base, seed from a compatible baseline committed there, catch up | one incremental, full if Core requires it |
-| the analysis branch (`sync_strategy: branch`): its commit for the merge base, else for the nearest of the merge base's last 100 first-parent ancestors, made under this configuration | none for the merge base itself (`reused`), one incremental otherwise (`incremental`) |
+| the baseline branch (`save_baseline_to: baseline_branch`): its commit for the merge base, else for the nearest of the merge base's last 100 first-parent ancestors, made under this configuration | none for the merge base itself (`reused`), one incremental otherwise (`incremental`) |
 | no compatible committed baseline either: the nearest `codeboarding-base-<cfg>-<sha>` artifact among the merge base's last 100 first-parent ancestors | one incremental from that commit to the merge base |
 | none within 100 commits either | full analysis directly, at the configured `depth_cap` |
 
@@ -115,9 +114,16 @@ A trusted run that computed the base publishes it, so the next pull request
 forking from that commit gets the first row; that includes a base caught up from
 an ancestor. The review metadata reports the
 row as `base_analysis_method` (`reused`, `incremental` or `full`) with a
-`base_analysis_reason`, and the review comment repeats both under the diagram,
-with measured times. While a base is computed, the progress
-comment says so in two steps, with the elapsed time and the reason.
+`base_analysis_reason`. The review comment does not: how the base was obtained is
+for us, not the reader. While a base is computed, the progress comment says so in
+two steps, with the elapsed time and the reason.
+
+**Telemetry.** Every engine run carries `CODEBOARDING_RUN_ID=gh-<run id>-<attempt>-<role>`,
+the role being `base`, `head` or `sync`, so the engine's own `analysis_started` /
+`analysis_completed` events (mode, duration, tokens) can be read per run. A review
+with no `base` events reused its base; `base` events say whether it was caught up
+or built in full. Where a caught-up base started from is only in
+`base_analysis_reason`.
 
 The ancestor lookup walks the merge base's first-parent history, deepening the
 shallow checkout to 101 commits, then pages through the repository's artifacts
@@ -146,25 +152,26 @@ diffs against, recorded as a digest in `origin.json`. Two runs of the engine ove
 one commit need not name components identically, so a head descended from one
 base and a diagram drawn against another would report changes nobody made.
 
-## The analysis branch
+## The baseline branch
 
-`sync_strategy: branch` saves the analysis to a branch of its own in the same
-repository, `codeboarding/analysis` unless `analysis_branch` names another.
-`target_branch` is then the code branch sync analyzes; it is never written.
+`save_baseline_to: baseline_branch` saves the analysis to a branch of its own in
+the same repository, `codeboarding/baseline` unless `baseline_branch` names
+another. The synced branch is then only read.
 
 **What lives where.** The branch is an orphan: it shares no history with the code.
-Each sync adds one commit holding the same `.codeboarding/` files the `push`
-strategy would commit to the target branch, plus `.codeboarding/source.json`:
+Each sync adds one commit holding the same `.codeboarding/` files
+`save_baseline_to: synced_branch` would commit to the synced branch, plus
+`.codeboarding/source.json`:
 
 ```json
-{"schema": 1, "source_branch": "main", "source_sha": "<sha analysed>", "generated_at": "<iso>", "engine_version": "<v>", "config": "<cfg hash>"}
+{"schema": 1, "synced_branch": "main", "source_sha": "<sha analysed>", "generated_at": "<iso>", "engine_version": "<v>", "config": "<cfg hash>"}
 ```
 
 The commit is `chore(codeboarding): diagram of main @<sha7>` with two trailers:
 `CodeBoarding-Source: <sha>` and `CodeBoarding-Config: <cfg hash>`, the same
 configuration hash that names the base artifacts (engine version, provider, model,
 depth cap). Engine output is never edited; which commit it describes and how it was
-made live only in `source.json` and the trailers. The target branch is never
+made live only in `source.json` and the trailers. The synced branch is never
 written, not even `.gitattributes`. The base artifacts are still published, named
 for the analysed commit.
 
@@ -172,15 +179,15 @@ for the analysed commit.
 this configuration, and runs incrementally. The generated files are replaced
 wholesale; only the checkout's own `.codeboardingignore` and health configuration
 are kept. The push is a fast-forward onto the tip it fetched, never forced. Sync
-refuses to write to an existing branch that is not an analysis branch (its tip has
+refuses to write to an existing branch that is not a baseline branch (its tip has
 no `CodeBoarding-Source` trailer, or holds anything besides `.codeboarding/`), so
-pointing `analysis_branch` at a code branch fails instead of emptying it. If the
-target branch moved during the analysis, the result is dropped, as with `push`. If
-another sync moved the analysis branch, it builds on that tip once. A push the
+pointing `baseline_branch` at a code branch fails instead of emptying it. If the
+synced branch moved during the analysis, the result is dropped, as when committing
+to it. If another sync moved the baseline branch, it builds on that tip once. A push the
 remote refuses while the tip did not move is a branch rule, and the run fails
 saying so.
 
-The target branch is checked just before the push, not in the same transaction:
+The synced branch is checked just before the push, not in the same transaction:
 if it moves in that window, the branch can end on an analysis of the older commit.
 Its trailer still names that commit, so no reader takes it for newer, and the run
 queued for the newer commit replaces it.
@@ -202,14 +209,15 @@ otherwise. The history is lost; the current diagram is not.
 **Protecting it.** Sync and review load `static_analysis.pkl` from this branch, and
 a pickle runs code when loaded, so whoever can write the branch can run code in
 the sync and review workflows. Import
-[`analysis-branch-ruleset.json`](analysis-branch-ruleset.json) under Settings,
+[`baseline-branch-ruleset.json`](baseline-branch-ruleset.json) under Settings,
 Rules, Rulesets, New ruleset, Import a ruleset. It blocks creating, updating,
-deleting and force-pushing `codeboarding/analysis` for everyone except its bypass
+deleting and force-pushing `codeboarding/baseline` for everyone except its bypass
 actor, GitHub Actions (integration `15368`), which is what the default
 `github.token` pushes as. If sync pushes with a GitHub App token instead, such as
 the CodeBoarding Review app (`4021464`), make that app the only bypass actor:
 any workflow can use `github.token`, while only the workflows you give the app's
-key can push as the app. Rulesets on a private repository need a paid GitHub plan
+key can push as the app. Creation is covered too, so the bypass actor must be the
+identity sync pushes as before the first sync, or that sync fails on the rule. Rulesets on a private repository need a paid GitHub plan
 (Pro, Team or Enterprise); on Free they apply to public repositories only.
 
 ## Trust boundary

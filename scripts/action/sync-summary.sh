@@ -6,7 +6,7 @@ set -euo pipefail
   echo "- Analysis: ${MODE}"
   echo "- Analysis artifacts: ${FILES:-0}"
   echo "- Delivered: ${COMMITTED:-false}"
-  echo "- Strategy: ${STRATEGY}"
+  echo "- Saved to: ${SAVE_BASELINE_TO}"
   if [ -n "${PR_URL:-}" ]; then
     echo "- Sync PR: ${PR_URL}"
   fi

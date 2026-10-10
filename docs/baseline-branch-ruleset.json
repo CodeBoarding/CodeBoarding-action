@@ -1,10 +1,10 @@
 {
-  "name": "CodeBoarding analysis branch",
+  "name": "CodeBoarding baseline branch",
   "target": "branch",
   "enforcement": "active",
   "conditions": {
     "ref_name": {
-      "include": ["refs/heads/codeboarding/analysis"],
+      "include": ["refs/heads/codeboarding/baseline"],
       "exclude": []
     }
   },

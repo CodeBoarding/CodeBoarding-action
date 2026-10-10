@@ -12,9 +12,16 @@ parse_output() {
   REQUIRES_FULL="$(awk -F= '$1 == "requires_full_analysis" {print $2; exit}' <<< "$output")"
   ANALYSIS_PATH="$(awk -F= '$1 == "analysis_path" {print substr($0, index($0, "=") + 1); exit}' <<< "$output")"
 }
+# Tags the engine's own telemetry with this run and the analysis it belongs to
+# (base, head or sync), so its events can be read per run: a review with no base
+# events reused its base, one with base events caught it up or built it in full.
+ENGINE_ROLE=""
+engine_run_id() {
+  [ -z "${GITHUB_RUN_ID:-}" ] || printf 'gh-%s-%s-%s' "$GITHUB_RUN_ID" "${GITHUB_RUN_ATTEMPT:-1}" "$ENGINE_ROLE"
+}
 incremental() {
   local checkout="$1" output_dir="$2" output
-  output="$(python3 "$ACTION_PATH/scripts/analyze_repository.py" incremental \
+  output="$(CODEBOARDING_RUN_ID="$(engine_run_id)" python3 "$ACTION_PATH/scripts/analyze_repository.py" incremental \
     --checkout "$checkout" --output-dir "$output_dir")"
   parse_output "$output"
   if [ "$ANALYSIS_MODE" != incremental ] || { [ "$REQUIRES_FULL" != true ] && [ ! -f "$ANALYSIS_PATH" ]; }; then
@@ -24,7 +31,7 @@ incremental() {
 }
 full() {
   local checkout="$1" output_dir="$2" depth="$3" output
-  output="$(python3 "$ACTION_PATH/scripts/analyze_repository.py" full \
+  output="$(CODEBOARDING_RUN_ID="$(engine_run_id)" python3 "$ACTION_PATH/scripts/analyze_repository.py" full \
     --checkout "$checkout" --output-dir "$output_dir" --depth-cap "$depth")"
   parse_output "$output"
   if [ "$ANALYSIS_MODE" != full ] || [ ! -f "$ANALYSIS_PATH" ]; then
@@ -123,21 +130,22 @@ analyze_sync() {
   local work="$RUNNER_TEMP/codeboarding-sync" state="$RUNNER_TEMP/codeboarding-sync/analysis"
   rm -rf "$work"
   seed_state "$CHECKOUT_DIR" "$state"
+  ENGINE_ROLE=sync
 
   REQUIRES_FULL=true
   if [ "$(printf '%s' "${FORCE_FULL:-false}" | tr '[:upper:]' '[:lower:]')" != true ]; then
-    # The analysis branch's tip is this branch's last analysis. Without a usable
+    # The baseline branch's tip is this branch's last analysis. Without a usable
     # one, the run below seeds from a saved ancestor or analyzes in full, and
     # delivery creates the branch again.
-    if [ "${SYNC_STRATEGY:-}" = branch ]; then
+    if [ "${SAVE_BASELINE_TO:-}" = baseline_branch ]; then
       local tip_entry
-      tip_entry="$(analysis_branch_index "${REPOSITORY:-}" | awk '{print $1, $3; exit}')"
+      tip_entry="$(baseline_branch_index "${REPOSITORY:-}" | awk '{print $1, $3; exit}')"
       if [ -z "$tip_entry" ]; then
-        echo "::notice::$ANALYSIS_BRANCH has no analysis to continue from; this sync creates it."
+        echo "::notice::$BASELINE_BRANCH has no analysis to continue from; this sync creates it."
       elif ! usable_config "${tip_entry#* }"; then
-        echo "::notice::The analysis on $ANALYSIS_BRANCH was made with another engine version or settings; not continuing from it."
-      elif ! restore_analysis_branch "${REPOSITORY:-}" "${tip_entry%% *}" "$state" "$CHECKOUT_DIR"; then
-        echo "::notice::Could not read the analysis on $ANALYSIS_BRANCH; not continuing from it."
+        echo "::notice::The analysis on $BASELINE_BRANCH was made with another engine version or settings; not continuing from it."
+      elif ! restore_baseline_branch "${REPOSITORY:-}" "${tip_entry%% *}" "$state" "$CHECKOUT_DIR"; then
+        echo "::notice::Could not read the analysis on $BASELINE_BRANCH; not continuing from it."
       fi
     fi
     if [ "$(depth_cap_from "$state/analysis.json")" = "$DEPTH_CAP" ]; then
@@ -274,22 +282,22 @@ keep_user_config() {
   done
 }
 
-# sync_strategy: branch keeps one commit per sync on ANALYSIS_BRANCH, each with
+# save_baseline_to: baseline_branch keeps one commit per sync on BASELINE_BRANCH, each with
 # trailers naming the commit it analysed (CodeBoarding-Source) and the
 # configuration it ran under (CodeBoarding-Config). Lists them as
 # "<branch commit> <source sha> <config>", newest first, at most
-# ANALYSIS_BRANCH_DEPTH of them; an entry without a config has none to compare.
+# BASELINE_BRANCH_DEPTH of them; an entry without a config has none to compare.
 # Fetched without blobs into a scratch repository: the lookup needs messages, and
 # a hundred pickles would cost more than it saves.
-ANALYSIS_BRANCH_DEPTH="${ANALYSIS_BRANCH_DEPTH:-100}"
-analysis_branch_index() {
-  local repository="$1" scratch="$RUNNER_TEMP/codeboarding-analysis-index.git" auth
-  [ -n "${ANALYSIS_BRANCH:-}" ] || return 0
+BASELINE_BRANCH_DEPTH="${BASELINE_BRANCH_DEPTH:-100}"
+baseline_branch_index() {
+  local repository="$1" scratch="$RUNNER_TEMP/codeboarding-baseline-index.git" auth
+  [ -n "${BASELINE_BRANCH:-}" ] || return 0
   rm -rf "$scratch"
   git init -q --bare "$scratch"
   auth="$(printf 'x-access-token:%s' "${GIT_TOKEN:-}" | base64 -w0)"
   git -C "$scratch" -c "http.extraheader=AUTHORIZATION: basic $auth" fetch -q --filter=blob:none \
-    --depth="$ANALYSIS_BRANCH_DEPTH" "${GITHUB_SERVER_URL%/}/${repository}.git" "refs/heads/$ANALYSIS_BRANCH" 2>/dev/null ||
+    --depth="$BASELINE_BRANCH_DEPTH" "${GITHUB_SERVER_URL%/}/${repository}.git" "refs/heads/$BASELINE_BRANCH" 2>/dev/null ||
     return 0
   git -C "$scratch" log --format='%H %(trailers:key=CodeBoarding-Source,valueonly,separator=%x20) %(trailers:key=CodeBoarding-Config,valueonly,separator=%x20)' FETCH_HEAD |
     awk 'NF >= 2 {print $1, $2, (NF >= 3 ? $3 : "-")}'
@@ -300,10 +308,10 @@ analysis_branch_index() {
 usable_config() {
   [ -n "${CFG_HASH:-}" ] && [ "$1" = "$CFG_HASH" ]
 }
-# Replaces the generated state in $3 with an analysis-branch commit's, keeping the
+# Replaces the generated state in $3 with a baseline-branch commit's, keeping the
 # user configuration of checkout $4. source.json is provenance, not engine state.
-restore_analysis_branch() {
-  local repository="$1" commit="$2" state="$3" config_from="$4" scratch="$RUNNER_TEMP/codeboarding-analysis-restore"
+restore_baseline_branch() {
+  local repository="$1" commit="$2" state="$3" config_from="$4" scratch="$RUNNER_TEMP/codeboarding-baseline-restore"
   fetch_commit "$repository" "$commit" || return 1
   rm -rf "$scratch"
   mkdir -p "$scratch"
@@ -314,16 +322,16 @@ restore_analysis_branch() {
   cp -a "$scratch/.codeboarding" "$state"
   keep_user_config "$config_from" "$state"
 }
-# Seeds $3 from the analysis branch's entry for $2, or for its nearest first-parent
+# Seeds $3 from the baseline branch's entry for $2, or for its nearest first-parent
 # ancestor that has one under this configuration, keeping checkout $4's user
 # configuration. Sets BRANCH_SOURCE to the commit it describes and BRANCH_DISTANCE
 # to how far below $2 that is; BRANCH_REASON=incompatible when the only entries
 # found were made under another configuration.
 BRANCH_SOURCE="" BRANCH_DISTANCE="" BRANCH_REASON=""
-seed_from_analysis_branch() {
+seed_from_baseline_branch() {
   local repository="$1" tip="$2" state="$3" config_from="$4" index commit line entry="" distance=0
   BRANCH_SOURCE="" BRANCH_DISTANCE="" BRANCH_REASON=""
-  index="$(analysis_branch_index "$repository")"
+  index="$(baseline_branch_index "$repository")"
   [ -n "$index" ] || return 1
   fetch_commit "$repository" "$tip" "$(( CATCHUP_BOUND + 1 ))" || true
   for commit in $(git -C "$CHECKOUT_DIR" rev-list --first-parent --max-count=$(( CATCHUP_BOUND + 1 )) "$tip" 2>/dev/null); do
@@ -337,7 +345,7 @@ seed_from_analysis_branch() {
     [ -z "$entry" ] || break
     distance=$(( distance + 1 ))
   done
-  [ -n "$entry" ] && restore_analysis_branch "$repository" "$entry" "$state" "$config_from" || return 1
+  [ -n "$entry" ] && restore_baseline_branch "$repository" "$entry" "$state" "$config_from" || return 1
   BRANCH_SOURCE="$commit" BRANCH_DISTANCE="$distance" BRANCH_REASON=""
 }
 
@@ -394,8 +402,9 @@ analyze_review() {
   # A published base graph is this merge base's own analysis, named for it, so it
   # needs no engine run at all. Without one, the merge base is checked out and
   # analyzed from whatever baseline the repository committed there. Each path
-  # records how the base analysis was obtained, for the comment and the review
-  # artifact: reused, incremental or full.
+  # records how the base analysis was obtained, for the review artifact: reused,
+  # incremental or full.
+  ENGINE_ROLE=base
   local base_started base_method=reused base_published=true full_cause="" base_from_sha="" catchup_commits=""
   base_started="$(date +%s)"
   if [ "$(depth_cap_from "${BASE_DIR:-}/analysis.json")" = "$DEPTH_CAP" ]; then
@@ -423,10 +432,10 @@ analyze_review() {
     elif [ -f "$base_state/analysis.json" ]; then
       full_cause=incompatible
     fi
-    # The analysis branch: its entry for the merge base is that commit's own
+    # The baseline branch: its entry for the merge base is that commit's own
     # analysis, and an entry for an ancestor is caught up like a committed one.
     if [ "$REQUIRES_FULL" = true ] &&
-      seed_from_analysis_branch "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA" "$base_state" "$base_checkout"; then
+      seed_from_baseline_branch "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA" "$base_state" "$base_checkout"; then
       if [ "$(depth_cap_from "$base_state/analysis.json")" != "$DEPTH_CAP" ]; then
         full_cause=incompatible
       elif [ "$BRANCH_DISTANCE" -eq 0 ]; then
@@ -464,8 +473,6 @@ analyze_review() {
       progress head "$(( $(date +%s) - base_started ))"
     fi
   fi
-  # The lookup in the step before this one is part of obtaining the base too.
-  local base_seconds=$(( $(date +%s) - base_started + ${BASE_FETCH_SECONDS:-0} ))
   unset GIT_TOKEN
 
   local base_analysis="$base_state/analysis.json"
@@ -487,13 +494,11 @@ analyze_review() {
   fi
   rm -f "$head_state/origin.json"
 
-  local head_started
-  head_started="$(date +%s)"
+  ENGINE_ROLE=head
   incremental "$CHECKOUT_DIR" "$head_state"
   if [ "$REQUIRES_FULL" = true ]; then
     full "$CHECKOUT_DIR" "$head_state" "$DEPTH_CAP"
   fi
-  local head_seconds=$(( $(date +%s) - head_started ))
 
   write_origin "$head_state" "$seed_source" "$chain_depth" "$(analysis_digest "$base_analysis")"
   stage "$head_state" warmstart
@@ -511,9 +516,8 @@ analyze_review() {
 
   printf 'analysis_mode=%s\nanalysis_path=%s\nbase_analysis_path=%s\nseed_source=%s\nchain_depth=%s\npublish_base=%s\n' \
     "$ANALYSIS_MODE" "$ANALYSIS_PATH" "$base_analysis" "$seed_source" "$chain_depth" "$publish_base" >> "$GITHUB_OUTPUT"
-  printf 'base_analysis_method=%s\nbase_analysis_reason=%s\nbase_seconds=%s\nhead_seconds=%s\n' \
-    "$base_method" "$(base_reason "$base_method" "$full_cause" "$base_from_sha" "$catchup_commits")" \
-    "$base_seconds" "$head_seconds" >> "$GITHUB_OUTPUT"
+  printf 'base_analysis_method=%s\nbase_analysis_reason=%s\n' \
+    "$base_method" "$(base_reason "$base_method" "$full_cause" "$base_from_sha" "$catchup_commits")" >> "$GITHUB_OUTPUT"
 }
 
 # Why the base analysis was obtained the way it was, in words. Whichever way, the

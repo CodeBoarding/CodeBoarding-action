@@ -41,12 +41,12 @@ on:
         type: boolean
         required: false
         default: false
-      sync_strategy:
-        description: 'Deliver directly to the target branch or open/update a rolling baseline PR.'
+      save_baseline_to:
+        description: 'Commit to main, open/update a rolling baseline PR, or commit to codeboarding/baseline.'
         type: choice
-        options: [push, pull_request]
+        options: [synced_branch, pull_request, baseline_branch]
         required: false
-        default: push
+        default: synced_branch
 
 # No workflow-level permissions: the single job below requests only what it
 # needs (least privilege), so the default token starts with none.
@@ -144,7 +144,7 @@ jobs:
           # CodeBoarding's own repositories run on the CodeBoarding plan.
           llm: license
           license_key: ${{ secrets.CODEBOARDING_LICENSE }}
-          sync_strategy: ${{ inputs.sync_strategy || 'push' }}
+          save_baseline_to: ${{ inputs.save_baseline_to || 'synced_branch' }}
           force_full: ${{ inputs.force_full || false }}
           # App token authenticates the baseline push so the commit is attributed
           # to the CodeBoarding App (logo avatar). Falls back to the workflow token,

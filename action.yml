@@ -142,18 +142,18 @@ inputs:
     description: 'Token used for comments and sync delivery.'
     required: false
     default: ${{ github.token }}
-  sync_strategy:
-    description: 'Where sync saves the analysis: push (a commit on target_branch), pull_request (a rolling PR into target_branch), or branch (commits on analysis_branch; target_branch is never written).'
-    required: false
-    default: 'push'
-  analysis_branch:
-    description: 'Branch in this repository that sync_strategy branch saves the analysis to, one commit per sync. Reviews read their base analysis from it when it exists.'
-    required: false
-    default: 'codeboarding/analysis'
-  target_branch:
-    description: 'Code branch sync mode analyzes. With sync_strategy push or pull_request the analysis is also committed to it; with branch it is only read. Defaults to the event branch.'
+  synced_branch:
+    description: 'Code branch that sync keeps an up-to-date analysis of. Defaults to the event branch.'
     required: false
     default: ''
+  save_baseline_to:
+    description: 'Where sync saves the analysis: synced_branch (a commit on synced_branch), pull_request (a rolling PR into synced_branch), or baseline_branch (a commit on baseline_branch; synced_branch is never written).'
+    required: false
+    default: 'synced_branch'
+  baseline_branch:
+    description: 'Branch that save_baseline_to: baseline_branch stores the analysis on, one commit per sync. Reviews read their base analysis from it when it exists.'
+    required: false
+    default: 'codeboarding/baseline'
   force_full:
     description: 'Run a full sync analysis instead of reusing the committed baseline.'
     required: false
@@ -162,6 +162,17 @@ inputs:
     description: 'Days to keep the reusable analysis. Only the next run reads it.'
     required: false
     default: '1'
+  # Deprecated inputs. scripts/action/old_api_migrator.sh is the only reader.
+  target_branch:
+    description: 'Deprecated: use synced_branch.'
+    deprecationMessage: 'target_branch is deprecated; use synced_branch.'
+    required: false
+    default: ''
+  sync_strategy:
+    description: 'Deprecated: use save_baseline_to (push is synced_branch, pull_request is pull_request).'
+    deprecationMessage: 'sync_strategy is deprecated; use save_baseline_to.'
+    required: false
+    default: ''
 outputs:
   llm_tier:
     description: 'Resolved credential tier: hosted, license, byok, or byok+license.'
@@ -187,9 +198,6 @@ outputs:
   seed_source:
     description: 'Which state the review head analysis grew from: pr-chain or base.'
     value: ${{ steps.review_analyze.outputs.seed_source }}
-  base_analysis_method:
-    description: 'How the analysis of the review base commit was obtained: reused, incremental, or full.'
-    value: ${{ steps.review_analyze.outputs.base_analysis_method }}
   merge_base_sha:
     description: 'Merge base used as the review comparison baseline.'
     value: ${{ steps.guard.outputs.merge_base_sha }}
@@ -203,15 +211,25 @@ outputs:
     description: 'Whether sync delivered a baseline commit.'
     value: ${{ steps.sync_commit.outputs.committed }}
   sync_pr_url:
-    description: 'Rolling sync PR URL when sync_strategy is pull_request.'
+    description: 'Rolling sync PR URL when save_baseline_to is pull_request.'
     value: ${{ steps.sync_commit.outputs.sync_pr_url }}
   sync_pr_number:
-    description: 'Rolling sync PR number when sync_strategy is pull_request.'
+    description: 'Rolling sync PR number when save_baseline_to is pull_request.'
     value: ${{ steps.sync_commit.outputs.sync_pr_number }}
 
 runs:
   using: 'composite'
   steps:
+    - name: Translate deprecated inputs
+      id: inputs
+      shell: bash
+      env:
+        SYNCED_BRANCH: ${{ inputs.synced_branch }}
+        SAVE_BASELINE_TO: ${{ inputs.save_baseline_to }}
+        OLD_TARGET_BRANCH: ${{ inputs.target_branch }}
+        OLD_SYNC_STRATEGY: ${{ inputs.sync_strategy }}
+      run: "$GITHUB_ACTION_PATH/scripts/action/old_api_migrator.sh"
+
     - name: Resolve event
       id: guard
       shell: bash
@@ -225,9 +243,9 @@ runs:
         REF_TYPE: ${{ github.ref_type }}
         EVENT_SHA: ${{ github.sha }}
         HEAD_AUTHOR_EMAIL: ${{ github.event.head_commit.author.email }}
-        TARGET_BRANCH_INPUT: ${{ inputs.target_branch }}
-        SYNC_STRATEGY: ${{ inputs.sync_strategy }}
-        ANALYSIS_BRANCH: ${{ inputs.analysis_branch }}
+        SYNCED_BRANCH_INPUT: ${{ steps.inputs.outputs.synced_branch }}
+        SAVE_BASELINE_TO: ${{ steps.inputs.outputs.save_baseline_to }}
+        BASELINE_BRANCH: ${{ inputs.baseline_branch }}
         COMMENT_BODY: ${{ github.event.comment.body }}
         AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
         ISSUE_PR_URL: ${{ github.event.issue.pull_request.url }}
@@ -456,8 +474,8 @@ runs:
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
         STAGE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/out
         FORCE_FULL: ${{ inputs.force_full }}
-        SYNC_STRATEGY: ${{ inputs.sync_strategy }}
-        ANALYSIS_BRANCH: ${{ inputs.analysis_branch }}
+        SAVE_BASELINE_TO: ${{ steps.inputs.outputs.save_baseline_to }}
+        BASELINE_BRANCH: ${{ inputs.baseline_branch }}
         CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
         # Lets a branch without a usable committed baseline catch up from a saved analysis.
         ANCESTOR_LOOKUP: ${{ github.server_url == 'https://github.com' && steps.state.outputs.cfg_hash != '' }}
@@ -479,12 +497,12 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         ANALYSIS_DIR: ${{ steps.sync_analyze.outputs.analysis_dir }}
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
-        TARGET_BRANCH: ${{ steps.guard.outputs.target_branch }}
+        SYNCED_BRANCH: ${{ steps.guard.outputs.synced_branch }}
         SYNC_BRANCH_START_SHA: ${{ steps.guard.outputs.sync_branch_start_sha }}
-        SYNC_STRATEGY: ${{ inputs.sync_strategy }}
-        ANALYSIS_BRANCH: ${{ inputs.analysis_branch }}
+        SAVE_BASELINE_TO: ${{ steps.inputs.outputs.save_baseline_to }}
+        BASELINE_BRANCH: ${{ inputs.baseline_branch }}
         ENGINE_VERSION: ${{ steps.state.outputs.engine_version }}
-        # Recorded with each analysis-branch commit, so a reader can tell which configuration made it.
+        # Recorded with each baseline-branch commit, so a reader can tell which configuration made it.
         CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         GH_TOKEN: ${{ inputs.github_token }}
@@ -537,7 +555,7 @@ runs:
         MODE: ${{ steps.sync_analyze.outputs.analysis_mode }}
         COMMITTED: ${{ steps.sync_commit.outputs.committed }}
         FILES: ${{ steps.sync_commit.outputs.files_written }}
-        STRATEGY: ${{ inputs.sync_strategy }}
+        SAVE_BASELINE_TO: ${{ steps.inputs.outputs.save_baseline_to }}
         PR_URL: ${{ steps.sync_commit.outputs.sync_pr_url }}
       run: "$GITHUB_ACTION_PATH/scripts/action/sync-summary.sh"
 
@@ -554,14 +572,13 @@ runs:
         REVIEW_BASE_REPO: ${{ steps.guard.outputs.base_repo }}
         PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
         BASE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/base
-        BASE_FETCH_SECONDS: ${{ steps.fetch_base.outputs.seconds }}
         WARMSTART_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/warmstart
         RENEW_BASE: ${{ steps.fetch_base.outputs.renew }}
         # Lets a branch without a usable committed baseline catch up from a saved analysis.
         ANCESTOR_LOOKUP: ${{ github.server_url == 'https://github.com' && steps.state.outputs.cfg_hash != '' }}
         # For rewriting the progress comment while a base is built from scratch.
         PROGRESS_HEADER: ${{ steps.guard.outputs.comment_id }}
-        ANALYSIS_BRANCH: ${{ inputs.analysis_branch }}
+        BASELINE_BRANCH: ${{ inputs.baseline_branch }}
         BASE_REF: ${{ steps.guard.outputs.base_ref }}
         REPOSITORY: ${{ github.repository }}
         GH_HOST: ${{ github.server_url }}
@@ -640,8 +657,6 @@ runs:
         ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
         BASE_ANALYSIS_METHOD: ${{ steps.review_analyze.outputs.base_analysis_method }}
         BASE_ANALYSIS_REASON: ${{ steps.review_analyze.outputs.base_analysis_reason }}
-        BASE_SECONDS: ${{ steps.review_analyze.outputs.base_seconds }}
-        HEAD_SECONDS: ${{ steps.review_analyze.outputs.head_seconds }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-artifact.sh"
 
     - name: Upload review artifact
@@ -673,10 +688,6 @@ runs:
         HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
         # Analysed files whose content hash differs between base and head, from the render step.
         ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
-        BASE_ANALYSIS_METHOD: ${{ steps.review_analyze.outputs.base_analysis_method }}
-        BASE_ANALYSIS_REASON: ${{ steps.review_analyze.outputs.base_analysis_reason }}
-        BASE_SECONDS: ${{ steps.review_analyze.outputs.base_seconds }}
-        HEAD_SECONDS: ${{ steps.review_analyze.outputs.head_seconds }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-comment.sh"
 
     - name: Post review comment

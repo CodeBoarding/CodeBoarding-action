@@ -45,33 +45,10 @@ elif [ "$BEHIND" -gt 0 ] 2>/dev/null; then
   printf '\n<sub>Compared against the merge base: this branch is %s %s behind `%s`.</sub>\n' \
     "$BEHIND" "$COMMIT_NOUN" "${BASE_REF:-the base branch}" >> "$BODY"
 fi
-# How the base analysis was obtained, with measured times only: an estimate would be
-# wrong for exactly the slow runs it is meant to explain. Supporting detail, so it
-# sits under the diagram with the run links.
-duration() {
-  local seconds="${1:-0}"
-  case "$seconds" in ''|*[!0-9]*) seconds=0 ;; esac
-  if [ "$seconds" -ge 60 ]; then
-    printf '%s m %s s' "$(( seconds / 60 ))" "$(( seconds % 60 ))"
-  else
-    printf '%s s' "$seconds"
-  fi
-}
-BASE_METHOD="${BASE_ANALYSIS_METHOD:-}"
-BASE_LINE=""
-if [ -n "$BASE_METHOD" ]; then
-  BASE_LINE="Base: ${BASE_METHOD}"
-  # A reused analysis had nothing to catch up, so its time is not worth a figure.
-  [ "$BASE_METHOD" = reused ] || BASE_LINE="${BASE_LINE} in $(duration "${BASE_SECONDS:-}")"
-  [ -z "${BASE_ANALYSIS_REASON:-}" ] || BASE_LINE="${BASE_LINE} (${BASE_ANALYSIS_REASON})"
-  BASE_LINE="${BASE_LINE} · changes $(duration "${HEAD_SECONDS:-}")"
-fi
 {
   printf '\n'
   cat "$DIAGRAM"
-  printf '\n'
-  [ -z "$BASE_LINE" ] || printf '\n<sub>%s</sub>\n' "$BASE_LINE"
-  printf '\n<sub>'
+  printf '\n\n<sub>'
   if [ -n "$ARTIFACT_URL" ]; then
     printf '[download artifacts](%s) · ' "$ARTIFACT_URL"
   fi
@@ -79,12 +56,7 @@ fi
   # The machine-readable line: what a reader of the comment (the web platform's dashboard, an
   # agent) needs without parsing the prose or the diagram. An HTML comment renders as nothing.
   # Keep it one line, `key=value` pairs, values without spaces, so a regex over it stays trivial.
-  # The reason is prose, so it stays out of here: it is in the review artifact's metadata.
-  BASE_KEYS=""
-  if [ -n "$BASE_METHOD" ]; then
-    BASE_KEYS=" base_analysis_method=${BASE_METHOD} base_seconds=${BASE_SECONDS:-} head_seconds=${HEAD_SECONDS:-}"
-  fi
-  printf '<!-- codeboarding: platform_url=%s changed=%s analysed_files_changed=%s head=%s%s -->\n' \
-    "$PLATFORM_URL" "$N_CHANGED" "$ANALYSED_FILES_CHANGED" "${HEAD_SHA:-}" "$BASE_KEYS"
+  printf '<!-- codeboarding: platform_url=%s changed=%s analysed_files_changed=%s head=%s -->\n' \
+    "$PLATFORM_URL" "$N_CHANGED" "$ANALYSED_FILES_CHANGED" "${HEAD_SHA:-}"
 } >> "$BODY"
 echo "path=$BODY" >> "$GITHUB_OUTPUT"
