@@ -120,6 +120,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: write       # push the generated baseline
+      actions: read         # catch up from an analysis a review saved
       pull-requests: write  # workflow_dispatch may exercise pull_request delivery
       id-token: write       # mint per-request OIDC credentials for the relay
     steps:

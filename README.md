@@ -257,6 +257,7 @@ on:
 
 permissions:
   contents: write
+  actions: read        # catch up from an analysis a review saved
   id-token: write
 
 concurrency:
@@ -287,6 +288,7 @@ Set `save_baseline_to: pull_request` and grant `pull-requests: write`:
 ```yaml
 permissions:
   contents: write
+  actions: read
   pull-requests: write
   id-token: write
 
@@ -318,7 +320,7 @@ Set `save_baseline_to: baseline_branch` to keep the analysis off your code branc
 
 `main` is then only read. Each sync adds one commit to `codeboarding/baseline` in the same repository (set `baseline_branch` to change the name), an orphan branch that shares no history with `main`. It holds the same `.codeboarding/` files sync would otherwise commit to `main`, plus `.codeboarding/source.json` naming the commit they describe and the configuration that made them; the commit message carries both as `CodeBoarding-Source:` and `CodeBoarding-Config:` trailers. Pushes only ever fast-forward, `main` is never written, and no pull request is opened. Reviews read their base from the branch, and the web platform reads the latest diagram from it. The [baseline branch section](docs/COMMIT_STRATEGY.md#the-baseline-branch) covers what happens if the branch is deleted, and a ruleset you should import to protect it: sync and review load a pickle from it.
 
-No permission beyond the `contents: write` every sync already needs: the first sync creates the branch with an ordinary push. If you renamed it with `baseline_branch`, set the same name in your review workflow too, since reviews read it — or keep both jobs in one workflow, below.
+No permission beyond what every sync already has: the first sync creates the branch with an ordinary push, which `contents: write` covers. If you renamed it with `baseline_branch`, set the same name in your review workflow too, since reviews read it — or keep both jobs in one workflow, below.
 
 **Moving an existing setup.** Nothing changes until you opt in: the default keeps committing to the synced branch. To switch, paste this into your coding agent:
 
@@ -400,6 +402,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: write
+      actions: read
       id-token: write
     steps:
       - uses: CodeBoarding/CodeBoarding-action@v1

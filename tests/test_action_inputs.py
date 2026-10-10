@@ -86,6 +86,15 @@ class ActionInputTests(unittest.TestCase):
             self.assertNotIn(stale, self.inputs)
             self.assertNotIn(f"inputs.{stale}", ACTION)
 
+    def test_every_sync_setup_can_read_saved_analyses(self) -> None:
+        """Sync catches up from an analysis a review saved; without actions: read it silently analyzes in full."""
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        sync_setups = [block for block in readme.split("```yaml")[1:] if "mode: sync" in block]
+        sync_setups.append(DOGFOOD[DOGFOOD.index("\n  sync:\n") :])
+        for block in sync_setups:
+            if "permissions:" in block:
+                self.assertIn("actions: read", block, block[:200])
+
     def test_deprecated_inputs_are_read_only_by_the_migrator(self) -> None:
         """Backward compatibility lives in one script; every other step reads its outputs."""
         for old, new in (("target_branch", "synced_branch"), ("sync_strategy", "save_baseline_to")):
