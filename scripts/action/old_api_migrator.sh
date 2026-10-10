@@ -21,7 +21,7 @@ analysis_branch="${ANALYSIS_BRANCH:-}"
 if [ "$MODE" = sync ]; then
   if [ -n "${OLD_TARGET_BRANCH:-}" ]; then
     [ "$OLD_TARGET_BRANCH" = "$REF_NAME" ] ||
-      fail "target_branch is no longer supported: sync analyzes the branch it runs on, $REF_NAME, not $OLD_TARGET_BRANCH. Remove target_branch and run sync on $OLD_TARGET_BRANCH."
+      fail "target_branch is no longer supported: sync analyzes the branch it runs on, which for this run is $REF_NAME, not $OLD_TARGET_BRANCH. Remove target_branch: $OLD_TARGET_BRANCH, and sync analyzes $REF_NAME."
     warn "target_branch is deprecated and has no effect here; remove it."
   fi
   if [ -n "${OLD_SYNC_STRATEGY:-}" ]; then

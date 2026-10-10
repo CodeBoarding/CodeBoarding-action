@@ -78,6 +78,15 @@ class OldApiMigratorTests(unittest.TestCase):
                 self.assertEqual(branch, "<none>")
                 self.assertIn("#moving-an-existing-setup", result.stdout)
 
+    def test_a_stale_target_branch_names_the_branch_the_run_is_on(self) -> None:
+        # A repository whose branch is master, with target_branch: main left in its workflow:
+        # "run sync on main" would send it to a branch that does not exist.
+        result, _branch = migrate(REF_NAME="master", OLD_TARGET_BRANCH="main")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("for this run is master", result.stdout)
+        self.assertIn("Remove target_branch: main, and sync analyzes master.", result.stdout)
+        self.assertNotIn("run sync on main", result.stdout)
+
     def test_an_empty_analysis_branch_fails(self) -> None:
         result, branch = migrate(ANALYSIS_BRANCH="")
         self.assertNotEqual(result.returncode, 0)
