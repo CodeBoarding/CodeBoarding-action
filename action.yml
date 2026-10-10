@@ -142,20 +142,12 @@ inputs:
     description: 'Token used for comments and sync delivery.'
     required: false
     default: ${{ github.token }}
-  synced_branch:
-    description: 'Code branch that sync keeps an up-to-date analysis of. Defaults to the event branch.'
-    required: false
-    default: ''
-  save_baseline_to:
-    description: 'Where sync saves the analysis: synced_branch (a commit on synced_branch), pull_request (a rolling PR into synced_branch), or baseline_branch (a commit on baseline_branch; synced_branch is never written).'
-    required: false
-    default: 'synced_branch'
-  baseline_branch:
-    description: 'Branch that save_baseline_to: baseline_branch stores the analysis on, one commit per sync. Reviews read their base analysis from it when it exists.'
+  codeboarding_analysis_branch:
+    description: 'Branch the analysis is kept on. Sync adds one commit per run to it and never writes the code branch; reviews read their base from it. Set it to the code branch itself (for example main) to commit .codeboarding/ there instead.'
     required: false
     default: 'codeboarding/baseline'
   force_full:
-    description: 'Run a full sync analysis instead of reusing the committed baseline.'
+    description: 'Run a full sync analysis instead of continuing from a saved one.'
     required: false
     default: 'false'
   warmstart_retention_days:
@@ -164,13 +156,13 @@ inputs:
     default: '1'
   # Deprecated inputs. scripts/action/old_api_migrator.sh is the only reader.
   target_branch:
-    description: 'Deprecated: use synced_branch.'
-    deprecationMessage: 'target_branch is deprecated; use synced_branch.'
+    description: 'Deprecated: sync analyzes the branch the run is on. Accepted only when it names that branch.'
+    deprecationMessage: 'target_branch is deprecated; sync analyzes the branch the run is on.'
     required: false
     default: ''
   sync_strategy:
-    description: 'Deprecated: use save_baseline_to (push is synced_branch, pull_request is pull_request).'
-    deprecationMessage: 'sync_strategy is deprecated; use save_baseline_to.'
+    description: 'Deprecated: use codeboarding_analysis_branch (push is the code branch itself, pull_request the default).'
+    deprecationMessage: 'sync_strategy is deprecated; use codeboarding_analysis_branch.'
     required: false
     default: ''
 outputs:
@@ -210,12 +202,6 @@ outputs:
   committed:
     description: 'Whether sync delivered a baseline commit.'
     value: ${{ steps.sync_commit.outputs.committed }}
-  sync_pr_url:
-    description: 'Rolling sync PR URL when save_baseline_to is pull_request.'
-    value: ${{ steps.sync_commit.outputs.sync_pr_url }}
-  sync_pr_number:
-    description: 'Rolling sync PR number when save_baseline_to is pull_request.'
-    value: ${{ steps.sync_commit.outputs.sync_pr_number }}
 
 runs:
   using: 'composite'
@@ -224,8 +210,9 @@ runs:
       id: inputs
       shell: bash
       env:
-        SYNCED_BRANCH: ${{ inputs.synced_branch }}
-        SAVE_BASELINE_TO: ${{ inputs.save_baseline_to }}
+        MODE: ${{ inputs.mode }}
+        REF_NAME: ${{ github.ref_name }}
+        ANALYSIS_BRANCH: ${{ inputs.codeboarding_analysis_branch }}
         OLD_TARGET_BRANCH: ${{ inputs.target_branch }}
         OLD_SYNC_STRATEGY: ${{ inputs.sync_strategy }}
       run: "$GITHUB_ACTION_PATH/scripts/action/old_api_migrator.sh"
@@ -241,11 +228,8 @@ runs:
         EVENT: ${{ github.event_name }}
         REF_NAME: ${{ github.ref_name }}
         REF_TYPE: ${{ github.ref_type }}
-        EVENT_SHA: ${{ github.sha }}
         HEAD_AUTHOR_EMAIL: ${{ github.event.head_commit.author.email }}
-        SYNCED_BRANCH_INPUT: ${{ steps.inputs.outputs.synced_branch }}
-        SAVE_BASELINE_TO: ${{ steps.inputs.outputs.save_baseline_to }}
-        BASELINE_BRANCH: ${{ inputs.baseline_branch }}
+        ANALYSIS_BRANCH: ${{ steps.inputs.outputs.analysis_branch }}
         COMMENT_BODY: ${{ github.event.comment.body }}
         AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
         ISSUE_PR_URL: ${{ github.event.issue.pull_request.url }}
@@ -416,7 +400,6 @@ runs:
     - name: Resolve analysis cache keys
       id: state
       if: steps.guard.outputs.skip != 'true'
-      continue-on-error: true
       shell: bash
       env:
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
@@ -473,8 +456,7 @@ runs:
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
         STAGE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/out
         FORCE_FULL: ${{ inputs.force_full }}
-        SAVE_BASELINE_TO: ${{ steps.inputs.outputs.save_baseline_to }}
-        BASELINE_BRANCH: ${{ inputs.baseline_branch }}
+        BASELINE_BRANCH: ${{ steps.guard.outputs.analysis_branch }}
         CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
         # Lets a branch without a usable committed baseline catch up from a saved analysis.
         ANCESTOR_LOOKUP: ${{ github.server_url == 'https://github.com' && steps.state.outputs.cfg_hash != '' }}
@@ -497,16 +479,11 @@ runs:
         ANALYSIS_DIR: ${{ steps.sync_analyze.outputs.analysis_dir }}
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
         SYNCED_BRANCH: ${{ steps.guard.outputs.synced_branch }}
-        SYNC_BRANCH_START_SHA: ${{ steps.guard.outputs.sync_branch_start_sha }}
-        SAVE_BASELINE_TO: ${{ steps.inputs.outputs.save_baseline_to }}
-        BASELINE_BRANCH: ${{ inputs.baseline_branch }}
+        BASELINE_BRANCH: ${{ steps.guard.outputs.analysis_branch }}
         ENGINE_VERSION: ${{ steps.state.outputs.engine_version }}
         # Recorded with each baseline-branch commit, so a reader can tell which configuration made it.
         CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
-        GH_TOKEN: ${{ inputs.github_token }}
-        GH_ENTERPRISE_TOKEN: ${{ inputs.github_token }}
-        GH_HOST: ${{ github.server_url }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         REPOSITORY: ${{ github.repository }}
       run: "$GITHUB_ACTION_PATH/scripts/action/deliver-sync.sh"
@@ -554,8 +531,7 @@ runs:
         MODE: ${{ steps.sync_analyze.outputs.analysis_mode }}
         COMMITTED: ${{ steps.sync_commit.outputs.committed }}
         FILES: ${{ steps.sync_commit.outputs.files_written }}
-        SAVE_BASELINE_TO: ${{ steps.inputs.outputs.save_baseline_to }}
-        PR_URL: ${{ steps.sync_commit.outputs.sync_pr_url }}
+        SAVED_TO: ${{ steps.guard.outputs.analysis_branch || steps.guard.outputs.synced_branch }}
       run: "$GITHUB_ACTION_PATH/scripts/action/sync-summary.sh"
 
     - name: Generate review baseline
@@ -569,7 +545,7 @@ runs:
         REVIEW_BASE_REPO: ${{ steps.guard.outputs.base_repo }}
         BASE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/base
         RENEW_BASE: ${{ steps.fetch_base.outputs.renew }}
-        BASELINE_BRANCH: ${{ inputs.baseline_branch }}
+        BASELINE_BRANCH: ${{ steps.guard.outputs.analysis_branch }}
         # Lets a merge base without a saved analysis catch up from an ancestor's.
         ANCESTOR_LOOKUP: ${{ github.server_url == 'https://github.com' && steps.state.outputs.cfg_hash != '' }}
         # For the progress comment while a base is built from scratch.

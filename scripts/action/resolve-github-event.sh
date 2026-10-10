@@ -9,42 +9,33 @@ case "$MODE" in
   *) fail "mode must be review or sync." ;;
 esac
 printf 'mode=%s\nskip=false\nevent=%s\n' "$MODE" "$EVENT" >> "$GITHUB_OUTPUT"
-# Both modes read the baseline branch, so a name git cannot use fails here, before
+# Both modes read the analysis branch, so a name git cannot use fails here, before
 # anything is analyzed, rather than reading as a missing branch and costing a full run.
-if [ -n "${BASELINE_BRANCH:-}" ] && ! git check-ref-format "refs/heads/$BASELINE_BRANCH"; then
-  fail "baseline_branch '$BASELINE_BRANCH' is not a valid branch name."
+if [ -n "${ANALYSIS_BRANCH:-}" ] && ! git check-ref-format "refs/heads/$ANALYSIS_BRANCH"; then
+  fail "codeboarding_analysis_branch '$ANALYSIS_BRANCH' is not a valid branch name."
 fi
+# analysis_branch is the separate branch the analysis is kept on, or empty when
+# codeboarding_analysis_branch names the code branch itself, which then holds it.
+separate_branch() {
+  [ "${ANALYSIS_BRANCH:-}" = "$1" ] || echo "${ANALYSIS_BRANCH:-}"
+}
 if [ "$MODE" = sync ]; then
   case "$EVENT" in
     push|workflow_dispatch|schedule) ;;
     *) skip "Sync mode ignores $EVENT events." ;;
   esac
   [ "$REF_TYPE" != tag ] || skip "Sync mode ignores tag pushes."
-  case "$SAVE_BASELINE_TO" in
-    synced_branch|pull_request|baseline_branch) ;;
-    *) fail "save_baseline_to must be synced_branch, pull_request or baseline_branch." ;;
-  esac
   case "$HEAD_AUTHOR_EMAIL" in
     codeboarding-review\[bot\]@users.noreply.github.com|codeboarding\[bot\]@users.noreply.github.com)
       [ "$EVENT" != push ] || skip "Ignoring CodeBoarding's own baseline commit."
       ;;
   esac
-  synced_branch="${SYNCED_BRANCH_INPUT:-$REF_NAME}"
-  [ -n "$synced_branch" ] || fail "synced_branch is required for this event."
-  [ "$SAVE_BASELINE_TO" != pull_request ] || [ "$synced_branch" != codeboarding/sync ] || fail "synced_branch must differ from codeboarding/sync."
-  if [ "$SAVE_BASELINE_TO" = baseline_branch ]; then
-    [ -n "${BASELINE_BRANCH:-}" ] || fail "baseline_branch is required with save_baseline_to: baseline_branch."
-    # The baseline branch holds only analysis; a workflow that also fires on it must not analyze it.
-    [ "$REF_NAME" != "$BASELINE_BRANCH" ] || skip "Ignoring a push to the baseline branch $BASELINE_BRANCH."
-    [ "$synced_branch" != "$BASELINE_BRANCH" ] || fail "synced_branch must differ from baseline_branch."
-  fi
-  sync_branch_start_sha=""
-  if [ "$SAVE_BASELINE_TO" = pull_request ]; then
-    sync_branch_start_sha="$(gh api "repos/$REPOSITORY/branches/codeboarding%2Fsync" --jq '.commit.sha' 2>/dev/null || true)"
-  fi
+  synced_branch="$REF_NAME"
+  [ -n "$synced_branch" ] || fail "Sync needs a branch to analyze; run it on one."
+  analysis_branch="$(separate_branch "$synced_branch")"
   {
     echo "synced_branch=$synced_branch"
-    echo "sync_branch_start_sha=$sync_branch_start_sha"
+    echo "analysis_branch=$analysis_branch"
     echo "checkout_repo=$REPOSITORY"
     echo "checkout_ref=$synced_branch"
   } >> "$GITHUB_OUTPUT"
@@ -133,6 +124,7 @@ is_fork=false
   echo "merge_base_resolved=$merge_base_resolved"
   echo "behind_by=$behind_by"
   echo "base_ref=$base_ref"
+  echo "analysis_branch=$(separate_branch "$base_ref")"
   echo "head_sha=$head_sha"
   echo "base_repo=$base_repo"
   echo "head_repo=$head_repo"

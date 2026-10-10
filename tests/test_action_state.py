@@ -179,16 +179,28 @@ class CacheKeyTests(unittest.TestCase):
         self.assertNotEqual(baseline["cfg_hash"], self._run(PARSING_MODEL_INPUT="gpt-5")["cfg_hash"])
         self.assertNotEqual(baseline["cfg_hash"], self._run(LLM_PROVIDER="anthropic")["cfg_hash"])
 
-    def test_unresolvable_engine_version_disables_reuse_instead_of_failing(self) -> None:
+    def test_an_unresolvable_engine_version_fails_instead_of_disabling_reuse(self) -> None:
         stub_bin = self.root / "bin"
         stub_bin.mkdir()
         python_stub = stub_bin / "python3"
         python_stub.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
         python_stub.chmod(0o755)
 
-        values = self._run(ENGINE_VERSION="", PATH=f"{stub_bin}:{os.environ['PATH']}")
+        result = subprocess.run(
+            [str(STATE_NAMES)],
+            env={
+                "PATH": f"{stub_bin}:{os.environ['PATH']}",
+                "GITHUB_OUTPUT": str(self.output),
+                "CHECKOUT_DIR": str(self.checkout),
+                "ENGINE_VERSION": "",
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
-        self.assertEqual(values, {})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Could not read the installed CodeBoarding version", result.stdout)
 
 
 class ReviewChainTests(unittest.TestCase):
@@ -474,6 +486,9 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(self._engine_calls(), [])
 
     def test_sync_without_baseline_uses_configured_depth_directly(self) -> None:
+        # Sync always runs on a checkout of the synced branch.
+        self._git("init", "-q")
+        self._commit("code", {"app.py": "pass\n"})
         self._analyze(ANALYSIS_KIND="sync", FORCE_FULL="false", DEPTH_CAP="4")
         self.assertEqual([c["mode"] for c in self._engine_calls()], ["full"])
         self.assertEqual(self._engine_calls()[0]["depth"], "4")

@@ -10,7 +10,13 @@ set -euo pipefail
 source "$(dirname "$0")/seed-sources.sh"
 state="$RUNNER_TEMP/codeboarding-sync/analysis"
 rm -rf "$RUNNER_TEMP/codeboarding-sync"
-head_sha="$(git -C "$CHECKOUT_DIR" rev-parse HEAD 2>/dev/null || true)"
+head_sha="$(git -C "$CHECKOUT_DIR" rev-parse HEAD)"
+# An analysis branch holds only analysis: analyzing it, and committing the result
+# onto it, would leave it unreadable as one.
+if [ -n "$(git -C "$CHECKOUT_DIR" log -1 --format='%(trailers:key=CodeBoarding-Source,valueonly)' | tr -d '[:space:]')" ]; then
+  echo "::error::This run is on a CodeBoarding analysis branch. Run sync on the code branch it analyzes."
+  exit 1
+fi
 
 if [ "$(printf '%s' "${FORCE_FULL:-false}" | tr '[:upper:]' '[:lower:]')" = true ] || ! {
   from_codeboarding_baseline "${REPOSITORY:-}" "$head_sha" "$state" "$CHECKOUT_DIR" ||

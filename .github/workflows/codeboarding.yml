@@ -29,14 +29,12 @@ on:
     # as a backstop. The bot commit uses no [skip ci] (that would leak through
     # squash-merges and skip real merges).
     paths-ignore:
-      - '.codeboarding/*.md'
       - '.codeboarding/analysis.json'
       - '.codeboarding/fingerprint.json'
       - '.codeboarding/static_analysis.pkl'
       - '.codeboarding/static_analysis.sha'
       - '.codeboarding/codeboarding_version.json'
       - '.codeboarding/health/health_report.json'
-      - 'docs/development/architecture.md'
   workflow_dispatch:
     inputs:
       force_full:
@@ -44,12 +42,6 @@ on:
         type: boolean
         required: false
         default: false
-      save_baseline_to:
-        description: 'Commit to main, open/update a rolling baseline PR, or commit to codeboarding/baseline.'
-        type: choice
-        options: [synced_branch, pull_request, baseline_branch]
-        required: false
-        default: synced_branch
 
 # No workflow-level permissions: each job requests only what it needs (least
 # privilege), so the default token starts with none.
@@ -79,13 +71,9 @@ jobs:
       pull-requests: write  # post / update the architecture-diff PR comment
       issues: write         # the /codeboarding issue_comment trigger + comment API
       id-token: write       # mint per-request OIDC credentials for the relay
-    # Never auto-review the fixed machine-owned 'codeboarding/sync' PR: it only
-    # changes generated files, so a diff comment would be noise. Scope this to
-    # this repository so a fork using the same branch name is still reviewed.
     if: >
       (github.event_name == 'pull_request' && github.event.action != 'closed' &&
-       github.event.pull_request.head.repo.full_name == github.repository &&
-       !(github.head_ref == 'codeboarding/sync' && github.event.pull_request.head.repo.full_name == github.repository)) ||
+       github.event.pull_request.head.repo.full_name == github.repository) ||
       (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
        startsWith(github.event.comment.body, '/codeboarding') &&
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
@@ -109,6 +97,8 @@ jobs:
           # wants. CodeBoarding's own repositories run on the CodeBoarding plan.
           llm: license
           license_key: ${{ secrets.CODEBOARDING_LICENSE }}
+          # This repository commits its analysis to main, so reviews read it there.
+          codeboarding_analysis_branch: main
           github_token: ${{ steps.app.outputs.token || github.token }}
 
   # The ONLY baseline writer for this repository. The manual "rebuild from
@@ -121,7 +111,6 @@ jobs:
     permissions:
       contents: write       # push the generated baseline
       actions: read         # catch up from an analysis a review saved
-      pull-requests: write  # workflow_dispatch may exercise pull_request delivery
       id-token: write       # mint per-request OIDC credentials for the relay
     steps:
       - uses: actions/checkout@v4
@@ -136,7 +125,8 @@ jobs:
           mode: sync
           llm: license
           license_key: ${{ secrets.CODEBOARDING_LICENSE }}
-          save_baseline_to: ${{ inputs.save_baseline_to || 'synced_branch' }}
+          # Must match the review job above, which reads it.
+          codeboarding_analysis_branch: main
           force_full: ${{ inputs.force_full || false }}
           # The App token attributes the baseline commit to the CodeBoarding App.
           # The workflow token can push too, since this job grants contents: write.

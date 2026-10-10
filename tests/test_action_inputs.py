@@ -97,10 +97,11 @@ class ActionInputTests(unittest.TestCase):
 
     def test_deprecated_inputs_are_read_only_by_the_migrator(self) -> None:
         """Backward compatibility lives in one script; every other step reads its outputs."""
-        for old, new in (("target_branch", "synced_branch"), ("sync_strategy", "save_baseline_to")):
+        for old in ("target_branch", "sync_strategy"):
             self.assertIn("deprecationMessage:", self.inputs[old])
             self.assertEqual(ACTION.count(f"inputs.{old} }}}}"), 1, f"only the migrator may read {old}")
-            self.assertEqual(ACTION.count(f"inputs.{new} }}}}"), 1, f"only the migrator may read {new}")
+        new = "codeboarding_analysis_branch"
+        self.assertEqual(ACTION.count(f"inputs.{new} }}}}"), 1, f"only the migrator may read {new}")
         self.assertLess(ACTION.index("- name: Translate deprecated inputs"), ACTION.index("- name: Resolve event"))
 
     def test_credentials_resolve_before_the_checkout_and_the_engine_install(self) -> None:

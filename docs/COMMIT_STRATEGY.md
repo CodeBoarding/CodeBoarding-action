@@ -7,8 +7,8 @@ graphs it compares.
 
 | Store | Holds | Lifetime | Who can read it |
 |---|---|---|---|
-| **Git, synced branch** (`save_baseline_to: synced_branch` or `pull_request`) | `.codeboarding/` on the synced branch | forever | anyone with repo read |
-| **Git, baseline branch** (`save_baseline_to: baseline_branch`) | one commit per sync on `codeboarding/baseline` | forever | anyone with repo read |
+| **Git, analysis branch** (`codeboarding_analysis_branch`, the default) | one commit per sync on `codeboarding/baseline` | forever | anyone with repo read |
+| **Git, code branch** (`codeboarding_analysis_branch` set to the synced branch) | `.codeboarding/` on the synced branch | forever | anyone with repo read |
 | **Workflow artifacts** | every analysis this action reuses or publishes | a retention window | any run with `actions: read`, plus humans |
 | ~~Actions cache~~ | — | — | not used |
 
@@ -155,13 +155,14 @@ base and a diagram drawn against another would report changes nobody made.
 
 ## The baseline branch
 
-`save_baseline_to: baseline_branch` saves the analysis to a branch of its own in
-the same repository, `codeboarding/baseline` unless `baseline_branch` names
-another. The synced branch is then only read.
+By default sync saves the analysis to a branch of its own in the same
+repository, `codeboarding/baseline` unless `codeboarding_analysis_branch` names
+another. The synced branch is then only read. Naming the synced branch itself
+commits the analysis there instead, and skips everything below.
 
 **What lives where.** The branch is an orphan: it shares no history with the code.
 Each sync adds one commit holding the same `.codeboarding/` files
-`save_baseline_to: synced_branch` would commit to the synced branch, plus
+sync would otherwise commit to the synced branch, plus
 `.codeboarding/source.json`:
 
 ```json
@@ -182,7 +183,7 @@ wholesale; only the checkout's own `.codeboardingignore` and health configuratio
 are kept. The push is a fast-forward onto the tip it fetched, never forced. Sync
 refuses to write to an existing branch that is not a baseline branch (its tip has
 no `CodeBoarding-Source` trailer, or holds anything besides `.codeboarding/`), so
-pointing `baseline_branch` at a code branch fails instead of emptying it. If the
+pointing `codeboarding_analysis_branch` at another code branch fails instead of emptying it. If the
 synced branch moved during the analysis, the result is dropped, as when committing
 to it. If another sync moved the baseline branch, it builds on that tip once. A push the
 remote refuses while the tip did not move is a branch rule, and the run fails

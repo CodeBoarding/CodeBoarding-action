@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
-# Copies Core's persisted artifacts into .codeboarding and removes generated v1 files.
+# Copies Core's persisted artifacts into .codeboarding.
 set -euo pipefail
 output="$CHECKOUT_DIR/.codeboarding"
 mkdir -p "$output"
-# Core exposes one canonical manifest. The compatibility imports keep the local
-# harness usable with older Core checkouts without duplicating filenames.
+# Core exposes one canonical manifest. Read from the action's directory, never the
+# analyzed repository's, which may have a constants.py of its own.
 manifest="$(cd "$ACTION_PATH" && python3 - <<'PY'
-try:
-    from constants import ANALYSIS_FILENAME, PERSISTED_ANALYSIS_ARTIFACT_FILENAMES as artifacts
-except ImportError:
-    from static_analyzer.analysis_cache import STATIC_ANALYSIS_PKL, STATIC_ANALYSIS_SHA
-    from utils import ANALYSIS_FILENAME, FINGERPRINT_FILENAME
-    artifacts = (ANALYSIS_FILENAME, FINGERPRINT_FILENAME, STATIC_ANALYSIS_PKL, STATIC_ANALYSIS_SHA, "codeboarding_version.json")
+from constants import ANALYSIS_FILENAME, PERSISTED_ANALYSIS_ARTIFACT_FILENAMES as artifacts
 print(ANALYSIS_FILENAME)
 print(*artifacts, sep="\n")
 PY
@@ -52,13 +47,4 @@ elif [ -e "$health_target" ]; then
   rm -f "$health_target"
 fi
 printf '%s\n' "$health_target"
-
-# Remove identifiable v1 Markdown.
-marker='https://img.shields.io/badge/Generated%20by-CodeBoarding'
-for legacy in "$output"/*.md "$CHECKOUT_DIR/docs/development/architecture.md"; do
-  [ -f "$legacy" ] || continue
-  grep -Fq "$marker" "$legacy" || continue
-  rm -f "$legacy"
-  printf '%s\n' "$legacy"
-done
 echo "installed=$installed" >> "$GITHUB_OUTPUT"

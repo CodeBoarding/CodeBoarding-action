@@ -5,9 +5,10 @@ This repo is a GitHub Action with two modes, selected by the `mode` input:
 - **`mode: review`** (default): analyzes a PR with the CodeBoarding engine and
   posts a Mermaid diagram of the added, modified, and removed components as a PR
   comment (runs on `pull_request` / `issue_comment`).
-- **`mode: sync`**: on push to a branch, regenerates the architecture and commits
-  the versioned baseline (`.codeboarding/analysis.json` + rendered markdown) back
-  to the branch, so review mode always diffs against a current baseline.
+- **`mode: sync`**: on push to a branch, regenerates the analysis and saves the
+  `.codeboarding/` state to `codeboarding_analysis_branch` (an orphan
+  `codeboarding/baseline` branch by default, or the code branch itself when the
+  input names it), so review mode always diffs against a current baseline.
 
 The action is a thin orchestration wrapper, not the analysis engine: the engine
 (`CodeBoarding/CodeBoarding`) is a separate repo checked out at runtime and

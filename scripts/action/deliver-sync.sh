@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Installs generated state and delivers it to the synced branch, a rolling sync PR, or the baseline branch.
+# Installs generated state and delivers it to the analysis branch, or, when there
+# is none, commits it to the synced branch itself.
 set -euo pipefail
 cd "$CHECKOUT_DIR"
-SYNC_BRANCH=codeboarding/sync
 REMOTE="${GITHUB_SERVER_URL%/}/${REPOSITORY}.git"
 ASKPASS="$RUNNER_TEMP/codeboarding-git-askpass.sh"
 GENERATED_PATHS="$RUNNER_TEMP/codeboarding-sync-paths"
@@ -16,7 +16,6 @@ esac
 SH
 chmod 700 "$ASKPASS"
 export GIT_ASKPASS="$ASKPASS" GIT_TERMINAL_PROMPT=0
-export GH_HOST="${GH_HOST#*://}"
 trap 'rm -f "$ASKPASS"' EXIT
 # A pull request's merge base is whichever commit its author branched from, and
 # this run's analysis is valid for two of them: the commit it analyzed, and the
@@ -26,29 +25,6 @@ trap 'rm -f "$ASKPASS"' EXIT
 emit_result() {
   printf 'files_written=%s\ncommitted=%s\nbaseline_sha=%s\nanalyzed_sha=%s\n' \
     "$1" "$2" "$3" "$BASE_SHA" >> "$GITHUB_OUTPUT"
-}
-close_stale_pr() {
-  [ "$SAVE_BASELINE_TO" = pull_request ] || return 0
-  git fetch "$REMOTE" "$SYNCED_BRANCH"
-  [ "$(git rev-parse FETCH_HEAD)" = "$BASE_SHA" ] || return 0
-  local number sync_sha
-  number="$(gh api --method GET "repos/$REPOSITORY/pulls" \
-    -f state=open -f base="$SYNCED_BRANCH" \
-    -f head="${REPOSITORY%%/*}:$SYNC_BRANCH" --jq '.[0].number // empty')"
-  if [ -n "$number" ]; then
-    sync_sha="$(git ls-remote "$REMOTE" "refs/heads/$SYNC_BRANCH" | awk '{print $1; exit}')"
-    if [ "$sync_sha" != "${SYNC_BRANCH_START_SHA:-}" ]; then
-      echo "::notice::A newer run updated $SYNC_BRANCH; leaving its PR open."
-      return 0
-    fi
-    if [ -n "$sync_sha" ] && ! git push \
-      "--force-with-lease=refs/heads/$SYNC_BRANCH:$sync_sha" "$REMOTE" ":refs/heads/$SYNC_BRANCH"; then
-      echo "::notice::A newer run updated $SYNC_BRANCH; leaving its PR open."
-      return 0
-    fi
-    gh pr close "$number" --repo "$REPOSITORY"
-    echo "::notice::Closed obsolete CodeBoarding sync PR #$number."
-  fi
 }
 classify_push_failure() {
   local expected="$1" branch="$2" current
@@ -64,7 +40,7 @@ classify_push_failure() {
 }
 
 source "$ACTION_PATH/scripts/action/codeboarding-baseline.sh"
-[ "$SAVE_BASELINE_TO" != baseline_branch ] || save_to_codeboarding_baseline
+[ -z "${BASELINE_BRANCH:-}" ] || save_to_codeboarding_baseline
 
 "$ACTION_PATH/scripts/action/install-sync.sh" > "$GENERATED_PATHS"
 stage_paths=()
@@ -94,7 +70,6 @@ fi
 # every run. Dropping either filter turns every sync into a commit.
 if git diff --cached --quiet || git diff --cached --quiet -I '"generated_at"' -I '"timestamp"'; then
   git reset -q
-  close_stale_pr
   emit_result "$files_written" false "$BASE_SHA"
   echo "::notice::The CodeBoarding baseline is unchanged."
   exit 0
@@ -102,40 +77,7 @@ fi
 
 git commit -m 'chore(codeboarding): sync analysis baseline' >/dev/null
 
-if [ "$SAVE_BASELINE_TO" = synced_branch ]; then
-  if ! git push "$REMOTE" "HEAD:refs/heads/$SYNCED_BRANCH"; then
-    classify_push_failure "$BASE_SHA" "$SYNCED_BRANCH"
-  fi
-  emit_result "$files_written" true "$(git rev-parse HEAD)"
-  exit 0
+if ! git push "$REMOTE" "HEAD:refs/heads/$SYNCED_BRANCH"; then
+  classify_push_failure "$BASE_SHA" "$SYNCED_BRANCH"
 fi
-
-pr_json="$(gh api --method GET "repos/$REPOSITORY/pulls" \
-  -f state=open -f head="${REPOSITORY%%/*}:$SYNC_BRANCH" --jq '.[0] // empty')"
-if [ -n "$pr_json" ] && [ "$(jq -r .base.ref <<< "$pr_json")" != "$SYNCED_BRANCH" ]; then
-  echo "::error::$SYNC_BRANCH already has an open PR into $(jq -r .base.ref <<< "$pr_json"); close it before changing synced_branch."
-  exit 1
-fi
-
-old_sync_sha="$(git ls-remote "$REMOTE" "refs/heads/$SYNC_BRANCH" | awk '{print $1; exit}')"
-if ! git push "--force-with-lease=refs/heads/$SYNC_BRANCH:$old_sync_sha" \
-  "$REMOTE" "HEAD:refs/heads/$SYNC_BRANCH"; then
-  classify_push_failure "$old_sync_sha" "$SYNC_BRANCH"
-fi
-
-if [ -z "$pr_json" ]; then
-  gh pr create --repo "$REPOSITORY" --base "$SYNCED_BRANCH" --head "$SYNC_BRANCH" \
-    --title 'chore(codeboarding): sync analysis baseline' \
-    --body "Updates the versioned CodeBoarding analysis for \`$SYNCED_BRANCH\`."
-  pr_json="$(gh api --method GET "repos/$REPOSITORY/pulls" \
-    -f state=open -f base="$SYNCED_BRANCH" \
-    -f head="${REPOSITORY%%/*}:$SYNC_BRANCH" --jq '.[0]')"
-fi
-
-pr_url="$(jq -r .html_url <<< "$pr_json")"
-pr_number="$(jq -r .number <<< "$pr_json")"
-emit_result "$files_written" true "$BASE_SHA"
-{
-  echo "sync_pr_url=$pr_url"
-  echo "sync_pr_number=$pr_number"
-} >> "$GITHUB_OUTPUT"
+emit_result "$files_written" true "$(git rev-parse HEAD)"
