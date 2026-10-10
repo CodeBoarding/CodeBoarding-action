@@ -587,6 +587,8 @@ runs:
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
+        # The head step below analyzes with the same credentials, and removes them.
+        KEEP_AUTH: 'true'
       run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/review-generate-baseline.sh"'
 
     - name: Analyze pull request
@@ -609,6 +611,12 @@ runs:
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
       run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/review-analyze-head.sh"'
+
+    # The head step removes the credentials; this covers a run that failed before it.
+    - name: Remove analysis credentials
+      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      shell: bash
+      run: '"$GITHUB_ACTION_PATH/scripts/action/clear-auth.sh"'
 
     # Published before the review is rendered: the analysis is the expensive part,
     # so a later rendering or posting failure must not throw it away. Only the
