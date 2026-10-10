@@ -3,9 +3,8 @@
 # under this configuration and downloads it into DEST, so a run without an exact
 # base can catch up from it instead of analyzing from scratch. Best effort.
 #
-# Prints key=value lines on stdout and everything else on stderr:
-#   ancestor_sha      the commit whose analysis is now in DEST, or empty
-#   other_cfg_at_tip  true when TIP_SHA has a saved analysis under another configuration
+# Prints ancestor_sha=<the commit whose analysis is now in DEST, or empty> on
+# stdout and everything else on stderr.
 #
 # Needs the tip's first-parent history in CHECKOUT_DIR, at least CATCHUP_BOUND deep.
 set -euo pipefail
@@ -17,10 +16,8 @@ api() { gh api -H 'Accept: application/vnd.github+json' "$@"; }
 export GH_HOST="${GH_HOST:-github.com}"
 GH_HOST="${GH_HOST#*://}"
 
-ancestor="" other_cfg=false
-report() {
-  printf 'ancestor_sha=%s\nother_cfg_at_tip=%s\n' "$ancestor" "$other_cfg"
-}
+ancestor=""
+report() { echo "ancestor_sha=$ancestor"; }
 trap report EXIT
 
 # The merge base's first-parent history, nearest first. Distance 0 is the tip
@@ -62,9 +59,6 @@ while [ "$page" -le "${MAX_PAGES:-50}" ]; do
   fi
   names="$(jq -r "$trusted" <<< "$listing" 2>/dev/null || true)"
   saved="$saved$(grep "^$prefix" <<< "$names" | cut -c$(( ${#prefix} + 1 ))- || true)"$'\n'
-  if grep "^codeboarding-base-.*-$TIP_SHA\$" <<< "$names" | grep -vq "^$prefix"; then
-    other_cfg=true
-  fi
   ancestor="$(nearest)"
   [ -z "$ancestor" ] || break
   returned="$(jq -r '.artifacts | length' <<< "$listing" 2>/dev/null || echo 0)"

@@ -73,9 +73,7 @@ never fires.
 | `base_sha` | string | the base branch tip when the event fired — *not* what was compared against |
 | `kind` | string | always `review`, so a reader can tell this artifact from a base or warm-start bundle |
 | `analysed_files_changed` | string | analysed files whose content hash differs between base and head; `unknown` when the analyses cannot say |
-| `base_analysis_method` | string | how this run obtained the analysis of the merge base: `reused` (the merge base already had one: its saved artifact, or a committed baseline with nothing to catch up), `incremental` (an earlier commit's analysis, committed or saved, updated to the merge base) or `full` (analyzed from scratch in this run). Whichever, the base graph is the merge base's own analysis |
-| `base_analysis_reason` | string | the method in words, e.g. `updated the analysis of 9f8e7d6 to a1b2c3d, 4 commits caught up`; where an incremental run started and how far it caught up are detail here, present when known |
-| `pr_number`, `mode`, `seed_source`, `chain_depth` | string | provenance; nothing rendering a diagram needs them. `mode` is the head's engine mode; `base_analysis_method` answers for the base |
+| `pr_number`, `mode`, `seed_source`, `chain_depth` | string | provenance; nothing rendering a diagram needs them. `mode` is the head's engine mode |
 
 **A sync run** publishes the base graph under both the commit it analyzed and the
 baseline commit it writes on top, because a pull request opened either side of
@@ -100,30 +98,35 @@ them:
 
 ## How a review resolves its two graphs
 
-**Base**, first match wins:
+**Base**, first match wins. This is `review-generate-baseline.sh`, in this order:
 
 | Source | Engine cost |
 |---|---|
 | the published `codeboarding-base-<cfg>-<merge_base>` artifact with a compatible depth cap | none |
-| no usable artifact — check out the merge base, seed from a compatible baseline committed there, catch up | one incremental, full if Core requires it |
-| the baseline branch (`save_baseline_to: baseline_branch`): its commit for the merge base, else for the nearest of the merge base's last 100 first-parent ancestors, made under this configuration | none for the merge base itself (`reused`), one incremental otherwise (`incremental`) |
-| no compatible committed baseline either: the nearest `codeboarding-base-<cfg>-<sha>` artifact among the merge base's last 100 first-parent ancestors | one incremental from that commit to the merge base |
-| none within 100 commits either | full analysis directly, at the configured `depth_cap` |
+| the baseline branch: its entry for the merge base, else for the nearest of the merge base's last 100 first-parent ancestors, made under this configuration | none for the merge base itself, one incremental otherwise |
+| the baseline committed on the branch at the merge base, with a compatible depth cap | one incremental |
+| the nearest `codeboarding-base-<cfg>-<sha>` artifact among the merge base's last 100 first-parent ancestors | one incremental |
+| nothing | full analysis, at the configured `depth_cap` |
+
+The baseline branch comes before the committed baseline because its entries are
+pinned to this configuration and a committed baseline is not: one left behind
+after a repository moved to the baseline branch must not win. A seed is only
+checked before the run (depth cap, and configuration where the source records
+it); if Core then asks for a full analysis, the base is analyzed in full rather
+than retried from the next source. In practice only a committed baseline can be
+refused that way, as it is the one source not pinned to the engine version.
 
 A trusted run that computed the base publishes it, so the next pull request
 forking from that commit gets the first row; that includes a base caught up from
-an ancestor. The review metadata reports the
-row as `base_analysis_method` (`reused`, `incremental` or `full`) with a
-`base_analysis_reason`. The review comment does not: how the base was obtained is
-for us, not the reader. While a base is computed, the progress comment says so in
-two steps, with the elapsed time and the reason.
+an ancestor. Which source won is logged as a notice and not recorded anywhere
+else. While a base is built from scratch, the progress comment says so in two
+steps: building the base, then analysing the pull request.
 
 **Telemetry.** Every engine run carries `CODEBOARDING_RUN_ID=gh-<run id>-<attempt>-<role>`,
 the role being `base`, `head` or `sync`, so the engine's own `analysis_started` /
 `analysis_completed` events (mode, duration, tokens) can be read per run. A review
 with no `base` events reused its base; `base` events say whether it was caught up
-or built in full. Where a caught-up base started from is only in
-`base_analysis_reason`.
+or built in full.
 
 The ancestor lookup walks the merge base's first-parent history, deepening the
 shallow checkout to 101 commits, then pages through the repository's artifacts
@@ -131,9 +134,7 @@ newest first, keeping those named for this configuration and produced by a run o
 the repository's own code. It stops at the first page holding one of the walked
 commits (usually the first; at most 50 pages) and takes the nearest commit seen.
 The merge base's own `.codeboardingignore` and health configuration replace the
-seed's. A base caught up this way reports `incremental`, its reason naming the
-ancestor and the commits caught up. Sync uses the same lookup when the branch has
-no usable committed baseline, so the first sync after the setup pull request
+seed's. Sync uses the same sources, in the same order, without the exact artifact, so the first sync after the setup pull request
 merges catches up from the base that pull request's review saved, instead of
 analyzing from scratch.
 
@@ -192,15 +193,13 @@ if it moves in that window, the branch can end on an analysis of the older commi
 Its trailer still names that commit, so no reader takes it for newer, and the run
 queued for the newer commit replaces it.
 
-**How a review reads it.** After an exact artifact and a baseline committed at the
-merge base, a review lists the newest 100 commits of the branch (fetched without
+**How a review reads it.** Right after an exact artifact, a review lists the newest 100 commits of the branch (fetched without
 file contents, so the listing costs commit messages only) and matches their
 trailers against the merge base's first-parent history, up to 100 commits deep.
 Only entries made under this run's configuration count: an entry for the merge
 base itself is reused as is, so nothing else would catch a different engine or
-model. An entry for an ancestor is caught up incrementally. Entries found only
-under another configuration make a full run's reason `incompatible`. Only then
-does it look for ancestor artifacts.
+model. An entry for an ancestor is caught up incrementally. Only without a usable
+entry does it fall back to a committed baseline, then to ancestor artifacts.
 
 **If the branch is deleted**, the next sync creates it again as a new orphan,
 seeding from a saved ancestor artifact when there is one and analyzing in full

@@ -331,8 +331,7 @@ Move this repository's CodeBoarding sync to save_baseline_to: baseline_branch.
 2. Delete the generated files under .codeboarding/ from the default branch, keeping
    the user configuration: .codeboarding/.codeboardingignore,
    .codeboarding/health/health_config.json and .codeboarding/health/.healthignore.
-   Reviews prefer a baseline committed on the branch, so a stale one left there
-   would keep being used.
+   Reviews read the baseline branch first, so this is cleanup, not a requirement.
 3. Remove any .gitattributes lines that mark .codeboarding/ files as
    linguist-generated, if nothing else is left under .codeboarding/ for them.
 4. Open a pull request with these changes. After it merges, close any open

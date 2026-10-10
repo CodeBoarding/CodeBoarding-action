@@ -11,8 +11,46 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-STATE_NAMES = ROOT / "scripts" / "action" / "state-names.sh"
-ANALYZE = ROOT / "scripts" / "action" / "analyze.sh"
+SCRIPTS = ROOT / "scripts" / "action"
+STATE_NAMES = SCRIPTS / "resolve-cache-keys.sh"
+# The analysis steps of each mode, in the order action.yml runs them.
+STEPS = {
+    "review": (SCRIPTS / "review-generate-baseline.sh", SCRIPTS / "review-analyze-head.sh"),
+    "sync": (SCRIPTS / "sync-generate-baseline.sh",),
+}
+
+
+def read_outputs(output: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in output.read_text(encoding="utf-8").splitlines():
+        key, _, value = line.partition("=")
+        values[key] = value
+    return values
+
+
+def run_steps(env: dict[str, str], output: Path) -> tuple[int, str, dict[str, str]]:
+    """Runs one mode's analysis steps as action.yml does, each seeing the outputs before it.
+
+    Returns the first failing exit code (or 0), everything the steps logged, and their outputs.
+    """
+    env = dict(env)
+    kind = env.pop("ANALYSIS_KIND", "review")
+    output.write_text("", encoding="utf-8")
+    log = ""
+    for script in STEPS[kind]:
+        base = read_outputs(output).get("base_analysis_path", "")
+        result = subprocess.run(
+            [str(script)],
+            env={**env, "GITHUB_OUTPUT": str(output), "BASE_ANALYSIS_PATH": base},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        log += result.stdout + result.stderr
+        if result.returncode != 0:
+            return result.returncode, log, read_outputs(output)
+    return 0, log, read_outputs(output)
+
 
 ENGINE_STUB = '''#!/usr/bin/env python3
 """CodeBoarding CLI stand-in: records each call and writes a minimal analysis."""
@@ -177,16 +215,13 @@ class ReviewChainTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def _analyze(self, **extra: str) -> dict[str, str]:
-        self.output.write_text("", encoding="utf-8")
-        result = subprocess.run(
-            [str(ANALYZE)],
-            env={
+        code, self.log, values = run_steps(
+            {
                 "PATH": f"{self.bin_dir}:{os.environ['PATH']}",
-                "GITHUB_OUTPUT": str(self.output),
                 "RUNNER_TEMP": str(self.runner_temp),
                 "CB_ENGINE_LOG": str(self.engine_log),
                 "ACTION_PATH": str(ROOT),
-                "ANALYSIS_KIND": "review",
+                "GITHUB_RUN_ID": "1",
                 "CHECKOUT_DIR": str(self.checkout),
                 "REVIEW_BASE_SHA": "merge-base-sha",
                 "REVIEW_HEAD_SHA": "head-sha",
@@ -200,19 +235,17 @@ class ReviewChainTests(unittest.TestCase):
                 "STAGE_DIR": str(self.stage_dir),
                 **extra,
             },
-            capture_output=True,
-            text=True,
-            check=False,
+            self.output,
         )
-        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-        values: dict[str, str] = {}
-        for line in self.output.read_text(encoding="utf-8").splitlines():
-            key, _, value = line.partition("=")
-            values[key] = value
+        self.assertEqual(code, 0, self.log)
         return values
 
     def _engine_calls(self) -> list[dict[str, str]]:
         return [json.loads(line) for line in self.engine_log.read_text(encoding="utf-8").splitlines()]
+
+    def _base_modes(self) -> list[str]:
+        """How the base was obtained, read the way telemetry reads it: no base run means reused."""
+        return [c["mode"] for c in self._engine_calls() if c["run_id"].endswith("-base")]
 
     def _bind(self, **origin: object) -> None:
         """Chain fixture bound to the base it was derived from."""
@@ -354,53 +387,23 @@ class ReviewChainTests(unittest.TestCase):
         self._git(*committer, "commit", "-q", "-m", message)
         return self._git("rev-parse", "HEAD")
 
-    def _sync_history(self) -> tuple[str, str]:
-        """An analysed commit with a sync commit on top that writes only .codeboarding/."""
-        self._git("init", "-q", "-b", "main")
-        analysed = self._commit("feat: code", {"code.py": "pass\n"})
-        _state(self.checkout / ".codeboarding", cap=2)
-        sync = self._commit("chore(codeboarding): sync analysis baseline", {}, bot=True)
-        return analysed, sync
-
-    def _merge(self, branch: str, files: dict[str, str], *, bot: bool = False) -> str:
-        """A commit on `branch` merged into main with --no-ff."""
-        self._git("checkout", "-q", "-b", branch)
-        self._commit(f"work on {branch}", files, bot=bot)
-        self._git("checkout", "-q", "main")
-        self._git("merge", "-q", "--no-ff", "-m", f"Merge {branch}", branch)
-        return self._git("rev-parse", "HEAD")
-
-    def _provenance(self, values: dict[str, str]) -> dict[str, str]:
-        return {key: values[key] for key in ("base_analysis_method", "base_analysis_reason")}
-
     def test_a_saved_base_is_reused(self) -> None:
         _state(self.base_dir)
 
-        values = self._analyze()
+        self._analyze()
 
-        self.assertEqual(
-            self._provenance(values),
-            {"base_analysis_method": "reused", "base_analysis_reason": "merge-b already has a saved analysis"},
-        )
+        self.assertEqual(self._base_modes(), [])
+        self.assertIn("Using the published analysis of merge-b.", self.log)
 
     def test_a_base_with_nothing_to_seed_it_is_a_full_analysis(self) -> None:
         sha = self._commit_base()
 
-        values = self._analyze(REVIEW_BASE_SHA=sha)
+        self._analyze(REVIEW_BASE_SHA=sha)
 
-        self.assertEqual(
-            self._provenance(values),
-            {"base_analysis_method": "full", "base_analysis_reason": "no usable analysis was available"},
-        )
+        self.assertEqual(self._base_modes(), ["full"])
 
-    def _assert_incompatible(self, values: dict[str, str]) -> None:
-        self.assertEqual(
-            self._provenance(values),
-            {
-                "base_analysis_method": "full",
-                "base_analysis_reason": "the existing analysis was incompatible or could not be updated incrementally",
-            },
-        )
+    def _assert_incompatible(self, _values: dict[str, str]) -> None:
+        self.assertEqual(self._base_modes()[-1:], ["full"])
 
     def test_a_committed_baseline_with_another_depth_is_incompatible(self) -> None:
         sha = self._commit_base(legacy=True)
@@ -417,100 +420,6 @@ class ReviewChainTests(unittest.TestCase):
         sha = self._commit_base(cap=2)
 
         self._assert_incompatible(self._analyze(REVIEW_BASE_SHA=sha, CB_REQUIRE_FULL="true"))
-
-    def test_a_baseline_committed_at_the_merge_base_is_reused(self) -> None:
-        # The sync commit changes only .codeboarding/, which the analysis ignores,
-        # so a merge base on it is exactly the commit the baseline describes.
-        _analysed, sync = self._sync_history()
-
-        values = self._analyze(REVIEW_BASE_SHA=sync)
-
-        self.assertEqual(
-            self._provenance(values),
-            {"base_analysis_method": "reused", "base_analysis_reason": f"{sync[:7]} already has a saved analysis"},
-        )
-        # Not under the merge base's name yet, so this run publishes it.
-        self.assertEqual(values["publish_base"], "true")
-
-    def test_a_committed_baseline_counts_the_commits_it_caught_up(self) -> None:
-        analysed, _sync = self._sync_history()
-        self._commit("feat: more", {"more.py": "pass\n"})
-        merge_base = self._commit("feat: again", {"code.py": "print()\n"})
-
-        values = self._analyze(REVIEW_BASE_SHA=merge_base)
-
-        self.assertEqual(
-            self._provenance(values),
-            {
-                "base_analysis_method": "incremental",
-                "base_analysis_reason": f"updated the analysis of {analysed[:7]} to {merge_base[:7]}, 2 commits caught up",
-            },
-        )
-
-    def test_merged_pull_requests_count_as_commits_to_catch_up(self) -> None:
-        # Merged with --no-ff, the first-parent chain is merge commits only, and
-        # each one brings code in even though it changes nothing against itself.
-        analysed, _sync = self._sync_history()
-        self._merge("feature-a", {"a.py": "pass\n"})
-        merge_base = self._merge("feature-b", {"b.py": "pass\n"})
-
-        values = self._analyze(REVIEW_BASE_SHA=merge_base)
-
-        self.assertEqual(
-            values["base_analysis_reason"],
-            f"updated the analysis of {analysed[:7]} to {merge_base[:7]}, 2 commits caught up",
-        )
-
-    def test_a_merged_sync_pull_request_describes_its_own_parent(self) -> None:
-        # save_baseline_to: pull_request. The sync commit sits on codeboarding/sync on
-        # top of the analysed commit; main moved on before the merge.
-        self._git("init", "-q", "-b", "main")
-        analysed = self._commit("feat: code", {"code.py": "pass\n"})
-        self._git("checkout", "-q", "-b", "codeboarding/sync")
-        _state(self.checkout / ".codeboarding", cap=2)
-        self._commit("chore(codeboarding): sync analysis baseline", {}, bot=True)
-        self._git("checkout", "-q", "main")
-        self._commit("feat: meanwhile", {"later.py": "pass\n"})
-        self._git("merge", "-q", "--no-ff", "-m", "Merge codeboarding/sync", "codeboarding/sync")
-        merge_base = self._git("rev-parse", "HEAD")
-
-        values = self._analyze(REVIEW_BASE_SHA=merge_base)
-
-        self.assertEqual(
-            self._provenance(values),
-            {
-                "base_analysis_method": "incremental",
-                "base_analysis_reason": f"updated the analysis of {analysed[:7]} to {merge_base[:7]}, 1 commit caught up",
-            },
-        )
-
-    def test_a_baseline_sync_did_not_write_is_of_unknown_origin(self) -> None:
-        # A squash or a hand edit: its parent is not known to be what was analysed,
-        # so the reason names no starting commit and claims nothing was exact.
-        self._git("init", "-q", "-b", "main")
-        self._commit("feat: code", {"code.py": "pass\n"})
-        _state(self.checkout / ".codeboarding", cap=2)
-        merge_base = self._commit("chore(codeboarding): sync analysis baseline (#7)", {})
-
-        values = self._analyze(REVIEW_BASE_SHA=merge_base)
-
-        self.assertEqual(
-            self._provenance(values),
-            {
-                "base_analysis_method": "incremental",
-                "base_analysis_reason": f"updated an existing analysis to {merge_base[:7]}",
-            },
-        )
-
-    def test_an_attributes_line_is_not_code_to_catch_up(self) -> None:
-        _analysed, _sync = self._sync_history()
-        merge_base = self._commit(
-            "chore: attributes", {".gitattributes": ".codeboarding/analysis.json linguist-generated=true\n"}
-        )
-
-        values = self._analyze(REVIEW_BASE_SHA=merge_base)
-
-        self.assertEqual(values["base_analysis_method"], "reused")
 
     def _progress_stub(self) -> Path:
         calls = self.root / "gh-calls"
@@ -537,10 +446,10 @@ class ReviewChainTests(unittest.TestCase):
         )
 
         patches = [call for call in calls.read_text().split("\n----\n") if "PATCH" in call]
-        self.assertGreaterEqual(len(patches), 2, calls.read_text())
+        self.assertEqual(len(patches), 2, calls.read_text())
         self.assertIn("repos/owner/repo/issues/comments/77", patches[0])
         self.assertIn(f"Building the diagram of `develop` @{sha[:7]} from scratch", patches[0])
-        self.assertIn("`develop` has no saved diagram yet", patches[0])
+        self.assertIn("`develop` has no saved diagram this review can start from", patches[0])
         self.assertIn("2. ⏳ Analysing this PR's changes", patches[-1])
         # The sticky-comment action finds its comment by this line on the final write.
         self.assertIn("<!-- Sticky Pull Request Commentcodeboarding-review -->", patches[-1])
@@ -555,7 +464,7 @@ class ReviewChainTests(unittest.TestCase):
 
     def test_invalid_depth_fails_before_analysis(self) -> None:
         result = subprocess.run(
-            [str(ANALYZE)],
+            [str(STEPS["review"][0])],
             env={"PATH": os.environ["PATH"], "DEPTH_CAP": "-1"},
             capture_output=True,
             text=True,
@@ -751,18 +660,15 @@ class AncestorSeedTests(unittest.TestCase):
         self.gh_config.write_text(json.dumps(config), encoding="utf-8")
 
     def _analyze(self, checkout: Path, **extra: str) -> dict[str, str]:
-        self.output.write_text("", encoding="utf-8")
-        result = subprocess.run(
-            [str(ANALYZE)],
-            env={
+        code, self.log, values = run_steps(
+            {
                 "PATH": f"{self.bin_dir}:{os.environ['PATH']}",
-                "GITHUB_OUTPUT": str(self.output),
                 "RUNNER_TEMP": str(self.runner_temp),
                 "CB_ENGINE_LOG": str(self.engine_log),
                 "CB_GH_CONFIG": str(self.gh_config),
                 "CB_GH_LOG": str(self.gh_log),
                 "ACTION_PATH": str(ROOT),
-                "ANALYSIS_KIND": "review",
+                "GITHUB_RUN_ID": "1",
                 "CHECKOUT_DIR": str(checkout),
                 "REVIEW_HEAD_SHA": "head-sha",
                 "REVIEW_BASE_REPO": "origin",
@@ -778,23 +684,20 @@ class AncestorSeedTests(unittest.TestCase):
                 "DEPTH_CAP": "2",
                 **extra,
             },
-            capture_output=True,
-            text=True,
-            check=False,
+            self.output,
         )
-        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-        values: dict[str, str] = {}
-        for line in self.output.read_text(encoding="utf-8").splitlines():
-            key, _, value = line.partition("=")
-            values[key] = value
+        self.assertEqual(code, 0, self.log)
         return values
 
     def _modes(self) -> list[str]:
         return [json.loads(line)["mode"] for line in self.engine_log.read_text().splitlines()]
 
-    def _assert_full(self, values: dict[str, str], reason: str = "no usable analysis was available") -> None:
-        self.assertEqual(values["base_analysis_method"], "full")
-        self.assertEqual(values["base_analysis_reason"], reason)
+    def _base_modes(self) -> list[str]:
+        calls = [json.loads(line) for line in self.engine_log.read_text().splitlines()]
+        return [c["mode"] for c in calls if c["run_id"].endswith("-base")]
+
+    def _assert_full(self, _values: dict[str, str]) -> None:
+        self.assertEqual(self._base_modes(), ["full"])
 
     def test_it_catches_up_from_the_nearest_saved_ancestor(self) -> None:
         shas = self._history(5)
@@ -806,11 +709,7 @@ class AncestorSeedTests(unittest.TestCase):
 
         values = self._analyze(self.origin, REVIEW_BASE_SHA=merge_base)
 
-        self.assertEqual(values["base_analysis_method"], "incremental")
-        self.assertEqual(
-            values["base_analysis_reason"],
-            f"updated the analysis of {shas[2][:7]} to {merge_base[:7]}, 2 commits caught up",
-        )
+        self.assertIn(f"Starting from the saved analysis of {shas[2][:7]}.", self.log)
         self.assertEqual(self._modes(), ["incremental", "incremental"])
         # Published under the merge base's own name, so the next review hits it exactly.
         self.assertEqual(values["publish_base"], "true")
@@ -844,8 +743,7 @@ class AncestorSeedTests(unittest.TestCase):
 
         values = self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1])
 
-        self.assertEqual(values["base_analysis_method"], "incremental")
-        self.assertIn(f"updated the analysis of {shas[0][:7]} ", values["base_analysis_reason"])
+        self.assertIn(f"Starting from the saved analysis of {shas[0][:7]}.", self.log)
         listings = [
             line
             for line in self.gh_log.read_text().splitlines()
@@ -881,9 +779,9 @@ class AncestorSeedTests(unittest.TestCase):
             archive.writestr("health/health_config.json", "{}")
         self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
 
-        values = self._analyze(self.origin, REVIEW_BASE_SHA=merge_base)
+        self._analyze(self.origin, REVIEW_BASE_SHA=merge_base)
 
-        self.assertEqual(values["base_analysis_method"], "incremental")
+        self.assertEqual(self._base_modes(), ["incremental"])
         staged = self.stage_dir / "base"
         self.assertEqual((staged / ".codeboardingignore").read_text(), "docs/\n")
         self.assertFalse((staged / "health" / "health_config.json").exists(), "the merge base has none")
@@ -903,7 +801,7 @@ class AncestorSeedTests(unittest.TestCase):
 
         values = self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1])
 
-        self._assert_full(values, "the existing analysis was incompatible or could not be updated incrementally")
+        self._assert_full(values)
 
     def test_a_shallow_checkout_is_deepened_to_find_the_ancestor(self) -> None:
         shas = self._history(4)
@@ -914,21 +812,19 @@ class AncestorSeedTests(unittest.TestCase):
         subprocess.run(["git", "clone", "-q", "--depth=1", f"file://{bare}", str(checkout)], check=True)
         self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
 
-        values = self._analyze(checkout, REVIEW_BASE_SHA=shas[-1])
+        self._analyze(checkout, REVIEW_BASE_SHA=shas[-1])
 
-        self.assertEqual(
-            values["base_analysis_reason"],
-            f"updated the analysis of {shas[0][:7]} to {shas[-1][:7]}, 3 commits caught up",
-        )
+        self.assertIn(f"Starting from the saved analysis of {shas[0][:7]}.", self.log)
+        self.assertEqual(self._base_modes(), ["incremental"])
 
     def test_without_the_lookup_nothing_is_listed(self) -> None:
         # GHES has no artifact store, so the action turns the lookup off there.
         shas = self._history(2)
         self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
 
-        values = self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1], ANCESTOR_LOOKUP="false")
+        self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1], ANCESTOR_LOOKUP="false")
 
-        self.assertEqual(values["base_analysis_method"], "full")
+        self.assertEqual(self._base_modes(), ["full"])
         self.assertEqual(self.gh_log.read_text(), "")
 
     def test_a_first_sync_catches_up_from_the_setup_reviews_base(self) -> None:
@@ -1095,7 +991,7 @@ class PublishedStateTests(unittest.TestCase):
             for s in self._uploads()
             if "outputs.base_name" in s.get("path", "") + s.get("name", "") or "base_name" in s.get("if", "")
         ]
-        published_by_review = [s for s in self._uploads() if "review_analyze.outputs.publish_base" in s.get("if", "")]
+        published_by_review = [s for s in self._uploads() if "review_baseline.outputs.publish_base" in s.get("if", "")]
         self.assertTrue(published_by_review, "no base publication step found")
         for step in published_by_review:
             self.assertIn("is_fork != 'true'", step["if"], f"{step['name']} would let a fork publish a shared base")

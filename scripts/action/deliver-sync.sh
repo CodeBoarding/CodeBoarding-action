@@ -63,82 +63,8 @@ classify_push_failure() {
   exit 1
 }
 
-# save_baseline_to: baseline_branch keeps the analysis on an orphan branch of its
-# own, one fast-forward commit per sync, and never writes to the synced branch.
-deliver_to_baseline_branch() {
-  local branch="$BASELINE_BRANCH" tree="$RUNNER_TEMP/codeboarding-baseline-tree"
-  local index="$RUNNER_TEMP/codeboarding-baseline-index" git_dir files new_tree tip parent commit now
-  git_dir="$(git rev-parse --absolute-git-dir)"
-  rm -rf "$tree" "$index"
-  mkdir -p "$tree"
-  CHECKOUT_DIR="$tree" "$ACTION_PATH/scripts/action/install-sync.sh" > /dev/null
-  files="$(find "$tree/.codeboarding" -maxdepth 1 -type f | wc -l | tr -d ' ')"
-  # Engine output is never edited; which commit it describes, and under which
-  # configuration, lives here and in the commit's trailers only.
-  python3 -c 'import datetime,json,os,sys
-json.dump({
-    "schema": 1,
-    "synced_branch": os.environ["SYNCED_BRANCH"],
-    "source_sha": sys.argv[2],
-    "generated_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "engine_version": os.environ.get("ENGINE_VERSION", ""),
-    "config": os.environ.get("CFG_HASH", ""),
-}, open(sys.argv[1], "w"), indent=2)' "$tree/.codeboarding/source.json" "$BASE_SHA"
-  GIT_INDEX_FILE="$index" git --git-dir="$git_dir" --work-tree="$tree" -C "$tree" add -A -f .codeboarding
-  new_tree="$(GIT_INDEX_FILE="$index" git --git-dir="$git_dir" write-tree)"
-  git config user.name 'codeboarding-review[bot]'
-  git config user.email 'codeboarding-review[bot]@users.noreply.github.com'
-  local trailers=(-m "CodeBoarding-Source: $BASE_SHA")
-  [ -z "${CFG_HASH:-}" ] || trailers=(-m "CodeBoarding-Source: $BASE_SHA
-CodeBoarding-Config: $CFG_HASH")
-
-  # Two tries: a concurrent sync that moved the branch for an older commit is
-  # built on top of once. A second move means a newer run is handling it.
-  for _ in 1 2; do
-    git fetch -q "$REMOTE" "$SYNCED_BRANCH"
-    if [ "$(git rev-parse FETCH_HEAD)" != "$BASE_SHA" ]; then
-      emit_result "$files" false "$BASE_SHA"
-      echo "::notice::$SYNCED_BRANCH advanced during analysis; a newer run should update $branch."
-      exit 0
-    fi
-    tip="" parent=()
-    if [ -n "$(git ls-remote "$REMOTE" "refs/heads/$branch")" ]; then
-      git fetch -q --depth=1 "$REMOTE" "refs/heads/$branch"
-      # The parent is what was fetched, not what ls-remote saw: the branch may move in between.
-      tip="$(git rev-parse FETCH_HEAD)"
-      # Building on any other branch would leave it holding nothing but .codeboarding/.
-      if [ -z "$(git log -1 --format='%(trailers:key=CodeBoarding-Source,valueonly)' "$tip" | tr -d '[:space:]')" ] ||
-        [ "$(git ls-tree --name-only "$tip")" != .codeboarding ]; then
-        echo "::error::$branch already exists and is not a CodeBoarding baseline branch, so sync will not write to it. Set baseline_branch to a branch name that is not in use."
-        exit 1
-      fi
-      parent=(-p "$tip")
-      if [ "$(git log -1 --format='%(trailers:key=CodeBoarding-Source,valueonly)' "$tip" | tr -d '[:space:]')" = "$BASE_SHA" ] &&
-        git diff --quiet -I '"generated_at"' -I '"timestamp"' "$tip" "$new_tree"; then
-        emit_result "$files" false "$BASE_SHA"
-        echo "::notice::$branch already holds this analysis of $SYNCED_BRANCH @${BASE_SHA:0:7}."
-        exit 0
-      fi
-    fi
-    commit="$(git commit-tree "$new_tree" ${parent[@]+"${parent[@]}"} \
-      -m "chore(codeboarding): diagram of $SYNCED_BRANCH @${BASE_SHA:0:7}" "${trailers[@]}")"
-    # Never forced: the parent is the tip just read, so this only ever fast-forwards.
-    if git push -q "$REMOTE" "$commit:refs/heads/$branch"; then
-      emit_result "$files" true "$BASE_SHA"
-      echo "baseline_branch_sha=$commit" >> "$GITHUB_OUTPUT"
-      exit 0
-    fi
-    now="$(git ls-remote "$REMOTE" "refs/heads/$branch" | awk '{print $1; exit}')"
-    if [ "$now" = "$tip" ]; then
-      echo "::error::GitHub refused the push to $branch, most likely because a branch rule protects it. Add the identity sync pushes with (the CodeBoarding app, or GitHub Actions for the default token) as a bypass actor for $branch in the repository's rulesets, or set save_baseline_to: synced_branch."
-      exit 1
-    fi
-  done
-  emit_result "$files" false "$BASE_SHA"
-  echo "::notice::Another sync keeps updating $branch; leaving it to that run."
-  exit 0
-}
-[ "$SAVE_BASELINE_TO" != baseline_branch ] || deliver_to_baseline_branch
+source "$ACTION_PATH/scripts/action/codeboarding-baseline.sh"
+[ "$SAVE_BASELINE_TO" != baseline_branch ] || save_to_codeboarding_baseline
 
 "$ACTION_PATH/scripts/action/install-sync.sh" > "$GENERATED_PATHS"
 stage_paths=()

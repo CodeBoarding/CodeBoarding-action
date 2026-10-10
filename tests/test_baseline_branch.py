@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from test_action_state import ANALYZE, ENGINE_STUB
+from test_action_state import ENGINE_STUB, run_steps
 
 ROOT = Path(__file__).resolve().parent.parent
 DELIVER = ROOT / "scripts" / "action" / "deliver-sync.sh"
@@ -275,16 +275,13 @@ class BaselineBranchReadTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def _analyze(self, **extra: str) -> dict[str, str]:
-        self.output.write_text("", encoding="utf-8")
-        result = subprocess.run(
-            [str(ANALYZE)],
-            env={
+        code, self.log, values = run_steps(
+            {
                 "PATH": f"{self.bin_dir}:{os.environ['PATH']}",
-                "GITHUB_OUTPUT": str(self.output),
                 "RUNNER_TEMP": str(self.runner),
                 "CB_ENGINE_LOG": str(self.engine_log),
                 "ACTION_PATH": str(ROOT),
-                "ANALYSIS_KIND": "review",
+                "GITHUB_RUN_ID": "1",
                 "CHECKOUT_DIR": str(self.checkout),
                 "REVIEW_HEAD_SHA": "head-sha",
                 "REVIEW_BASE_REPO": "origin",
@@ -300,22 +297,23 @@ class BaselineBranchReadTests(unittest.TestCase):
                 "DEPTH_CAP": "2",
                 **extra,
             },
-            capture_output=True,
-            text=True,
-            check=False,
+            self.output,
         )
-        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-        return dict(line.split("=", 1) for line in self.output.read_text(encoding="utf-8").splitlines() if "=" in line)
+        self.assertEqual(code, 0, self.log)
+        return values
 
     def _modes(self) -> list[str]:
         return [json.loads(line)["mode"] for line in self.engine_log.read_text().splitlines()]
 
+    def _base_modes(self) -> list[str]:
+        calls = [json.loads(line) for line in self.engine_log.read_text().splitlines()]
+        return [c["mode"] for c in calls if c["run_id"].endswith("-base")]
+
     def test_a_branch_entry_for_the_merge_base_is_reused(self) -> None:
         values = self._analyze(REVIEW_BASE_SHA=self.shas[3])
 
-        self.assertEqual(values["base_analysis_method"], "reused")
-        self.assertEqual(values["base_analysis_reason"], f"{self.shas[3][:7]} already has a saved analysis")
-        self.assertEqual(self._modes(), ["incremental"], "only the head is analyzed")
+        self.assertEqual(self._base_modes(), [], "only the head is analyzed")
+        self.assertEqual(self._modes(), ["incremental"])
         base = json.loads(Path(values["base_analysis_path"]).read_text())
         self.assertEqual(base["components"], [self.shas[3]])
         self.assertFalse(Path(values["base_analysis_path"]).with_name("source.json").exists())
@@ -323,38 +321,45 @@ class BaselineBranchReadTests(unittest.TestCase):
         self.assertEqual(values["publish_base"], "true")
 
     def test_the_nearest_branch_entry_below_the_merge_base_is_caught_up(self) -> None:
-        values = self._analyze(REVIEW_BASE_SHA=self.shas[4])
+        self._analyze(REVIEW_BASE_SHA=self.shas[4])
 
-        self.assertEqual(values["base_analysis_method"], "incremental")
-        self.assertEqual(
-            values["base_analysis_reason"],
-            f"updated the analysis of {self.shas[3][:7]} to {self.shas[4][:7]}, 1 commit caught up",
-        )
+        self.assertIn(f"Starting from the analysis of {self.shas[3][:7]} saved on {BRANCH}.", self.log)
+        self.assertEqual(self._base_modes(), ["incremental"])
         self.assertEqual(self._modes(), ["incremental", "incremental"])
 
     def test_an_entry_made_under_another_configuration_is_never_reused(self) -> None:
         # Another engine version or model: reusing it as is would diff an old
         # configuration's base against a new head.
-        values = self._analyze(REVIEW_BASE_SHA=self.shas[3], CFG_HASH="othercfg")
+        self._analyze(REVIEW_BASE_SHA=self.shas[3], CFG_HASH="othercfg")
 
-        self.assertEqual(values["base_analysis_method"], "full")
-        self.assertEqual(
-            values["base_analysis_reason"],
-            "the existing analysis was incompatible or could not be updated incrementally",
-        )
         self.assertEqual(self._modes(), ["full", "incremental"])
 
     def test_without_a_configuration_hash_no_entry_is_trusted(self) -> None:
-        values = self._analyze(REVIEW_BASE_SHA=self.shas[3], CFG_HASH="")
+        self._analyze(REVIEW_BASE_SHA=self.shas[3], CFG_HASH="")
 
-        self.assertEqual(values["base_analysis_method"], "full")
+        self.assertEqual(self._base_modes(), ["full"])
 
     def test_without_the_branch_the_base_is_a_full_analysis(self) -> None:
-        values = self._analyze(REVIEW_BASE_SHA=self.shas[4], BASELINE_BRANCH="codeboarding/none")
+        self._analyze(REVIEW_BASE_SHA=self.shas[4], BASELINE_BRANCH="codeboarding/none")
 
-        self.assertEqual(values["base_analysis_method"], "full")
-        self.assertEqual(values["base_analysis_reason"], "no usable analysis was available")
         self.assertEqual(self._modes(), ["full", "incremental"])
+
+    def test_the_branch_outranks_a_baseline_committed_at_the_merge_base(self) -> None:
+        # Its entries are pinned to this configuration; a committed baseline is not,
+        # so one left behind after switching to the baseline branch must not win.
+        board = self.checkout / ".codeboarding"
+        board.mkdir()
+        (board / "analysis.json").write_text(json.dumps({"metadata": {"depth_cap": 2}, "components": ["stale"]}))
+        git(self.checkout, "add", "-A")
+        git(self.checkout, "commit", "-q", "-m", "stale baseline")
+        merge_base = git(self.checkout, "rev-parse", "HEAD")
+        git(self.checkout, "push", "-q", "origin", "HEAD:main")
+
+        values = self._analyze(REVIEW_BASE_SHA=merge_base)
+
+        self.assertIn(f"saved on {BRANCH}.", self.log)
+        base = json.loads(Path(values["base_analysis_path"]).read_text())
+        self.assertNotEqual(base["components"], ["stale"])
 
     def test_sync_continues_from_the_branch_tip(self) -> None:
         self._analyze(ANALYSIS_KIND="sync", SAVE_BASELINE_TO="baseline_branch", FORCE_FULL="false")
@@ -401,7 +406,7 @@ class BaselineBranchGuardTests(unittest.TestCase):
             output = Path(tmp) / "github-output"
             output.write_text("", encoding="utf-8")
             result = subprocess.run(
-                [str(ROOT / "scripts" / "action" / "guard.sh")],
+                [str(ROOT / "scripts" / "action" / "resolve-github-event.sh")],
                 env={
                     "PATH": os.environ["PATH"],
                     "GITHUB_OUTPUT": str(output),

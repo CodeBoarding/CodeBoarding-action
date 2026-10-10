@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 INSTALL_SYNC = ROOT / "scripts" / "action" / "install-sync.sh"
 RENDER_REVIEW = ROOT / "scripts" / "action" / "render-review.sh"
-GUARD = ROOT / "scripts" / "action" / "guard.sh"
+GUARD = ROOT / "scripts" / "action" / "resolve-github-event.sh"
 
 
 class ActionSyncTests(unittest.TestCase):

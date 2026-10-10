@@ -65,30 +65,6 @@ class ReviewArtifactMetadataTests(unittest.TestCase):
             metadata, _outputs = _build(Path(tmp))
             self.assertEqual(metadata["analysed_files_changed"], "unknown")
 
-    def test_how_the_base_was_obtained_is_recorded_as_strings(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            metadata, _outputs = _build(
-                Path(tmp),
-                BASE_ANALYSIS_METHOD="incremental",
-                BASE_ANALYSIS_REASON="updated the analysis of 9f8e7d6 to a1b2c3d, 3 commits caught up",
-            )
-            self.assertEqual(
-                {key: metadata[key] for key in metadata if key.startswith("base_")},
-                {
-                    "base_sha": "tip-sha",
-                    "base_artifact": "codeboarding-base-cfg-mergebasesha",
-                    "base_artifact_id": "4242",
-                    "base_analysis_method": "incremental",
-                    "base_analysis_reason": "updated the analysis of 9f8e7d6 to a1b2c3d, 3 commits caught up",
-                },
-            )
-
-    def test_an_older_run_without_provenance_records_empty_strings(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            metadata, _outputs = _build(Path(tmp))
-            for key in ("base_analysis_method", "base_analysis_reason"):
-                self.assertEqual(metadata[key], "", key)
-
 
 if __name__ == "__main__":
     unittest.main()

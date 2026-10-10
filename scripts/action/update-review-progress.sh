@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Rewrites the review's sticky progress comment into two steps while the base is
+# Rewrites the review's sticky progress comment into two steps when the base is
 # built from scratch: that is the slow path, and the reader should know why.
-# Usage: post-progress.sh base|head <elapsed seconds>. Best effort throughout.
+# Usage: update-review-progress.sh base|head, once as the base build starts and
+# once as it ends. Best effort throughout.
 set -euo pipefail
-step="$1" elapsed="$2"
+step="$1"
 [ -n "${PROGRESS_HEADER:-}" ] && [ -n "${PR_NUMBER:-}" ] && [ -n "${REPOSITORY:-}" ] || exit 0
 export GH_HOST="${GH_HOST:-github.com}"
 GH_HOST="${GH_HOST#*://}"
@@ -26,20 +27,12 @@ else
   branch="the base branch"
 fi
 sha7="${REVIEW_BASE_SHA:0:7}"
-case "${FULL_CAUSE:-}" in
-  incompatible) why="The saved diagram of $branch was made by a different engine version or settings, so this review builds a new one." ;;
-  *) why="$branch has no saved diagram yet, so this review builds one first. Once a diagram of $branch is saved, reviews start from it and skip this step." ;;
-esac
-minutes=$(( elapsed / 60 ))
+why="$branch has no saved diagram this review can start from, so it builds one first. Once a diagram of $branch is saved, reviews start from it and skip this step."
 if [ "$step" = base ]; then
-  running="running for $minutes min"
-  [ "$minutes" -gt 0 ] || running="running for less than a minute"
-  first="1. ⏳ Building the diagram of $branch @$sha7 from scratch · $running"
+  first="1. ⏳ Building the diagram of $branch @$sha7 from scratch"
   second="2. Analysing this PR's changes"
 else
-  took="$(( elapsed % 60 )) s"
-  [ "$minutes" -eq 0 ] || took="$minutes m $took"
-  first="1. ✅ Built the diagram of $branch @$sha7 from scratch in $took"
+  first="1. ✅ Built the diagram of $branch @$sha7 from scratch"
   second="2. ⏳ Analysing this PR's changes"
 fi
 
@@ -51,9 +44,4 @@ body="$(printf '%s\n\n%s\n   %s\n%s\n\n%s\n\n%s\n%s' \
   "Open it in [CodeBoarding]($platform) meanwhile: the files, comments and review are there already, and the diff appears when the run finishes." \
   "<sub>run [${GITHUB_RUN_ID:-}]($run_url) · attempt ${GITHUB_RUN_ATTEMPT:-1}</sub>" \
   "$marker")"
-# Checked last: the ticker may have been stopped while this ran, and a stale
-# "running" edit must not land on top of the next step.
-if [ "$step" = base ] && [ -n "${PROGRESS_STOP_FILE:-}" ] && [ -e "$PROGRESS_STOP_FILE" ]; then
-  exit 0
-fi
 gh api -X PATCH "repos/$REPOSITORY/issues/comments/$id" -f body="$body" >/dev/null

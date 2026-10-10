@@ -256,7 +256,7 @@ runs:
         PULL_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         PULL_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
         REPOSITORY: ${{ github.repository }}
-      run: "$GITHUB_ACTION_PATH/scripts/action/guard.sh"
+      run: "$GITHUB_ACTION_PATH/scripts/action/resolve-github-event.sh"
 
     - name: Acknowledge review command
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.event == 'issue_comment'
@@ -357,7 +357,7 @@ runs:
         fi
         exit 1
 
-    - name: Post review progress
+    - name: Update review progress
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
@@ -413,7 +413,7 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
       run: "$GITHUB_ACTION_PATH/scripts/action/configure-auth.sh"
 
-    - name: Resolve analysis identity
+    - name: Resolve analysis cache keys
       id: state
       if: steps.guard.outputs.skip != 'true'
       continue-on-error: true
@@ -429,7 +429,7 @@ runs:
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
-      run: "$GITHUB_ACTION_PATH/scripts/action/state-names.sh"
+      run: "$GITHUB_ACTION_PATH/scripts/action/resolve-cache-keys.sh"
 
     # Both lookups are best effort. Without them the run derives the base from
     # the committed baseline and the head from the base, which is what every run
@@ -464,13 +464,12 @@ runs:
         DEST: ${{ runner.temp }}/cb-state/${{ github.action }}/warmstart
       run: "$GITHUB_ACTION_PATH/scripts/action/fetch-state.sh"
 
-    - name: Analyze baseline
+    - name: Generate sync baseline
       id: sync_analyze
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        ANALYSIS_KIND: sync
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
         STAGE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/out
         FORCE_FULL: ${{ inputs.force_full }}
@@ -487,7 +486,7 @@ runs:
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
-      run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/analyze.sh"'
+      run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/sync-generate-baseline.sh"'
 
     - name: Deliver baseline
       id: sync_commit
@@ -559,26 +558,23 @@ runs:
         PR_URL: ${{ steps.sync_commit.outputs.sync_pr_url }}
       run: "$GITHUB_ACTION_PATH/scripts/action/sync-summary.sh"
 
-    - name: Analyze pull request
-      id: review_analyze
+    - name: Generate review baseline
+      id: review_baseline
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        ANALYSIS_KIND: review
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
         REVIEW_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
-        REVIEW_HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
         REVIEW_BASE_REPO: ${{ steps.guard.outputs.base_repo }}
-        PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
         BASE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/base
-        WARMSTART_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/warmstart
         RENEW_BASE: ${{ steps.fetch_base.outputs.renew }}
-        # Lets a branch without a usable committed baseline catch up from a saved analysis.
-        ANCESTOR_LOOKUP: ${{ github.server_url == 'https://github.com' && steps.state.outputs.cfg_hash != '' }}
-        # For rewriting the progress comment while a base is built from scratch.
-        PROGRESS_HEADER: ${{ steps.guard.outputs.comment_id }}
         BASELINE_BRANCH: ${{ inputs.baseline_branch }}
+        # Lets a merge base without a saved analysis catch up from an ancestor's.
+        ANCESTOR_LOOKUP: ${{ github.server_url == 'https://github.com' && steps.state.outputs.cfg_hash != '' }}
+        # For the progress comment while a base is built from scratch.
+        PROGRESS_HEADER: ${{ steps.guard.outputs.comment_id }}
+        PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
         BASE_REF: ${{ steps.guard.outputs.base_ref }}
         REPOSITORY: ${{ github.repository }}
         GH_HOST: ${{ github.server_url }}
@@ -591,7 +587,28 @@ runs:
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
-      run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/analyze.sh"'
+      run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/review-generate-baseline.sh"'
+
+    - name: Analyze pull request
+      id: review_analyze
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
+        BASE_ANALYSIS_PATH: ${{ steps.review_baseline.outputs.base_analysis_path }}
+        WARMSTART_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/warmstart
+        REVIEW_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
+        REVIEW_HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
+        PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
+        STAGE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/out
+        ENGINE_VERSION: ${{ steps.state.outputs.engine_version }}
+        CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
+        DEPTH_CAP: ${{ inputs.depth_cap }}
+        MODEL: ${{ inputs.model }}
+        AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
+        PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
+      run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/review-analyze-head.sh"'
 
     # Published before the review is rendered: the analysis is the expensive part,
     # so a later rendering or posting failure must not throw it away. Only the
@@ -611,7 +628,7 @@ runs:
     # never be what they read.
     - name: Publish base analysis
       id: publish_base
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_analyze.outputs.publish_base == 'true' && steps.guard.outputs.is_fork != 'true' && steps.state.outputs.base_name != '' && github.server_url == 'https://github.com'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_baseline.outputs.publish_base == 'true' && steps.guard.outputs.is_fork != 'true' && steps.state.outputs.base_name != '' && github.server_url == 'https://github.com'
       continue-on-error: true
       uses: actions/upload-artifact@v4
       with:
@@ -632,7 +649,7 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        BASE_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.base_analysis_path }}
+        BASE_ANALYSIS_PATH: ${{ steps.review_baseline.outputs.base_analysis_path }}
         HEAD_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
       run: "$GITHUB_ACTION_PATH/scripts/action/render-review.sh"
 
@@ -644,7 +661,7 @@ runs:
         ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
         BASE_ARTIFACT_NAME: ${{ steps.state.outputs.base_name }}
         BASE_ARTIFACT_ID: ${{ steps.publish_base.outputs.artifact-id || steps.fetch_base.outputs.artifact_id }}
-        BASE_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.base_analysis_path }}
+        BASE_ANALYSIS_PATH: ${{ steps.review_baseline.outputs.base_analysis_path }}
         INLINE_BASE: ${{ steps.publish_base.outputs.artifact-id == '' && steps.fetch_base.outputs.artifact_id == '' }}
         ANALYSIS_MODE: ${{ steps.review_analyze.outputs.analysis_mode }}
         BASE_SHA: ${{ steps.guard.outputs.base_sha }}
@@ -655,8 +672,6 @@ runs:
         SEED_SOURCE: ${{ steps.review_analyze.outputs.seed_source }}
         CHAIN_DEPTH: ${{ steps.review_analyze.outputs.chain_depth }}
         ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
-        BASE_ANALYSIS_METHOD: ${{ steps.review_analyze.outputs.base_analysis_method }}
-        BASE_ANALYSIS_REASON: ${{ steps.review_analyze.outputs.base_analysis_reason }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-artifact.sh"
 
     - name: Upload review artifact
@@ -728,6 +743,6 @@ runs:
         message: |
           ### CodeBoarding review · failed
 
-          ${{ steps.review_analyze.outputs.failure_reason }}
+          ${{ steps.review_baseline.outputs.failure_reason || steps.review_analyze.outputs.failure_reason }}
 
           See the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).
