@@ -195,7 +195,6 @@ class BaselineBranchDeliveryTests(unittest.TestCase):
         result = self._check("main")
         self.assertEqual(result.returncode, 0, result.stdout)
 
-
     def test_the_check_before_the_install_refuses_a_code_branch_with_the_name(self) -> None:
         git(self.checkout, "push", "-q", "origin", f"main:refs/heads/{BRANCH}")
 
