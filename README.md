@@ -9,34 +9,31 @@ The action is a thin wrapper around the [CodeBoarding](https://github.com/CodeBo
 
 [CodeBoarding](https://github.com/CodeBoarding/CodeBoarding) · [Website](https://codeboarding.org) · [Examples](https://codeboarding.org/diagrams) · [VS Code extension](https://marketplace.visualstudio.com/items?itemName=Codeboarding.codeboarding) · [Discord](https://discord.gg/T5zHTJYFuy)
 
-## Review pull requests
+## Set up
 
-Create `.github/workflows/codeboarding.yml`:
+CodeBoarding runs from one workflow, `.github/workflows/codeboarding.yml`, with a `review` job and a `sync` job. Each job asks only for the permissions it needs. Replace `main` with your default branch:
 
 ```yaml
-name: CodeBoarding review
+name: CodeBoarding
 
 on:
   pull_request:
     types: [opened, reopened, synchronize]
   issue_comment:
     types: [created]
+  push:
+    branches: [main]
 
-permissions:
-  contents: read
-  actions: read        # download the analysis an earlier run published
-  pull-requests: write
-  issues: write
-  id-token: write
+permissions: {}
 
-# One review at a time per pull request. Two pushes in quick succession would
-# otherwise analyze concurrently, and both would start from the same older
-# analysis instead of the newer one continuing from its predecessor. They also
-# share one sticky comment, so whichever finishes last wins — which can be the
-# run for the older commit. Queue rather than cancel, so a /codeboarding command
-# waits for a running review instead of killing it.
+# One review at a time per pull request, and one sync at a time per branch. Two
+# pushes in quick succession would otherwise analyze concurrently, both starting
+# from the same older analysis instead of the newer one continuing from its
+# predecessor, and both writing the one sticky comment, so the run for the older
+# commit could win. Queue rather than cancel, so a /codeboarding command waits for
+# a running review instead of killing it.
 concurrency:
-  group: codeboarding-${{ github.event.pull_request.number || github.event.issue.number }}
+  group: codeboarding-${{ github.event.pull_request.number || github.event.issue.number || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -49,13 +46,37 @@ jobs:
        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read        # download the analysis an earlier run published
+      pull-requests: write
+      issues: write
+      id-token: write
     steps:
       - uses: CodeBoarding/CodeBoarding-action@v1
         with:
           llm: hosted   # or license, or a provider name -- see Authentication
+
+  sync:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: read        # catch up from an analysis a review saved
+      id-token: write
+    steps:
+      - uses: CodeBoarding/CodeBoarding-action@v1
+        with:
+          mode: sync
+          llm: hosted
 ```
 
-Automatic runs review both draft and non-draft pull requests and update one sticky **CodeBoarding review** comment. Opening, reopening, or pushing a commit runs analysis; changing only the draft state does not. A trusted repository owner, member, or collaborator can comment `/codeboarding` to analyze the current PR head again, including on fork PRs; every command creates a new result comment.
+Both jobs use the default `codeboarding_analysis_location`, so review always reads the analysis where sync saves it. If you set it, set it in both jobs. Keep both jobs in this one file: a repository running CodeBoarding from more than one workflow file is an [older setup](#moving-an-existing-setup), which the CodeBoarding dashboard flags and offers to fold into one.
+
+## Review pull requests
+
+The `review` job's automatic runs review both draft and non-draft pull requests and update one sticky **CodeBoarding review** comment. Opening, reopening, or pushing a commit runs analysis; changing only the draft state does not. A trusted repository owner, member, or collaborator can comment `/codeboarding` to analyze the current PR head again, including on fork PRs; every command creates a new result comment.
 
 `synchronize` re-runs the review on every push to the branch. Each of those runs covers only the commits pushed since the previous one, so a push costs a fraction of a first analysis — and a pushed commit is the only thing that builds the reusable analysis, since GitHub gives comment-triggered runs a read-only cache. Drop `synchronize` from the list if you would rather spend one analysis per pull request than one per push.
 
@@ -234,34 +255,7 @@ Sync mode saves Core's persisted incremental-analysis state under `.codeboarding
 
 It does **not** render or commit architecture Markdown, and leaves every other file alone, including user-authored CodeBoarding configuration such as `health/health_config.json` and `health/.healthignore`.
 
-Sync keeps the analysis of your repository's default branch current. `codeboarding_analysis_location` decides where that analysis is stored, `codeboarding/baseline` by default. Trigger it on pushes to the default branch: a sync that runs on any other branch, from any event, fails in seconds, before anything is installed. Create `.github/workflows/codeboarding-sync.yml`:
-
-```yaml
-name: CodeBoarding sync
-
-on:
-  push:
-    branches: [main]
-
-permissions:
-  contents: write
-  actions: read        # catch up from an analysis a review saved
-  id-token: write
-
-concurrency:
-  group: codeboarding-sync
-  cancel-in-progress: false
-
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: CodeBoarding/CodeBoarding-action@v1
-        with:
-          mode: sync
-          llm: hosted
-```
+Sync keeps the analysis of your repository's default branch current. `codeboarding_analysis_location` decides where that analysis is stored, `codeboarding/baseline` by default. The `sync` job does this, on pushes to the default branch: a sync that runs on any other branch, from any event, fails in seconds, before anything is installed.
 
 `main` is only read. Each sync adds one commit to `codeboarding/baseline` in the same repository, an orphan branch that shares no history with `main`. It holds the `.codeboarding/` files listed above, plus `.codeboarding/source.json` naming the commit they describe and the configuration that made them; the commit message carries both as `CodeBoarding-Source:` and `CodeBoarding-Config:` trailers. Pushes only ever fast-forward, and no code branch is ever written, so the `push` trigger needs no `paths-ignore` and a protected `main` needs no exception. Reviews read their base from the branch, and the web platform reads the latest diagram from it. The [analysis branch section](docs/COMMIT_STRATEGY.md#the-baseline-branch) covers what happens if the branch is deleted, and a ruleset you should import to protect it: sync and review load a pickle from it.
 
@@ -281,7 +275,7 @@ The first run, or one without a compatible saved analysis to continue from, is a
 
 ### Keep the analysis on the code branch
 
-Set `codeboarding_analysis_location: in_place` to commit `.codeboarding/` to the synced branch itself instead, next to the code. Set it in the review workflow as well, so reviews read it from there, and add a `paths-ignore` so sync's own commit does not trigger another sync:
+Set `codeboarding_analysis_location: in_place` to commit `.codeboarding/` to the synced branch itself instead, next to the code. Set it on the review job as well, so reviews read it from there, and add a `paths-ignore` so sync's own commit does not trigger another sync:
 
 ```yaml
 on:
@@ -305,84 +299,26 @@ on:
 
 The list names only generated files on purpose: an edit to `.codeboarding/.codeboardingignore` or the health configuration changes what is analyzed, and must still trigger a sync. Sync pushes to `main` directly, so a branch rule protecting `main` needs the identity sync pushes with (the CodeBoarding app, or GitHub Actions for the default token) as a bypass actor, or a `github_token` that may push there.
 
-### Review and sync in one workflow
-
-The two workflows above can be one file with two jobs, each keeping its own permissions.
-
-```yaml
-name: CodeBoarding
-
-on:
-  pull_request:
-    types: [opened, reopened, synchronize]
-  issue_comment:
-    types: [created]
-  push:
-    branches: [main]
-
-permissions: {}
-
-# Reviews queue per pull request, syncs per branch.
-concurrency:
-  group: codeboarding-${{ github.event.pull_request.number || github.event.issue.number || github.ref_name }}
-  cancel-in-progress: false
-
-jobs:
-  review:
-    if: >
-      (github.event_name == 'pull_request' &&
-       github.event.pull_request.head.repo.full_name == github.repository) ||
-      (github.event_name == 'issue_comment' && github.event.issue.pull_request != null &&
-       startsWith(github.event.comment.body, '/codeboarding') &&
-       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: read
-      actions: read
-      pull-requests: write
-      issues: write
-      id-token: write
-    steps:
-      - uses: CodeBoarding/CodeBoarding-action@v1
-        with:
-          llm: hosted
-
-  sync:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: write
-      actions: read
-      id-token: write
-    steps:
-      - uses: CodeBoarding/CodeBoarding-action@v1
-        with:
-          mode: sync
-          llm: hosted
-```
-
-Both jobs use the default `codeboarding_analysis_location`, so review always reads the analysis where sync saves it. If you set it, set it in both jobs. Two-file setups work the same way, except that a sync on the old defaults now saves to `codeboarding/baseline`; see [moving an existing setup](#moving-an-existing-setup).
-
 ### Moving an existing setup
 
-Before this release sync committed `.codeboarding/` to the synced branch by default; it now saves to `codeboarding/baseline`, and runs on the default branch only. A workflow that set `sync_strategy: push` keeps committing to the code branch, and one that set `sync_strategy: pull_request` moves to the analysis branch, each with a warning. A `target_branch` naming a branch other than the one sync runs on fails, since sync now analyzes the branch it runs on. A workflow that set none of them moves to the analysis branch; the `.codeboarding/` committed on the code branch is then no longer updated. To finish the move, paste this into your coding agent:
+Before this release sync committed `.codeboarding/` to the synced branch by default; it now saves to `codeboarding/baseline`, and runs on the default branch only. A workflow that set `sync_strategy: push` keeps committing to the code branch, and one that set `sync_strategy: pull_request` moves to the analysis branch, each with a warning. A `target_branch` naming a branch other than the one sync runs on fails, since sync now analyzes the branch it runs on. A workflow that set none of them moves to the analysis branch; the `.codeboarding/` committed on the code branch is then no longer updated. Separate review and sync workflow files still run, but belong in [one file](#set-up). The CodeBoarding dashboard flags all of these and opens the pull request that moves them; to make the move yourself, paste this into your coding agent:
 
 ```text
 Move this repository's CodeBoarding sync to the codeboarding/baseline analysis branch.
-1. In the workflows that run CodeBoarding/CodeBoarding-action, remove the
-   sync_strategy, target_branch, force_full and codeboarding_analysis_location
-   inputs if set, and any workflow_dispatch trigger that starts the sync job.
-   Keep every other input.
-2. Delete the generated files under .codeboarding/ from the default branch, keeping
-   the user configuration: .codeboarding/.codeboardingignore,
-   .codeboarding/health/health_config.json and .codeboarding/health/.healthignore.
-3. Remove the paths-ignore entries for generated .codeboarding/ files from the
-   sync workflow's push trigger, and any .gitattributes lines that mark
-   .codeboarding/ files as linguist-generated, if nothing else is left under
-   .codeboarding/ for them.
-4. Open a pull request with these changes. After it merges, close any open
+1. Put the review and sync jobs that run CodeBoarding/CodeBoarding-action in one
+   file, .github/workflows/codeboarding.yml, as the action README's "Set up" shows,
+   and delete the workflow files they came from once nothing else is left in them.
+2. In those jobs, remove the sync_strategy, target_branch, force_full and
+   codeboarding_analysis_location inputs if set, and any workflow_dispatch trigger
+   that starts the sync job. Keep every other input. List only the default branch
+   under the push trigger.
+3. Delete the files sync generated from the default branch:
+   .codeboarding/analysis.json, fingerprint.json, static_analysis.pkl,
+   static_analysis.sha, codeboarding_version.json and health/health_report.json.
+   Leave everything else under .codeboarding/.
+4. Remove the paths-ignore entries for those files from the push trigger, and any
+   .gitattributes lines that mark them as linguist-generated.
+5. Open a pull request with these changes. After it merges, close any open
    pull request from the codeboarding/sync branch and delete that branch.
 ```
 
@@ -410,7 +346,7 @@ The first sync after the merge creates `codeboarding/baseline`, catching up from
 
 The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted webview URL, commit message, and CodeBoarding 0.14.5 version are intentionally fixed rather than exposed as configuration.
 
-Review mode needs no sync workflow or committed `.codeboarding` directory. If no
+Review mode needs no sync job or committed `.codeboarding` directory. If no
 usable merge-base analysis exists, it runs full analysis there directly, then
 seeds an incremental analysis of the PR head and publishes both states. Later
 runs prefer compatible prior PR state for incremental updates, while the review
