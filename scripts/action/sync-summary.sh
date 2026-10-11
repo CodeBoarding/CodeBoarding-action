@@ -3,11 +3,11 @@
 set -euo pipefail
 {
   echo "### CodeBoarding Sync"
-  echo "- Analysis: ${MODE}"
-  echo "- Analysis artifacts: ${FILES:-0}"
-  echo "- Delivered: ${COMMITTED:-false}"
-  echo "- Strategy: ${STRATEGY}"
-  if [ -n "${PR_URL:-}" ]; then
-    echo "- Sync PR: ${PR_URL}"
+  [ -z "${FAILURE_REASON:-}" ] || echo "- **Failed:** ${FAILURE_REASON}"
+  if [ -n "${MODE:-}" ]; then
+    echo "- Analysis: ${MODE}"
+    echo "- Analysis artifacts: ${FILES:-0}"
+    echo "- Delivered: ${COMMITTED:-false}"
+    echo "- Saved to: ${SAVED_TO}"
   fi
 } >> "$GITHUB_STEP_SUMMARY"

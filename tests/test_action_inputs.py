@@ -86,6 +86,24 @@ class ActionInputTests(unittest.TestCase):
             self.assertNotIn(stale, self.inputs)
             self.assertNotIn(f"inputs.{stale}", ACTION)
 
+    def test_every_sync_setup_can_read_saved_analyses(self) -> None:
+        """Sync catches up from an analysis a review saved; without actions: read it silently analyzes in full."""
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        sync_setups = [block for block in readme.split("```yaml")[1:] if "mode: sync" in block]
+        sync_setups.append(DOGFOOD[DOGFOOD.index("\n  sync:\n") :])
+        for block in sync_setups:
+            if "permissions:" in block:
+                self.assertIn("actions: read", block, block[:200])
+
+    def test_deprecated_inputs_are_read_only_by_the_migrator(self) -> None:
+        """Backward compatibility lives in one script; every other step reads its outputs."""
+        for old in ("target_branch", "sync_strategy"):
+            self.assertIn("deprecationMessage:", self.inputs[old])
+            self.assertEqual(ACTION.count(f"inputs.{old} }}}}"), 1, f"only the migrator may read {old}")
+        new = "codeboarding_analysis_location"
+        self.assertEqual(ACTION.count(f"inputs.{new} }}}}"), 1, f"only the migrator may read {new}")
+        self.assertLess(ACTION.index("- name: Translate deprecated inputs"), ACTION.index("- name: Resolve event"))
+
     def test_credentials_resolve_before_the_checkout_and_the_engine_install(self) -> None:
         """Fail-fast is positional: preflight is worth little after a minute of setup."""
         preflight = ACTION.index("- name: Check LLM configuration")

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Validates the event and outputs the exact refs and metadata used by later steps.
 set -euo pipefail
-fail() { echo "::error::$1"; exit 1; }
+fail() { echo "::error::$1"; echo "failure_reason=$1" >> "$GITHUB_OUTPUT"; exit 1; }
 skip() { echo "::notice::$1"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
 [ -z "${GH_HOST:-}" ] || export GH_HOST="${GH_HOST#*://}"
 case "$MODE" in
@@ -9,33 +9,28 @@ case "$MODE" in
   *) fail "mode must be review or sync." ;;
 esac
 printf 'mode=%s\nskip=false\nevent=%s\n' "$MODE" "$EVENT" >> "$GITHUB_OUTPUT"
+# The branch the analysis is kept on, or empty when it is committed in place, on
+# the code branch itself.
+analysis_branch=""
+[ "${ANALYSIS_LOCATION:-}" != codeboarding_branch ] || analysis_branch=codeboarding/baseline
 if [ "$MODE" = sync ]; then
   case "$EVENT" in
     push|workflow_dispatch|schedule) ;;
     *) skip "Sync mode ignores $EVENT events." ;;
   esac
   [ "$REF_TYPE" != tag ] || skip "Sync mode ignores tag pushes."
-  case "$SYNC_STRATEGY" in
-    push|pull_request) ;;
-    *) fail "sync_strategy must be push or pull_request." ;;
-  esac
   case "$HEAD_AUTHOR_EMAIL" in
     codeboarding-review\[bot\]@users.noreply.github.com|codeboarding\[bot\]@users.noreply.github.com)
       [ "$EVENT" != push ] || skip "Ignoring CodeBoarding's own baseline commit."
       ;;
   esac
-  target_branch="${TARGET_BRANCH_INPUT:-$REF_NAME}"
-  [ -n "$target_branch" ] || fail "target_branch is required for this event."
-  [ "$SYNC_STRATEGY" != pull_request ] || [ "$target_branch" != codeboarding/sync ] || fail "target_branch must differ from codeboarding/sync."
-  sync_branch_start_sha=""
-  if [ "$SYNC_STRATEGY" = pull_request ]; then
-    sync_branch_start_sha="$(gh api "repos/$REPOSITORY/branches/codeboarding%2Fsync" --jq '.commit.sha' 2>/dev/null || true)"
-  fi
+  synced_branch="$REF_NAME"
+  [ -n "$synced_branch" ] || fail "Sync needs a branch to analyze; run it on one."
   {
-    echo "target_branch=$target_branch"
-    echo "sync_branch_start_sha=$sync_branch_start_sha"
+    echo "synced_branch=$synced_branch"
+    echo "analysis_branch=$analysis_branch"
     echo "checkout_repo=$REPOSITORY"
-    echo "checkout_ref=$target_branch"
+    echo "checkout_ref=$synced_branch"
   } >> "$GITHUB_OUTPUT"
   exit 0
 fi
@@ -122,6 +117,7 @@ is_fork=false
   echo "merge_base_resolved=$merge_base_resolved"
   echo "behind_by=$behind_by"
   echo "base_ref=$base_ref"
+  echo "analysis_branch=$analysis_branch"
   echo "head_sha=$head_sha"
   echo "base_repo=$base_repo"
   echo "head_repo=$head_repo"

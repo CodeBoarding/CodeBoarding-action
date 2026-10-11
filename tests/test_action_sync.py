@@ -12,7 +12,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 INSTALL_SYNC = ROOT / "scripts" / "action" / "install-sync.sh"
 RENDER_REVIEW = ROOT / "scripts" / "action" / "render-review.sh"
-GUARD = ROOT / "scripts" / "action" / "guard.sh"
+GUARD = ROOT / "scripts" / "action" / "resolve-github-event.sh"
+
+
+def write_core(path: Path) -> None:
+    """The part of Core's constants.py (0.14.5) that names the persisted artifacts."""
+    path.mkdir(parents=True, exist_ok=True)
+    (path / "constants.py").write_text(
+        "ANALYSIS_FILENAME = 'analysis.json'\n"
+        "PERSISTED_ANALYSIS_ARTIFACT_FILENAMES = (\n"
+        "    ANALYSIS_FILENAME, 'fingerprint.json', 'static_analysis.pkl', 'static_analysis.sha',\n"
+        "    'codeboarding_version.json',\n"
+        ")\n",
+        encoding="utf-8",
+    )
 
 
 class ActionSyncTests(unittest.TestCase):
@@ -154,22 +167,14 @@ class ActionSyncTests(unittest.TestCase):
             output = checkout / ".codeboarding"
             analysis = root / "analysis"
             fake_core = root / "core"
-            static_analyzer = fake_core / "static_analyzer"
-            for directory in (output / "health", analysis, static_analyzer, checkout / "docs" / "development"):
+            for directory in (output / "health", analysis):
                 directory.mkdir(parents=True)
 
+            # The analyzed repository's own constants.py must never be what is read.
             (checkout / "constants.py").write_text(
                 "raise RuntimeError('imported target constants')\n", encoding="utf-8"
             )
-            (fake_core / "utils.py").write_text(
-                "ANALYSIS_FILENAME = 'analysis.json'\nFINGERPRINT_FILENAME = 'fingerprint.json'\n",
-                encoding="utf-8",
-            )
-            (static_analyzer / "__init__.py").touch()
-            (static_analyzer / "analysis_cache.py").write_text(
-                "STATIC_ANALYSIS_PKL = 'static_analysis.pkl'\nSTATIC_ANALYSIS_SHA = 'static_analysis.sha'\n",
-                encoding="utf-8",
-            )
+            write_core(fake_core)
             produced = ("analysis.json", "fingerprint.json", "static_analysis.pkl")
             for name in produced:
                 (analysis / name).write_text(f"new {name}\n", encoding="utf-8")
@@ -185,16 +190,9 @@ class ActionSyncTests(unittest.TestCase):
             }
             for path, content in preserved.items():
                 path.write_text(content, encoding="utf-8")
-            legacy = (
-                output / "overview.md",
-                output / "health" / "health_report.json",
-                checkout / "docs" / "development" / "architecture.md",
-            )
-            for path in legacy:
-                path.write_text(
-                    "old generated content\nhttps://img.shields.io/badge/Generated%20by-CodeBoarding\n",
-                    encoding="utf-8",
-                )
+            # A health report this run did not produce is stale.
+            stale_report = output / "health" / "health_report.json"
+            stale_report.write_text("{}\n", encoding="utf-8")
 
             github_output = root / "github-output"
             result = subprocess.run(
@@ -220,29 +218,8 @@ class ActionSyncTests(unittest.TestCase):
                 self.assertFalse((output / name).exists())
             for path, content in preserved.items():
                 self.assertEqual(path.read_text(encoding="utf-8"), content)
-            for path in legacy:
-                self.assertFalse(path.exists())
+            self.assertFalse(stale_report.exists())
             self.assertEqual(github_output.read_text(encoding="utf-8"), "installed=3\n")
-
-            architecture = checkout / "docs" / "development" / "architecture.md"
-            architecture.write_text("hand-written architecture\n", encoding="utf-8")
-            result = subprocess.run(
-                [str(INSTALL_SYNC)],
-                cwd=checkout,
-                env={
-                    "PATH": os.environ["PATH"],
-                    "PYTHONPATH": str(fake_core),
-                    "ACTION_PATH": str(ROOT),
-                    "ANALYSIS_DIR": str(analysis),
-                    "CHECKOUT_DIR": str(checkout),
-                    "GITHUB_OUTPUT": str(github_output),
-                },
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-            self.assertEqual(architecture.read_text(encoding="utf-8"), "hand-written architecture\n")
 
     def test_installs_the_health_report_the_engine_produced(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -250,18 +227,9 @@ class ActionSyncTests(unittest.TestCase):
             checkout = root / "checkout"
             analysis = root / "analysis"
             fake_core = root / "core"
-            static_analyzer = fake_core / "static_analyzer"
-            for directory in (checkout / ".codeboarding", analysis / "health", static_analyzer):
+            for directory in (checkout / ".codeboarding", analysis / "health"):
                 directory.mkdir(parents=True)
-            (fake_core / "utils.py").write_text(
-                "ANALYSIS_FILENAME = 'analysis.json'\nFINGERPRINT_FILENAME = 'fingerprint.json'\n",
-                encoding="utf-8",
-            )
-            (static_analyzer / "__init__.py").touch()
-            (static_analyzer / "analysis_cache.py").write_text(
-                "STATIC_ANALYSIS_PKL = 'static_analysis.pkl'\nSTATIC_ANALYSIS_SHA = 'static_analysis.sha'\n",
-                encoding="utf-8",
-            )
+            write_core(fake_core)
             (analysis / "analysis.json").write_text("{}\n", encoding="utf-8")
             (analysis / "health" / "health_report.json").write_text('{"overall_score": 1.0}', encoding="utf-8")
 
@@ -287,6 +255,24 @@ class ActionSyncTests(unittest.TestCase):
             # Printed paths are what the delivery step stages, so an installed
             # file that is never printed is silently left out of the commit.
             self.assertIn(str(installed), result.stdout.splitlines())
+
+    def test_a_failed_sync_says_why_in_the_job_summary(self) -> None:
+        # A push-triggered sync has no pull request to comment on.
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = Path(tmp) / "summary"
+            subprocess.run(
+                [str(ROOT / "scripts" / "action" / "sync-summary.sh")],
+                env={
+                    "PATH": os.environ["PATH"],
+                    "GITHUB_STEP_SUMMARY": str(summary),
+                    "FAILURE_REASON": "codeboarding/baseline keeps the analysis of main, and this sync runs on dev.",
+                    "SAVED_TO": "codeboarding/baseline",
+                },
+                check=True,
+            )
+            text = summary.read_text(encoding="utf-8")
+        self.assertIn("- **Failed:** codeboarding/baseline keeps the analysis of main", text)
+        self.assertNotIn("- Analysis:", text, "nothing was analyzed")
 
     def test_empty_review_is_successful(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -359,16 +345,7 @@ class SyncDeliveryTests(unittest.TestCase):
             (self.analysis / name).write_text(f"fresh {name}\n", encoding="utf-8")
 
         self.core = self.root / "core"
-        (self.core / "static_analyzer").mkdir(parents=True)
-        (self.core / "utils.py").write_text(
-            "ANALYSIS_FILENAME = 'analysis.json'\nFINGERPRINT_FILENAME = 'fingerprint.json'\n",
-            encoding="utf-8",
-        )
-        (self.core / "static_analyzer" / "__init__.py").touch()
-        (self.core / "static_analyzer" / "analysis_cache.py").write_text(
-            "STATIC_ANALYSIS_PKL = 'static_analysis.pkl'\nSTATIC_ANALYSIS_SHA = 'static_analysis.sha'\n",
-            encoding="utf-8",
-        )
+        write_core(self.core)
 
     def tearDown(self) -> None:
         self.temp_dir.cleanup()
@@ -390,10 +367,8 @@ class SyncDeliveryTests(unittest.TestCase):
                 "RUNNER_TEMP": str(self.root),
                 "GITHUB_SERVER_URL": str(self.root),
                 "GITHUB_TOKEN": "unused",
-                "GH_HOST": "github.com",
                 "REPOSITORY": "owner/repo",
-                "TARGET_BRANCH": "main",
-                "SYNC_STRATEGY": "push",
+                "SYNCED_BRANCH": "main",
             },
             capture_output=True,
             text=True,

@@ -11,8 +11,46 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-STATE_NAMES = ROOT / "scripts" / "action" / "state-names.sh"
-ANALYZE = ROOT / "scripts" / "action" / "analyze.sh"
+SCRIPTS = ROOT / "scripts" / "action"
+STATE_NAMES = SCRIPTS / "resolve-cache-keys.sh"
+# The analysis steps of each mode, in the order action.yml runs them.
+STEPS = {
+    "review": (SCRIPTS / "review-generate-baseline.sh", SCRIPTS / "review-analyze-head.sh"),
+    "sync": (SCRIPTS / "sync-generate-baseline.sh",),
+}
+
+
+def read_outputs(output: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in output.read_text(encoding="utf-8").splitlines():
+        key, _, value = line.partition("=")
+        values[key] = value
+    return values
+
+
+def run_steps(env: dict[str, str], output: Path) -> tuple[int, str, dict[str, str]]:
+    """Runs one mode's analysis steps as action.yml does, each seeing the outputs before it.
+
+    Returns the first failing exit code (or 0), everything the steps logged, and their outputs.
+    """
+    env = dict(env)
+    kind = env.pop("ANALYSIS_KIND", "review")
+    output.write_text("", encoding="utf-8")
+    log = ""
+    for script in STEPS[kind]:
+        base = read_outputs(output).get("base_analysis_path", "")
+        result = subprocess.run(
+            [str(script)],
+            env={**env, "GITHUB_OUTPUT": str(output), "BASE_ANALYSIS_PATH": base},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        log += result.stdout + result.stderr
+        if result.returncode != 0:
+            return result.returncode, log, read_outputs(output)
+    return 0, log, read_outputs(output)
+
 
 ENGINE_STUB = '''#!/usr/bin/env python3
 """CodeBoarding CLI stand-in: records each call and writes a minimal analysis."""
@@ -26,6 +64,7 @@ with open(os.environ["CB_ENGINE_LOG"], "a") as log:
         "mode": argv[0],
         "checkout": argv[argv.index("--local") + 1],
         "depth": argv[argv.index("--depth-cap") + 1] if "--depth-cap" in argv else None,
+        "run_id": os.environ.get("CODEBOARDING_RUN_ID", ""),
     }) + "\\n")
 analysis = os.path.join(output, "analysis.json")
 metadata = json.load(open(analysis))["metadata"] if os.path.isfile(analysis) else {}
@@ -140,16 +179,28 @@ class CacheKeyTests(unittest.TestCase):
         self.assertNotEqual(baseline["cfg_hash"], self._run(PARSING_MODEL_INPUT="gpt-5")["cfg_hash"])
         self.assertNotEqual(baseline["cfg_hash"], self._run(LLM_PROVIDER="anthropic")["cfg_hash"])
 
-    def test_unresolvable_engine_version_disables_reuse_instead_of_failing(self) -> None:
+    def test_an_unresolvable_engine_version_fails_instead_of_disabling_reuse(self) -> None:
         stub_bin = self.root / "bin"
         stub_bin.mkdir()
         python_stub = stub_bin / "python3"
         python_stub.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
         python_stub.chmod(0o755)
 
-        values = self._run(ENGINE_VERSION="", PATH=f"{stub_bin}:{os.environ['PATH']}")
+        result = subprocess.run(
+            [str(STATE_NAMES)],
+            env={
+                "PATH": f"{stub_bin}:{os.environ['PATH']}",
+                "GITHUB_OUTPUT": str(self.output),
+                "CHECKOUT_DIR": str(self.checkout),
+                "ENGINE_VERSION": "",
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
-        self.assertEqual(values, {})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Could not read the installed CodeBoarding version", result.stdout)
 
 
 class ReviewChainTests(unittest.TestCase):
@@ -176,16 +227,13 @@ class ReviewChainTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def _analyze(self, **extra: str) -> dict[str, str]:
-        self.output.write_text("", encoding="utf-8")
-        result = subprocess.run(
-            [str(ANALYZE)],
-            env={
+        code, self.log, values = run_steps(
+            {
                 "PATH": f"{self.bin_dir}:{os.environ['PATH']}",
-                "GITHUB_OUTPUT": str(self.output),
                 "RUNNER_TEMP": str(self.runner_temp),
                 "CB_ENGINE_LOG": str(self.engine_log),
                 "ACTION_PATH": str(ROOT),
-                "ANALYSIS_KIND": "review",
+                "GITHUB_RUN_ID": "1",
                 "CHECKOUT_DIR": str(self.checkout),
                 "REVIEW_BASE_SHA": "merge-base-sha",
                 "REVIEW_HEAD_SHA": "head-sha",
@@ -199,19 +247,17 @@ class ReviewChainTests(unittest.TestCase):
                 "STAGE_DIR": str(self.stage_dir),
                 **extra,
             },
-            capture_output=True,
-            text=True,
-            check=False,
+            self.output,
         )
-        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
-        values: dict[str, str] = {}
-        for line in self.output.read_text(encoding="utf-8").splitlines():
-            key, _, value = line.partition("=")
-            values[key] = value
+        self.assertEqual(code, 0, self.log)
         return values
 
     def _engine_calls(self) -> list[dict[str, str]]:
         return [json.loads(line) for line in self.engine_log.read_text(encoding="utf-8").splitlines()]
+
+    def _base_modes(self) -> list[str]:
+        """How the base was obtained, read the way telemetry reads it: no base run means reused."""
+        return [c["mode"] for c in self._engine_calls() if c["run_id"].endswith("-base")]
 
     def _bind(self, **origin: object) -> None:
         """Chain fixture bound to the base it was derived from."""
@@ -286,6 +332,16 @@ class ReviewChainTests(unittest.TestCase):
         self._analyze(REVIEW_BASE_SHA=sha, DEPTH_CAP="4")
         self.assertEqual([c["mode"] for c in self._engine_calls()], ["incremental", "incremental"])
 
+    def test_engine_runs_are_tagged_with_the_run_and_the_analysis_they_belong_to(self) -> None:
+        sha = self._commit_base(cap=4)
+        self._analyze(REVIEW_BASE_SHA=sha, DEPTH_CAP="4", GITHUB_RUN_ID="991", GITHUB_RUN_ATTEMPT="2")
+        self.assertEqual([c["run_id"] for c in self._engine_calls()], ["gh-991-2-base", "gh-991-2-head"])
+
+    def test_a_reused_base_leaves_only_head_engine_runs(self) -> None:
+        _state(self.base_dir)
+        self._analyze(GITHUB_RUN_ID="991", GITHUB_RUN_ATTEMPT="1")
+        self.assertEqual([c["run_id"] for c in self._engine_calls()], ["gh-991-1-head"])
+
     def test_legacy_committed_depth_is_not_inherited(self) -> None:
         sha = self._commit_base(legacy=True)
         self._analyze(REVIEW_BASE_SHA=sha, DEPTH_CAP="4")
@@ -312,9 +368,115 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual([c["mode"] for c in calls], ["incremental", "full", "incremental", "full"])
         self.assertEqual([c["depth"] for c in calls if c["mode"] == "full"], ["4", "4"])
 
+    # How the base was obtained is reported, not just used: the review comment and
+    # the webview explain a slow run by it.
+
+    def _git(self, *args: str) -> str:
+        return subprocess.run(
+            [
+                "git",
+                "-C",
+                str(self.checkout),
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "-c",
+                "commit.gpgsign=false",
+                *args,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    def _commit(self, message: str, files: dict[str, str], *, bot: bool = False) -> str:
+        for name, content in files.items():
+            (self.checkout / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.checkout / name).write_text(content, encoding="utf-8")
+        self._git("add", "-A")
+        committer = ("-c", "user.email=codeboarding-review[bot]@users.noreply.github.com") if bot else ()
+        self._git(*committer, "commit", "-q", "-m", message)
+        return self._git("rev-parse", "HEAD")
+
+    def test_a_saved_base_is_reused(self) -> None:
+        _state(self.base_dir)
+
+        self._analyze()
+
+        self.assertEqual(self._base_modes(), [])
+        self.assertIn("Using the published analysis of merge-b.", self.log)
+
+    def test_a_base_with_nothing_to_seed_it_is_a_full_analysis(self) -> None:
+        sha = self._commit_base()
+
+        self._analyze(REVIEW_BASE_SHA=sha)
+
+        self.assertEqual(self._base_modes(), ["full"])
+
+    def _assert_incompatible(self, _values: dict[str, str]) -> None:
+        self.assertEqual(self._base_modes()[-1:], ["full"])
+
+    def test_a_committed_baseline_with_another_depth_is_incompatible(self) -> None:
+        sha = self._commit_base(legacy=True)
+
+        self._assert_incompatible(self._analyze(REVIEW_BASE_SHA=sha))
+
+    def test_a_saved_base_with_another_depth_is_incompatible(self) -> None:
+        sha = self._commit_base()
+        _state(self.base_dir, cap=1)
+
+        self._assert_incompatible(self._analyze(REVIEW_BASE_SHA=sha))
+
+    def test_an_engine_that_demands_a_full_run_makes_the_baseline_incompatible(self) -> None:
+        sha = self._commit_base(cap=2)
+
+        self._assert_incompatible(self._analyze(REVIEW_BASE_SHA=sha, CB_REQUIRE_FULL="true"))
+
+    def _progress_stub(self) -> Path:
+        calls = self.root / "gh-calls"
+        gh = self.bin_dir / "gh"
+        gh.write_text(
+            "#!/usr/bin/env bash\n"
+            f'printf "%s\\n----\\n" "$*" >> "{calls}"\n'
+            'case "$*" in *"/comments?per_page"*) echo 77 ;; esac\n',
+            encoding="utf-8",
+        )
+        gh.chmod(0o755)
+        return calls
+
+    def test_building_the_base_from_scratch_rewrites_the_progress_comment(self) -> None:
+        calls = self._progress_stub()
+        sha = self._commit_base()
+
+        self._analyze(
+            REVIEW_BASE_SHA=sha,
+            PROGRESS_HEADER="codeboarding-review",
+            REPOSITORY="owner/repo",
+            BASE_REF="develop",
+            GIT_TOKEN="token",
+        )
+
+        patches = [call for call in calls.read_text().split("\n----\n") if "PATCH" in call]
+        self.assertEqual(len(patches), 2, calls.read_text())
+        self.assertIn("repos/owner/repo/issues/comments/77", patches[0])
+        self.assertIn(f"Building the diagram of `develop` @{sha[:7]} from scratch", patches[0])
+        self.assertIn("`develop` has no saved diagram this review can start from", patches[0])
+        self.assertIn("2. ⏳ Analysing this PR's changes", patches[-1])
+        # The sticky-comment action finds its comment by this line on the final write.
+        self.assertIn("<!-- Sticky Pull Request Commentcodeboarding-review -->", patches[-1])
+
+    def test_a_saved_base_leaves_the_progress_comment_alone(self) -> None:
+        calls = self._progress_stub()
+        _state(self.base_dir)
+
+        self._analyze(PROGRESS_HEADER="codeboarding-review", REPOSITORY="owner/repo", GIT_TOKEN="token")
+
+        self.assertFalse(calls.exists())
+
     def test_invalid_depth_fails_before_analysis(self) -> None:
         result = subprocess.run(
-            [str(ANALYZE)],
+            [str(STEPS["review"][0])],
             env={"PATH": os.environ["PATH"], "DEPTH_CAP": "-1"},
             capture_output=True,
             text=True,
@@ -324,7 +486,10 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(self._engine_calls(), [])
 
     def test_sync_without_baseline_uses_configured_depth_directly(self) -> None:
-        self._analyze(ANALYSIS_KIND="sync", FORCE_FULL="false", DEPTH_CAP="4")
+        # Sync always runs on a checkout of the synced branch.
+        self._git("init", "-q")
+        self._commit("code", {"app.py": "pass\n"})
+        self._analyze(ANALYSIS_KIND="sync", DEPTH_CAP="4")
         self.assertEqual([c["mode"] for c in self._engine_calls()], ["full"])
         self.assertEqual(self._engine_calls()[0]["depth"], "4")
 
@@ -417,6 +582,275 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(origin["engine_version"], "0.13.8")
         self.assertEqual(origin["base_digest"], _digest(self.base_dir / "analysis.json"))
         self.assertFalse((self.stage_dir / "base").exists(), "a published base needs no republishing")
+
+
+GH_STUB = """#!/usr/bin/env python3
+\"\"\"gh stand-in: serves an artifact listing and one zip from a JSON config.\"\"\"
+import json, os, sys
+from urllib.parse import parse_qs, urlparse
+
+config = json.load(open(os.environ["CB_GH_CONFIG"]))
+with open(os.environ["CB_GH_LOG"], "a") as log:
+    log.write(" ".join(sys.argv[1:]) + "\\n")
+path = next(a for a in sys.argv[1:] if a.startswith("repos/"))
+url = urlparse(path)
+query = parse_qs(url.query)
+if url.path.endswith("/zip"):
+    sys.stdout.buffer.write(open(config["zip"], "rb").read())
+elif url.path.endswith("/actions/artifacts"):
+    artifacts = config["artifacts"]
+    if "name" in query:
+        artifacts = [a for a in artifacts if a["name"] == query["name"][0]]
+    page = int(query.get("page", ["1"])[0])
+    if "name" not in query and "pages" in config:
+        pages = config["pages"]
+        print(json.dumps({"artifacts": pages[page - 1] if page <= len(pages) else []}))
+    else:
+        print(json.dumps({"artifacts": artifacts if page == 1 else []}))
+"""
+
+
+class AncestorSeedTests(unittest.TestCase):
+    """With no saved base for the merge base and nothing committed there, a review
+    catches up from the nearest saved ancestor on the base branch's first-parent
+    history instead of analyzing the merge base from scratch."""
+
+    def setUp(self) -> None:
+        import zipfile
+
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        self.bin_dir = self.root / "bin"
+        self.bin_dir.mkdir()
+        for name, body in (("codeboarding", ENGINE_STUB), ("gh", GH_STUB)):
+            (self.bin_dir / name).write_text(body, encoding="utf-8")
+            (self.bin_dir / name).chmod(0o755)
+        self.engine_log = self.root / "engine.log"
+        self.engine_log.write_text("", encoding="utf-8")
+        self.gh_log = self.root / "gh.log"
+        self.gh_log.write_text("", encoding="utf-8")
+        self.gh_config = self.root / "gh.json"
+        self.output = self.root / "github-output"
+        self.runner_temp = self.root / "runner"
+        self.runner_temp.mkdir()
+        self.stage_dir = self.root / "state" / "out"
+        self.origin = self.root / "origin"
+        self.origin.mkdir()
+        self.bundle = self.root / "bundle.zip"
+        with zipfile.ZipFile(self.bundle, "w") as archive:
+            archive.writestr("analysis.json", json.dumps({"metadata": {"depth_cap": 2}, "components": []}))
+            archive.writestr("static_analysis.pkl", "pickle")
+            archive.writestr("metadata.json", json.dumps({"kind": "base", "merge_base_sha": "ancestor"}))
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def _history(self, commits: int) -> list[str]:
+        """A base branch of `commits` code commits, oldest first, in origin/ (the checkout)."""
+        git = ["git", "-C", str(self.origin), "-c", "user.name=T", "-c", "user.email=t@example.com"]
+        subprocess.run([*git, "init", "-q"], check=True)
+        shas = []
+        for index in range(commits):
+            (self.origin / f"file{index}.py").write_text("pass\n", encoding="utf-8")
+            subprocess.run([*git, "add", "-A"], check=True)
+            subprocess.run([*git, "-c", "commit.gpgsign=false", "commit", "-q", "-m", f"c{index}"], check=True)
+            shas.append(subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip())
+        return shas
+
+    @staticmethod
+    def _artifact(name: str, *, fork: bool = False) -> dict:
+        return {
+            "id": abs(hash(name)) % 100000,
+            "name": name,
+            "expired": False,
+            "created_at": "2026-10-01T00:00:00Z",
+            "expires_at": "2027-01-01T00:00:00Z",
+            "workflow_run": {"id": 1, "repository_id": 1, "head_repository_id": 2 if fork else 1},
+        }
+
+    def _serve(self, artifacts: list[dict], pages: list | None = None) -> None:
+        config = {"artifacts": artifacts, "zip": str(self.bundle)}
+        if pages is not None:
+            config["pages"] = pages
+        self.gh_config.write_text(json.dumps(config), encoding="utf-8")
+
+    def _analyze(self, checkout: Path, **extra: str) -> dict[str, str]:
+        code, self.log, values = run_steps(
+            {
+                "PATH": f"{self.bin_dir}:{os.environ['PATH']}",
+                "RUNNER_TEMP": str(self.runner_temp),
+                "CB_ENGINE_LOG": str(self.engine_log),
+                "CB_GH_CONFIG": str(self.gh_config),
+                "CB_GH_LOG": str(self.gh_log),
+                "ACTION_PATH": str(ROOT),
+                "GITHUB_RUN_ID": "1",
+                "CHECKOUT_DIR": str(checkout),
+                "REVIEW_HEAD_SHA": "head-sha",
+                "REVIEW_BASE_REPO": "origin",
+                "REPOSITORY": "owner/repo",
+                "GITHUB_SERVER_URL": f"file://{self.root}",
+                "PR_NUMBER": "42",
+                "ENGINE_VERSION": "0.14.5",
+                "CFG_HASH": "cfg",
+                "ANCESTOR_LOOKUP": "true",
+                "BASE_DIR": str(self.root / "state" / "base"),
+                "WARMSTART_DIR": str(self.root / "state" / "warmstart"),
+                "STAGE_DIR": str(self.stage_dir),
+                "DEPTH_CAP": "2",
+                **extra,
+            },
+            self.output,
+        )
+        self.assertEqual(code, 0, self.log)
+        return values
+
+    def _modes(self) -> list[str]:
+        return [json.loads(line)["mode"] for line in self.engine_log.read_text().splitlines()]
+
+    def _base_modes(self) -> list[str]:
+        calls = [json.loads(line) for line in self.engine_log.read_text().splitlines()]
+        return [c["mode"] for c in calls if c["run_id"].endswith("-base")]
+
+    def _assert_full(self, _values: dict[str, str]) -> None:
+        self.assertEqual(self._base_modes(), ["full"])
+
+    def test_it_catches_up_from_the_nearest_saved_ancestor(self) -> None:
+        shas = self._history(5)
+        merge_base = shas[-1]
+        # Two saved ancestors: the nearer one wins.
+        self._serve(
+            [self._artifact(f"codeboarding-base-cfg-{shas[0]}"), self._artifact(f"codeboarding-base-cfg-{shas[2]}")]
+        )
+
+        values = self._analyze(self.origin, REVIEW_BASE_SHA=merge_base)
+
+        self.assertIn(f"Starting from the saved analysis of {shas[2][:7]}.", self.log)
+        self.assertEqual(self._modes(), ["incremental", "incremental"])
+        # Published under the merge base's own name, so the next review hits it exactly.
+        self.assertEqual(values["publish_base"], "true")
+        staged = json.loads((self.stage_dir / "base" / "metadata.json").read_text())
+        self.assertEqual(staged["merge_base_sha"], merge_base)
+
+    def test_an_ancestor_beyond_the_bound_is_not_used(self) -> None:
+        shas = self._history(5)
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
+
+        values = self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1], CATCHUP_BOUND="2")
+
+        self._assert_full(values)
+        self.assertEqual(self._modes(), ["full", "incremental"])
+        self.assertNotIn("/zip", self.gh_log.read_text())
+
+    def test_a_saved_analysis_off_this_history_is_not_used(self) -> None:
+        shas = self._history(2)
+        self._serve([self._artifact("codeboarding-base-cfg-" + "e" * 40)])
+
+        values = self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1])
+
+        self._assert_full(values)
+
+    def test_a_busy_artifact_store_is_paged_until_a_saved_ancestor_appears(self) -> None:
+        shas = self._history(3)
+        noise = [self._artifact(f"codeboarding-review-{i}-1") for i in range(100)]
+        found = self._artifact(f"codeboarding-base-cfg-{shas[0]}")
+        later = [self._artifact(f"codeboarding-warmstart-cfg-pr{i}") for i in range(100)]
+        self._serve([found], pages=[noise] * 11 + [noise[:99] + [found], later])
+
+        values = self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1])
+
+        self.assertIn(f"Starting from the saved analysis of {shas[0][:7]}.", self.log)
+        listings = [
+            line
+            for line in self.gh_log.read_text().splitlines()
+            if "per_page=100&page=" in line and "name=" not in line
+        ]
+        self.assertEqual(len(listings), 12, "paging stops at the page holding the ancestor")
+
+    def test_a_failed_deepen_falls_back_to_a_full_analysis(self) -> None:
+        # The deepen fails, so the shallow checkout walks no ancestor at all.
+        shas = self._history(4)
+        bare = self.root / "origin.git"
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.origin), str(bare)], check=True)
+        checkout = self.root / "shallow"
+        subprocess.run(["git", "clone", "-q", "--depth=1", f"file://{bare}", str(checkout)], check=True)
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
+
+        values = self._analyze(checkout, REVIEW_BASE_SHA=shas[-1], GITHUB_SERVER_URL=f"file://{self.root}/missing")
+
+        self._assert_full(values)
+
+    def test_the_merge_bases_own_configuration_survives_the_seed(self) -> None:
+        shas = self._history(2)
+        (self.origin / ".codeboarding").mkdir()
+        (self.origin / ".codeboarding" / ".codeboardingignore").write_text("docs/\n", encoding="utf-8")
+        git = ["git", "-C", str(self.origin), "-c", "user.name=T", "-c", "user.email=t@example.com"]
+        subprocess.run([*git, "add", "-A"], check=True)
+        subprocess.run([*git, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "ignore docs"], check=True)
+        merge_base = subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+        import zipfile
+
+        with zipfile.ZipFile(self.bundle, "a") as archive:
+            archive.writestr(".codeboardingignore", "stale/\n")
+            archive.writestr("health/health_config.json", "{}")
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
+
+        self._analyze(self.origin, REVIEW_BASE_SHA=merge_base)
+
+        self.assertEqual(self._base_modes(), ["incremental"])
+        staged = self.stage_dir / "base"
+        self.assertEqual((staged / ".codeboardingignore").read_text(), "docs/\n")
+        self.assertFalse((staged / "health" / "health_config.json").exists(), "the merge base has none")
+
+    def test_an_ancestor_saved_by_a_run_on_forked_code_is_never_read(self) -> None:
+        shas = self._history(3)
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}", fork=True)])
+
+        values = self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1])
+
+        self._assert_full(values)
+        self.assertNotIn("/zip", self.gh_log.read_text(), "a fork's bundle was downloaded")
+
+    def test_another_configuration_saved_at_the_merge_base_is_incompatible(self) -> None:
+        shas = self._history(2)
+        self._serve([self._artifact(f"codeboarding-base-othercfg-{shas[-1]}")])
+
+        values = self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1])
+
+        self._assert_full(values)
+
+    def test_a_shallow_checkout_is_deepened_to_find_the_ancestor(self) -> None:
+        shas = self._history(4)
+        bare = self.root / "origin.git"
+        subprocess.run(["git", "clone", "-q", "--bare", str(self.origin), str(bare)], check=True)
+        subprocess.run(["git", "-C", str(bare), "config", "uploadpack.allowAnySHA1InWant", "true"], check=True)
+        checkout = self.root / "shallow"
+        subprocess.run(["git", "clone", "-q", "--depth=1", f"file://{bare}", str(checkout)], check=True)
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
+
+        self._analyze(checkout, REVIEW_BASE_SHA=shas[-1])
+
+        self.assertIn(f"Starting from the saved analysis of {shas[0][:7]}.", self.log)
+        self.assertEqual(self._base_modes(), ["incremental"])
+
+    def test_without_the_lookup_nothing_is_listed(self) -> None:
+        # GHES has no artifact store, so the action turns the lookup off there.
+        shas = self._history(2)
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
+
+        self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1], ANCESTOR_LOOKUP="false")
+
+        self.assertEqual(self._base_modes(), ["full"])
+        self.assertEqual(self.gh_log.read_text(), "")
+
+    def test_a_first_sync_catches_up_from_the_setup_reviews_base(self) -> None:
+        # Merging the setup pull request leaves no committed baseline, but its
+        # preview review saved the base at its merge base, the new tip's parent.
+        shas = self._history(3)
+        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[1]}")])
+
+        self._analyze(self.origin, ANALYSIS_KIND="sync")
+
+        self.assertEqual(self._modes(), ["incremental"])
 
 
 class ReviewArtifactTests(unittest.TestCase):
@@ -563,7 +997,7 @@ class PublishedStateTests(unittest.TestCase):
             for s in self._uploads()
             if "outputs.base_name" in s.get("path", "") + s.get("name", "") or "base_name" in s.get("if", "")
         ]
-        published_by_review = [s for s in self._uploads() if "review_analyze.outputs.publish_base" in s.get("if", "")]
+        published_by_review = [s for s in self._uploads() if "review_baseline.outputs.publish_base" in s.get("if", "")]
         self.assertTrue(published_by_review, "no base publication step found")
         for step in published_by_review:
             self.assertIn("is_fork != 'true'", step["if"], f"{step['name']} would let a fork publish a shared base")
