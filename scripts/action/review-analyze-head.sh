@@ -3,6 +3,7 @@
 # analysis when that grew from the same base graph, so a push only costs the
 # commits pushed since; otherwise it starts from the base.
 set -euo pipefail
+# shellcheck source=scripts/action/analysis-state.sh
 source "$(dirname "$0")/analysis-state.sh"
 base_analysis="$BASE_ANALYSIS_PATH"
 state="$RUNNER_TEMP/codeboarding-review/head-state"

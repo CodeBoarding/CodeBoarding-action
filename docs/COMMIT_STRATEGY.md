@@ -7,7 +7,7 @@ graphs it compares.
 
 | Store | Holds | Lifetime | Who can read it |
 |---|---|---|---|
-| **Git, analysis branch** (`codeboarding_analysis_location: codeboarding_branch`, the default) | one commit per sync on `codeboarding/baseline-<branch>` | forever | anyone with repo read |
+| **Git, analysis branch** (`codeboarding_analysis_location: codeboarding_branch`, the default) | one commit per sync on `codeboarding/baseline` | forever | anyone with repo read |
 | **Git, code branch** (`codeboarding_analysis_location: in_place`) | `.codeboarding/` on the synced branch | forever | anyone with repo read |
 | **Workflow artifacts** | every analysis this action reuses or publishes | a retention window | any run with `actions: read`, plus humans |
 | ~~Actions cache~~ | — | — | not used |
@@ -156,11 +156,11 @@ base and a diagram drawn against another would report changes nobody made.
 ## The baseline branch
 
 By default sync saves the analysis to a branch of its own in the same
-repository, named after the synced branch: `codeboarding/baseline-main` for
-`main`. The synced branch is then only read, and a review reads the analysis
-branch of its pull request's base branch. Each code branch has its own, so a
-sync never writes over another branch's analysis; a renamed code branch starts a
-new one with a full analysis, unless its analysis branch is renamed to match.
+repository, `codeboarding/baseline`, which the webview also reads. It holds the
+default branch's analysis: a sync on any other branch fails before anything is
+installed, so a manual run elsewhere cannot make another branch's analysis the
+latest diagram. Entries are keyed by commit, so a renamed default branch just
+continues. The synced branch is then only read.
 `codeboarding_analysis_location: in_place` commits the analysis to the synced
 branch instead, and skips everything below.
 
@@ -188,16 +188,18 @@ wholesale; only the checkout's own `.codeboardingignore` and health configuratio
 are kept. The push is a fast-forward onto the tip it fetched, never forced. Sync
 refuses to write to an existing branch that is not a baseline branch (its tip has
 no `CodeBoarding-Source` trailer, or holds anything besides `.codeboarding/`), so
-a code branch that happens to be named `codeboarding/baseline-main` fails, before anything is installed, instead of being emptied. If the
-synced branch moved during the analysis, the result is dropped, as when committing
-to it. If another sync moved the baseline branch, it builds on that tip once. A push the
+a code branch that happens to be named `codeboarding/baseline` fails, before anything is installed, instead of being emptied, as does a branch named
+`codeboarding`, next to which git cannot create it. If the synced branch moved
+during the analysis, the result is still saved for the commit it analyzed:
+entries are keyed by commit, and a branch that merges faster than sync runs would
+otherwise never be saved. Only an analysis of an older commit than the tip's is
+dropped, so the tip stays the latest diagram. If another sync moved the baseline branch, it builds on that tip once. A push the
 remote refuses while the tip did not move is a branch rule, and the run fails
 saying so.
 
-The synced branch is checked just before the push, not in the same transaction:
-if it moves in that window, the branch can end on an analysis of the older commit.
-Its trailer still names that commit, so no reader takes it for newer, and the run
-queued for the newer commit replaces it.
+The tip is compared just before the push, not in the same transaction: if a sync
+of a newer commit lands in that window, the push is no longer a fast-forward and
+is retried on top of it once.
 
 **How a review reads it.** Right after an exact artifact, a review lists the newest 100 commits of the branch (fetched without
 file contents, so the listing costs commit messages only) and matches their
@@ -216,7 +218,7 @@ a pickle runs code when loaded, so whoever can write the branch can run code in
 the sync and review workflows. Import
 [`baseline-branch-ruleset.json`](baseline-branch-ruleset.json) under Settings,
 Rules, Rulesets, New ruleset, Import a ruleset. It blocks creating, updating,
-deleting and force-pushing every `codeboarding/baseline-*` branch for everyone except the
+deleting and force-pushing `codeboarding/baseline` for everyone except the
 CodeBoarding Review app (`4021464`), so only the workflows you give the app's key
 can write it; sync must then push with the app's token as `github_token`. That
 token is only available to CodeBoarding's own workflows: the app's private key is

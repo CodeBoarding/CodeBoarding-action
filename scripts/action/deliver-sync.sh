@@ -3,6 +3,7 @@
 # is none, commits it to the synced branch itself.
 set -euo pipefail
 cd "$CHECKOUT_DIR"
+# shellcheck disable=SC2153 # REPOSITORY comes from the step's env.
 REMOTE="${GITHUB_SERVER_URL%/}/${REPOSITORY}.git"
 ASKPASS="$RUNNER_TEMP/codeboarding-git-askpass.sh"
 GENERATED_PATHS="$RUNNER_TEMP/codeboarding-sync-paths"
@@ -38,6 +39,7 @@ classify_push_failure() {
   baseline_fail "Could not push the CodeBoarding baseline to $branch."
 }
 
+# shellcheck source=scripts/action/codeboarding-baseline.sh
 source "$ACTION_PATH/scripts/action/codeboarding-baseline.sh"
 if [ -n "${BASELINE_BRANCH:-}" ]; then
   # The synced branch is never written from here, so its old copy can only be pointed out.

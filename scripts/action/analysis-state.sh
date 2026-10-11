@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Helpers for the directories that hold analysis state. Sourced, not run.
 
 DEPTH_CAP="${DEPTH_CAP:-2}"

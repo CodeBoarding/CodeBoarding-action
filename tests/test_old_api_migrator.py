@@ -76,14 +76,31 @@ class OldApiMigratorTests(unittest.TestCase):
         self.assertEqual(value, "codeboarding_branch")
         self.assertIn("target_branch is deprecated", result.stdout)
 
-    def test_force_full_is_ignored_with_a_warning(self) -> None:
+    def test_force_full_true_is_ignored_with_a_warning(self) -> None:
         # It is released, so a workflow that still sets it must keep running.
-        for old in ("true", "false"):
-            with self.subTest(old=old):
-                result, value = migrate(OLD_FORCE_FULL=old)
-                self.assertEqual(result.returncode, 0, result.stdout)
-                self.assertEqual(value, "codeboarding_branch")
-                self.assertIn("::warning title=CodeBoarding inputs::force_full is no longer supported", result.stdout)
+        result, value = migrate(OLD_FORCE_FULL="true")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(value, "codeboarding_branch")
+        self.assertIn("::warning title=CodeBoarding inputs::force_full is no longer supported", result.stdout)
+
+    def test_force_full_false_is_silent(self) -> None:
+        # Old templates pass `${{ inputs.force_full || false }}` on every push.
+        result, _value = migrate(OLD_FORCE_FULL="false")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertNotIn("::warning", result.stdout)
+
+    def test_sync_strategy_agreeing_with_the_location_only_warns(self) -> None:
+        # Halfway through a migration both are set, saying the same thing.
+        result, value = migrate(OLD_SYNC_STRATEGY="push", ANALYSIS_LOCATION="in_place")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(value, "in_place")
+        self.assertIn("sync_strategy is deprecated", result.stdout)
+
+    def test_sync_strategy_disagreeing_with_the_location_fails(self) -> None:
+        result, value = migrate(OLD_SYNC_STRATEGY="pull_request", ANALYSIS_LOCATION="in_place")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(value, "<none>")
+        self.assertIn("disagree", result.stdout)
 
     def test_a_target_branch_elsewhere_points_at_the_push_trigger(self) -> None:
         # It must not tell anyone to analyze a branch they did not choose.
@@ -95,7 +112,6 @@ class OldApiMigratorTests(unittest.TestCase):
         for inputs in (
             {"OLD_TARGET_BRANCH": "develop"},
             {"OLD_SYNC_STRATEGY": "branch"},
-            {"ANALYSIS_LOCATION": "in_place", "OLD_SYNC_STRATEGY": "push"},
             {"ANALYSIS_LOCATION": "in_place", "OLD_SYNC_STRATEGY": "pull_request"},
         ):
             with self.subTest(inputs=inputs):

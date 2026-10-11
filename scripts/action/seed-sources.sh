@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Where an analysis to continue from can come from. Sourced, not run.
 #
 # Each from_* function fills a state directory with a compatible analysis of a
@@ -5,7 +6,9 @@
 # returns 1. SEED_SHA is the commit the seed describes, when the source knows it;
 # a seed of the very commit being analyzed needs no engine run at all.
 HERE="$(dirname "${BASH_SOURCE[0]}")"
+# shellcheck source=scripts/action/analysis-state.sh
 source "$HERE/analysis-state.sh"
+# shellcheck source=scripts/action/codeboarding-baseline.sh
 source "$HERE/codeboarding-baseline.sh"
 SEED_SHA=""
 
@@ -20,6 +23,26 @@ from_committed_baseline() {
   fi
   replace_state "$checkout/.codeboarding" "$state" "$checkout"
   echo "::notice::Starting from the analysis committed on this branch."
+}
+
+# The analysis committed under .codeboarding/ on the parent of $2, when $2 deleted
+# it: the commit that moves a repository to the analysis branch does, and would
+# otherwise cost the first sync a full analysis.
+from_parent_committed_baseline() {
+  local repository="$1" tip="$2" state="$3" checkout="$4" parent dest="$RUNNER_TEMP/codeboarding-parent-baseline"
+  [ ! -e "$checkout/.codeboarding/analysis.json" ] && [ -n "$repository" ] || return 1
+  fetch_commit "$repository" "$tip" 2 >&2 || return 1
+  parent="$(git -C "$checkout" rev-parse -q --verify "$tip^")" || return 1
+  git -C "$checkout" cat-file -e "$parent:.codeboarding/analysis.json" 2>/dev/null || return 1
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  git -C "$checkout" archive "$parent" .codeboarding | tar -x -C "$dest" || return 1
+  if ! compatible_state "$dest/.codeboarding"; then
+    echo "::notice::The analysis committed on ${parent:0:7} was made with another depth; not starting from it."
+    return 1
+  fi
+  replace_state "$dest/.codeboarding" "$state" "$checkout"
+  echo "::notice::Starting from the analysis committed on ${parent:0:7}, which ${tip:0:7} removed."
 }
 
 # A codeboarding-base-<cfg>-<sha> artifact for the nearest first-parent ancestor
@@ -39,6 +62,7 @@ from_ancestor_artifact() {
     return 1
   fi
   replace_state "$dest" "$state" "$config_from"
+  # shellcheck disable=SC2034 # read by the scripts that source this file
   SEED_SHA="$ancestor"
   echo "::notice::Starting from the saved analysis of ${ancestor:0:7}."
 }

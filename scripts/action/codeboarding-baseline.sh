@@ -1,5 +1,6 @@
+# shellcheck shell=bash
 # The analysis branch (codeboarding_analysis_location: codeboarding_branch, BASELINE_BRANCH
-# here, codeboarding/baseline-<synced branch>): an orphan branch holding one commit per sync, each with trailers naming the
+# here, codeboarding/baseline): an orphan branch holding one commit per sync, each with trailers naming the
 # commit it analysed (CodeBoarding-Source), the branch that commit is on
 # (CodeBoarding-Branch) and the configuration it ran under (CodeBoarding-Config).
 # Sync writes it; sync and review read it. Sourced, not run; needs analysis-state.sh.
@@ -15,21 +16,22 @@ baseline_fail() {
   exit 1
 }
 
-# Returns 0 when BASELINE_BRANCH exists in repository $1 and 2 when it does not.
-# Any other failure is retried once, so one network blip does not fail the run.
+# Returns 0 when branch $2 (BASELINE_BRANCH by default) exists in repository $1 and
+# 2 when it does not. Any other failure is retried once, so one network blip does
+# not fail the run.
 baseline_branch_exists() {
-  local repository="$1" auth status
+  local repository="$1" branch="${2:-$BASELINE_BRANCH}" auth status
   auth="$(printf 'x-access-token:%s' "${GIT_TOKEN:-}" | base64 -w0)"
   for attempt in 1 2; do
     status=0
     git -c "http.extraheader=AUTHORIZATION: basic $auth" ls-remote --exit-code \
-      "${GITHUB_SERVER_URL%/}/${repository}.git" "refs/heads/$BASELINE_BRANCH" >/dev/null || status=$?
+      "${GITHUB_SERVER_URL%/}/${repository}.git" "refs/heads/$branch" >/dev/null || status=$?
     case "$status" in
       0 | 2) return "$status" ;;
     esac
     [ "$attempt" = 2 ] || sleep "${BASELINE_RETRY_DELAY:-2}"
   done
-  baseline_fail "Could not read $BASELINE_BRANCH from $repository. Check that github_token can read the repository."
+  baseline_fail "Could not read $branch from $repository. Check that github_token can read the repository."
 }
 
 # ---- Reading ----
@@ -94,6 +96,7 @@ from_codeboarding_baseline() {
   rm -f "$scratch/.codeboarding/source.json"
   compatible_state "$scratch/.codeboarding" || return 1
   replace_state "$scratch/.codeboarding" "$state" "$config_from"
+  # shellcheck disable=SC2034 # read by the scripts that source this file
   SEED_SHA="$commit"
   echo "::notice::Starting from the analysis of ${commit:0:7} saved on $BASELINE_BRANCH."
 }
@@ -105,7 +108,7 @@ from_codeboarding_baseline() {
 # whose REMOTE, BASE_SHA and emit_result it uses; always exits.
 save_to_codeboarding_baseline() {
   local branch="$BASELINE_BRANCH" tree="$RUNNER_TEMP/codeboarding-baseline-tree"
-  local index="$RUNNER_TEMP/codeboarding-baseline-index" git_dir files new_tree tip parent commit now
+  local index="$RUNNER_TEMP/codeboarding-baseline-index" git_dir files new_tree tip tip_source parent commit now
   git_dir="$(git rev-parse --absolute-git-dir)"
   rm -rf "$tree" "$index"
   mkdir -p "$tree"
@@ -134,29 +137,35 @@ CodeBoarding-Config: $CFG_HASH")
 
   # Two tries: a concurrent sync that moved the branch for an older commit is
   # built on top of once. A second move means a newer run is handling it.
+  # The synced branch moving on during the analysis is no reason to drop it:
+  # entries are keyed by the commit they describe, and a branch that merges
+  # faster than sync runs would otherwise never be saved.
   for _ in 1 2; do
-    git fetch -q "$REMOTE" "$SYNCED_BRANCH"
-    if [ "$(git rev-parse FETCH_HEAD)" != "$BASE_SHA" ]; then
-      emit_result "$files" false "$BASE_SHA"
-      echo "::notice::$SYNCED_BRANCH advanced during analysis; a newer run should update $branch."
-      exit 0
-    fi
     tip="" parent=()
     if [ -n "$(git ls-remote "$REMOTE" "refs/heads/$branch")" ]; then
       git fetch -q --depth=1 "$REMOTE" "refs/heads/$branch"
       # The parent is what was fetched, not what ls-remote saw: the branch may move in between.
       tip="$(git rev-parse FETCH_HEAD)"
+      tip_source="$(git log -1 --format='%(trailers:key=CodeBoarding-Source,valueonly)' "$tip" | tr -d '[:space:]')"
       # Building on any other branch would leave it holding nothing but .codeboarding/.
-      if [ -z "$(git log -1 --format='%(trailers:key=CodeBoarding-Source,valueonly)' "$tip" | tr -d '[:space:]')" ] ||
-        [ "$(git ls-tree --name-only "$tip")" != .codeboarding ]; then
+      if [ -z "$tip_source" ] || [ "$(git ls-tree --name-only "$tip")" != .codeboarding ]; then
         baseline_fail "$branch already exists and is not a CodeBoarding baseline branch, so sync will not write to it. Rename that branch, or set codeboarding_analysis_location: in_place."
       fi
       parent=(-p "$tip")
-      if [ "$(git log -1 --format='%(trailers:key=CodeBoarding-Source,valueonly)' "$tip" | tr -d '[:space:]')" = "$BASE_SHA" ] &&
+      if [ "$tip_source" = "$BASE_SHA" ] &&
         git diff --quiet -I '"generated_at"' -I '"timestamp"' "$tip" "$new_tree"; then
         emit_result "$files" false "$BASE_SHA"
         echo "::notice::$branch already holds this analysis of $SYNCED_BRANCH @${BASE_SHA:0:7}."
         exit 0
+      fi
+      # The tip is the latest diagram, so an older analysis never replaces a newer one.
+      if [ "$tip_source" != "$BASE_SHA" ]; then
+        git fetch -q --depth="$(( CATCHUP_BOUND + 1 ))" "$REMOTE" "$SYNCED_BRANCH"
+        if git merge-base --is-ancestor "$BASE_SHA" "$tip_source" 2>/dev/null; then
+          emit_result "$files" false "$BASE_SHA"
+          echo "::notice::$branch already holds the analysis of a newer commit, ${tip_source:0:7}; leaving it."
+          exit 0
+        fi
       fi
     fi
     commit="$(git commit-tree "$new_tree" ${parent[@]+"${parent[@]}"} \

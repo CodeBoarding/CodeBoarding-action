@@ -147,9 +147,9 @@ inputs:
       Where the analysis of the synced branch (the one branch the sync workflow's
       push trigger lists) is stored. Sync saves it there and review reads its base
       from there, so set the same value for both.
-      codeboarding_branch (default): on codeboarding/baseline-<synced branch>, an
-      orphan branch of its own with one commit per sync; the synced branch is never
-      written.
+      codeboarding_branch (default): on codeboarding/baseline, an orphan branch of its
+      own with one commit per sync; the synced branch is never written. Sync then runs
+      on the repository's default branch only.
       in_place: committed as .codeboarding/ on the synced branch itself.
     required: false
     default: 'codeboarding_branch'
@@ -249,6 +249,7 @@ runs:
         PULL_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         PULL_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
         REPOSITORY: ${{ github.repository }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: "$GITHUB_ACTION_PATH/scripts/action/resolve-github-event.sh"
 
     - name: Acknowledge review command

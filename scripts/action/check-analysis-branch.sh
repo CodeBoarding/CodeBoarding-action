@@ -1,14 +1,25 @@
 #!/usr/bin/env bash
-# An analysis branch name already used by code fails here, before the engine is
-# installed, instead of after a full analysis.
+# An analysis branch name git cannot create, or one already used by code, fails
+# here, before the engine is installed, instead of after a full analysis.
 set -euo pipefail
+# shellcheck source=scripts/action/codeboarding-baseline.sh
 source "$(dirname "$0")/codeboarding-baseline.sh"
 [ -n "${BASELINE_BRANCH:-}" ] || exit 0
 
 status=0
+# shellcheck disable=SC2153 # REPOSITORY comes from the step's env.
 baseline_branch_exists "$REPOSITORY" || status=$?
-# The first sync creates it.
-[ "$status" = 0 ] || exit 0
+if [ "$status" = 2 ]; then
+  # The first sync creates it, which git refuses next to a branch named like its parent directory.
+  blocking="${BASELINE_BRANCH%/*}"
+  [ "$blocking" = "$BASELINE_BRANCH" ] || {
+    status=0
+    baseline_branch_exists "$REPOSITORY" "$blocking" || status=$?
+    [ "$status" = 2 ] ||
+      baseline_fail "$REPOSITORY has a branch named $blocking, so git cannot create $BASELINE_BRANCH next to it. Rename $blocking, or set codeboarding_analysis_location: in_place."
+  }
+  exit 0
+fi
 
 # Commit messages and the tree listing only: no analysis files are downloaded.
 scratch="$RUNNER_TEMP/codeboarding-analysis-branch-check.git"

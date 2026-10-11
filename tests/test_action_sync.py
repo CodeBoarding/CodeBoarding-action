@@ -294,13 +294,13 @@ class ActionSyncTests(unittest.TestCase):
                 env={
                     "PATH": os.environ["PATH"],
                     "GITHUB_STEP_SUMMARY": str(summary),
-                    "FAILURE_REASON": "codeboarding/baseline-main already exists and is not a CodeBoarding analysis branch.",
-                    "SAVED_TO": "codeboarding/baseline-main",
+                    "FAILURE_REASON": "codeboarding/baseline already exists and is not a CodeBoarding analysis branch.",
+                    "SAVED_TO": "codeboarding/baseline",
                 },
                 check=True,
             )
             text = summary.read_text(encoding="utf-8")
-        self.assertIn("- **Failed:** codeboarding/baseline-main already exists", text)
+        self.assertIn("- **Failed:** codeboarding/baseline already exists", text)
         self.assertNotIn("- Analysis:", text, "nothing was analyzed")
 
     def test_empty_review_is_successful(self) -> None:

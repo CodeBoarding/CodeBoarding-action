@@ -23,14 +23,16 @@ case "$location" in
 esac
 
 if [ -n "${OLD_SYNC_STRATEGY:-}" ]; then
-  # codeboarding_analysis_location has a default, so only a value other than it is a conflict.
-  [ "$location" = "$DEFAULT_LOCATION" ] ||
-    fail "Set codeboarding_analysis_location only; sync_strategy is the input it replaces."
   case "$OLD_SYNC_STRATEGY" in
-    push) location=in_place ;;
-    pull_request) location=codeboarding_branch ;;
+    push) mapped=in_place ;;
+    pull_request) mapped=codeboarding_branch ;;
     *) fail "sync_strategy is no longer supported; use codeboarding_analysis_location." ;;
   esac
+  # codeboarding_analysis_location has a default, so only a value other than it can
+  # conflict; one that agrees is a migration half done.
+  [ "$location" = "$DEFAULT_LOCATION" ] || [ "$location" = "$mapped" ] ||
+    fail "sync_strategy: $OLD_SYNC_STRATEGY and codeboarding_analysis_location: $location disagree. Set codeboarding_analysis_location only; sync_strategy is the input it replaces."
+  location="$mapped"
   warn "sync_strategy is deprecated; replace sync_strategy: $OLD_SYNC_STRATEGY with codeboarding_analysis_location: $location, in the review workflow too."
   [ "$OLD_SYNC_STRATEGY" != pull_request ] ||
     warn "Rolling sync pull requests are gone; close any open codeboarding/sync pull request."
@@ -43,8 +45,9 @@ if [ -n "${OLD_TARGET_BRANCH:-}" ]; then
   warn "target_branch is deprecated and has no effect; remove it."
 fi
 
-# Forcing a fresh analysis is a manual job now: run the CodeBoarding CLI and commit its result.
-[ -z "${OLD_FORCE_FULL:-}" ] ||
-  warn "force_full is no longer supported and has no effect; remove it. For a fresh full analysis, run the CodeBoarding CLI locally."
+# Old templates pass `force_full: ${{ inputs.force_full || false }}`, so false is
+# what nearly every one of them sends; only true asked for something.
+[ "${OLD_FORCE_FULL:-false}" = false ] ||
+  warn "force_full is no longer supported and has no effect; remove it."
 
 echo "analysis_location=$location" >> "$GITHUB_OUTPUT"

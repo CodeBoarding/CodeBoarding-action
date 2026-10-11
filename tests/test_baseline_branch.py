@@ -16,7 +16,8 @@ from test_action_sync import write_core
 
 ROOT = Path(__file__).resolve().parent.parent
 DELIVER = ROOT / "scripts" / "action" / "deliver-sync.sh"
-BRANCH = "codeboarding/baseline-main"
+# The webview reads the latest diagram from this branch, so the name is part of the contract.
+BRANCH = "codeboarding/baseline"
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -195,6 +196,15 @@ class BaselineBranchDeliveryTests(unittest.TestCase):
         result = self._check("main")
         self.assertEqual(result.returncode, 0, result.stdout)
 
+    def test_the_check_before_the_install_refuses_a_branch_that_blocks_creating_it(self) -> None:
+        # Otherwise the full analysis runs and the push fails, blaming a branch rule.
+        git(self.checkout, "push", "-q", "origin", "main:refs/heads/codeboarding")
+
+        result = self._check("main")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("has a branch named codeboarding, so git cannot create codeboarding/baseline", result.stdout)
+
     def test_the_check_before_the_install_refuses_a_code_branch_with_the_name(self) -> None:
         git(self.checkout, "push", "-q", "origin", f"main:refs/heads/{BRANCH}")
 
@@ -242,20 +252,38 @@ class BaselineBranchDeliveryTests(unittest.TestCase):
         self.assertEqual(git(self.remote, "rev-parse", BRANCH), before)
         self.assertEqual(values.get("committed", "false"), "false")
 
-    def test_a_synced_branch_that_moved_during_analysis_keeps_the_branch_unchanged(self) -> None:
-        self._deliver()
-        before = git(self.remote, "rev-parse", BRANCH)
+    def _push_elsewhere(self) -> None:
         other = self.root / "other"
         git(self.root, "clone", "-q", str(self.remote), str(other))
         (other / "x.py").write_text("pass\n", encoding="utf-8")
         git(other, "add", "-A")
         git(other, "commit", "-q", "-m", "x")
         git(other, "push", "-q", "origin", "HEAD:main")
-        self._analysis("stale")
+
+    def test_a_synced_branch_that_moved_during_analysis_still_saves_it(self) -> None:
+        # A branch that merges faster than sync runs would otherwise never be saved.
+        self._deliver()
+        analyzed = self._push_code("feature")
+        self._push_elsewhere()
+        self._analysis("second")
 
         _result, values = self._deliver()
 
+        self.assertEqual(values["committed"], "true")
+        self.assertIn(f"CodeBoarding-Source: {analyzed}", git(self.remote, "log", "-1", "--format=%B", BRANCH))
+
+    def test_an_older_analysis_never_replaces_a_newer_one(self) -> None:
+        first = git(self.checkout, "rev-parse", "HEAD")
+        self._push_code("feature")
+        self._deliver()
+        before = git(self.remote, "rev-parse", BRANCH)
+        git(self.checkout, "checkout", "-q", first)
+        self._analysis("older")
+
+        result, values = self._deliver()
+
         self.assertEqual(values["committed"], "false")
+        self.assertIn("already holds the analysis of a newer commit", result.stdout)
         self.assertEqual(git(self.remote, "rev-parse", BRANCH), before)
 
 
@@ -487,6 +515,25 @@ class BaselineBranchReadTests(unittest.TestCase):
         self.assertIn("This run is on a CodeBoarding analysis branch", self._outputs().get("failure_reason", ""))
         self.assertEqual(self._modes(), [])
 
+    def test_sync_continues_from_the_analysis_the_head_commit_removed(self) -> None:
+        # The commit that moves a repository to the analysis branch deletes .codeboarding/.
+        work = self.root / "move"
+        git(self.root, "clone", "-q", f"file://{self.root}/origin.git", str(work))
+        (work / ".codeboarding").mkdir()
+        (work / ".codeboarding" / "analysis.json").write_text(json.dumps({"metadata": {"depth_cap": 2}}))
+        git(work, "add", "-A")
+        git(work, "commit", "-q", "-m", "committed analysis")
+        git(work, "rm", "-rq", ".codeboarding")
+        git(work, "commit", "-q", "-m", "move to the analysis branch")
+        git(work, "push", "-q", "origin", "HEAD:main")
+        shutil.rmtree(self.checkout)
+        git(self.root, "clone", "-q", "--depth=1", "--branch", "main", f"file://{self.root}/origin.git", str(self.checkout))
+
+        self._analyze(ANALYSIS_KIND="sync", BASELINE_BRANCH="codeboarding/none")
+
+        self.assertEqual(self._modes(), ["incremental"])
+        self.assertRegex(self.log, r"Starting from the analysis committed on \w{7}, which \w{7} removed")
+
     def test_sync_without_the_branch_analyzes_from_scratch(self) -> None:
         self._analyze(
             ANALYSIS_KIND="sync",
@@ -513,6 +560,7 @@ class BaselineBranchGuardTests(unittest.TestCase):
                     "HEAD_AUTHOR_EMAIL": "dev@example.com",
                     "ANALYSIS_LOCATION": "codeboarding_branch",
                     "REPOSITORY": "owner/repo",
+                    "DEFAULT_BRANCH": "main",
                     **extra,
                 },
                 capture_output=True,
@@ -527,14 +575,24 @@ class BaselineBranchGuardTests(unittest.TestCase):
         self.assertIn("synced_branch=main\n", values)
         self.assertIn(f"analysis_branch={BRANCH}\n", values)
 
-    def test_each_code_branch_has_an_analysis_branch_of_its_own(self) -> None:
-        # One shared analysis branch let whichever branch synced first lock out the
-        # others, and a renamed branch could never sync again.
-        for synced in ("dev", "release/1.x"):
-            with self.subTest(synced=synced):
-                result, values = self._guard(REF_NAME=synced)
-                self.assertEqual(result.returncode, 0, result.stdout)
-                self.assertIn(f"analysis_branch=codeboarding/baseline-{synced}\n", values)
+    def test_sync_from_any_branch_but_the_default_fails_before_the_install(self) -> None:
+        # A manual run or a second push branch would otherwise make another branch's
+        # analysis the latest diagram.
+        result, values = self._guard(REF_NAME="feature-x")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("default branch, main, and this run is on feature-x", result.stdout)
+        self.assertIn("failure_reason=Sync keeps the analysis of the default branch", values)
+
+    def test_a_renamed_default_branch_keeps_syncing(self) -> None:
+        # Entries are keyed by commit, so a master -> main rename just continues.
+        result, values = self._guard(REF_NAME="trunk", DEFAULT_BRANCH="trunk")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn(f"analysis_branch={BRANCH}\n", values)
+
+    def test_in_place_syncs_any_branch(self) -> None:
+        result, values = self._guard(REF_NAME="dev", ANALYSIS_LOCATION="in_place")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("synced_branch=dev\n", values)
 
     def test_in_place_commits_the_analysis_to_the_code_branch_in_both_modes(self) -> None:
         with tempfile.TemporaryDirectory() as bin_dir:
@@ -557,9 +615,7 @@ class BaselineBranchGuardTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stdout)
                     self.assertIn("analysis_branch=\n", values, result.stdout)
             result, values = self._guard(MODE="review", **review)
-            self.assertIn(
-                "analysis_branch=codeboarding/baseline-develop\n", values, "a review reads its base branch's analysis"
-            )
+            self.assertIn(f"analysis_branch={BRANCH}\n", values, "a review reads the analysis branch")
 
 
 if __name__ == "__main__":

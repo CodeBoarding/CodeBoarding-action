@@ -5,6 +5,7 @@
 # Usage: analyze.sh base|head|sync <checkout> <state>
 # Prints analysis_mode= and analysis_path= on stdout; everything else goes to stderr.
 set -euo pipefail
+# shellcheck source=scripts/action/analysis-state.sh
 source "$(dirname "$0")/analysis-state.sh"
 role="$1" checkout="$2" state="$3"
 # Stdout is the result, so the error goes to stderr; the reason goes to the step's

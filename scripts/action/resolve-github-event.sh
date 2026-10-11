@@ -9,13 +9,10 @@ case "$MODE" in
   *) fail "mode must be review or sync." ;;
 esac
 printf 'mode=%s\nskip=false\nevent=%s\n' "$MODE" "$EVENT" >> "$GITHUB_OUTPUT"
-# The branch the analysis of code branch $1 is kept on, or nothing when it is
-# committed in place, on the code branch itself. Named after the code branch, so
-# each code branch has its own and a sync can never write into another's.
-analysis_branch_of() {
-  [ "${ANALYSIS_LOCATION:-}" = codeboarding_branch ] && [ -n "$1" ] || return 0
-  echo "codeboarding/baseline-$1"
-}
+# The branch the analysis is kept on, or empty when it is committed in place, on
+# the code branch itself. The webview reads the latest diagram from this name.
+analysis_branch=""
+[ "${ANALYSIS_LOCATION:-}" != codeboarding_branch ] || analysis_branch=codeboarding/baseline
 if [ "$MODE" = sync ]; then
   case "$EVENT" in
     push|workflow_dispatch|schedule) ;;
@@ -29,9 +26,19 @@ if [ "$MODE" = sync ]; then
   esac
   synced_branch="$REF_NAME"
   [ -n "$synced_branch" ] || fail "Sync needs a branch to analyze; run it on one."
+  # One analysis branch holds one code branch's analysis: the default branch's.
+  # Checked here, in seconds, rather than after a full analysis.
+  if [ -n "$analysis_branch" ]; then
+    default_branch="${DEFAULT_BRANCH:-}"
+    [ -n "$default_branch" ] ||
+      default_branch="$(gh api "repos/$REPOSITORY" --jq .default_branch 2>/dev/null || true)"
+    [ -n "$default_branch" ] || fail "Could not read the default branch of $REPOSITORY."
+    [ "$synced_branch" = "$default_branch" ] ||
+      fail "Sync keeps the analysis of the default branch, $default_branch, and this run is on $synced_branch. Run sync on pushes to $default_branch only, or set codeboarding_analysis_location: in_place."
+  fi
   {
     echo "synced_branch=$synced_branch"
-    echo "analysis_branch=$(analysis_branch_of "$synced_branch")"
+    echo "analysis_branch=$analysis_branch"
     echo "checkout_repo=$REPOSITORY"
     echo "checkout_ref=$synced_branch"
   } >> "$GITHUB_OUTPUT"
@@ -120,7 +127,7 @@ is_fork=false
   echo "merge_base_resolved=$merge_base_resolved"
   echo "behind_by=$behind_by"
   echo "base_ref=$base_ref"
-  echo "analysis_branch=$(analysis_branch_of "$base_ref")"
+  echo "analysis_branch=$analysis_branch"
   echo "head_sha=$head_sha"
   echo "base_repo=$base_repo"
   echo "head_repo=$head_repo"

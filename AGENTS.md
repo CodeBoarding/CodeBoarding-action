@@ -7,7 +7,7 @@ This repo is a GitHub Action with two modes, selected by the `mode` input:
   comment (runs on `pull_request` / `issue_comment`).
 - **`mode: sync`**: on push to the one branch its trigger lists, regenerates the
   analysis and saves the `.codeboarding/` state where
-  `codeboarding_analysis_location` says (an orphan `codeboarding/baseline-<branch>` branch
+  `codeboarding_analysis_location` says (an orphan `codeboarding/baseline` branch
   by default, or `in_place` on that branch itself), so review mode always diffs
   against a current baseline.
 
@@ -85,7 +85,7 @@ existing workflow on the old silent-fallback behaviour forever — the opposite 
 the intent. Shipping it as a minor bump on the moving `v1` tag is what makes
 adopters actually receive it. Do not "correct" this to `feat!:` after the fact.
 The analysis-location change (#143) is a second such exception: sync's default
-moved from committing to the synced branch to `codeboarding/baseline-<branch>`.
+moved from committing to the synced branch to `codeboarding/baseline`.
 - `chore:` / `docs:` / `ci:` / `refactor:` / `test:` → ride along in the next
   release but do not trigger one.
 

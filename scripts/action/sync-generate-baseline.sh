@@ -3,10 +3,11 @@
 # saved analysis. First match wins:
 #
 #   1. an entry on the baseline branch for this commit or an ancestor
-#   2. the analysis committed on the branch
+#   2. the analysis committed on the branch, or on the parent of a commit that removed it
 #   3. the saved analysis of this commit or the nearest ancestor
 #   4. nothing: analyzed from scratch
 set -euo pipefail
+# shellcheck source=scripts/action/seed-sources.sh
 source "$(dirname "$0")/seed-sources.sh"
 state="$RUNNER_TEMP/codeboarding-sync/analysis"
 rm -rf "$RUNNER_TEMP/codeboarding-sync"
@@ -22,6 +23,7 @@ fi
 
 if ! from_codeboarding_baseline "${REPOSITORY:-}" "$head_sha" "$state" "$CHECKOUT_DIR" &&
   ! from_committed_baseline "$CHECKOUT_DIR" "$state" &&
+  ! from_parent_committed_baseline "${REPOSITORY:-}" "$head_sha" "$state" "$CHECKOUT_DIR" &&
   ! from_ancestor_artifact "${REPOSITORY:-}" "$head_sha" "$state" true "$CHECKOUT_DIR"; then
   keep_user_config "$CHECKOUT_DIR" "$state"
 fi

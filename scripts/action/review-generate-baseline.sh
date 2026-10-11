@@ -11,6 +11,7 @@
 # Outputs base_analysis_path, and publish_base when this run produced a base
 # other pull requests forking there should reuse.
 set -euo pipefail
+# shellcheck source=scripts/action/seed-sources.sh
 source "$(dirname "$0")/seed-sources.sh"
 work="$RUNNER_TEMP/codeboarding-review"
 checkout="$work/base" state="$work/base-state"
