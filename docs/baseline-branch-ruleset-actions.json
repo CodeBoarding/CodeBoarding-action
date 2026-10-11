@@ -5,7 +5,8 @@
   "conditions": {
     "ref_name": {
       "include": [
-        "refs/heads/codeboarding/baseline"
+        "refs/heads/codeboarding/baseline-*",
+        "refs/heads/codeboarding/baseline-*/**"
       ],
       "exclude": []
     }

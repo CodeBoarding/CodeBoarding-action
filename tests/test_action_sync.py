@@ -256,6 +256,35 @@ class ActionSyncTests(unittest.TestCase):
             # file that is never printed is silently left out of the commit.
             self.assertIn(str(installed), result.stdout.splitlines())
 
+    def test_a_missing_analysis_is_logged_and_given_as_the_failure_reason(self) -> None:
+        # Stdout is the list of installed paths, so an error printed there never reached the log.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "checkout").mkdir()
+            (root / "analysis").mkdir()
+            write_core(root / "core")
+            output = root / "github-output"
+            output.write_text("", encoding="utf-8")
+
+            result = subprocess.run(
+                [str(INSTALL_SYNC)],
+                env={
+                    "PATH": os.environ["PATH"],
+                    "PYTHONPATH": str(root / "core"),
+                    "ACTION_PATH": str(ROOT),
+                    "ANALYSIS_DIR": str(root / "analysis"),
+                    "CHECKOUT_DIR": str(root / "checkout"),
+                    "GITHUB_OUTPUT": str(output),
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("::error::Core did not produce analysis.json.", result.stderr)
+            self.assertIn("failure_reason=Core did not produce analysis.json.", output.read_text(encoding="utf-8"))
+
     def test_a_failed_sync_says_why_in_the_job_summary(self) -> None:
         # A push-triggered sync has no pull request to comment on.
         with tempfile.TemporaryDirectory() as tmp:
@@ -265,13 +294,13 @@ class ActionSyncTests(unittest.TestCase):
                 env={
                     "PATH": os.environ["PATH"],
                     "GITHUB_STEP_SUMMARY": str(summary),
-                    "FAILURE_REASON": "codeboarding/baseline keeps the analysis of main, and this sync runs on dev.",
-                    "SAVED_TO": "codeboarding/baseline",
+                    "FAILURE_REASON": "codeboarding/baseline-main already exists and is not a CodeBoarding analysis branch.",
+                    "SAVED_TO": "codeboarding/baseline-main",
                 },
                 check=True,
             )
             text = summary.read_text(encoding="utf-8")
-        self.assertIn("- **Failed:** codeboarding/baseline keeps the analysis of main", text)
+        self.assertIn("- **Failed:** codeboarding/baseline-main already exists", text)
         self.assertNotIn("- Analysis:", text, "nothing was analyzed")
 
     def test_empty_review_is_successful(self) -> None:

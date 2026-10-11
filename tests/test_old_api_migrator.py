@@ -76,6 +76,15 @@ class OldApiMigratorTests(unittest.TestCase):
         self.assertEqual(value, "codeboarding_branch")
         self.assertIn("target_branch is deprecated", result.stdout)
 
+    def test_force_full_is_ignored_with_a_warning(self) -> None:
+        # It is released, so a workflow that still sets it must keep running.
+        for old in ("true", "false"):
+            with self.subTest(old=old):
+                result, value = migrate(OLD_FORCE_FULL=old)
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertEqual(value, "codeboarding_branch")
+                self.assertIn("::warning title=CodeBoarding inputs::force_full is no longer supported", result.stdout)
+
     def test_a_target_branch_elsewhere_points_at_the_push_trigger(self) -> None:
         # It must not tell anyone to analyze a branch they did not choose.
         result, _value = migrate(REF_NAME="master", OLD_TARGET_BRANCH="develop")

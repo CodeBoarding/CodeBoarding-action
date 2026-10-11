@@ -147,8 +147,9 @@ inputs:
       Where the analysis of the synced branch (the one branch the sync workflow's
       push trigger lists) is stored. Sync saves it there and review reads its base
       from there, so set the same value for both.
-      codeboarding_branch (default): on codeboarding/baseline, an orphan branch of its
-      own with one commit per sync; the synced branch is never written.
+      codeboarding_branch (default): on codeboarding/baseline-<synced branch>, an
+      orphan branch of its own with one commit per sync; the synced branch is never
+      written.
       in_place: committed as .codeboarding/ on the synced branch itself.
     required: false
     default: 'codeboarding_branch'
@@ -165,6 +166,11 @@ inputs:
   sync_strategy:
     description: 'Deprecated: use codeboarding_analysis_location (push is in_place, pull_request is codeboarding_branch).'
     deprecationMessage: 'sync_strategy is deprecated; use codeboarding_analysis_location.'
+    required: false
+    default: ''
+  force_full:
+    description: 'Deprecated and ignored: sync always continues from the nearest saved analysis.'
+    deprecationMessage: 'force_full is deprecated and ignored.'
     required: false
     default: ''
 outputs:
@@ -217,6 +223,7 @@ runs:
         ANALYSIS_LOCATION: ${{ inputs.codeboarding_analysis_location }}
         OLD_TARGET_BRANCH: ${{ inputs.target_branch }}
         OLD_SYNC_STRATEGY: ${{ inputs.sync_strategy }}
+        OLD_FORCE_FULL: ${{ inputs.force_full }}
       run: "$GITHUB_ACTION_PATH/scripts/action/old_api_migrator.sh"
 
     - name: Resolve event
@@ -548,7 +555,7 @@ runs:
         FILES: ${{ steps.sync_commit.outputs.files_written }}
         SAVED_TO: ${{ steps.guard.outputs.analysis_branch || steps.guard.outputs.synced_branch }}
         # A failed sync has no pull request to comment on; the summary is where it says why.
-        FAILURE_REASON: ${{ steps.guard.outputs.failure_reason || steps.analysis_check.outputs.failure_reason || steps.sync_analyze.outputs.failure_reason || steps.sync_commit.outputs.failure_reason }}
+        FAILURE_REASON: ${{ steps.guard.outputs.failure_reason || steps.analysis_check.outputs.failure_reason || steps.state.outputs.failure_reason || steps.sync_analyze.outputs.failure_reason || steps.sync_commit.outputs.failure_reason }}
       run: "$GITHUB_ACTION_PATH/scripts/action/sync-summary.sh"
 
     - name: Generate review baseline

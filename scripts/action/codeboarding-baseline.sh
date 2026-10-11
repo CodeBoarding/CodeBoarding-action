@@ -1,5 +1,5 @@
 # The analysis branch (codeboarding_analysis_location: codeboarding_branch, BASELINE_BRANCH
-# here): an orphan branch holding one commit per sync, each with trailers naming the
+# here, codeboarding/baseline-<synced branch>): an orphan branch holding one commit per sync, each with trailers naming the
 # commit it analysed (CodeBoarding-Source), the branch that commit is on
 # (CodeBoarding-Branch) and the configuration it ran under (CodeBoarding-Config).
 # Sync writes it; sync and review read it. Sourced, not run; needs analysis-state.sh.

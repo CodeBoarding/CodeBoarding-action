@@ -7,7 +7,7 @@ graphs it compares.
 
 | Store | Holds | Lifetime | Who can read it |
 |---|---|---|---|
-| **Git, analysis branch** (`codeboarding_analysis_location: codeboarding_branch`, the default) | one commit per sync on `codeboarding/baseline` | forever | anyone with repo read |
+| **Git, analysis branch** (`codeboarding_analysis_location: codeboarding_branch`, the default) | one commit per sync on `codeboarding/baseline-<branch>` | forever | anyone with repo read |
 | **Git, code branch** (`codeboarding_analysis_location: in_place`) | `.codeboarding/` on the synced branch | forever | anyone with repo read |
 | **Workflow artifacts** | every analysis this action reuses or publishes | a retention window | any run with `actions: read`, plus humans |
 | ~~Actions cache~~ | — | — | not used |
@@ -156,7 +156,11 @@ base and a diagram drawn against another would report changes nobody made.
 ## The baseline branch
 
 By default sync saves the analysis to a branch of its own in the same
-repository, `codeboarding/baseline`. The synced branch is then only read.
+repository, named after the synced branch: `codeboarding/baseline-main` for
+`main`. The synced branch is then only read, and a review reads the analysis
+branch of its pull request's base branch. Each code branch has its own, so a
+sync never writes over another branch's analysis; a renamed code branch starts a
+new one with a full analysis, unless its analysis branch is renamed to match.
 `codeboarding_analysis_location: in_place` commits the analysis to the synced
 branch instead, and skips everything below.
 
@@ -184,7 +188,7 @@ wholesale; only the checkout's own `.codeboardingignore` and health configuratio
 are kept. The push is a fast-forward onto the tip it fetched, never forced. Sync
 refuses to write to an existing branch that is not a baseline branch (its tip has
 no `CodeBoarding-Source` trailer, or holds anything besides `.codeboarding/`), so
-a code branch that happens to be named `codeboarding/baseline` fails instead of being emptied. The branch belongs to the first branch that saved there: before installing anything, a sync from another branch fails, naming the branch it keeps the analysis of. If the
+a code branch that happens to be named `codeboarding/baseline-main` fails, before anything is installed, instead of being emptied. If the
 synced branch moved during the analysis, the result is dropped, as when committing
 to it. If another sync moved the baseline branch, it builds on that tip once. A push the
 remote refuses while the tip did not move is a branch rule, and the run fails
@@ -212,11 +216,13 @@ a pickle runs code when loaded, so whoever can write the branch can run code in
 the sync and review workflows. Import
 [`baseline-branch-ruleset.json`](baseline-branch-ruleset.json) under Settings,
 Rules, Rulesets, New ruleset, Import a ruleset. It blocks creating, updating,
-deleting and force-pushing `codeboarding/baseline` for everyone except the
+deleting and force-pushing every `codeboarding/baseline-*` branch for everyone except the
 CodeBoarding Review app (`4021464`), so only the workflows you give the app's key
-can write it; sync must then push with the app's token as `github_token`.
+can write it; sync must then push with the app's token as `github_token`. That
+token is only available to CodeBoarding's own workflows: the app's private key is
+never shipped to other repositories.
 
-If sync can only use the default `github.token`, import
+If sync uses the default `github.token`, as the README's examples do, import
 [`baseline-branch-ruleset-actions.json`](baseline-branch-ruleset-actions.json)
 instead, whose bypass actor is GitHub Actions (integration `15368`). **It only stops
 people pushing by hand:** any workflow with `contents: write`, including one run

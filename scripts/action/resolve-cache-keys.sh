@@ -20,7 +20,7 @@ engine_version="${ENGINE_VERSION:-}"
 if [ -z "$engine_version" ]; then
   # The engine was just installed and started, so an unreadable version is a broken install.
   engine_version="$(python3 -c 'from importlib.metadata import version; print(version("codeboarding"))')" ||
-    { echo "::error::Could not read the installed CodeBoarding version."; exit 1; }
+    { reason="Could not read the installed CodeBoarding version."; echo "::error::$reason"; echo "failure_reason=$reason" >> "$GITHUB_OUTPUT"; exit 1; }
 fi
 
 # The name pins everything that decides what an analysis says, so a bundle is

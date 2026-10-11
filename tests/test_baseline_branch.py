@@ -16,7 +16,7 @@ from test_action_sync import write_core
 
 ROOT = Path(__file__).resolve().parent.parent
 DELIVER = ROOT / "scripts" / "action" / "deliver-sync.sh"
-BRANCH = "codeboarding/baseline"
+BRANCH = "codeboarding/baseline-main"
 
 
 def git(cwd: Path, *args: str) -> str:
@@ -195,16 +195,6 @@ class BaselineBranchDeliveryTests(unittest.TestCase):
         result = self._check("main")
         self.assertEqual(result.returncode, 0, result.stdout)
 
-    def test_the_check_before_the_install_refuses_a_second_branch(self) -> None:
-        # A trigger listing [main, dev] would show whichever synced last as the latest diagram.
-        self._deliver()
-
-        result = self._check("dev")
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn(f"{BRANCH} keeps the analysis of main, and this sync runs on dev.", result.stdout)
-        reason = (self.root / "check-output").read_text(encoding="utf-8")
-        self.assertIn("failure_reason=codeboarding/baseline keeps the analysis of main", reason, "for the job summary")
 
     def test_the_check_before_the_install_refuses_a_code_branch_with_the_name(self) -> None:
         git(self.checkout, "push", "-q", "origin", f"main:refs/heads/{BRANCH}")
@@ -213,6 +203,8 @@ class BaselineBranchDeliveryTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(f"{BRANCH} already exists and is not a CodeBoarding analysis branch", result.stdout)
+        reason = (self.root / "check-output").read_text(encoding="utf-8")
+        self.assertIn(f"failure_reason={BRANCH} already exists", reason, "for the job summary")
 
     def test_an_old_analysis_left_on_the_synced_branch_is_pointed_out(self) -> None:
         # The synced branch is never written from here, so its old copy can only be pointed out.
@@ -493,6 +485,7 @@ class BaselineBranchReadTests(unittest.TestCase):
         self._analyze(False, ANALYSIS_KIND="sync", CHECKOUT_DIR=str(analysis_checkout))
 
         self.assertIn("This run is on a CodeBoarding analysis branch", self.log)
+        self.assertIn("This run is on a CodeBoarding analysis branch", self._outputs().get("failure_reason", ""))
         self.assertEqual(self._modes(), [])
 
     def test_sync_without_the_branch_analyzes_from_scratch(self) -> None:
@@ -535,6 +528,15 @@ class BaselineBranchGuardTests(unittest.TestCase):
         self.assertIn("synced_branch=main\n", values)
         self.assertIn(f"analysis_branch={BRANCH}\n", values)
 
+    def test_each_code_branch_has_an_analysis_branch_of_its_own(self) -> None:
+        # One shared analysis branch let whichever branch synced first lock out the
+        # others, and a renamed branch could never sync again.
+        for synced in ("dev", "release/1.x"):
+            with self.subTest(synced=synced):
+                result, values = self._guard(REF_NAME=synced)
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertIn(f"analysis_branch=codeboarding/baseline-{synced}\n", values)
+
     def test_in_place_commits_the_analysis_to_the_code_branch_in_both_modes(self) -> None:
         with tempfile.TemporaryDirectory() as bin_dir:
             gh = Path(bin_dir) / "gh"
@@ -556,7 +558,9 @@ class BaselineBranchGuardTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stdout)
                     self.assertIn("analysis_branch=\n", values, result.stdout)
             result, values = self._guard(MODE="review", **review)
-            self.assertIn(f"analysis_branch={BRANCH}\n", values, "a review reads the analysis branch")
+            self.assertIn(
+                "analysis_branch=codeboarding/baseline-develop\n", values, "a review reads its base branch's analysis"
+            )
 
 
 if __name__ == "__main__":

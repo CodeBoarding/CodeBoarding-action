@@ -14,7 +14,9 @@ head_sha="$(git -C "$CHECKOUT_DIR" rev-parse HEAD)"
 # An analysis branch holds only analysis: analyzing it, and committing the result
 # onto it, would leave it unreadable as one.
 if [ -n "$(git -C "$CHECKOUT_DIR" log -1 --format='%(trailers:key=CodeBoarding-Source,valueonly)' | tr -d '[:space:]')" ]; then
-  echo "::error::This run is on a CodeBoarding analysis branch. Run sync on the code branch it analyzes."
+  reason="This run is on a CodeBoarding analysis branch. Run sync on the code branch it analyzes."
+  echo "::error::$reason"
+  echo "failure_reason=$reason" >> "$GITHUB_OUTPUT"
   exit 1
 fi
 

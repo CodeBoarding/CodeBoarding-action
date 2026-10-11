@@ -7,6 +7,9 @@
 set -euo pipefail
 source "$(dirname "$0")/analysis-state.sh"
 role="$1" checkout="$2" state="$3"
+# Stdout is the result, so the error goes to stderr; the reason goes to the step's
+# outputs for the review comment and the sync summary.
+fail() { echo "::error::$1" >&2; echo "failure_reason=$1" >> "${GITHUB_OUTPUT:-/dev/null}"; exit 1; }
 
 # Tags Core's own telemetry with this run and the analysis it belongs to, so its
 # events can be read per run: a review with no base events reused its base, one
@@ -28,16 +31,14 @@ mkdir -p "$state"
 if compatible_state "$state"; then
   run_core incremental
   if [ "$ANALYSIS_MODE" != incremental ] || { [ "$REQUIRES_FULL" != true ] && [ ! -f "$ANALYSIS_PATH" ]; }; then
-    echo "::error::Invalid incremental-analysis result." >&2
-    exit 1
+    fail "Core returned an invalid incremental-analysis result."
   fi
   [ "$REQUIRES_FULL" != true ] || echo "::notice::Core cannot update the $role analysis incrementally; analyzing in full." >&2
 fi
 if [ "$ANALYSIS_MODE" != incremental ] || [ "$REQUIRES_FULL" = true ]; then
   run_core full --depth-cap "$DEPTH_CAP"
   if [ "$ANALYSIS_MODE" != full ] || [ ! -f "$ANALYSIS_PATH" ]; then
-    echo "::error::Invalid full-analysis result." >&2
-    exit 1
+    fail "Core returned an invalid full-analysis result."
   fi
 fi
 printf 'analysis_mode=%s\nanalysis_path=%s\n' "$ANALYSIS_MODE" "$ANALYSIS_PATH"

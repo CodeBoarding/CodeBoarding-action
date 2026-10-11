@@ -7,6 +7,7 @@
 #   sync_strategy: pull_request                -> codeboarding_analysis_location: codeboarding_branch
 #   target_branch: <the branch the run is on>  -> nothing
 #   target_branch: <another branch>            -> fails: the push trigger picks the branch
+#   force_full: <anything>                     -> nothing, with a warning
 #
 # Delete a mapping, and its input in action.yml, once no supported workflow sets it.
 set -euo pipefail
@@ -41,5 +42,9 @@ if [ -n "${OLD_TARGET_BRANCH:-}" ]; then
     fail "target_branch is no longer supported: sync analyzes the branch its push trigger lists, and this run is on $REF_NAME. List $OLD_TARGET_BRANCH under on: push: branches: instead, and remove target_branch."
   warn "target_branch is deprecated and has no effect; remove it."
 fi
+
+# Forcing a fresh analysis is a manual job now: run the CodeBoarding CLI and commit its result.
+[ -z "${OLD_FORCE_FULL:-}" ] ||
+  warn "force_full is no longer supported and has no effect; remove it. For a fresh full analysis, run the CodeBoarding CLI locally."
 
 echo "analysis_location=$location" >> "$GITHUB_OUTPUT"

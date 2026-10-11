@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Copies Core's persisted artifacts into .codeboarding.
 set -euo pipefail
+# Stdout is captured by the caller, so the error goes to stderr; the reason goes
+# to the step's outputs for the job summary.
+fail() { echo "::error::$1" >&2; echo "failure_reason=$1" >> "${GITHUB_OUTPUT:-/dev/null}"; exit 1; }
 output="$CHECKOUT_DIR/.codeboarding"
 mkdir -p "$output"
 # Core exposes one canonical manifest. Read from the action's directory, never the
@@ -10,8 +13,8 @@ from constants import ANALYSIS_FILENAME, PERSISTED_ANALYSIS_ARTIFACT_FILENAMES a
 print(ANALYSIS_FILENAME)
 print(*artifacts, sep="\n")
 PY
-)" || { echo "::error::Could not read Core's persisted artifact manifest."; exit 1; }
-[ -n "$manifest" ] || { echo "::error::Core's persisted artifact manifest is empty."; exit 1; }
+)" || fail "Could not read Core's persisted artifact manifest."
+[ -n "$manifest" ] || fail "Core's persisted artifact manifest is empty."
 # Read into an array without mapfile, which needs bash 4: macOS ships bash 3.2,
 # so mapfile made this script, and its tests, unrunnable for local development.
 manifest_entries=()
@@ -20,7 +23,7 @@ while IFS= read -r entry; do
 done <<< "$manifest"
 required="${manifest_entries[0]}"
 artifacts=("${manifest_entries[@]:1}")
-[ -f "$ANALYSIS_DIR/$required" ] || { echo "::error::Core did not produce $required."; exit 1; }
+[ -f "$ANALYSIS_DIR/$required" ] || fail "Core did not produce $required."
 
 installed=0
 for name in "${artifacts[@]}"; do

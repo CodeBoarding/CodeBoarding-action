@@ -9,10 +9,13 @@ case "$MODE" in
   *) fail "mode must be review or sync." ;;
 esac
 printf 'mode=%s\nskip=false\nevent=%s\n' "$MODE" "$EVENT" >> "$GITHUB_OUTPUT"
-# The branch the analysis is kept on, or empty when it is committed in place, on
-# the code branch itself.
-analysis_branch=""
-[ "${ANALYSIS_LOCATION:-}" != codeboarding_branch ] || analysis_branch=codeboarding/baseline
+# The branch the analysis of code branch $1 is kept on, or nothing when it is
+# committed in place, on the code branch itself. Named after the code branch, so
+# each code branch has its own and a sync can never write into another's.
+analysis_branch_of() {
+  [ "${ANALYSIS_LOCATION:-}" = codeboarding_branch ] && [ -n "$1" ] || return 0
+  echo "codeboarding/baseline-$1"
+}
 if [ "$MODE" = sync ]; then
   case "$EVENT" in
     push|workflow_dispatch|schedule) ;;
@@ -28,7 +31,7 @@ if [ "$MODE" = sync ]; then
   [ -n "$synced_branch" ] || fail "Sync needs a branch to analyze; run it on one."
   {
     echo "synced_branch=$synced_branch"
-    echo "analysis_branch=$analysis_branch"
+    echo "analysis_branch=$(analysis_branch_of "$synced_branch")"
     echo "checkout_repo=$REPOSITORY"
     echo "checkout_ref=$synced_branch"
   } >> "$GITHUB_OUTPUT"
@@ -117,7 +120,7 @@ is_fork=false
   echo "merge_base_resolved=$merge_base_resolved"
   echo "behind_by=$behind_by"
   echo "base_ref=$base_ref"
-  echo "analysis_branch=$analysis_branch"
+  echo "analysis_branch=$(analysis_branch_of "$base_ref")"
   echo "head_sha=$head_sha"
   echo "base_repo=$base_repo"
   echo "head_repo=$head_repo"
