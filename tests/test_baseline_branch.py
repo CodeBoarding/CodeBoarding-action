@@ -527,7 +527,16 @@ class BaselineBranchReadTests(unittest.TestCase):
         git(work, "commit", "-q", "-m", "move to the analysis branch")
         git(work, "push", "-q", "origin", "HEAD:main")
         shutil.rmtree(self.checkout)
-        git(self.root, "clone", "-q", "--depth=1", "--branch", "main", f"file://{self.root}/origin.git", str(self.checkout))
+        git(
+            self.root,
+            "clone",
+            "-q",
+            "--depth=1",
+            "--branch",
+            "main",
+            f"file://{self.root}/origin.git",
+            str(self.checkout),
+        )
 
         self._analyze(ANALYSIS_KIND="sync", BASELINE_BRANCH="codeboarding/none")
 
