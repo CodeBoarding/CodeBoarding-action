@@ -96,7 +96,9 @@ for attempt in 1 2; do
   compare_behind="${compare#*$'\t'}"
   # A transient failure of one API call should not decide how this pull request
   # is measured, so try once more before giving up on the merge base.
-  [ -z "$compare_merge_base" ] && [ "$attempt" = 1 ] || break
+  if [ -n "$compare_merge_base" ] || [ "$attempt" != 1 ]; then
+    break
+  fi
   sleep 2
 done
 case "$compare_behind" in
