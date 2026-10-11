@@ -35,12 +35,17 @@ classify_push_failure() {
     echo "::notice::A newer run updated $branch; leaving it untouched."
     exit 0
   fi
-  echo "::error::Could not push the CodeBoarding baseline to $branch."
-  exit 1
+  baseline_fail "Could not push the CodeBoarding baseline to $branch."
 }
 
 source "$ACTION_PATH/scripts/action/codeboarding-baseline.sh"
-[ -z "${BASELINE_BRANCH:-}" ] || save_to_codeboarding_baseline
+if [ -n "${BASELINE_BRANCH:-}" ]; then
+  # The synced branch is never written from here, so its old copy can only be pointed out.
+  if git ls-files --error-unmatch .codeboarding/analysis.json >/dev/null 2>&1; then
+    echo "::warning::$SYNCED_BRANCH still has an old analysis in .codeboarding/ that sync no longer updates; it is saved to $BASELINE_BRANCH now. You can delete it from $SYNCED_BRANCH, keeping .codeboarding/.codeboardingignore and the health configuration."
+  fi
+  save_to_codeboarding_baseline
+fi
 
 "$ACTION_PATH/scripts/action/install-sync.sh" > "$GENERATED_PATHS"
 stage_paths=()

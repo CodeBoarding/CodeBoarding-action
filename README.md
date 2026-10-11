@@ -234,7 +234,7 @@ Sync mode saves Core's persisted incremental-analysis state under `.codeboarding
 
 It does **not** render or commit architecture Markdown, and leaves every other file alone, including user-authored CodeBoarding configuration such as `health/health_config.json` and `health/.healthignore`.
 
-Sync analyzes the branch it runs on, and saves the result to `codeboarding_analysis_branch`, which is `codeboarding/baseline` unless you name another. Create `.github/workflows/codeboarding-sync.yml`:
+Sync keeps the analysis of exactly one branch current: the one branch you list under `on: push: branches:`. It is started by pushes only, so it never runs anywhere else. `codeboarding_analysis_location` decides where that analysis is stored, `codeboarding/baseline` by default. Create `.github/workflows/codeboarding-sync.yml`:
 
 ```yaml
 name: CodeBoarding sync
@@ -242,12 +242,6 @@ name: CodeBoarding sync
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      force_full:
-        description: Rebuild without the saved baseline
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -267,20 +261,19 @@ jobs:
         with:
           mode: sync
           llm: hosted
-          force_full: ${{ inputs.force_full || false }}
 ```
 
 `main` is only read. Each sync adds one commit to `codeboarding/baseline` in the same repository, an orphan branch that shares no history with `main`. It holds the `.codeboarding/` files listed above, plus `.codeboarding/source.json` naming the commit they describe and the configuration that made them; the commit message carries both as `CodeBoarding-Source:` and `CodeBoarding-Config:` trailers. Pushes only ever fast-forward, and no code branch is ever written, so the `push` trigger needs no `paths-ignore` and a protected `main` needs no exception. Reviews read their base from the branch, and the web platform reads the latest diagram from it. The [analysis branch section](docs/COMMIT_STRATEGY.md#the-baseline-branch) covers what happens if the branch is deleted, and a ruleset you should import to protect it: sync and review load a pickle from it.
 
-No permission beyond `contents: write` is needed: the first sync creates the branch with an ordinary push. If you rename it with `codeboarding_analysis_branch`, set the same name in your review workflow too, since reviews read it — or keep both jobs in one workflow, below.
+No permission beyond `contents: write` is needed: the first sync creates the branch with an ordinary push, and records which branch it keeps the analysis of. A sync from any other branch then fails before anything is installed, naming both branches. To keep another branch's analysis instead, change the push trigger and delete `codeboarding/baseline`; the next sync creates it again.
 
 To sync more than one branch, list them under `push: branches:`. Each run analyzes the branch that was pushed, and every pull request is compared with the analysis of its own merge base.
 
-The first run, `force_full: true`, or an incompatible baseline causes a full analysis. Otherwise sync asks Core for an incremental update. If the generated state is unchanged, no commit is created. If the synced branch advances while analysis is running, the stale result is not saved for code it did not analyze; the newer push run is allowed to produce the current baseline.
+The first run, or one without a compatible saved analysis to continue from, is a full analysis. Otherwise sync asks Core for an incremental update. If the generated state is unchanged, no commit is created. If the synced branch advances while analysis is running, the stale result is not saved for code it did not analyze; the newer push run is allowed to produce the current baseline.
 
 ### Keep the analysis on the code branch
 
-Set `codeboarding_analysis_branch` to the code branch itself to commit `.codeboarding/` there instead, next to the code. Set it in the review workflow as well, so reviews read it from there, and add a `paths-ignore` so sync's own commit does not trigger another sync:
+Set `codeboarding_analysis_location: in_place` to commit `.codeboarding/` to the synced branch itself instead, next to the code. Set it in the review workflow as well, so reviews read it from there, and add a `paths-ignore` so sync's own commit does not trigger another sync:
 
 ```yaml
 on:
@@ -299,7 +292,7 @@ on:
         with:
           mode: sync
           llm: hosted
-          codeboarding_analysis_branch: main
+          codeboarding_analysis_location: in_place
 ```
 
 The list names only generated files on purpose: an edit to `.codeboarding/.codeboardingignore` or the health configuration changes what is analyzed, and must still trigger a sync. Sync pushes to `main` directly, so a branch rule protecting `main` needs the identity sync pushes with (the CodeBoarding app, or GitHub Actions for the default token) as a bypass actor, or a `github_token` that may push there.
@@ -318,12 +311,6 @@ on:
     types: [created]
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      force_full:
-        description: Rebuild without the saved baseline
-        type: boolean
-        default: false
 
 permissions: {}
 
@@ -354,7 +341,7 @@ jobs:
           llm: hosted
 
   sync:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -366,10 +353,9 @@ jobs:
         with:
           mode: sync
           llm: hosted
-          force_full: ${{ inputs.force_full || false }}
 ```
 
-Both jobs use the default `codeboarding_analysis_branch`, so review always reads the analysis where sync saves it. If you set it, set it in both jobs. Existing two-file setups keep working unchanged; this is only a different way to call the same action.
+Both jobs use the default `codeboarding_analysis_location`, so review always reads the analysis where sync saves it. If you set it, set it in both jobs. Two-file setups work the same way, except that a sync on the old defaults now saves to `codeboarding/baseline`; see [moving an existing setup](#moving-an-existing-setup).
 
 ### Moving an existing setup
 
@@ -378,7 +364,8 @@ Before this release sync committed `.codeboarding/` to the synced branch by defa
 ```text
 Move this repository's CodeBoarding sync to the codeboarding/baseline analysis branch.
 1. In the workflows that run CodeBoarding/CodeBoarding-action, remove the
-   sync_strategy, target_branch and codeboarding_analysis_branch inputs if set.
+   sync_strategy, target_branch, force_full and codeboarding_analysis_location
+   inputs if set, and any workflow_dispatch trigger that starts the sync job.
    Keep every other input.
 2. Delete the generated files under .codeboarding/ from the default branch, keeping
    the user configuration: .codeboarding/.codeboardingignore,
@@ -391,7 +378,7 @@ Move this repository's CodeBoarding sync to the codeboarding/baseline analysis b
    pull request from the codeboarding/sync branch and delete that branch.
 ```
 
-The first sync after the merge creates `codeboarding/baseline`, catching up from a saved analysis when there is one. To keep committing to the code branch instead, set `codeboarding_analysis_branch` to it, as [above](#keep-the-analysis-on-the-code-branch).
+The first sync after the merge creates `codeboarding/baseline`, catching up from a saved analysis when there is one. To keep committing to the code branch instead, set `codeboarding_analysis_location: in_place`, as [above](#keep-the-analysis-on-the-code-branch).
 
 ## Inputs
 
@@ -408,11 +395,10 @@ The first sync after the merge creates `codeboarding/baseline`, catching up from
 | `parsing_model` | both | empty | Parsing-only override for `model`. |
 | `depth_cap` | both | `2` | Positive integer maximum analysis depth, including full-analysis fallbacks. Changing it rebuilds incompatible state. |
 | `github_token` | both | `${{ github.token }}` | Token for comments and sync delivery. |
-| `codeboarding_analysis_branch` | both | `codeboarding/baseline` | Branch the analysis is kept on: sync saves to it, reviews read their base from it. Set it to the code branch (e.g. `main`) to commit `.codeboarding/` there instead. |
-| `force_full` | sync | `false` | Run a full analysis instead of continuing from a saved one. |
+| `codeboarding_analysis_location` | both | `codeboarding_branch` | Where the synced branch's analysis is stored: `codeboarding_branch` (on `codeboarding/baseline`; the code is never written) or `in_place` (committed as `.codeboarding/` on the synced branch). Sync saves it there and review reads it from there. |
 | `warmstart_retention_days` | review | `1` | Days to keep the reusable analysis. Only the next run reads it. |
 
-`target_branch` and `sync_strategy` are deprecated, and read as the `codeboarding_analysis_branch` they stand for, with a warning: `sync_strategy: push` as the synced branch, `sync_strategy: pull_request` as the default. `target_branch` is accepted only when it names the branch sync runs on. Anything the new input cannot express fails, linking to [moving an existing setup](#moving-an-existing-setup).
+`target_branch` and `sync_strategy` are deprecated, and read as the `codeboarding_analysis_location` they stand for, with a warning: `sync_strategy: push` as `in_place`, `sync_strategy: pull_request` as `codeboarding_branch`. `target_branch` is accepted only when it names the branch the run is on: the push trigger picks the branch. Anything the new input cannot express fails, linking to [moving an existing setup](#moving-an-existing-setup).
 
 The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted webview URL, commit message, and CodeBoarding 0.14.5 version are intentionally fixed rather than exposed as configuration.
 

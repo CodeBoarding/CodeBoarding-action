@@ -142,14 +142,16 @@ inputs:
     description: 'Token used for comments and sync delivery.'
     required: false
     default: ${{ github.token }}
-  codeboarding_analysis_branch:
-    description: 'Branch the analysis is kept on. Sync adds one commit per run to it and never writes the code branch; reviews read their base from it. Set it to the code branch itself (for example main) to commit .codeboarding/ there instead.'
+  codeboarding_analysis_location:
+    description: >-
+      Where the analysis of the synced branch (the one branch the sync workflow's
+      push trigger lists) is stored. Sync saves it there and review reads its base
+      from there, so set the same value for both.
+      codeboarding_branch (default): on codeboarding/baseline, an orphan branch of its
+      own with one commit per sync; the synced branch is never written.
+      in_place: committed as .codeboarding/ on the synced branch itself.
     required: false
-    default: 'codeboarding/baseline'
-  force_full:
-    description: 'Run a full sync analysis instead of continuing from a saved one.'
-    required: false
-    default: 'false'
+    default: 'codeboarding_branch'
   warmstart_retention_days:
     description: 'Days to keep the reusable analysis. Only the next run reads it.'
     required: false
@@ -161,8 +163,8 @@ inputs:
     required: false
     default: ''
   sync_strategy:
-    description: 'Deprecated: use codeboarding_analysis_branch (push is the code branch itself, pull_request the default).'
-    deprecationMessage: 'sync_strategy is deprecated; use codeboarding_analysis_branch.'
+    description: 'Deprecated: use codeboarding_analysis_location (push is in_place, pull_request is codeboarding_branch).'
+    deprecationMessage: 'sync_strategy is deprecated; use codeboarding_analysis_location.'
     required: false
     default: ''
 outputs:
@@ -212,7 +214,7 @@ runs:
       env:
         MODE: ${{ inputs.mode }}
         REF_NAME: ${{ github.ref_name }}
-        ANALYSIS_BRANCH: ${{ inputs.codeboarding_analysis_branch }}
+        ANALYSIS_LOCATION: ${{ inputs.codeboarding_analysis_location }}
         OLD_TARGET_BRANCH: ${{ inputs.target_branch }}
         OLD_SYNC_STRATEGY: ${{ inputs.sync_strategy }}
       run: "$GITHUB_ACTION_PATH/scripts/action/old_api_migrator.sh"
@@ -229,7 +231,7 @@ runs:
         REF_NAME: ${{ github.ref_name }}
         REF_TYPE: ${{ github.ref_type }}
         HEAD_AUTHOR_EMAIL: ${{ github.event.head_commit.author.email }}
-        ANALYSIS_BRANCH: ${{ steps.inputs.outputs.analysis_branch }}
+        ANALYSIS_LOCATION: ${{ steps.inputs.outputs.analysis_location }}
         COMMENT_BODY: ${{ github.event.comment.body }}
         AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
         ISSUE_PR_URL: ${{ github.event.issue.pull_request.url }}
@@ -340,6 +342,20 @@ runs:
           echo "::error title=CodeBoarding LLM configuration::The credential check did not complete, so no analysis was attempted. See the step above."
         fi
         exit 1
+
+    # Before the checkout and the engine install, like the credential check: a sync
+    # that could not save its result fails in seconds, not after a full analysis.
+    - name: Check analysis branch
+      id: analysis_check
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
+      shell: bash
+      env:
+        BASELINE_BRANCH: ${{ steps.guard.outputs.analysis_branch }}
+        SYNCED_BRANCH: ${{ steps.guard.outputs.synced_branch }}
+        GIT_TOKEN: ${{ inputs.github_token }}
+        GITHUB_SERVER_URL: ${{ github.server_url }}
+        REPOSITORY: ${{ github.repository }}
+      run: "$GITHUB_ACTION_PATH/scripts/action/check-analysis-branch.sh"
 
     - name: Update review progress
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
@@ -455,7 +471,6 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
         STAGE_DIR: ${{ runner.temp }}/cb-state/${{ github.action }}/out
-        FORCE_FULL: ${{ inputs.force_full }}
         BASELINE_BRANCH: ${{ steps.guard.outputs.analysis_branch }}
         CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
         # Lets a branch without a usable committed baseline catch up from a saved analysis.
@@ -532,6 +547,8 @@ runs:
         COMMITTED: ${{ steps.sync_commit.outputs.committed }}
         FILES: ${{ steps.sync_commit.outputs.files_written }}
         SAVED_TO: ${{ steps.guard.outputs.analysis_branch || steps.guard.outputs.synced_branch }}
+        # A failed sync has no pull request to comment on; the summary is where it says why.
+        FAILURE_REASON: ${{ steps.guard.outputs.failure_reason || steps.analysis_check.outputs.failure_reason || steps.sync_analyze.outputs.failure_reason || steps.sync_commit.outputs.failure_reason }}
       run: "$GITHUB_ACTION_PATH/scripts/action/sync-summary.sh"
 
     - name: Generate review baseline

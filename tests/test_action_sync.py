@@ -256,6 +256,24 @@ class ActionSyncTests(unittest.TestCase):
             # file that is never printed is silently left out of the commit.
             self.assertIn(str(installed), result.stdout.splitlines())
 
+    def test_a_failed_sync_says_why_in_the_job_summary(self) -> None:
+        # A push-triggered sync has no pull request to comment on.
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = Path(tmp) / "summary"
+            subprocess.run(
+                [str(ROOT / "scripts" / "action" / "sync-summary.sh")],
+                env={
+                    "PATH": os.environ["PATH"],
+                    "GITHUB_STEP_SUMMARY": str(summary),
+                    "FAILURE_REASON": "codeboarding/baseline keeps the analysis of main, and this sync runs on dev.",
+                    "SAVED_TO": "codeboarding/baseline",
+                },
+                check=True,
+            )
+            text = summary.read_text(encoding="utf-8")
+        self.assertIn("- **Failed:** codeboarding/baseline keeps the analysis of main", text)
+        self.assertNotIn("- Analysis:", text, "nothing was analyzed")
+
     def test_empty_review_is_successful(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

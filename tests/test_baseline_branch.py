@@ -1,9 +1,11 @@
-"""codeboarding_analysis_branch saves the analysis to an orphan branch, and reviews read their base from it."""
+"""codeboarding_analysis_location: codeboarding_branch saves the analysis to an orphan branch, and reviews read
+their base from it."""
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -124,7 +126,7 @@ class BaselineBranchDeliveryTests(unittest.TestCase):
         self.assertEqual(
             message,
             f"chore(codeboarding): diagram of main @{main_before[:7]}\n\n"
-            f"CodeBoarding-Source: {main_before}\nCodeBoarding-Config: cfg",
+            f"CodeBoarding-Source: {main_before}\nCodeBoarding-Branch: main\nCodeBoarding-Config: cfg",
         )
         # The synced branch is never written when the baseline has a branch of its own.
         self.assertEqual(git(self.remote, "rev-parse", "main"), main_before)
@@ -140,7 +142,9 @@ class BaselineBranchDeliveryTests(unittest.TestCase):
         log = self._branch_log()
         self.assertEqual(len(log), 2)
         self.assertEqual(log[0].split()[1:], [first])
-        self.assertIn(f"CodeBoarding-Source: {new_main}", git(self.remote, "log", "-1", "--format=%B", BRANCH))
+        message = git(self.remote, "log", "-1", "--format=%B", BRANCH)
+        self.assertIn(f"CodeBoarding-Source: {new_main}", message)
+        self.assertIn("CodeBoarding-Branch: main", message, "the branch it keeps the analysis of")
 
     def test_a_rerun_on_the_same_commit_adds_nothing(self) -> None:
         self._deliver()
@@ -166,6 +170,63 @@ class BaselineBranchDeliveryTests(unittest.TestCase):
         self.assertIn(f"GitHub refused the push to {BRANCH}", result.stdout)
         self.assertIn("bypass actor", result.stdout)
 
+    def _check(self, synced: str) -> subprocess.CompletedProcess:
+        (self.root / "check-output").write_text("", encoding="utf-8")
+        return subprocess.run(
+            [str(ROOT / "scripts" / "action" / "check-analysis-branch.sh")],
+            env={
+                "PATH": os.environ["PATH"],
+                "GITHUB_OUTPUT": str(self.root / "check-output"),
+                "RUNNER_TEMP": str(self.root),
+                "GITHUB_SERVER_URL": str(self.root),
+                "GIT_TOKEN": "unused",
+                "REPOSITORY": "owner/repo",
+                "BASELINE_BRANCH": BRANCH,
+                "SYNCED_BRANCH": synced,
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_the_check_before_the_install_lets_the_first_and_the_same_branch_through(self) -> None:
+        self.assertEqual(self._check("main").returncode, 0, "no analysis branch yet: the first sync creates it")
+        self._deliver()
+        result = self._check("main")
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_the_check_before_the_install_refuses_a_second_branch(self) -> None:
+        # A trigger listing [main, dev] would show whichever synced last as the latest diagram.
+        self._deliver()
+
+        result = self._check("dev")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(f"{BRANCH} keeps the analysis of main, and this sync runs on dev.", result.stdout)
+        reason = (self.root / "check-output").read_text(encoding="utf-8")
+        self.assertIn("failure_reason=codeboarding/baseline keeps the analysis of main", reason, "for the job summary")
+
+    def test_the_check_before_the_install_refuses_a_code_branch_with_the_name(self) -> None:
+        git(self.checkout, "push", "-q", "origin", f"main:refs/heads/{BRANCH}")
+
+        result = self._check("main")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(f"{BRANCH} already exists and is not a CodeBoarding analysis branch", result.stdout)
+
+    def test_an_old_analysis_left_on_the_synced_branch_is_pointed_out(self) -> None:
+        # The synced branch is never written from here, so its old copy can only be pointed out.
+        board = self.checkout / ".codeboarding"
+        board.mkdir()
+        (board / "analysis.json").write_text("{}\n", encoding="utf-8")
+        self._push_code("committed-baseline")
+
+        result, values = self._deliver()
+
+        self.assertEqual(values["committed"], "true")
+        self.assertIn("main still has an old analysis in .codeboarding/", result.stdout)
+        self.assertIn("keeping .codeboarding/.codeboardingignore", result.stdout)
+
     def test_a_deleted_branch_is_recreated_as_a_new_orphan(self) -> None:
         self._deliver()
         git(self.remote, "branch", "-D", BRANCH)
@@ -177,8 +238,8 @@ class BaselineBranchDeliveryTests(unittest.TestCase):
         self.assertEqual(len(only.split()), 1, "a recreated branch starts a new history")
 
     def test_an_existing_branch_that_is_not_a_baseline_branch_is_never_written(self) -> None:
-        # codeboarding_analysis_branch pointed at another code branch: building on it would leave it
-        # holding nothing but .codeboarding/.
+        # A code branch that happens to have the analysis branch's name: building on it would
+        # leave it holding nothing but .codeboarding/.
         git(self.checkout, "push", "-q", "origin", f"main:refs/heads/{BRANCH}")
         before = git(self.remote, "rev-parse", BRANCH)
 
@@ -186,7 +247,7 @@ class BaselineBranchDeliveryTests(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn(f"{BRANCH} already exists and is not a CodeBoarding baseline branch", result.stdout)
-        self.assertIn("codeboarding_analysis_branch", result.stdout)
+        self.assertIn("codeboarding_analysis_location: in_place", result.stdout)
         self.assertEqual(git(self.remote, "rev-parse", BRANCH), before)
         self.assertEqual(values.get("committed", "false"), "false")
 
@@ -283,6 +344,7 @@ class BaselineBranchReadTests(unittest.TestCase):
                 "ENGINE_VERSION": "0.14.5",
                 "CFG_HASH": "cfg",
                 "BASELINE_BRANCH": BRANCH,
+                "BASELINE_RETRY_DELAY": "0",
                 "BASE_DIR": str(self.root / "state" / "base"),
                 "WARMSTART_DIR": str(self.root / "state" / "warmstart"),
                 "STAGE_DIR": str(self.root / "state" / "out"),
@@ -293,6 +355,9 @@ class BaselineBranchReadTests(unittest.TestCase):
         )
         self.assertEqual(code == 0, expect_ok, self.log)
         return values
+
+    def _outputs(self) -> dict[str, str]:
+        return dict(line.split("=", 1) for line in self.output.read_text().splitlines() if "=" in line)
 
     def _modes(self) -> list[str]:
         return [json.loads(line)["mode"] for line in self.engine_log.read_text().splitlines()]
@@ -311,6 +376,30 @@ class BaselineBranchReadTests(unittest.TestCase):
         self.assertFalse(Path(values["base_analysis_path"]).with_name("source.json").exists())
         # No artifact holds it yet, so it is published under the merge base's name.
         self.assertEqual(values["publish_base"], "true")
+
+    def test_a_branch_that_cannot_be_read_fails_and_the_review_comment_says_why(self) -> None:
+        # A token without access looks like this too: it must not read as a missing branch.
+        self._analyze(False, REVIEW_BASE_SHA=self.shas[4], GITHUB_SERVER_URL=f"file://{self.root}/missing")
+
+        self.assertIn(f"Could not read {BRANCH}", self._outputs().get("failure_reason", ""))
+        self.assertEqual(self._modes(), [])
+
+    def test_a_single_failed_lookup_is_retried(self) -> None:
+        real_git = shutil.which("git")
+        marker = self.root / "blipped"
+        wrapper = self.bin_dir / "git"
+        wrapper.write_text(
+            "#!/bin/sh\n"
+            f'for a in "$@"; do [ "$a" = ls-remote ] && [ ! -e {marker} ] && touch {marker} && exit 128; done\n'
+            f'exec {real_git} "$@"\n',
+            encoding="utf-8",
+        )
+        wrapper.chmod(0o755)
+
+        self._analyze(REVIEW_BASE_SHA=self.shas[3])
+
+        self.assertTrue(marker.exists(), "the first lookup failed")
+        self.assertEqual(self._base_modes(), [], "the retry found the entry")
 
     def test_the_nearest_branch_entry_below_the_merge_base_is_caught_up(self) -> None:
         self._analyze(REVIEW_BASE_SHA=self.shas[4])
@@ -345,7 +434,7 @@ class BaselineBranchReadTests(unittest.TestCase):
         self.assertEqual(self._modes(), [])
 
     def test_a_code_branch_named_as_the_analysis_branch_is_said_and_skipped(self) -> None:
-        # codeboarding_analysis_branch: main, read by a review of a pull request into another branch.
+        # A code branch read as the analysis branch, as a review into another branch could.
         self._analyze(REVIEW_BASE_SHA=self.shas[4], BASELINE_BRANCH="main")
 
         self.assertIn("main is not a CodeBoarding analysis branch", self.log)
@@ -369,7 +458,7 @@ class BaselineBranchReadTests(unittest.TestCase):
         self.assertNotEqual(base["components"], ["stale"])
 
     def test_sync_continues_from_the_branch_tip(self) -> None:
-        self._analyze(ANALYSIS_KIND="sync", FORCE_FULL="false")
+        self._analyze(ANALYSIS_KIND="sync")
 
         self.assertEqual(self._modes(), ["incremental"])
 
@@ -383,7 +472,7 @@ class BaselineBranchReadTests(unittest.TestCase):
         (board / "static_analysis.sha").write_text("stale\n")
         (board / ".codeboardingignore").write_text("docs/\n")
 
-        values = self._analyze(ANALYSIS_KIND="sync", FORCE_FULL="false")
+        values = self._analyze(ANALYSIS_KIND="sync")
 
         state = Path(values["analysis_dir"])
         self.assertEqual((state / "static_analysis.pkl").read_text(), "pickle", "the tip's engine state")
@@ -392,7 +481,7 @@ class BaselineBranchReadTests(unittest.TestCase):
         self.assertEqual((state / ".codeboardingignore").read_text(), "docs/\n")
 
     def test_sync_does_not_continue_from_a_tip_made_under_another_configuration(self) -> None:
-        self._analyze(ANALYSIS_KIND="sync", FORCE_FULL="false", CFG_HASH="othercfg")
+        self._analyze(ANALYSIS_KIND="sync", CFG_HASH="othercfg")
 
         self.assertEqual(self._modes(), ["full"])
 
@@ -401,7 +490,7 @@ class BaselineBranchReadTests(unittest.TestCase):
         analysis_checkout = self.root / "analysis-checkout"
         git(self.root, "clone", "-q", "--branch", BRANCH, f"file://{self.root}/origin.git", str(analysis_checkout))
 
-        self._analyze(False, ANALYSIS_KIND="sync", FORCE_FULL="false", CHECKOUT_DIR=str(analysis_checkout))
+        self._analyze(False, ANALYSIS_KIND="sync", CHECKOUT_DIR=str(analysis_checkout))
 
         self.assertIn("This run is on a CodeBoarding analysis branch", self.log)
         self.assertEqual(self._modes(), [])
@@ -409,7 +498,6 @@ class BaselineBranchReadTests(unittest.TestCase):
     def test_sync_without_the_branch_analyzes_from_scratch(self) -> None:
         self._analyze(
             ANALYSIS_KIND="sync",
-            FORCE_FULL="false",
             BASELINE_BRANCH="codeboarding/none",
         )
 
@@ -431,7 +519,7 @@ class BaselineBranchGuardTests(unittest.TestCase):
                     "REF_NAME": "main",
                     "REF_TYPE": "branch",
                     "HEAD_AUTHOR_EMAIL": "dev@example.com",
-                    "ANALYSIS_BRANCH": BRANCH,
+                    "ANALYSIS_LOCATION": "codeboarding_branch",
                     "REPOSITORY": "owner/repo",
                     **extra,
                 },
@@ -447,7 +535,7 @@ class BaselineBranchGuardTests(unittest.TestCase):
         self.assertIn("synced_branch=main\n", values)
         self.assertIn(f"analysis_branch={BRANCH}\n", values)
 
-    def test_naming_the_code_branch_commits_the_analysis_there(self) -> None:
+    def test_in_place_commits_the_analysis_to_the_code_branch_in_both_modes(self) -> None:
         with tempfile.TemporaryDirectory() as bin_dir:
             gh = Path(bin_dir) / "gh"
             gh.write_text("#!/bin/sh\nprintf 'base-sha\\t0\\n'\n", encoding="utf-8")
@@ -459,23 +547,16 @@ class BaselineBranchGuardTests(unittest.TestCase):
                 "PULL_HEAD_SHA": "head-sha",
                 "PULL_BASE_REPO": "owner/repo",
                 "PULL_HEAD_REPO": "owner/repo",
-                "PULL_BASE_REF": "main",
+                "PULL_BASE_REF": "develop",
                 "PATH": f"{bin_dir}:{os.environ['PATH']}",
             }
             for mode, extra in (("sync", {}), ("review", review)):
                 with self.subTest(mode=mode):
-                    result, values = self._guard(MODE=mode, ANALYSIS_BRANCH="main", **extra)
+                    result, values = self._guard(MODE=mode, ANALYSIS_LOCATION="in_place", **extra)
                     self.assertEqual(result.returncode, 0, result.stdout)
                     self.assertIn("analysis_branch=\n", values, result.stdout)
             result, values = self._guard(MODE="review", **review)
-            self.assertIn(f"analysis_branch={BRANCH}\n", values, "a review of main reads the analysis branch")
-
-    def test_a_branch_name_git_cannot_use_fails_before_anything_runs(self) -> None:
-        for mode in ("sync", "review"):
-            for name in ("codeboarding/a..b", "codeboarding/with space", "codeboarding/trailing."):
-                result, _values = self._guard(MODE=mode, ANALYSIS_BRANCH=name)
-                self.assertNotEqual(result.returncode, 0, (mode, name))
-                self.assertIn("is not a valid branch name", result.stdout)
+            self.assertIn(f"analysis_branch={BRANCH}\n", values, "a review reads the analysis branch")
 
 
 if __name__ == "__main__":

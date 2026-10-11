@@ -1,11 +1,36 @@
-# The analysis branch (codeboarding_analysis_branch, BASELINE_BRANCH here): an orphan branch holding
-# one commit per sync, each with trailers naming the commit it analysed
-# (CodeBoarding-Source) and the configuration it ran under (CodeBoarding-Config).
+# The analysis branch (codeboarding_analysis_location: codeboarding_branch, BASELINE_BRANCH
+# here): an orphan branch holding one commit per sync, each with trailers naming the
+# commit it analysed (CodeBoarding-Source), the branch that commit is on
+# (CodeBoarding-Branch) and the configuration it ran under (CodeBoarding-Config).
 # Sync writes it; sync and review read it. Sourced, not run; needs analysis-state.sh.
 
 # How far below a commit a reader looks for an entry describing it or an ancestor.
 CATCHUP_BOUND="${CATCHUP_BOUND:-100}"
 BASELINE_BRANCH_DEPTH="${BASELINE_BRANCH_DEPTH:-100}"
+
+# Fails the run with a reason the review comment and the sync summary repeat.
+baseline_fail() {
+  echo "::error::$1"
+  echo "failure_reason=$1" >> "$GITHUB_OUTPUT"
+  exit 1
+}
+
+# Returns 0 when BASELINE_BRANCH exists in repository $1 and 2 when it does not.
+# Any other failure is retried once, so one network blip does not fail the run.
+baseline_branch_exists() {
+  local repository="$1" auth status
+  auth="$(printf 'x-access-token:%s' "${GIT_TOKEN:-}" | base64 -w0)"
+  for attempt in 1 2; do
+    status=0
+    git -c "http.extraheader=AUTHORIZATION: basic $auth" ls-remote --exit-code \
+      "${GITHUB_SERVER_URL%/}/${repository}.git" "refs/heads/$BASELINE_BRANCH" >/dev/null || status=$?
+    case "$status" in
+      0 | 2) return "$status" ;;
+    esac
+    [ "$attempt" = 2 ] || sleep "${BASELINE_RETRY_DELAY:-2}"
+  done
+  baseline_fail "Could not read $BASELINE_BRANCH from $repository. Check that github_token can read the repository."
+}
 
 # ---- Reading ----
 
@@ -31,28 +56,25 @@ codeboarding_baseline_index() {
 # the seed describes.
 from_codeboarding_baseline() {
   local repository="$1" tip="$2" state="$3" config_from="$4" index commit entry="" scratch="$RUNNER_TEMP/codeboarding-baseline-restore"
-  local auth status=0
+  local status=0
   [ -n "${BASELINE_BRANCH:-}" ] || return 1
   [ -n "${CFG_HASH:-}" ] || return 1
   # A branch that does not exist yet is a miss: the first sync creates it. Any other
   # failure to read it is an error, not a reason to quietly analyze from scratch.
-  auth="$(printf 'x-access-token:%s' "${GIT_TOKEN:-}" | base64 -w0)"
-  git -c "http.extraheader=AUTHORIZATION: basic $auth" ls-remote --exit-code \
-    "${GITHUB_SERVER_URL%/}/${repository}.git" "refs/heads/$BASELINE_BRANCH" >/dev/null || status=$?
-  case "$status" in
-    0) ;;
-    2) echo "::notice::$BASELINE_BRANCH does not exist yet; the first sync creates it."; return 1 ;;
-    *) echo "::error::Could not read $BASELINE_BRANCH from $repository. Check that github_token can read the repository."; exit 1 ;;
-  esac
+  baseline_branch_exists "$repository" || status=$?
+  if [ "$status" = 2 ]; then
+    echo "::notice::$BASELINE_BRANCH does not exist yet; the first sync creates it."
+    return 1
+  fi
   index="$(codeboarding_baseline_index "$repository")" ||
-    { echo "::error::Could not fetch $BASELINE_BRANCH from $repository."; exit 1; }
+    baseline_fail "Could not fetch $BASELINE_BRANCH from $repository."
   if [ -z "$index" ]; then
     # A code branch, as when a review into another branch names the one that holds the analysis.
     echo "::warning::$BASELINE_BRANCH is not a CodeBoarding analysis branch, so its analysis is not read here."
     return 1
   fi
   fetch_commit "$repository" "$tip" "$(( CATCHUP_BOUND + 1 ))" ||
-    { echo "::error::Could not fetch the history of ${tip:0:7} to look for its analysis."; exit 1; }
+    baseline_fail "Could not fetch the history of ${tip:0:7} to look for its analysis."
   for commit in $(git -C "$CHECKOUT_DIR" rev-list --first-parent --max-count=$(( CATCHUP_BOUND + 1 )) "$tip" 2>/dev/null); do
     entry="$(awk -v source="$commit" -v cfg="$CFG_HASH" '$2 == source && $3 == cfg {print $1; exit}' <<< "$index")"
     [ -z "$entry" ] || break
@@ -63,11 +85,11 @@ from_codeboarding_baseline() {
   fi
   # The entry is known to exist from here on, so failing to read it is an error.
   fetch_commit "$repository" "$entry" ||
-    { echo "::error::Could not fetch the analysis ${entry:0:7} from $BASELINE_BRANCH."; exit 1; }
+    baseline_fail "Could not fetch the analysis ${entry:0:7} from $BASELINE_BRANCH."
   rm -rf "$scratch"
   mkdir -p "$scratch"
   git -C "$CHECKOUT_DIR" archive "$entry" .codeboarding | tar -x -C "$scratch" ||
-    { echo "::error::Could not extract the analysis ${entry:0:7} from $BASELINE_BRANCH."; exit 1; }
+    baseline_fail "Could not extract the analysis ${entry:0:7} from $BASELINE_BRANCH."
   # source.json is provenance, not engine state.
   rm -f "$scratch/.codeboarding/source.json"
   compatible_state "$scratch/.codeboarding" || return 1
@@ -105,8 +127,9 @@ json.dump({
   git config user.name 'codeboarding-review[bot]'
   git config user.email 'codeboarding-review[bot]@users.noreply.github.com'
   # Readers trust only entries made under their own configuration.
-  [ -n "${CFG_HASH:-}" ] || { echo "::error::No configuration hash to record with the analysis."; exit 1; }
+  [ -n "${CFG_HASH:-}" ] || baseline_fail "No configuration hash to record with the analysis."
   local trailers=(-m "CodeBoarding-Source: $BASE_SHA
+CodeBoarding-Branch: $SYNCED_BRANCH
 CodeBoarding-Config: $CFG_HASH")
 
   # Two tries: a concurrent sync that moved the branch for an older commit is
@@ -126,8 +149,7 @@ CodeBoarding-Config: $CFG_HASH")
       # Building on any other branch would leave it holding nothing but .codeboarding/.
       if [ -z "$(git log -1 --format='%(trailers:key=CodeBoarding-Source,valueonly)' "$tip" | tr -d '[:space:]')" ] ||
         [ "$(git ls-tree --name-only "$tip")" != .codeboarding ]; then
-        echo "::error::$branch already exists and is not a CodeBoarding baseline branch, so sync will not write to it. Set codeboarding_analysis_branch to a branch name that is not in use, or to $SYNCED_BRANCH to commit the analysis there."
-        exit 1
+        baseline_fail "$branch already exists and is not a CodeBoarding baseline branch, so sync will not write to it. Rename that branch, or set codeboarding_analysis_location: in_place."
       fi
       parent=(-p "$tip")
       if [ "$(git log -1 --format='%(trailers:key=CodeBoarding-Source,valueonly)' "$tip" | tr -d '[:space:]')" = "$BASE_SHA" ] &&
@@ -146,8 +168,7 @@ CodeBoarding-Config: $CFG_HASH")
     fi
     now="$(git ls-remote "$REMOTE" "refs/heads/$branch" | awk '{print $1; exit}')"
     if [ "$now" = "$tip" ]; then
-      echo "::error::GitHub refused the push to $branch, most likely because a branch rule protects it. Add the identity sync pushes with (the CodeBoarding app, or GitHub Actions for the default token) as a bypass actor for $branch in the repository's rulesets, and check that github_token may push to it."
-      exit 1
+      baseline_fail "GitHub refused the push to $branch, most likely because a branch rule protects it. Add the identity sync pushes with (the CodeBoarding app, or GitHub Actions for the default token) as a bypass actor for $branch in the repository's rulesets, and check that github_token may push to it."
     fi
   done
   emit_result "$files" false "$BASE_SHA"

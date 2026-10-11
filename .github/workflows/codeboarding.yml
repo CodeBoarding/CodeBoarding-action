@@ -3,7 +3,7 @@
 # the action code on that ref rather than the last published release.
 #
 #   review  pull requests and /codeboarding comments
-#   sync    pushes to main, and manual runs (workflow_dispatch)
+#   sync    pushes to main
 
 name: CodeBoarding
 
@@ -35,13 +35,6 @@ on:
       - '.codeboarding/static_analysis.sha'
       - '.codeboarding/codeboarding_version.json'
       - '.codeboarding/health/health_report.json'
-  workflow_dispatch:
-    inputs:
-      force_full:
-        description: 'Ignore the saved baseline and rebuild it from scratch (full analysis).'
-        type: boolean
-        required: false
-        default: false
 
 # No workflow-level permissions: each job requests only what it needs (least
 # privilege), so the default token starts with none.
@@ -52,8 +45,8 @@ permissions: {}
 #   review  one group per pull request; queue, and cancel only when the PR closes —
 #           bot comments (issue_comment) and re-triggers must not cancel a running
 #           review, they queue behind it instead.
-#   sync    one group for every baseline writer: a push landing while a manual
-#           dispatch is mid-run must not produce two concurrent commits to main.
+#   sync    one group for every baseline writer: a push landing while another
+#           sync is mid-run must not produce two concurrent commits to main.
 concurrency:
   group: codeboarding-${{ github.event.pull_request.number || github.event.issue.number || 'baseline-writers' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
@@ -98,14 +91,13 @@ jobs:
           llm: license
           license_key: ${{ secrets.CODEBOARDING_LICENSE }}
           # This repository commits its analysis to main, so reviews read it there.
-          codeboarding_analysis_branch: main
+          codeboarding_analysis_location: in_place
           github_token: ${{ steps.app.outputs.token || github.token }}
 
-  # The ONLY baseline writer for this repository. The manual "rebuild from
-  # scratch" path is workflow_dispatch + force_full, which runs the same tested
-  # action instead of a hand-rolled copy of its pipeline.
+  # The ONLY baseline writer for this repository, started by pushes to main only:
+  # the push filter above is what decides which branch is synced.
   sync:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -126,8 +118,7 @@ jobs:
           llm: license
           license_key: ${{ secrets.CODEBOARDING_LICENSE }}
           # Must match the review job above, which reads it.
-          codeboarding_analysis_branch: main
-          force_full: ${{ inputs.force_full || false }}
+          codeboarding_analysis_location: in_place
           # The App token attributes the baseline commit to the CodeBoarding App.
           # The workflow token can push too, since this job grants contents: write.
           github_token: ${{ steps.app.outputs.token || github.token }}

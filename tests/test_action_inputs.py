@@ -100,7 +100,7 @@ class ActionInputTests(unittest.TestCase):
         for old in ("target_branch", "sync_strategy"):
             self.assertIn("deprecationMessage:", self.inputs[old])
             self.assertEqual(ACTION.count(f"inputs.{old} }}}}"), 1, f"only the migrator may read {old}")
-        new = "codeboarding_analysis_branch"
+        new = "codeboarding_analysis_location"
         self.assertEqual(ACTION.count(f"inputs.{new} }}}}"), 1, f"only the migrator may read {new}")
         self.assertLess(ACTION.index("- name: Translate deprecated inputs"), ACTION.index("- name: Resolve event"))
 

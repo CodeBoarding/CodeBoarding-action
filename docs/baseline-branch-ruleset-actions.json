@@ -1,5 +1,5 @@
 {
-  "name": "CodeBoarding baseline branch",
+  "name": "CodeBoarding baseline branch (GitHub Actions: stops manual pushes only)",
   "target": "branch",
   "enforcement": "active",
   "conditions": {
@@ -29,7 +29,7 @@
   ],
   "bypass_actors": [
     {
-      "actor_id": 4021464,
+      "actor_id": 15368,
       "actor_type": "Integration",
       "bypass_mode": "always"
     }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Validates the event and outputs the exact refs and metadata used by later steps.
 set -euo pipefail
-fail() { echo "::error::$1"; exit 1; }
+fail() { echo "::error::$1"; echo "failure_reason=$1" >> "$GITHUB_OUTPUT"; exit 1; }
 skip() { echo "::notice::$1"; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
 [ -z "${GH_HOST:-}" ] || export GH_HOST="${GH_HOST#*://}"
 case "$MODE" in
@@ -9,16 +9,10 @@ case "$MODE" in
   *) fail "mode must be review or sync." ;;
 esac
 printf 'mode=%s\nskip=false\nevent=%s\n' "$MODE" "$EVENT" >> "$GITHUB_OUTPUT"
-# Both modes read the analysis branch, so a name git cannot use fails here, before
-# anything is analyzed, rather than reading as a missing branch and costing a full run.
-if [ -n "${ANALYSIS_BRANCH:-}" ] && ! git check-ref-format "refs/heads/$ANALYSIS_BRANCH"; then
-  fail "codeboarding_analysis_branch '$ANALYSIS_BRANCH' is not a valid branch name."
-fi
-# analysis_branch is the separate branch the analysis is kept on, or empty when
-# codeboarding_analysis_branch names the code branch itself, which then holds it.
-separate_branch() {
-  [ "${ANALYSIS_BRANCH:-}" = "$1" ] || echo "${ANALYSIS_BRANCH:-}"
-}
+# The branch the analysis is kept on, or empty when it is committed in place, on
+# the code branch itself.
+analysis_branch=""
+[ "${ANALYSIS_LOCATION:-}" != codeboarding_branch ] || analysis_branch=codeboarding/baseline
 if [ "$MODE" = sync ]; then
   case "$EVENT" in
     push|workflow_dispatch|schedule) ;;
@@ -32,7 +26,6 @@ if [ "$MODE" = sync ]; then
   esac
   synced_branch="$REF_NAME"
   [ -n "$synced_branch" ] || fail "Sync needs a branch to analyze; run it on one."
-  analysis_branch="$(separate_branch "$synced_branch")"
   {
     echo "synced_branch=$synced_branch"
     echo "analysis_branch=$analysis_branch"
@@ -124,7 +117,7 @@ is_fork=false
   echo "merge_base_resolved=$merge_base_resolved"
   echo "behind_by=$behind_by"
   echo "base_ref=$base_ref"
-  echo "analysis_branch=$(separate_branch "$base_ref")"
+  echo "analysis_branch=$analysis_branch"
   echo "head_sha=$head_sha"
   echo "base_repo=$base_repo"
   echo "head_repo=$head_repo"

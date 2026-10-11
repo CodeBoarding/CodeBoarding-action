@@ -7,8 +7,8 @@ graphs it compares.
 
 | Store | Holds | Lifetime | Who can read it |
 |---|---|---|---|
-| **Git, analysis branch** (`codeboarding_analysis_branch`, the default) | one commit per sync on `codeboarding/baseline` | forever | anyone with repo read |
-| **Git, code branch** (`codeboarding_analysis_branch` set to the synced branch) | `.codeboarding/` on the synced branch | forever | anyone with repo read |
+| **Git, analysis branch** (`codeboarding_analysis_location: codeboarding_branch`, the default) | one commit per sync on `codeboarding/baseline` | forever | anyone with repo read |
+| **Git, code branch** (`codeboarding_analysis_location: in_place`) | `.codeboarding/` on the synced branch | forever | anyone with repo read |
 | **Workflow artifacts** | every analysis this action reuses or publishes | a retention window | any run with `actions: read`, plus humans |
 | ~~Actions cache~~ | — | — | not used |
 
@@ -156,9 +156,9 @@ base and a diagram drawn against another would report changes nobody made.
 ## The baseline branch
 
 By default sync saves the analysis to a branch of its own in the same
-repository, `codeboarding/baseline` unless `codeboarding_analysis_branch` names
-another. The synced branch is then only read. Naming the synced branch itself
-commits the analysis there instead, and skips everything below.
+repository, `codeboarding/baseline`. The synced branch is then only read.
+`codeboarding_analysis_location: in_place` commits the analysis to the synced
+branch instead, and skips everything below.
 
 **What lives where.** The branch is an orphan: it shares no history with the code.
 Each sync adds one commit holding the same `.codeboarding/` files
@@ -169,8 +169,9 @@ sync would otherwise commit to the synced branch, plus
 {"schema": 1, "synced_branch": "main", "source_sha": "<sha analysed>", "generated_at": "<iso>", "engine_version": "<v>", "config": "<cfg hash>"}
 ```
 
-The commit is `chore(codeboarding): diagram of main @<sha7>` with two trailers:
-`CodeBoarding-Source: <sha>` and `CodeBoarding-Config: <cfg hash>`, the same
+The commit is `chore(codeboarding): diagram of main @<sha7>` with three trailers:
+`CodeBoarding-Source: <sha>`, `CodeBoarding-Branch: main` and
+`CodeBoarding-Config: <cfg hash>`, the same
 configuration hash that names the base artifacts (engine version, provider, model,
 depth cap). Engine output is never edited; which commit it describes and how it was
 made live only in `source.json` and the trailers. The synced branch is never
@@ -183,7 +184,7 @@ wholesale; only the checkout's own `.codeboardingignore` and health configuratio
 are kept. The push is a fast-forward onto the tip it fetched, never forced. Sync
 refuses to write to an existing branch that is not a baseline branch (its tip has
 no `CodeBoarding-Source` trailer, or holds anything besides `.codeboarding/`), so
-pointing `codeboarding_analysis_branch` at another code branch fails instead of emptying it. If the
+a code branch that happens to be named `codeboarding/baseline` fails instead of being emptied. The branch belongs to the first branch that saved there: before installing anything, a sync from another branch fails, naming the branch it keeps the analysis of. If the
 synced branch moved during the analysis, the result is dropped, as when committing
 to it. If another sync moved the baseline branch, it builds on that tip once. A push the
 remote refuses while the tip did not move is a branch rule, and the run fails
@@ -211,13 +212,19 @@ a pickle runs code when loaded, so whoever can write the branch can run code in
 the sync and review workflows. Import
 [`baseline-branch-ruleset.json`](baseline-branch-ruleset.json) under Settings,
 Rules, Rulesets, New ruleset, Import a ruleset. It blocks creating, updating,
-deleting and force-pushing `codeboarding/baseline` for everyone except its bypass
-actor, GitHub Actions (integration `15368`), which is what the default
-`github.token` pushes as. If sync pushes with a GitHub App token instead, such as
-the CodeBoarding Review app (`4021464`), make that app the only bypass actor:
-any workflow can use `github.token`, while only the workflows you give the app's
-key can push as the app. Creation is covered too, so the bypass actor must be the
-identity sync pushes as before the first sync, or that sync fails on the rule. Rulesets on a private repository need a paid GitHub plan
+deleting and force-pushing `codeboarding/baseline` for everyone except the
+CodeBoarding Review app (`4021464`), so only the workflows you give the app's key
+can write it; sync must then push with the app's token as `github_token`.
+
+If sync can only use the default `github.token`, import
+[`baseline-branch-ruleset-actions.json`](baseline-branch-ruleset-actions.json)
+instead, whose bypass actor is GitHub Actions (integration `15368`). **It only stops
+people pushing by hand:** any workflow with `contents: write`, including one run
+from a same-repository pull request branch, can still push to the branch and plant
+the pickle sync loads.
+
+Creation is covered too, so the bypass actor must be the identity sync pushes as
+before the first sync, or that sync fails on the rule. Rulesets on a private repository need a paid GitHub plan
 (Pro, Team or Enterprise); on Free they apply to public repositories only.
 
 ## Trust boundary

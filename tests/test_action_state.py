@@ -489,7 +489,7 @@ class ReviewChainTests(unittest.TestCase):
         # Sync always runs on a checkout of the synced branch.
         self._git("init", "-q")
         self._commit("code", {"app.py": "pass\n"})
-        self._analyze(ANALYSIS_KIND="sync", FORCE_FULL="false", DEPTH_CAP="4")
+        self._analyze(ANALYSIS_KIND="sync", DEPTH_CAP="4")
         self.assertEqual([c["mode"] for c in self._engine_calls()], ["full"])
         self.assertEqual(self._engine_calls()[0]["depth"], "4")
 
@@ -848,18 +848,9 @@ class AncestorSeedTests(unittest.TestCase):
         shas = self._history(3)
         self._serve([self._artifact(f"codeboarding-base-cfg-{shas[1]}")])
 
-        self._analyze(self.origin, ANALYSIS_KIND="sync", FORCE_FULL="false")
+        self._analyze(self.origin, ANALYSIS_KIND="sync")
 
         self.assertEqual(self._modes(), ["incremental"])
-
-    def test_a_forced_sync_never_seeds(self) -> None:
-        shas = self._history(2)
-        self._serve([self._artifact(f"codeboarding-base-cfg-{shas[0]}")])
-
-        self._analyze(self.origin, ANALYSIS_KIND="sync", FORCE_FULL="True")
-
-        self.assertEqual(self._modes(), ["full"])
-        self.assertEqual(self.gh_log.read_text(), "")
 
 
 class ReviewArtifactTests(unittest.TestCase):

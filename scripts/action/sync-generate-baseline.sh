@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Produces the analysis of the synced branch's head, continuing from the nearest
-# saved analysis unless force_full asks for a fresh one. First match wins:
+# saved analysis. First match wins:
 #
 #   1. an entry on the baseline branch for this commit or an ancestor
 #   2. the analysis committed on the branch
@@ -18,11 +18,9 @@ if [ -n "$(git -C "$CHECKOUT_DIR" log -1 --format='%(trailers:key=CodeBoarding-S
   exit 1
 fi
 
-if [ "$(printf '%s' "${FORCE_FULL:-false}" | tr '[:upper:]' '[:lower:]')" = true ] || ! {
-  from_codeboarding_baseline "${REPOSITORY:-}" "$head_sha" "$state" "$CHECKOUT_DIR" ||
-    from_committed_baseline "$CHECKOUT_DIR" "$state" ||
-    from_ancestor_artifact "${REPOSITORY:-}" "$head_sha" "$state" true "$CHECKOUT_DIR"
-}; then
+if ! from_codeboarding_baseline "${REPOSITORY:-}" "$head_sha" "$state" "$CHECKOUT_DIR" &&
+  ! from_committed_baseline "$CHECKOUT_DIR" "$state" &&
+  ! from_ancestor_artifact "${REPOSITORY:-}" "$head_sha" "$state" true "$CHECKOUT_DIR"; then
   keep_user_config "$CHECKOUT_DIR" "$state"
 fi
 
