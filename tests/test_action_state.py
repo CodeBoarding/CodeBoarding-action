@@ -170,6 +170,10 @@ class CacheKeyTests(unittest.TestCase):
         (self.checkout / ".codeboarding" / ".codeboardingignore").write_text("docs/\n", encoding="utf-8")
         self.assertNotEqual(baseline["cfg_hash"], self._run()["cfg_hash"])
 
+    def test_installing_dependencies_changes_the_identity(self) -> None:
+        # Installed packages decide which calls between workspace packages resolve.
+        self.assertNotEqual(self._run()["cfg_hash"], self._run(INSTALL_DEPENDENCIES="true")["cfg_hash"])
+
     def test_model_selection_changes_the_identity(self) -> None:
         baseline = self._run()
 

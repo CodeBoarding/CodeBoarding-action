@@ -125,6 +125,16 @@ A pull request whose changed files are all outside what the engine analyses (doc
 
 Every review comment ends with a machine-readable HTML comment, `<!-- codeboarding: platform_url=… changed=… analysed_files_changed=… head=… -->`, for readers that should not parse the prose or the diagram. The progress comment carries the platform link from the start, so a pull request can be opened there while the run is still going.
 
+### JavaScript workspaces
+
+In a JavaScript or TypeScript monorepo (npm, pnpm, Yarn or Bun workspaces), a call from one package into another only resolves once the packages are installed, so a fresh checkout shows no calls between them. With `install_dependencies: true` (the default), CodeBoarding installs the analyzed repository's dependencies before analyzing it, for the pull request and for its merge base alike:
+
+- **With the lockfile frozen and without dependency install scripts.** The repository's own package-manager setup (`.npmrc`, `.yarnrc.yml`) applies, as it would in a build.
+- **With the package manager the repository pins** in `packageManager`, else the one its lockfile belongs to. When the runner lacks that version, it is fetched from the public npm registry, outside the repository, and reused by later runs on the same machine.
+- **From a cached store.** Downloads are cached once per lockfile, about 1 GB for a large monorepo, against the repository's 10 GB of free Actions cache. Only sync saves it, so pull request runs read it without adding to the repository's cache use.
+
+A pull request from a fork is analyzed without an install: its package manager would run with the job's credentials in reach. A repository that is not a workspace, has no lockfile or uses Plug'n'Play (Yarn or pnpm) is analyzed without one too, and so is one whose install fails. For a private registry, set the token your `.npmrc` reads in the job's `env` (for example `NPM_TOKEN: ${{ secrets.NPM_TOKEN }}`). Set `install_dependencies: false` to skip installing entirely.
+
 ## Authentication and providers
 
 The `llm` input is required and says where analysis credentials come from. There are

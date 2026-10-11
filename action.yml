@@ -153,6 +153,10 @@ inputs:
       in_place: committed as .codeboarding/ on the synced branch itself.
     required: false
     default: 'codeboarding_branch'
+  install_dependencies:
+    description: "Install the analyzed repository's JavaScript workspace dependencies before the analysis (no install scripts, frozen lockfile), so calls between its packages resolve. Never for a fork's pull request. Set to false to skip."
+    required: false
+    default: 'true'
   warmstart_retention_days:
     description: 'Days to keep the reusable analysis. Only the next run reads it.'
     required: false
@@ -400,6 +404,28 @@ runs:
         distribution: temurin
         java-version: '21'
 
+    - name: Prepare dependency install
+      id: deps
+      if: steps.guard.outputs.skip != 'true'
+      shell: bash
+      env:
+        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
+        STORE_DIR: ${{ runner.temp }}/cb-deps
+        INSTALL_DEPENDENCIES: ${{ inputs.install_dependencies }}
+        IS_FORK: ${{ steps.guard.outputs.is_fork }}
+      run: "$GITHUB_ACTION_PATH/scripts/action/prepare-dependencies.sh"
+
+    # Only sync saves the store, on the branch it runs on, which PR runs can read; a cache saved
+    # inside one pull request is visible to no other, so it would only use up the repository's quota.
+    - name: Restore dependency cache
+      id: deps_cache
+      if: steps.guard.outputs.skip != 'true' && steps.deps.outputs.lockfile == 'true'
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.temp }}/cb-deps
+        key: cb-deps-${{ runner.os }}-${{ hashFiles('.codeboarding-target/*.lock', '.codeboarding-target/*.lockb', '.codeboarding-target/*-lock.yaml', '.codeboarding-target/*-lock.json', '.codeboarding-target/npm-shrinkwrap.json') }}
+        restore-keys: cb-deps-${{ runner.os }}-
+
     - name: Install CodeBoarding
       if: steps.guard.outputs.skip != 'true'
       shell: bash
@@ -436,6 +462,8 @@ runs:
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
+        # A fork's review installs nothing, so it never reuses an analysis made with an install.
+        INSTALL_DEPENDENCIES: ${{ steps.deps.outputs.lockfile == 'true' }}
       run: "$GITHUB_ACTION_PATH/scripts/action/resolve-cache-keys.sh"
 
     # Both lookups are best effort. Without them the run derives the base from
@@ -546,6 +574,14 @@ runs:
         # less. 30 leaves a 16-day reuse window.
         retention-days: 30
         if-no-files-found: ignore
+
+    - name: Save dependency cache
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && steps.deps.outputs.lockfile == 'true' && steps.deps_cache.outputs.cache-hit != 'true' && steps.sync_analyze.outcome == 'success'
+      continue-on-error: true
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/cb-deps
+        key: ${{ steps.deps_cache.outputs.cache-primary-key }}
 
     - name: Write sync summary
       if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
