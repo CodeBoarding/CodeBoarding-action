@@ -1,22 +1,20 @@
 #!/usr/bin/env bash
-# Copies Core's persisted artifacts into .codeboarding and removes generated v1 files.
+# Copies Core's persisted artifacts into .codeboarding.
 set -euo pipefail
+# Stdout is captured by the caller, so the error goes to stderr; the reason goes
+# to the step's outputs for the job summary.
+fail() { echo "::error::$1" >&2; echo "failure_reason=$1" >> "${GITHUB_OUTPUT:-/dev/null}"; exit 1; }
 output="$CHECKOUT_DIR/.codeboarding"
 mkdir -p "$output"
-# Core exposes one canonical manifest. The compatibility imports keep the local
-# harness usable with older Core checkouts without duplicating filenames.
+# Core exposes one canonical manifest. Read from the action's directory, never the
+# analyzed repository's, which may have a constants.py of its own.
 manifest="$(cd "$ACTION_PATH" && python3 - <<'PY'
-try:
-    from constants import ANALYSIS_FILENAME, PERSISTED_ANALYSIS_ARTIFACT_FILENAMES as artifacts
-except ImportError:
-    from static_analyzer.analysis_cache import STATIC_ANALYSIS_PKL, STATIC_ANALYSIS_SHA
-    from utils import ANALYSIS_FILENAME, FINGERPRINT_FILENAME
-    artifacts = (ANALYSIS_FILENAME, FINGERPRINT_FILENAME, STATIC_ANALYSIS_PKL, STATIC_ANALYSIS_SHA, "codeboarding_version.json")
+from constants import ANALYSIS_FILENAME, PERSISTED_ANALYSIS_ARTIFACT_FILENAMES as artifacts
 print(ANALYSIS_FILENAME)
 print(*artifacts, sep="\n")
 PY
-)" || { echo "::error::Could not read Core's persisted artifact manifest."; exit 1; }
-[ -n "$manifest" ] || { echo "::error::Core's persisted artifact manifest is empty."; exit 1; }
+)" || fail "Could not read Core's persisted artifact manifest."
+[ -n "$manifest" ] || fail "Core's persisted artifact manifest is empty."
 # Read into an array without mapfile, which needs bash 4: macOS ships bash 3.2,
 # so mapfile made this script, and its tests, unrunnable for local development.
 manifest_entries=()
@@ -25,7 +23,7 @@ while IFS= read -r entry; do
 done <<< "$manifest"
 required="${manifest_entries[0]}"
 artifacts=("${manifest_entries[@]:1}")
-[ -f "$ANALYSIS_DIR/$required" ] || { echo "::error::Core did not produce $required."; exit 1; }
+[ -f "$ANALYSIS_DIR/$required" ] || fail "Core did not produce $required."
 
 installed=0
 for name in "${artifacts[@]}"; do
@@ -52,13 +50,4 @@ elif [ -e "$health_target" ]; then
   rm -f "$health_target"
 fi
 printf '%s\n' "$health_target"
-
-# Remove identifiable v1 Markdown.
-marker='https://img.shields.io/badge/Generated%20by-CodeBoarding'
-for legacy in "$output"/*.md "$CHECKOUT_DIR/docs/development/architecture.md"; do
-  [ -f "$legacy" ] || continue
-  grep -Fq "$marker" "$legacy" || continue
-  rm -f "$legacy"
-  printf '%s\n' "$legacy"
-done
 echo "installed=$installed" >> "$GITHUB_OUTPUT"

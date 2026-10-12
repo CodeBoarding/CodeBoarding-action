@@ -33,8 +33,9 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-GUARD = ROOT / "scripts" / "action" / "guard.sh"
-ANALYZE = ROOT / "scripts" / "action" / "analyze.sh"
+GUARD = ROOT / "scripts" / "action" / "resolve-github-event.sh"
+GENERATE_BASELINE = ROOT / "scripts" / "action" / "review-generate-baseline.sh"
+ANALYZE_HEAD = ROOT / "scripts" / "action" / "review-analyze-head.sh"
 
 GH_STUB = '''#!/usr/bin/env python3
 """Minimal `gh` stand-in answering from a real git repository."""
@@ -218,28 +219,31 @@ class MergeBaseContractTests(unittest.TestCase):
             check=True,
         )
 
-        result = subprocess.run(
-            [str(ANALYZE)],
-            env=self._env(
-                ACTION_PATH=str(ROOT),
-                ANALYSIS_KIND="review",
-                CHECKOUT_DIR=str(checkout),
-                REVIEW_BASE_SHA=self.fork_point,
-                REVIEW_HEAD_SHA=self.head_sha,
-                REVIEW_BASE_REPO="owner/repo",
-                GIT_TOKEN="unused",
-                GITHUB_SERVER_URL="https://github.com",
-                PR_NUMBER="7",
-                SEED_MODE="chain",
-                CACHE_OUT_DIR=str(Path(self.temp_dir.name) / "cache-out"),
-                ENGINE_VERSION="test",
-                CFG_HASH="test",
-            ),
-            capture_output=True,
-            text=True,
-            check=False,
+        env = self._env(
+            ACTION_PATH=str(ROOT),
+            CHECKOUT_DIR=str(checkout),
+            REVIEW_BASE_SHA=self.fork_point,
+            REVIEW_HEAD_SHA=self.head_sha,
+            REVIEW_BASE_REPO="owner/repo",
+            GIT_TOKEN="unused",
+            GITHUB_SERVER_URL="https://github.com",
+            PR_NUMBER="7",
+            SEED_MODE="chain",
+            CACHE_OUT_DIR=str(Path(self.temp_dir.name) / "cache-out"),
+            ENGINE_VERSION="test",
+            CFG_HASH="test",
         )
-        self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
+        # The review runs as two steps: the merge base's analysis, then the head's.
+        self.output.write_text("", encoding="utf-8")
+        for script in (GENERATE_BASELINE, ANALYZE_HEAD):
+            result = subprocess.run(
+                [str(script)],
+                env={**env, "BASE_ANALYSIS_PATH": self._outputs().get("base_analysis_path", "")},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr or result.stdout)
 
         runs = [json.loads(line) for line in self.engine_log.read_text(encoding="utf-8").splitlines()]
         self.assertEqual(len(runs), 2, f"expected a base and a head analysis, got {runs}")

@@ -1,14 +1,10 @@
 #!/usr/bin/env bash
 # Runs one command with the resolved provider credentials, then removes them.
+# KEEP_AUTH=true leaves them for a following step that analyzes too; the action's
+# final clear-auth.sh step removes them then.
 set -euo pipefail
 AUTH_DIR="${RUNNER_TEMP}/codeboarding-auth"
-cleanup() {
-  if [ -s "$AUTH_DIR/relay.pid" ]; then
-    kill "$(cat "$AUTH_DIR/relay.pid")" 2>/dev/null || true
-  fi
-  rm -rf "$AUTH_DIR"
-}
-trap cleanup EXIT
+[ "${KEEP_AUTH:-false}" = true ] || trap '"$(dirname "$0")/clear-auth.sh"' EXIT
 
 if [ ! -s "$AUTH_DIR/tier" ] || [ ! -s "$AUTH_DIR/provider-name" ]; then
   echo "::error::CodeBoarding analysis credentials are unavailable."

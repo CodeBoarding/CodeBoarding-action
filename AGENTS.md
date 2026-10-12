@@ -5,9 +5,11 @@ This repo is a GitHub Action with two modes, selected by the `mode` input:
 - **`mode: review`** (default): analyzes a PR with the CodeBoarding engine and
   posts a Mermaid diagram of the added, modified, and removed components as a PR
   comment (runs on `pull_request` / `issue_comment`).
-- **`mode: sync`**: on push to a branch, regenerates the architecture and commits
-  the versioned baseline (`.codeboarding/analysis.json` + rendered markdown) back
-  to the branch, so review mode always diffs against a current baseline.
+- **`mode: sync`**: on push to the one branch its trigger lists, regenerates the
+  analysis and saves the `.codeboarding/` state where
+  `codeboarding_analysis_location` says (an orphan `codeboarding/baseline` branch
+  by default, or `in_place` on that branch itself), so review mode always diffs
+  against a current baseline.
 
 The action is a thin orchestration wrapper, not the analysis engine: the engine
 (`CodeBoarding/CodeBoarding`) is a separate repo checked out at runtime and
@@ -82,6 +84,8 @@ bump moves adopters to `v2` and freezes `v1`, which would have left every
 existing workflow on the old silent-fallback behaviour forever — the opposite of
 the intent. Shipping it as a minor bump on the moving `v1` tag is what makes
 adopters actually receive it. Do not "correct" this to `feat!:` after the fact.
+The analysis-location change (#143) is a second such exception: sync's default
+moved from committing to the synced branch to `codeboarding/baseline`.
 - `chore:` / `docs:` / `ci:` / `refactor:` / `test:` → ride along in the next
   release but do not trigger one.
 
