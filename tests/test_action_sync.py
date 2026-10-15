@@ -16,8 +16,10 @@ GUARD = ROOT / "scripts" / "action" / "resolve-github-event.sh"
 
 
 def write_core(path: Path) -> None:
-    """The part of Core's constants.py (0.14.5) that names the persisted artifacts."""
+    """Core 0.15.0's packaged artifact manifest."""
+    path = path / "infra"
     path.mkdir(parents=True, exist_ok=True)
+    (path / "__init__.py").touch()
     (path / "constants.py").write_text(
         "ANALYSIS_FILENAME = 'analysis.json'\n"
         "PERSISTED_ANALYSIS_ARTIFACT_FILENAMES = (\n"
@@ -170,9 +172,10 @@ class ActionSyncTests(unittest.TestCase):
             for directory in (output / "health", analysis):
                 directory.mkdir(parents=True)
 
-            # The analyzed repository's own constants.py must never be what is read.
-            (checkout / "constants.py").write_text(
-                "raise RuntimeError('imported target constants')\n", encoding="utf-8"
+            # The analyzed repository's own infra package must never be imported.
+            (checkout / "infra").mkdir()
+            (checkout / "infra" / "__init__.py").write_text(
+                "raise RuntimeError('imported target infra')\n", encoding="utf-8"
             )
             write_core(fake_core)
             produced = ("analysis.json", "fingerprint.json", "static_analysis.pkl")
