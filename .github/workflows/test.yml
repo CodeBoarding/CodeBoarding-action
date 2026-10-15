@@ -42,6 +42,17 @@ jobs:
           python -m pip install --disable-pip-version-check "$requirement"
       - name: Check the provider table against the installed release
         run: python -m unittest tests.test_provider_table_drift -v
+      - name: Install sync artifacts with the installed CodeBoarding release
+        shell: bash
+        env:
+          ACTION_PATH: ${{ github.workspace }}
+          ANALYSIS_DIR: ${{ runner.temp }}/sync-analysis
+          CHECKOUT_DIR: ${{ runner.temp }}/sync-checkout
+        run: |
+          mkdir -p "$ANALYSIS_DIR" "$CHECKOUT_DIR"
+          printf '{"components": []}\n' > "$ANALYSIS_DIR/analysis.json"
+          scripts/action/install-sync.sh
+          cmp "$ANALYSIS_DIR/analysis.json" "$CHECKOUT_DIR/.codeboarding/analysis.json"
       - name: Render with the installed CodeBoarding release
         run: >-
           python scripts/diff_to_mermaid.py

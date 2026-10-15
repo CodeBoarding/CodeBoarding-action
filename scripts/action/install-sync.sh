@@ -7,9 +7,9 @@ fail() { echo "::error::$1" >&2; echo "failure_reason=$1" >> "${GITHUB_OUTPUT:-/
 output="$CHECKOUT_DIR/.codeboarding"
 mkdir -p "$output"
 # Core exposes one canonical manifest. Read from the action's directory, never the
-# analyzed repository's, which may have a constants.py of its own.
+# analyzed repository's, which may have an infra package of its own.
 manifest="$(cd "$ACTION_PATH" && python3 - <<'PY'
-from constants import ANALYSIS_FILENAME, PERSISTED_ANALYSIS_ARTIFACT_FILENAMES as artifacts
+from infra.constants import ANALYSIS_FILENAME, PERSISTED_ANALYSIS_ARTIFACT_FILENAMES as artifacts
 print(ANALYSIS_FILENAME)
 print(*artifacts, sep="\n")
 PY
