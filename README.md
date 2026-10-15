@@ -344,7 +344,7 @@ The first sync after the merge creates `codeboarding/baseline`, catching up from
 
 `target_branch` and `sync_strategy` are deprecated, and read as the `codeboarding_analysis_location` they stand for, with a warning: `sync_strategy: push` as `in_place`, `sync_strategy: pull_request` as `codeboarding_branch`. `target_branch` is accepted only when it names the branch the run is on: the push trigger picks the branch. `force_full: true` is ignored with a warning. Anything the new input cannot express fails, linking to [moving an existing setup](#moving-an-existing-setup).
 
-The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted webview URL, commit message, and CodeBoarding 0.15.0 version are intentionally fixed rather than exposed as configuration.
+The `/codeboarding` command, comment heading, Mermaid direction (`LR`), hosted webview URL, commit message, and CodeBoarding 0.15.1 version are intentionally fixed rather than exposed as configuration.
 
 Review mode needs no sync job or committed `.codeboarding` directory. If no
 usable merge-base analysis exists, it runs full analysis there directly, then
@@ -401,7 +401,7 @@ Run the local analysis pipeline:
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-...
-python -m pip install codeboarding==0.15.0
+python -m pip install codeboarding==0.15.1
 tests/run_local.sh --repo /path/to/repo --base main --head feature
 ```
 
