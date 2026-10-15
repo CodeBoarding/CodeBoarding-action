@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.16.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.15.3...v1.16.0) (2026-10-15)
+
+
+### Features
+
+* save the default branch's analysis to a branch of its own, and generate the review's base in a step of its own ([#143](https://github.com/CodeBoarding/CodeBoarding-action/issues/143)) ([001a5f0](https://github.com/CodeBoarding/CodeBoarding-action/commit/001a5f06fa1bbc72b43f9d0d28e008768010c177))
+
+
+### Bug Fixes
+
+* update CodeBoarding dependency to 0.15.0 ([#146](https://github.com/CodeBoarding/CodeBoarding-action/issues/146)) ([41cd3bc](https://github.com/CodeBoarding/CodeBoarding-action/commit/41cd3bcc0dc81979eb2a9a69b99c31aec977217e))
+
 ## [1.15.3](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.15.2...v1.15.3) (2026-10-02)
 
 
