@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-10-12T00:46:20.405470+00:00",
-    "source_tree_hash": "8303ed3630dbaf6de0be10f818c1424bcde5dcb1d9ede8bcf85c324fdc113f1e",
+    "generated_at": "2026-10-15T02:00:25.714141+00:00",
+    "source_tree_hash": "ffafbaa3c9f6652497b4390ca5038a73c83af8a2163db90157bd798ad91a0b98",
     "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
@@ -47,7 +47,7 @@
       }
     }
   },
-  "description": "This scope provides GitHub Action automation and runner support scripts. It performs preflight LLM credential validation, hosts a loopback OIDC token refresh relay for proxy authentication, drives CodeBoarding CLI analysis runs, and computes component/relation diffs to render Mermaid diagrams in pull request comments.",
+  "description": "The scope encompasses workflow automation scripts supporting the GitHub Action execution lifecycle. It validates provider configuration and authentication credentials before engine startup, runs a loopback relay to inject short-lived GitHub Actions OIDC JWTs, invokes CodeBoarding CLI analysis modes (full or incremental), and generates Mermaid diagrams comparing base and head analysis outputs for PR comments.",
   "files": {
     "scripts/action/credential_check.py": {
       "method_keys": [
@@ -807,14 +807,26 @@
   },
   "components": [
     {
-      "name": "action_scripts",
-      "description": "Automates GitHub Action workflows by verifying LLM credentials, relaying OIDC authentication tokens, driving repository analysis CLI commands, and rendering analysis diffs as Mermaid graphs.",
+      "name": "Action Execution and Analysis Scripts",
+      "description": "Provides CLI utilities for GitHub Actions to validate provider credentials, relay OIDC authentication, execute repository analysis commands, and render architecture diff diagrams in Mermaid format.",
       "key_entities": [
         {
-          "qualified_name": "scripts.oidc_relay.RelayServer",
-          "reference_file": "scripts/oidc_relay.py",
-          "reference_start_line": 155,
-          "reference_end_line": 161
+          "qualified_name": "scripts.action.credential_check.resolve",
+          "reference_file": "scripts/action/credential_check.py",
+          "reference_start_line": 246,
+          "reference_end_line": 311
+        },
+        {
+          "qualified_name": "scripts.action.credential_check.ConfigError",
+          "reference_file": "scripts/action/credential_check.py",
+          "reference_start_line": 57,
+          "reference_end_line": 71
+        },
+        {
+          "qualified_name": "scripts.analyze_repository.main",
+          "reference_file": "scripts/analyze_repository.py",
+          "reference_start_line": 106,
+          "reference_end_line": 150
         },
         {
           "qualified_name": "scripts.analyze_repository._parse_cli_response",
@@ -829,10 +841,28 @@
           "reference_end_line": 110
         },
         {
-          "qualified_name": "scripts.analyze_repository._run_command",
-          "reference_file": "scripts/analyze_repository.py",
-          "reference_start_line": 76,
-          "reference_end_line": 103
+          "qualified_name": "scripts.diff_to_mermaid._diff_components",
+          "reference_file": "scripts/diff_to_mermaid.py",
+          "reference_start_line": 284,
+          "reference_end_line": 329
+        },
+        {
+          "qualified_name": "scripts.diff_to_mermaid._diff_relations",
+          "reference_file": "scripts/diff_to_mermaid.py",
+          "reference_start_line": 224,
+          "reference_end_line": 270
+        },
+        {
+          "qualified_name": "scripts.oidc_relay.RelayServer",
+          "reference_file": "scripts/oidc_relay.py",
+          "reference_start_line": 155,
+          "reference_end_line": 161
+        },
+        {
+          "qualified_name": "scripts.oidc_relay.RelayConfig",
+          "reference_file": "scripts/oidc_relay.py",
+          "reference_start_line": 46,
+          "reference_end_line": 50
         }
       ],
       "source_cluster_ids": [
