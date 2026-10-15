@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.16.0...v1.16.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* read sync artifact manifest from Core's infra package ([#147](https://github.com/CodeBoarding/CodeBoarding-action/issues/147)) ([4db6869](https://github.com/CodeBoarding/CodeBoarding-action/commit/4db6869af1bd5dce5cfa8704590a6f29c7f44bbd))
+
 ## [1.16.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.15.3...v1.16.0) (2026-10-15)
 
 
