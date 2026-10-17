@@ -9,7 +9,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 PROG = "codeboarding"
@@ -18,29 +17,22 @@ PROG = "codeboarding"
 ENGINE_REFUSALS = {
     2: "The LLM provider rejected the API key. Check the key's secret and re-run.",
     3: "The LLM provider's token or credit quota is exhausted. Add credits or raise the quota, then re-run.",
-}
-
-PRICING_LINK = "[Buy a CodeBoarding license](https://codeboarding.org/pricing)"
-QUOTA_REFUSALS = {
-    "free_quota_exhausted": (
+    4: (
         "Your GitHub owner's free CodeBoarding credits for this week are exhausted. "
         "The allowance is shared across its repositories. "
-        f"{PRICING_LINK} to continue now, or wait for the weekly allowance to reset. "
-        "After purchasing, add the `CODEBOARDING_LICENSE` repository secret and set "
-        "`llm: license` and `license_key: ${{ secrets.CODEBOARDING_LICENSE }}` "
+        "[Buy a CodeBoarding license](https://codeboarding.org/pricing) to continue now, "
+        "or wait for the weekly allowance to reset. After purchasing, add the `CODEBOARDING_LICENSE` "
+        "repository secret and set `llm: license` and `license_key: ${{ secrets.CODEBOARDING_LICENSE }}` "
         "on each CodeBoarding Action invocation, then re-run."
     ),
-    "license_not_accepted": (
-        "The supplied CodeBoarding license did not grant paid access, and your GitHub owner's free credits "
-        "are exhausted. Check that the license is active and `license_key` uses the correct "
-        "`CODEBOARDING_LICENSE` secret. "
-        "[Manage or buy a CodeBoarding license](https://codeboarding.org/pricing), then re-run."
-    ),
-    "hosted_provider_quota_exhausted": (
-        "CodeBoarding's hosted LLM provider has exhausted its credits or quota. "
-        "Please contact CodeBoarding support; this is not your free-credit allowance."
-    ),
 }
+
+LICENSE_NOT_ACCEPTED = (
+    "The supplied CodeBoarding license did not grant paid access, and your GitHub owner's free credits "
+    "are exhausted. Check that the license is active and `license_key` uses the correct "
+    "`CODEBOARDING_LICENSE` secret. "
+    "[Manage or buy a CodeBoarding license](https://codeboarding.org/pricing), then re-run."
+)
 
 
 class AnalysisError(RuntimeError):
@@ -97,19 +89,12 @@ def _parse_cli_response(raw: str, working_dir: str) -> tuple[bool, Path | None, 
 
 
 def _run_command(args: list[str], output_dir: Path) -> str:
-    with tempfile.TemporaryDirectory(prefix="codeboarding-error-") as temp_dir:
-        error_file = Path(temp_dir) / "error.json"
-        return _run_with_error_report(args, output_dir, error_file)
-
-
-def _run_with_error_report(args: list[str], output_dir: Path, error_file: Path) -> str:
     process = subprocess.Popen(
         args,
         stdout=subprocess.PIPE,
         text=True,
         bufsize=1,
         cwd=str(output_dir.parent),
-        env={**os.environ, "CODEBOARDING_ERROR_FILE": str(error_file)},
     )
     stdout_lines: list[str] = []
     for line in process.stdout or ():
@@ -124,17 +109,8 @@ def _run_with_error_report(args: list[str], output_dir: Path, error_file: Path) 
     stdout = "".join(stdout_lines)
     if return_code != 0:
         reason = ENGINE_REFUSALS.get(return_code)
-        if return_code == 3:
-            try:
-                report = json.loads(error_file.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                report = {}
-            if isinstance(report, dict) and report.get("version") == 1:
-                code = report.get("code")
-                if isinstance(code, str):
-                    if code == "free_quota_exhausted" and os.getenv("CODEBOARDING_LLM_TIER") == "license":
-                        code = "license_not_accepted"
-                    reason = QUOTA_REFUSALS.get(code, reason)
+        if return_code == 4 and os.getenv("CODEBOARDING_LLM_TIER") == "license":
+            reason = LICENSE_NOT_ACCEPTED
         if reason:
             # Written straight to the step's outputs: the shell never sees this script's stdout on failure.
             with open(os.environ.get("GITHUB_OUTPUT", os.devnull), "a", encoding="utf-8") as outputs:

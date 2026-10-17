@@ -1,6 +1,5 @@
 """Exercise core's subprocess refusal contract through the posted comment body."""
 
-import json
 import os
 import re
 import subprocess
@@ -18,15 +17,11 @@ PRICING = "https://codeboarding.org/pricing"
 
 
 class QuotaCommentTests(unittest.TestCase):
-    def _failure_body(self, report: object, tier: str = "hosted", mode: str = "review") -> tuple[str, str]:
+    def _failure_body(self, exit_code: int = 4, tier: str = "hosted", mode: str = "review") -> tuple[str, str]:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             outputs = root / "analysis-outputs"
-            program = (
-                "import os,sys; from pathlib import Path; "
-                f"Path(os.environ['CODEBOARDING_ERROR_FILE']).write_text({json.dumps(json.dumps(report))}); "
-                "sys.exit(3)"
-            )
+            program = f"import sys; sys.exit({exit_code})"
             with (
                 patch.dict(os.environ, {"GITHUB_OUTPUT": str(outputs), "CODEBOARDING_LLM_TIER": tier}),
                 self.assertRaises(ar.AnalysisError),
@@ -60,7 +55,7 @@ class QuotaCommentTests(unittest.TestCase):
             return text, reason
 
     def test_free_credits_comment_links_to_purchase_and_explains_setup(self):
-        body, reason = self._failure_body({"version": 1, "code": "free_quota_exhausted"})
+        body, reason = self._failure_body()
         self.assertIn("### CodeBoarding review · failed", body)
         self.assertIn("free CodeBoarding credits for this week are exhausted", body)
         self.assertIn(f"[Buy a CodeBoarding license]({PRICING})", body)
@@ -73,36 +68,23 @@ class QuotaCommentTests(unittest.TestCase):
         self.assertIn(reason, body)
 
     def test_sync_reports_the_same_purchase_instructions(self):
-        body, reason = self._failure_body({"version": 1, "code": "free_quota_exhausted"}, mode="sync")
+        body, reason = self._failure_body(mode="sync")
         self.assertIn(f"[Buy a CodeBoarding license]({PRICING})", body)
         self.assertIn(reason, body)
 
     def test_supplied_license_is_checked_before_suggesting_another_purchase(self):
-        for code in ("license_not_accepted", "free_quota_exhausted"):
-            with self.subTest(code=code):
-                body, _ = self._failure_body({"version": 1, "code": code}, tier="license")
-                self.assertIn("Check that the license is active", body)
-                self.assertIn(f"]({PRICING})", body)
-                self.assertNotIn("After purchasing", body)
+        body, _ = self._failure_body(tier="license")
+        self.assertIn("Check that the license is active", body)
+        self.assertIn(f"]({PRICING})", body)
+        self.assertNotIn("After purchasing", body)
 
     def test_provider_billing_does_not_sell_a_codeboarding_license(self):
-        for code in ("provider_quota_exhausted", "hosted_provider_quota_exhausted"):
-            with self.subTest(code=code):
-                body, _ = self._failure_body({"version": 1, "code": code})
+        for tier in ("hosted", "license", "byok", "byok+license"):
+            with self.subTest(tier=tier):
+                body, _ = self._failure_body(exit_code=3, tier=tier)
                 self.assertNotIn(PRICING, body)
                 self.assertNotIn("Buy", body)
-
-    def test_unknown_or_invalid_report_keeps_the_legacy_message(self):
-        for report in (
-            [],
-            {"version": 2, "code": "free_quota_exhausted"},
-            {"version": 1, "code": []},
-            {"version": 1, "code": "unknown"},
-        ):
-            with self.subTest(report=report):
-                body, _ = self._failure_body(report)
                 self.assertIn("LLM provider's token or credit quota is exhausted", body)
-                self.assertNotIn(PRICING, body)
 
     def test_workflow_posts_the_tested_failure_file(self):
         action = (ROOT / "action.yml").read_text()
