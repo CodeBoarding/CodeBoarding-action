@@ -139,9 +139,12 @@ class ActionInputTests(unittest.TestCase):
         fix, then immediately replaces it with "see the workflow logs" -- sending the reader
         to hunt for what they had just been told.
         """
-        start = ACTION.index("- name: Post review failure")
-        condition = ACTION[start : ACTION.index("message:", start)]
+        start = ACTION.index("- name: Build review failure")
+        condition = ACTION[start : ACTION.index("run:", start)]
         self.assertIn("steps.llm.outputs.error == ''", condition)
+        start = ACTION.index("- name: Post review failure")
+        condition = ACTION[start : ACTION.index("uses:", start)]
+        self.assertIn("steps.review_failure.outputs.path != ''", condition)
 
     def test_python_is_available_before_the_credential_check_runs(self) -> None:
         """The check is a Python program, so a runner without a system python3 would fail a

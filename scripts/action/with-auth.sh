@@ -30,6 +30,8 @@ for file in "$AUTH_DIR/env"/*; do
 done
 
 export CODEBOARDING_SOURCE=github_action
+CODEBOARDING_LLM_TIER="$(cat "$AUTH_DIR/tier")"
+export CODEBOARDING_LLM_TIER
 unset ACTIONS_ID_TOKEN_REQUEST_URL ACTIONS_ID_TOKEN_REQUEST_TOKEN
 if [ -n "${MODEL:-}" ]; then
   export AGENT_MODEL="$MODEL"

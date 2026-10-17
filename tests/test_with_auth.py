@@ -44,6 +44,17 @@ class WithAuthTests(unittest.TestCase):
         self.assertEqual(self._run().returncode, 0, "the second analysis step found no credentials")
         self.assertFalse(self.auth.exists())
 
+    def test_the_resolved_tier_reaches_core(self) -> None:
+        (self.auth / "tier").write_text("license", encoding="utf-8")
+        result = subprocess.run(
+            [str(WITH_AUTH), "bash", "-c", 'test "$CODEBOARDING_LLM_TIER" = license'],
+            env={"PATH": os.environ["PATH"], "RUNNER_TEMP": str(self.runner_temp)},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
 
 class ActionWiringTests(unittest.TestCase):
     def _steps(self) -> list[str]:

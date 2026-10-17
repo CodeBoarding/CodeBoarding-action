@@ -405,6 +405,12 @@ python -m pip install codeboarding==0.15.1
 tests/run_local.sh --repo /path/to/repo --base main --head feature
 ```
 
+When CodeBoarding's free hosted credits run out, the failure comment and job summary link to
+[buy a CodeBoarding license](https://codeboarding.org/pricing) and explain how to configure
+`llm: license` and `license_key`. The free weekly allowance is shared across repositories
+under the same GitHub owner. A supplied license that did not grant paid access gets a
+license-check hint; provider billing failures keep their own guidance.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
