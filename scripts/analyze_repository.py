@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from threading import Thread
 
 PROG = "codeboarding"
 
@@ -17,22 +18,7 @@ PROG = "codeboarding"
 ENGINE_REFUSALS = {
     2: "The LLM provider rejected the API key. Check the key's secret and re-run.",
     3: "The LLM provider's token or credit quota is exhausted. Add credits or raise the quota, then re-run.",
-    4: (
-        "Your GitHub owner's free CodeBoarding credits for this week are exhausted. "
-        "The allowance is shared across its repositories. "
-        "[Buy a CodeBoarding license](https://codeboarding.org/pricing) to continue now, "
-        "or wait for the weekly allowance to reset. After purchasing, add the `CODEBOARDING_LICENSE` "
-        "repository secret and set `llm: license` and `license_key: ${{ secrets.CODEBOARDING_LICENSE }}` "
-        "on each CodeBoarding Action invocation, then re-run."
-    ),
 }
-
-LICENSE_NOT_ACCEPTED = (
-    "The supplied CodeBoarding license did not grant paid access, and your GitHub owner's free credits "
-    "are exhausted. Check that the license is active and `license_key` uses the correct "
-    "`CODEBOARDING_LICENSE` secret. "
-    "[Manage or buy a CodeBoarding license](https://codeboarding.org/pricing), then re-run."
-)
 
 
 class AnalysisError(RuntimeError):
@@ -92,10 +78,21 @@ def _run_command(args: list[str], output_dir: Path) -> str:
     process = subprocess.Popen(
         args,
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         bufsize=1,
         cwd=str(output_dir.parent),
     )
+    stderr_lines: list[str] = []
+
+    def forward_stderr() -> None:
+        for line in process.stderr or ():
+            stderr_lines.append(line)
+            print(line, end="", file=sys.stderr, flush=True)
+
+    # Drain both pipes while the engine runs, preserving stdout's JSON contract.
+    stderr_reader = Thread(target=forward_stderr)
+    stderr_reader.start()
     stdout_lines: list[str] = []
     for line in process.stdout or ():
         stdout_lines.append(line)
@@ -106,11 +103,18 @@ def _run_command(args: list[str], output_dir: Path) -> str:
     if process.stdout is not None:
         process.stdout.close()
     return_code = process.wait()
+    stderr_reader.join()
+    if process.stderr is not None:
+        process.stderr.close()
     stdout = "".join(stdout_lines)
     if return_code != 0:
         reason = ENGINE_REFUSALS.get(return_code)
-        if return_code == 4 and os.getenv("CODEBOARDING_LLM_TIER") == "license":
-            reason = LICENSE_NOT_ACCEPTED
+        if return_code == 3:
+            # Keep Core's quota-specific recovery guidance instead of replacing it with provider billing advice.
+            for line in reversed(stderr_lines):
+                if "CodeBoarding: " in line:
+                    reason = line.partition("CodeBoarding: ")[2].strip()
+                    break
         if reason:
             # Written straight to the step's outputs: the shell never sees this script's stdout on failure.
             with open(os.environ.get("GITHUB_OUTPUT", os.devnull), "a", encoding="utf-8") as outputs:

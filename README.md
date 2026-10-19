@@ -222,11 +222,9 @@ Every run reports what it resolved, so the answer never has to be inferred from 
   with an error annotation saying which, and in review mode the failure comment says it too.
   No partial analysis is published.
 
-When CodeBoarding's free hosted credits run out, the failure comment and job summary link to
-[buy a CodeBoarding license](https://codeboarding.org/pricing) and explain how to configure
-`llm: license` and `license_key`. The free weekly allowance is shared across repositories
-under the same GitHub owner. A supplied license that did not grant paid access gets a
-license-check hint; provider billing failures keep their own guidance.
+When your free CodeBoarding quota is exhausted, the failure reason links to
+[buy a CodeBoarding license](https://codeboarding.org/pricing) or suggests waiting for your
+weekly reset. Provider quota failures retain their provider billing guidance.
 
 ## Model selection
 

@@ -741,21 +741,17 @@ runs:
     # this same sticky comment with the input and secret to fix, and "see the workflow
     # logs" posted over the top of it would send the reader hunting for what they had
     # just been told.
-    - name: Build review failure
-      id: review_failure
-      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_comment.outcome != 'success' && steps.llm.outputs.error == ''
-      continue-on-error: true
-      shell: bash
-      env:
-        FAILURE_REASON: ${{ steps.review_baseline.outputs.failure_reason || steps.review_analyze.outputs.failure_reason }}
-      run: '"$GITHUB_ACTION_PATH/scripts/action/build-review-failure.sh"'
-
     - name: Post review failure
-      if: failure() && steps.review_failure.outputs.path != ''
+      if: failure() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_comment.outcome != 'success' && steps.llm.outputs.error == ''
       continue-on-error: true
       uses: marocchino/sticky-pull-request-comment@v2
       with:
         header: ${{ steps.guard.outputs.comment_id }}
         number: ${{ steps.guard.outputs.pr_number }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
-        path: ${{ steps.review_failure.outputs.path }}
+        message: |
+          ### CodeBoarding review · failed
+
+          ${{ steps.review_baseline.outputs.failure_reason || steps.review_analyze.outputs.failure_reason }}
+
+          See the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}).

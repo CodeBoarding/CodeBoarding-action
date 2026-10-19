@@ -60,7 +60,9 @@ class AnalyzeRepositoryTests(unittest.TestCase):
             command = [
                 sys.executable,
                 "-c",
-                "print('Analyzing repository...'); print('{\"requiresFullAnalysis\": true}')",
+                "import sys; print('Analyzing repository...'); "
+                "print('{\"requiresFullAnalysis\": true}', flush=True); "
+                "print('Final diagnostic', file=sys.stderr)",
             ]
 
             with patch("sys.stderr", stderr):
@@ -68,6 +70,7 @@ class AnalyzeRepositoryTests(unittest.TestCase):
 
             self.assertIn("Analyzing repository...", stderr.getvalue())
             self.assertIn('{"requiresFullAnalysis": true}', stderr.getvalue())
+            self.assertIn("Final diagnostic", stderr.getvalue())
             self.assertEqual(stdout, 'Analyzing repository...\n{"requiresFullAnalysis": true}\n')
 
     def _fail_with(self, exit_code: int, outputs: Path) -> ar.AnalysisError:
@@ -85,6 +88,27 @@ class AnalyzeRepositoryTests(unittest.TestCase):
 
             self.assertIn("quota is exhausted", str(error))
             self.assertEqual(outputs.read_text(encoding="utf-8"), f"failure_reason={error}\n")
+
+    def test_quota_failure_preserves_cores_recovery_message(self) -> None:
+        messages = (
+            "Your free CodeBoarding quota is exhausted. Buy a CodeBoarding license at "
+            "https://codeboarding.org/pricing, or wait for your weekly reset.",
+            "The LLM provider's token or credit quota is exhausted. "
+            "Add credits or raise the quota for this provider, then re-run.",
+        )
+        for message in messages:
+            with self.subTest(message=message), tempfile.TemporaryDirectory() as tmp:
+                outputs = Path(tmp) / "github_output"
+                program = (
+                    "import sys; "
+                    f"print('ERROR [codeboarding_cli.main:140] CodeBoarding: ' + {message!r}, file=sys.stderr); "
+                    "sys.exit(3)"
+                )
+                with patch.dict("os.environ", {"GITHUB_OUTPUT": str(outputs)}), patch("sys.stderr", io.StringIO()):
+                    with self.assertRaises(ar.AnalysisError) as caught:
+                        ar._run_command([sys.executable, "-c", program], Path(tmp) / "out")
+                self.assertEqual(str(caught.exception), message)
+                self.assertEqual(outputs.read_text(), f"failure_reason={message}\n")
 
     def test_run_command_names_a_rejected_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
