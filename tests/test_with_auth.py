@@ -56,7 +56,13 @@ class ActionWiringTests(unittest.TestCase):
             steps = [s for s in self._steps() if "with-auth.sh" in s and f"mode == '{mode}'" in s]
             self.assertTrue(steps, mode)
             for step in steps[:-1]:
-                self.assertIn("KEEP_AUTH: 'true'", step, f"{mode}: {step.splitlines()[0]} consumes the credentials")
+                # The head analysis keeps them only on a setup PR's run, which goes on to preview
+                # other pull requests; elsewhere it is the last analysis and removes them.
+                keeps = "KEEP_AUTH: 'true'" in step or (
+                    step.startswith("Analyze pull request")
+                    and "KEEP_AUTH: ${{ github.event_name == 'pull_request' && github.head_ref == 'codeboarding/setup-action' }}" in step
+                )
+                self.assertTrue(keeps, f"{mode}: {step.splitlines()[0]} consumes the credentials")
             self.assertNotIn("KEEP_AUTH", steps[-1], f"{mode}: the last analysis step must remove them")
 
     def test_kept_credentials_are_always_removed(self) -> None:
