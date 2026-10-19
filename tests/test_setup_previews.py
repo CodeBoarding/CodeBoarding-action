@@ -186,6 +186,7 @@ class ReviewPreviewTests(unittest.TestCase):
     def test_the_pull_request_is_applied_to_the_analysed_commit(self) -> None:
         out = self._run()
         self.assertEqual(out["pr_number"], "412")
+        self.assertEqual(out["head_sha"], self.pr_head, "the artifact name carries it, so the app needs no download")
         seen = (self.preview_dir / "state-1" / "seen-files").read_text().split()
         # Z's file is there because the base is Z; the PR's file because it was applied; nothing else.
         self.assertIn("ledger.txt", seen)

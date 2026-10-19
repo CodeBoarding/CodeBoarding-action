@@ -9,7 +9,7 @@
 # reported as its changes. A pull request that does not apply cleanly there is skipped.
 #
 # Usage: review-preview-pr.sh <n>. Outputs pr_number=, title= and artifact_dir= when a
-# preview was built; nothing when there is no n-th entry or it was skipped.
+# preview was built, plus head_sha=; nothing when there is no n-th entry or it was skipped.
 set -euo pipefail
 # shellcheck source=scripts/action/analysis-state.sh
 source "$(dirname "$0")/analysis-state.sh"
@@ -58,4 +58,4 @@ BASE_ARTIFACT_NAME="$(jq -r '.base_artifact // ""' "$review_meta")" \
   PR_NUMBER="$pr" SEED_SOURCE=base CHAIN_DEPTH=1 ANALYSED_FILES_CHANGED="$analysed" \
   BASIS=preview SETUP_PR="$SETUP_PR" \
   "$ACTION_PATH/scripts/action/build-review-artifact.sh"
-printf 'pr_number=%s\ntitle=%s\n' "$pr" "${title//$'\n'/ }" >> "$GITHUB_OUTPUT"
+printf 'pr_number=%s\nhead_sha=%s\ntitle=%s\n' "$pr" "$head_sha" "${title//$'\n'/ }" >> "$GITHUB_OUTPUT"
