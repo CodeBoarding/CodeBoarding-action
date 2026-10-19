@@ -725,7 +725,7 @@ runs:
     # where a new user's open pull requests get their first review: the ones the app listed
     # in the setup PR's description, each applied to the commit this run just analysed and
     # analysed incrementally from it (see review-preview-pr.sh). Nothing is posted on them.
-    # The app finds each as codeboarding-preview-<run>-<attempt>-pr<number> plus its metadata.
+    # The app finds each as codeboarding-preview-<run>-<attempt>-pr<number>-<head sha>.
     # Not codeboarding-review-<run>-...: the app takes the newest artifact with that prefix as
     # the setup PR's own review, so a preview named that way would replace the setup PR's map.
     # All best effort: the setup PR's map is already uploaded and must not fail because of them.
@@ -774,7 +774,7 @@ runs:
       continue-on-error: true
       uses: actions/upload-artifact@v4
       with:
-        name: codeboarding-preview-${{ github.run_id }}-${{ github.run_attempt }}-pr${{ steps.preview_1.outputs.pr_number }}
+        name: codeboarding-preview-${{ github.run_id }}-${{ github.run_attempt }}-pr${{ steps.preview_1.outputs.pr_number }}-${{ steps.preview_1.outputs.head_sha }}
         path: ${{ steps.preview_1.outputs.artifact_dir }}
         if-no-files-found: error
         retention-days: 14
@@ -829,7 +829,7 @@ runs:
       continue-on-error: true
       uses: actions/upload-artifact@v4
       with:
-        name: codeboarding-preview-${{ github.run_id }}-${{ github.run_attempt }}-pr${{ steps.preview_2.outputs.pr_number }}
+        name: codeboarding-preview-${{ github.run_id }}-${{ github.run_attempt }}-pr${{ steps.preview_2.outputs.pr_number }}-${{ steps.preview_2.outputs.head_sha }}
         path: ${{ steps.preview_2.outputs.artifact_dir }}
         if-no-files-found: error
         retention-days: 14
@@ -863,7 +863,7 @@ runs:
       continue-on-error: true
       uses: actions/upload-artifact@v4
       with:
-        name: codeboarding-preview-${{ github.run_id }}-${{ github.run_attempt }}-pr${{ steps.preview_3.outputs.pr_number }}
+        name: codeboarding-preview-${{ github.run_id }}-${{ github.run_attempt }}-pr${{ steps.preview_3.outputs.pr_number }}-${{ steps.preview_3.outputs.head_sha }}
         path: ${{ steps.preview_3.outputs.artifact_dir }}
         if-no-files-found: error
         retention-days: 14
