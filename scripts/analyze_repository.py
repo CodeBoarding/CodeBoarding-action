@@ -13,8 +13,10 @@ from pathlib import Path
 from threading import Thread
 
 PROG = "codeboarding"
+# Shared with CodeBoarding/codeboarding_cli/main.py; keep the prefix in sync.
+ENGINE_ERROR_PREFIX = "CodeBoarding: "
 
-# The engine's exit codes for an LLM refusal the user has to fix, and what to tell them.
+# Fallback guidance for engine refusals without a recovery message.
 ENGINE_REFUSALS = {
     2: "The LLM provider rejected the API key. Check the key's secret and re-run.",
     3: "The LLM provider's token or credit quota is exhausted. Add credits or raise the quota, then re-run.",
@@ -109,11 +111,10 @@ def _run_command(args: list[str], output_dir: Path) -> str:
     stdout = "".join(stdout_lines)
     if return_code != 0:
         reason = ENGINE_REFUSALS.get(return_code)
-        if return_code == 3:
-            # Keep Core's quota-specific recovery guidance instead of replacing it with provider billing advice.
+        if return_code in ENGINE_REFUSALS:
             for line in reversed(stderr_lines):
-                if "CodeBoarding: " in line:
-                    reason = line.partition("CodeBoarding: ")[2].strip()
+                if ENGINE_ERROR_PREFIX in line:
+                    reason = line.partition(ENGINE_ERROR_PREFIX)[2].strip() or reason
                     break
         if reason:
             # Written straight to the step's outputs: the shell never sees this script's stdout on failure.
