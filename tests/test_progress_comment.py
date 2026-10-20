@@ -54,6 +54,7 @@ class ProgressCommentTests(unittest.TestCase):
         self.assertIn("1. ⏳ Building the diagram of `main` @a1b2c3d from scratch\n", patch)
         self.assertIn("   `main` has no saved diagram this review can start from, so it builds one first.", patch)
         self.assertIn("\n2. Analysing this PR's changes\n", patch)
+        self.assertIn("https://app.codeboarding.org/owner/repo/pull/9/changes?utm_source=github&utm_medium=pr_comment&utm_campaign=gh_action", patch)
 
     def test_the_head_step_marks_the_base_done(self) -> None:
         (patch,) = self._post("head")
