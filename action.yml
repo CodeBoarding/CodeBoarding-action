@@ -378,7 +378,7 @@ runs:
 
           ⏳ CodeBoarding is analyzing this pull request's architecture changes.
 
-          Open it in [CodeBoarding](https://app.codeboarding.org/${{ github.repository }}/pull/${{ steps.guard.outputs.pr_number }}?utm_source=github&utm_medium=pr_comment&utm_campaign=gh_action) meanwhile: the files, comments and review are there already, and the diff appears when the run finishes.
+          Open it in [CodeBoarding](https://app.codeboarding.org/${{ github.repository }}/pull/${{ steps.guard.outputs.pr_number }}/changes?utm_source=github&utm_medium=pr_comment&utm_campaign=gh_action) meanwhile: the files, comments and review are there already, and the diff appears when the run finishes.
 
           <sub>run [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) · attempt ${{ github.run_attempt }}</sub>
 
