@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-10-15T03:00:59.785493+00:00",
-    "source_tree_hash": "25d37c58cae7867ac9d627409974575decc1bc1929d3925a034f82a1ce43c0d5",
+    "generated_at": "2026-10-22T12:36:40.511140+00:00",
+    "source_tree_hash": "b9ee3417ce31b81f9ea1bd6b887927e3d869d7fa9ad3e41e5d72d703d7e34cdd",
     "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
@@ -85,10 +85,11 @@
         "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool",
         "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response",
         "scripts/analyze_repository.py|scripts.analyze_repository._run_command",
+        "scripts/analyze_repository.py|scripts.analyze_repository._run_command.forward_stderr",
         "scripts/analyze_repository.py|scripts.analyze_repository.main"
       ],
-      "content_hash": "26a634a9fd719378",
-      "module_hash": "c6a74c9860d1b100"
+      "content_hash": "2c3eccb47daa8aac",
+      "module_hash": "3e1e441902075cb9"
     },
     "scripts/diff_to_mermaid.py": {
       "method_keys": [
@@ -351,40 +352,48 @@
     "scripts/analyze_repository.py|scripts.analyze_repository.AnalysisError": {
       "file_path": "scripts/analyze_repository.py",
       "qualified_name": "scripts.analyze_repository.AnalysisError",
-      "start_line": 23,
-      "end_line": 24,
+      "start_line": 26,
+      "end_line": 27,
       "type": "CLASS",
       "content_hash": "e23f18bc0d32e21b"
     },
     "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool": {
       "file_path": "scripts/analyze_repository.py",
       "qualified_name": "scripts.analyze_repository._parse_bool",
-      "start_line": 27,
-      "end_line": 36,
+      "start_line": 30,
+      "end_line": 39,
       "type": "FUNCTION",
       "content_hash": "3de011b556fa2edb"
     },
     "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response": {
       "file_path": "scripts/analyze_repository.py",
       "qualified_name": "scripts.analyze_repository._parse_cli_response",
-      "start_line": 39,
-      "end_line": 73,
+      "start_line": 42,
+      "end_line": 76,
       "type": "FUNCTION",
       "content_hash": "064ec779cc59420b"
     },
     "scripts/analyze_repository.py|scripts.analyze_repository._run_command": {
       "file_path": "scripts/analyze_repository.py",
       "qualified_name": "scripts.analyze_repository._run_command",
-      "start_line": 76,
-      "end_line": 103,
+      "start_line": 79,
+      "end_line": 127,
       "type": "FUNCTION",
-      "content_hash": "6eedbd67b1ffd860"
+      "content_hash": "3a7842daff8c7a61"
+    },
+    "scripts/analyze_repository.py|scripts.analyze_repository._run_command.forward_stderr": {
+      "file_path": "scripts/analyze_repository.py",
+      "qualified_name": "scripts.analyze_repository._run_command.forward_stderr",
+      "start_line": 90,
+      "end_line": 93,
+      "type": "FUNCTION",
+      "content_hash": "43cce328a40b7d19"
     },
     "scripts/analyze_repository.py|scripts.analyze_repository.main": {
       "file_path": "scripts/analyze_repository.py",
       "qualified_name": "scripts.analyze_repository.main",
-      "start_line": 106,
-      "end_line": 150,
+      "start_line": 130,
+      "end_line": 174,
       "type": "FUNCTION",
       "content_hash": "884750cb5fd6b713"
     },
@@ -825,8 +834,14 @@
         {
           "qualified_name": "scripts.analyze_repository.main",
           "reference_file": "scripts/analyze_repository.py",
-          "reference_start_line": 106,
-          "reference_end_line": 150
+          "reference_start_line": 130,
+          "reference_end_line": 174
+        },
+        {
+          "qualified_name": "scripts.analyze_repository.AnalysisError",
+          "reference_file": "scripts/analyze_repository.py",
+          "reference_start_line": 26,
+          "reference_end_line": 27
         },
         {
           "qualified_name": "scripts.diff_to_mermaid.load_analysis",
@@ -884,6 +899,7 @@
             "scripts.analyze_repository._parse_bool",
             "scripts.analyze_repository._parse_cli_response",
             "scripts.analyze_repository._run_command",
+            "scripts.analyze_repository._run_command.forward_stderr",
             "scripts.analyze_repository.main"
           ]
         },
