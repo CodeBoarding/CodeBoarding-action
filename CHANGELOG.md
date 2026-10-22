@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.3](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.16.2...v1.16.3) (2026-10-22)
+
+
+### Bug Fixes
+
+* preserve Core authentication and quota recovery guidance ([#151](https://github.com/CodeBoarding/CodeBoarding-action/issues/151)) ([0bc18a8](https://github.com/CodeBoarding/CodeBoarding-action/commit/0bc18a826db9b8e6b12ac2748309c3fe0d239741))
+
 ## [1.16.2](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.16.1...v1.16.2) (2026-10-15)
 
 
