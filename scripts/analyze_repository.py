@@ -10,10 +10,13 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from threading import Thread
 
 PROG = "codeboarding"
+# Shared with CodeBoarding/codeboarding_cli/main.py; keep the prefix in sync.
+ENGINE_ERROR_PREFIX = "CodeBoarding: "
 
-# The engine's exit codes for an LLM refusal the user has to fix, and what to tell them.
+# Fallback guidance for engine refusals without a recovery message.
 ENGINE_REFUSALS = {
     2: "The LLM provider rejected the API key. Check the key's secret and re-run.",
     3: "The LLM provider's token or credit quota is exhausted. Add credits or raise the quota, then re-run.",
@@ -77,10 +80,21 @@ def _run_command(args: list[str], output_dir: Path) -> str:
     process = subprocess.Popen(
         args,
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         bufsize=1,
         cwd=str(output_dir.parent),
     )
+    stderr_lines: list[str] = []
+
+    def forward_stderr() -> None:
+        for line in process.stderr or ():
+            stderr_lines.append(line)
+            print(line, end="", file=sys.stderr, flush=True)
+
+    # Drain both pipes while the engine runs, preserving stdout's JSON contract.
+    stderr_reader = Thread(target=forward_stderr)
+    stderr_reader.start()
     stdout_lines: list[str] = []
     for line in process.stdout or ():
         stdout_lines.append(line)
@@ -88,10 +102,20 @@ def _run_command(args: list[str], output_dir: Path) -> str:
         # CLI stdout to stderr so engine progress remains visible in Actions.
         print(line, end="", file=sys.stderr, flush=True)
 
+    if process.stdout is not None:
+        process.stdout.close()
     return_code = process.wait()
+    stderr_reader.join()
+    if process.stderr is not None:
+        process.stderr.close()
     stdout = "".join(stdout_lines)
     if return_code != 0:
         reason = ENGINE_REFUSALS.get(return_code)
+        if return_code in ENGINE_REFUSALS:
+            for line in reversed(stderr_lines):
+                if ENGINE_ERROR_PREFIX in line:
+                    reason = line.partition(ENGINE_ERROR_PREFIX)[2].strip() or reason
+                    break
         if reason:
             # Written straight to the step's outputs: the shell never sees this script's stdout on failure.
             with open(os.environ.get("GITHUB_OUTPUT", os.devnull), "a", encoding="utf-8") as outputs:

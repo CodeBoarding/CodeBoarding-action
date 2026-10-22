@@ -60,7 +60,9 @@ class AnalyzeRepositoryTests(unittest.TestCase):
             command = [
                 sys.executable,
                 "-c",
-                "print('Analyzing repository...'); print('{\"requiresFullAnalysis\": true}')",
+                "import sys; print('Analyzing repository...'); "
+                "print('{\"requiresFullAnalysis\": true}', flush=True); "
+                "print('Final diagnostic', file=sys.stderr)",
             ]
 
             with patch("sys.stderr", stderr):
@@ -68,6 +70,7 @@ class AnalyzeRepositoryTests(unittest.TestCase):
 
             self.assertIn("Analyzing repository...", stderr.getvalue())
             self.assertIn('{"requiresFullAnalysis": true}', stderr.getvalue())
+            self.assertIn("Final diagnostic", stderr.getvalue())
             self.assertEqual(stdout, 'Analyzing repository...\n{"requiresFullAnalysis": true}\n')
 
     def _fail_with(self, exit_code: int, outputs: Path) -> ar.AnalysisError:
@@ -85,6 +88,45 @@ class AnalyzeRepositoryTests(unittest.TestCase):
 
             self.assertIn("quota is exhausted", str(error))
             self.assertEqual(outputs.read_text(encoding="utf-8"), f"failure_reason={error}\n")
+
+    def test_engine_refusals_preserve_cores_recovery_message(self) -> None:
+        messages = (
+            (
+                3,
+                "Your CodeBoarding quota is exhausted. Buy a CodeBoarding license at "
+                "https://codeboarding.org/pricing, or wait for your weekly reset.",
+            ),
+            (
+                3,
+                "The LLM provider's token or credit quota is exhausted. "
+                "Add credits or raise the quota for this provider, then re-run.",
+            ),
+            (
+                3,
+                "The hosted LLM provider's quota is exhausted. "
+                "This is a CodeBoarding service issue. Please try again later or contact CodeBoarding support.",
+            ),
+            (2, "Your openai API key was rejected (HTTP 401). Verify the key ending in '…a8dd' and try again."),
+            (
+                2,
+                "CodeBoarding's hosted openrouter credentials were rejected (HTTP 401). This run used no key of "
+                "yours: check that the workflow grants `id-token: write`, then re-run.",
+            ),
+        )
+        for exit_code, message in messages:
+            with self.subTest(exit_code=exit_code, message=message), tempfile.TemporaryDirectory() as tmp:
+                outputs = Path(tmp) / "github_output"
+                program = (
+                    "import sys; "
+                    f"print('ERROR [codeboarding_cli.main:140] CodeBoarding: ' + {message!r}, file=sys.stderr); "
+                    "print('Additional unprefixed guidance', file=sys.stderr); "
+                    f"sys.exit({exit_code})"
+                )
+                with patch.dict("os.environ", {"GITHUB_OUTPUT": str(outputs)}), patch("sys.stderr", io.StringIO()):
+                    with self.assertRaises(ar.AnalysisError) as caught:
+                        ar._run_command([sys.executable, "-c", program], Path(tmp) / "out")
+                self.assertEqual(str(caught.exception), message)
+                self.assertEqual(outputs.read_text(), f"failure_reason={message}\n")
 
     def test_run_command_names_a_rejected_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

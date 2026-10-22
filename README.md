@@ -222,6 +222,11 @@ Every run reports what it resolved, so the answer never has to be inferred from 
   with an error annotation saying which, and in review mode the failure comment says it too.
   No partial analysis is published.
 
+When your CodeBoarding quota is exhausted, the failure reason links to
+[buy a CodeBoarding license](https://codeboarding.org/pricing) or suggests waiting for your
+weekly reset. If CodeBoarding's hosted provider runs out of quota, the failure reason identifies
+a CodeBoarding service issue. Own-provider quota failures retain their provider billing guidance.
+
 ## Model selection
 
 All model inputs are optional and are passed directly to Core without action-side validation:
