@@ -259,7 +259,7 @@ Reuse is best effort throughout. A missing or expired artifact, or a token
 without `actions: read`, falls back to deriving the base directly — which is what
 every run did before any of this existed.
 
-**GitHub Enterprise Server.** `actions/upload-artifact@v4` is not supported
+**GitHub Enterprise Server.** `actions/upload-artifact` v4+ is not supported
 there, which is why the review artifact has always been restricted to
 github.com. The stored analyses are restricted the same way, so a GHES review
 derives the base from the committed baseline on every run. That is the same work
