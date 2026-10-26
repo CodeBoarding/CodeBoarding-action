@@ -10,7 +10,7 @@ inputs:
     required: false
     default: 'review'
   llm:
-    description: 'Required. Where analysis credentials come from: hosted, license, or a provider name (anthropic, aws_bedrock, cerebras, deepseek, glm, google, kimi, litellm, ollama, openai, openrouter, orcarouter, requesty, vercel).'
+    description: 'Required. Where analysis credentials come from: hosted, license, or a provider name (anthropic, aws_bedrock, cerebras, deepseek, glm, google, kimi, litellm, ollama, openai, openrouter, opper, orcarouter, requesty, vercel).'
     required: true
   license_key:
     description: 'CodeBoarding license key. Required by llm: license; optional alongside a provider key.'
@@ -97,6 +97,11 @@ inputs:
   # OpenRouter - selected by llm: openrouter
   openrouter_api_key:
     description: 'OpenRouter API key, used when llm is openrouter. Sets OPENROUTER_API_KEY.'
+    required: false
+    default: ''
+  # Opper - selected by llm: opper
+  opper_api_key:
+    description: 'Opper API key, used when llm is opper. Sets OPPER_API_KEY.'
     required: false
     default: ''
   # OrcaRouter - selected by llm: orcarouter
@@ -306,6 +311,7 @@ runs:
         CB_IN_OPENAI_API_KEY: ${{ inputs.openai_api_key }}
         CB_IN_OPENAI_BASE_URL: ${{ inputs.openai_base_url }}
         CB_IN_OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
+        CB_IN_OPPER_API_KEY: ${{ inputs.opper_api_key }}
         CB_IN_ORCAROUTER_API_KEY: ${{ inputs.orcarouter_api_key }}
         CB_IN_REQUESTY_API_KEY: ${{ inputs.requesty_api_key }}
         CB_IN_REQUESTY_BASE_URL: ${{ inputs.requesty_base_url }}

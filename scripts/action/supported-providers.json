@@ -30,6 +30,15 @@
         "openrouter_api_key": "OPENROUTER_API_KEY"
       }
     },
+    "opper": {
+      "label": "Opper",
+      "selection_envs": [
+        "OPPER_API_KEY"
+      ],
+      "inputs": {
+        "opper_api_key": "OPPER_API_KEY"
+      }
+    },
     "orcarouter": {
       "label": "OrcaRouter",
       "selection_envs": [
