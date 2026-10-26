@@ -1,9 +1,9 @@
 {
   "files": {
     "LICENSE": "356a3402bd47e108",
-    "README.md": "be4e1774913d57ec",
+    "README.md": "52755e7d50de139e",
     "release-please-config.json": "e1ea6dfc5a9fa8bd",
-    "action.yml": "aa1b8815be9284c2",
+    "action.yml": "e6f46cdba18ee83b",
     "pyproject.toml": "e021f980c6c67022",
     "AGENTS.md": "a6a308a383ebb225",
     "CHANGELOG.md": "8a28439cf3eda4f3",
@@ -29,7 +29,7 @@
     "scripts/action/verify-credentials.sh": "9832afc0f5082c4c",
     "scripts/action/deliver-sync.sh": "5bdb3567c7ea3518",
     "scripts/action/old_api_migrator.sh": "30bd6c9075fa8f76",
-    "scripts/action/supported-providers.json": "7d64b882d79dda04",
+    "scripts/action/supported-providers.json": "48a85fce8078c188",
     "scripts/action/review-generate-baseline.sh": "b84b87b8cf08565c",
     "scripts/action/sync-summary.sh": "20554659d14787f0",
     "scripts/action/clear-auth.sh": "056a2b208f9de533",

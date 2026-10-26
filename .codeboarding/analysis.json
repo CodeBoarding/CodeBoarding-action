@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-10-25T19:20:25.505372+00:00",
-    "source_tree_hash": "45939adb370e1c415cce3774cb75b31f1740c8171999d9cb8be25a59d40806e5",
+    "generated_at": "2026-10-26T23:29:29.430373+00:00",
+    "source_tree_hash": "ab1232edf78d41720740cf82f8ae1ee35fb272bfd3d16f03e2567aac5b47e749",
     "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
@@ -47,7 +47,7 @@
       }
     }
   },
-  "description": "This scope provides automation and support utilities for running CodeBoarding within GitHub Actions workflows. It validates LLM credentials before running analysis steps, hosts a local loopback relay to mint and inject fresh GitHub Actions OIDC JWTs for hosted LLM proxy requests, executes the CodeBoarding CLI for incremental or full analyses, and computes structural differences between analysis runs to render visual Mermaid diagrams for pull request annotations.",
+  "description": "Contains automation and support scripts for running CodeBoarding in GitHub Actions, including preflight credential checking, loopback OIDC token relaying, repository analysis execution, and diff rendering to Mermaid graphs.",
   "files": {
     "scripts/action/credential_check.py": {
       "method_keys": [
@@ -816,33 +816,9 @@
   },
   "components": [
     {
-      "name": "Action Workflow Scripts",
-      "description": "Provides pre-execution credential verification, local OIDC authentication relaying, CodeBoarding CLI execution, and analysis diff visualization for GitHub Actions workflows.",
+      "name": "action_support_scripts",
+      "description": "Provides command-line helpers for Action credential validation, OIDC token relaying, CLI execution, and diff rendering.",
       "key_entities": [
-        {
-          "qualified_name": "scripts.action.credential_check.resolve",
-          "reference_file": "scripts/action/credential_check.py",
-          "reference_start_line": 246,
-          "reference_end_line": 311
-        },
-        {
-          "qualified_name": "scripts.action.credential_check.ConfigError",
-          "reference_file": "scripts/action/credential_check.py",
-          "reference_start_line": 57,
-          "reference_end_line": 71
-        },
-        {
-          "qualified_name": "scripts.analyze_repository.main",
-          "reference_file": "scripts/analyze_repository.py",
-          "reference_start_line": 130,
-          "reference_end_line": 174
-        },
-        {
-          "qualified_name": "scripts.analyze_repository.AnalysisError",
-          "reference_file": "scripts/analyze_repository.py",
-          "reference_start_line": 26,
-          "reference_end_line": 27
-        },
         {
           "qualified_name": "scripts.diff_to_mermaid.load_analysis",
           "reference_file": "scripts/diff_to_mermaid.py",
