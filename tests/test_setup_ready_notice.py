@@ -68,7 +68,7 @@ class SetupReadyNoticeTests(unittest.TestCase):
     def test_the_step_runs_only_after_a_posted_review_on_the_setup_branch(self) -> None:
         action = (ROOT / "action.yml").read_text(encoding="utf-8")
         start = action.index("    - name: Tell the setup PR's author the map is ready")
-        step = action[start:action.index("\n    - name:", start + 1)]
+        step = action[start : action.index("\n    - name:", start + 1)]
         self.assertGreater(start, action.index("    - name: Post review comment"))
         condition = next(line for line in step.splitlines() if line.strip().startswith("if:"))
         self.assertIn("steps.review_comment.outcome == 'success'", condition)

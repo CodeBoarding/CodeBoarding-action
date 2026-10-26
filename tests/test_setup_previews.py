@@ -16,13 +16,48 @@ PREVIEW = ROOT / "scripts" / "action" / "review-preview-pr.sh"
 NOTIFY = ROOT / "scripts" / "action" / "notify-setup-ready.sh"
 
 PULLS = {
-    "412": {"state": "open", "head": {"repo": {"full_name": "owner/repo"}, "sha": "h412"}, "base": {"ref": "main", "sha": "t"}, "title": "Retry failed webhooks"},
-    "409": {"state": "open", "head": {"repo": {"full_name": "owner/repo"}, "sha": "h409"}, "base": {"ref": "main", "sha": "t"}, "title": "Split ledger"},
-    "401": {"state": "open", "head": {"repo": {"full_name": "owner/repo"}, "sha": "h401"}, "base": {"ref": "main", "sha": "t"}, "title": "Bump SDK"},
-    "400": {"state": "open", "head": {"repo": {"full_name": "owner/repo"}, "sha": "h400"}, "base": {"ref": "main", "sha": "t"}, "title": "Fourth"},
-    "377": {"state": "open", "head": {"repo": {"full_name": "someone/fork"}, "sha": "h377"}, "base": {"ref": "main", "sha": "t"}, "title": "From a fork"},
-    "350": {"state": "closed", "head": {"repo": {"full_name": "owner/repo"}, "sha": "h350"}, "base": {"ref": "main", "sha": "t"}, "title": "Closed"},
-    "340": {"state": "open", "head": {"repo": {"full_name": "owner/repo"}, "sha": "h340"}, "base": {"ref": "release", "sha": "t"}, "title": "Other branch"},
+    "412": {
+        "state": "open",
+        "head": {"repo": {"full_name": "owner/repo"}, "sha": "h412"},
+        "base": {"ref": "main", "sha": "t"},
+        "title": "Retry failed webhooks",
+    },
+    "409": {
+        "state": "open",
+        "head": {"repo": {"full_name": "owner/repo"}, "sha": "h409"},
+        "base": {"ref": "main", "sha": "t"},
+        "title": "Split ledger",
+    },
+    "401": {
+        "state": "open",
+        "head": {"repo": {"full_name": "owner/repo"}, "sha": "h401"},
+        "base": {"ref": "main", "sha": "t"},
+        "title": "Bump SDK",
+    },
+    "400": {
+        "state": "open",
+        "head": {"repo": {"full_name": "owner/repo"}, "sha": "h400"},
+        "base": {"ref": "main", "sha": "t"},
+        "title": "Fourth",
+    },
+    "377": {
+        "state": "open",
+        "head": {"repo": {"full_name": "someone/fork"}, "sha": "h377"},
+        "base": {"ref": "main", "sha": "t"},
+        "title": "From a fork",
+    },
+    "350": {
+        "state": "closed",
+        "head": {"repo": {"full_name": "owner/repo"}, "sha": "h350"},
+        "base": {"ref": "main", "sha": "t"},
+        "title": "Closed",
+    },
+    "340": {
+        "state": "open",
+        "head": {"repo": {"full_name": "owner/repo"}, "sha": "h340"},
+        "base": {"ref": "release", "sha": "t"},
+        "title": "Other branch",
+    },
 }
 
 
@@ -90,7 +125,10 @@ class ResolvePreviewTests(unittest.TestCase):
     def test_the_listed_pull_requests_are_previewed_in_order(self) -> None:
         out = self._run("Adds CodeBoarding.\n\n<!-- codeboarding:preview 412,409 -->\n")
         self.assertEqual(out, {"count": "2", "prs": "412,409"})
-        self.assertEqual(self._entry(1), {"pr_number": "412", "head_sha": "h412", "merge_base_sha": "mb-h412", "title": "Retry failed webhooks"})
+        self.assertEqual(
+            self._entry(1),
+            {"pr_number": "412", "head_sha": "h412", "merge_base_sha": "mb-h412", "title": "Retry failed webhooks"},
+        )
         self.assertEqual(self._entry(2)["pr_number"], "409")
 
     def test_forks_closed_and_other_branches_are_skipped_and_the_list_is_capped(self) -> None:
@@ -135,7 +173,9 @@ class ReviewPreviewTests(unittest.TestCase):
         (self.base_dir / "analysis.json").write_text('{"components": []}')
         self.review_dir = self.root / "review-artifact"
         self.review_dir.mkdir()
-        (self.review_dir / "metadata.json").write_text(json.dumps({"base_artifact": "cb-base-Z", "base_artifact_id": "77"}))
+        (self.review_dir / "metadata.json").write_text(
+            json.dumps({"base_artifact": "cb-base-Z", "base_artifact_id": "77"})
+        )
 
         # The action tree with the engine and renderer stubbed; the packager is the real one.
         action = self.action = self.root / "action"
@@ -150,7 +190,9 @@ class ReviewPreviewTests(unittest.TestCase):
             encoding="utf-8",
         )
         analyze.chmod(0o755)
-        (action / "scripts" / "diff_to_mermaid.py").write_text('print(\'{"n_changed": 1, "analysed_files_changed": 1}\')\n')
+        (action / "scripts" / "diff_to_mermaid.py").write_text(
+            'print(\'{"n_changed": 1, "analysed_files_changed": 1}\')\n'
+        )
 
         self.preview_dir = self.root / "codeboarding-preview"
         self.preview_dir.mkdir()
@@ -159,8 +201,16 @@ class ReviewPreviewTests(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def _run(self, pr_head: str | None = None) -> dict[str, str]:
-        (self.preview_dir / "1.json").write_text(json.dumps(
-            {"pr_number": "412", "head_sha": pr_head or self.pr_head, "merge_base_sha": self.fork_point, "title": "Retry failed webhooks"}))
+        (self.preview_dir / "1.json").write_text(
+            json.dumps(
+                {
+                    "pr_number": "412",
+                    "head_sha": pr_head or self.pr_head,
+                    "merge_base_sha": self.fork_point,
+                    "title": "Retry failed webhooks",
+                }
+            )
+        )
         output = self.root / "output"
         output.write_text("")
         subprocess.run(
@@ -233,9 +283,14 @@ class FirstPreviewNoticeTests(unittest.TestCase):
                 [str(NOTIFY)],
                 env={
                     "PATH": f"{root / 'bin'}:{os.environ['PATH']}",
-                    "REPOSITORY": "owner/repo", "PR_NUMBER": "418", "PR_AUTHOR": "maria-k",
-                    "HEAD_REF": "codeboarding/setup-action", "BASE_REF": "main",
-                    "FIRST_PR": "412", "FIRST_TITLE": "Retry failed webhooks", "PREVIEW_PRS": "412,409,401",
+                    "REPOSITORY": "owner/repo",
+                    "PR_NUMBER": "418",
+                    "PR_AUTHOR": "maria-k",
+                    "HEAD_REF": "codeboarding/setup-action",
+                    "BASE_REF": "main",
+                    "FIRST_PR": "412",
+                    "FIRST_TITLE": "Retry failed webhooks",
+                    "PREVIEW_PRS": "412,409,401",
                 },
                 check=True,
                 capture_output=True,
