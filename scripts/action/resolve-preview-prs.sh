@@ -30,7 +30,7 @@ line="$(grep -oE '<!-- codeboarding:preview [0-9, ]+ -->' <<< "$body" | head -n 
 
 skip() { echo "::notice::Not previewing #$1: $2"; }
 seen=" "
-for pr in $(grep -oE '[0-9]+' <<< "${line#*preview}"); do
+while IFS= read -r pr; do
   [ "$count" -lt "$max" ] || { skip "$pr" "at most $max pull requests are previewed."; continue; }
   [ "$pr" != "$PR_NUMBER" ] || continue
   case "$seen" in *" $pr "*) continue ;; esac
@@ -53,5 +53,5 @@ for pr in $(grep -oE '[0-9]+' <<< "${line#*preview}"); do
     --arg title "$(jq -r '.title // ""' <<< "$json")" \
     '{pr_number: $pr, head_sha: $head_sha, merge_base_sha: $merge_base, title: $title}' > "$out/$count.json"
   prs="${prs:+$prs,}$pr"
-done
+done < <(grep -oE '[0-9]+' <<< "${line#*preview}")
 finish

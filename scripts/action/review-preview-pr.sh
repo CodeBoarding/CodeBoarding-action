@@ -17,6 +17,7 @@ n="$1"
 dir="${RUNNER_TEMP:?}/codeboarding-preview"
 entry="$dir/$n.json"
 [ -f "$entry" ] || exit 0
+: "${REPOSITORY:?}"
 IFS=$'\t' read -r pr head_sha pr_merge_base < <(jq -r '[.pr_number, .head_sha, .merge_base_sha] | @tsv' "$entry")
 title="$(jq -r '.title' "$entry")"
 base="$REVIEW_BASE_SHA"
