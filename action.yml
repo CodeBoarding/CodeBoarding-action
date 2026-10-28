@@ -617,13 +617,10 @@ runs:
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
+        # A setup PR's run goes on to preview other pull requests; the credentials stay until
+        # those finish and the step after them removes them.
+        KEEP_AUTH: ${{ github.event_name == 'pull_request' && github.head_ref == 'codeboarding/setup-action' }}
       run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/review-analyze-head.sh"'
-
-    # The head step removes the credentials; this covers a run that failed before it.
-    - name: Remove analysis credentials
-      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
-      shell: bash
-      run: '"$GITHUB_ACTION_PATH/scripts/action/clear-auth.sh"'
 
     # Published before the review is rendered: the analysis is the expensive part,
     # so a later rendering or posting failure must not throw it away. Only the
@@ -729,6 +726,160 @@ runs:
         number: ${{ steps.guard.outputs.pr_number }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
         path: ${{ steps.review_body.outputs.path }}
+
+    # Before a setup PR merges, its own run is the only one GitHub starts for us, so this is
+    # where a new user's open pull requests get their first review: the ones the app listed
+    # in the setup PR's description, each applied to the commit this run just analysed and
+    # analysed incrementally from it (see review-preview-pr.sh). Nothing is posted on them.
+    # The app finds each as codeboarding-preview-<run>-<attempt>-pr<number>-<head sha>.
+    # Not codeboarding-review-<run>-...: the app takes the newest artifact with that prefix as
+    # the setup PR's own review, so a preview named that way would replace the setup PR's map.
+    # All best effort: the setup PR's map is already uploaded and must not fail because of them.
+    - name: Resolve pull requests to preview
+      id: preview_list
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_comment.outcome == 'success' && github.event_name == 'pull_request' && github.head_ref == 'codeboarding/setup-action'
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        GH_HOST: ${{ github.server_url }}
+        REPOSITORY: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
+        HEAD_REF: ${{ github.head_ref }}
+        BASE_REF: ${{ steps.guard.outputs.base_ref }}
+        MAX_PREVIEWS: '3'
+      run: "$GITHUB_ACTION_PATH/scripts/action/resolve-preview-prs.sh"
+
+    - name: Preview pull request 1 for the setup PR
+      id: preview_1
+      if: steps.guard.outputs.mode == 'review' && steps.preview_list.outputs.count >= 1
+      continue-on-error: true
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
+        GIT_TOKEN: ${{ inputs.github_token }}
+        REPOSITORY: ${{ github.repository }}
+        SETUP_PR: ${{ steps.guard.outputs.pr_number }}
+        REVIEW_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
+        BASE_ANALYSIS_PATH: ${{ steps.review_baseline.outputs.base_analysis_path }}
+        # The setup PR's own review artifact already records where the base graph lives.
+        REVIEW_ARTIFACT_DIR: ${{ steps.review_artifact.outputs.artifact_dir }}
+        ENGINE_VERSION: ${{ steps.state.outputs.engine_version }}
+        CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
+        DEPTH_CAP: ${{ inputs.depth_cap }}
+        MODEL: ${{ inputs.model }}
+        AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
+        PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
+        KEEP_AUTH: 'true'
+      run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/review-preview-pr.sh" 1'
+
+    - name: Upload preview 1
+      id: upload_preview_1
+      if: steps.preview_1.outputs.artifact_dir != '' && github.server_url == 'https://github.com'
+      continue-on-error: true
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: codeboarding-preview-${{ github.run_id }}-${{ github.run_attempt }}-pr${{ steps.preview_1.outputs.pr_number }}-${{ steps.preview_1.outputs.head_sha }}
+        path: ${{ steps.preview_1.outputs.artifact_dir }}
+        if-no-files-found: error
+        retention-days: 14
+
+    # The sticky review comment is an edit by now, and edits send no notification. One new
+    # comment on a setup PR emails its author: after the first preview when there is one,
+    # so the email links a coloured pull request, otherwise as soon as the map is posted.
+    - name: Tell the setup PR's author the map is ready
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.review_comment.outcome == 'success' && github.event_name == 'pull_request' && github.head_ref == 'codeboarding/setup-action'
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        GH_HOST: ${{ github.server_url }}
+        REPOSITORY: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
+        PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        HEAD_REF: ${{ github.head_ref }}
+        BASE_REF: ${{ steps.guard.outputs.base_ref }}
+        FIRST_PR: ${{ steps.upload_preview_1.outcome == 'success' && steps.preview_1.outputs.pr_number || '' }}
+        FIRST_TITLE: ${{ steps.preview_1.outputs.title }}
+        PREVIEW_PRS: ${{ steps.preview_list.outputs.prs }}
+      run: "$GITHUB_ACTION_PATH/scripts/action/notify-setup-ready.sh"
+
+    - name: Preview pull request 2 for the setup PR
+      id: preview_2
+      if: steps.guard.outputs.mode == 'review' && steps.preview_list.outputs.count >= 2
+      continue-on-error: true
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
+        GIT_TOKEN: ${{ inputs.github_token }}
+        REPOSITORY: ${{ github.repository }}
+        SETUP_PR: ${{ steps.guard.outputs.pr_number }}
+        REVIEW_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
+        BASE_ANALYSIS_PATH: ${{ steps.review_baseline.outputs.base_analysis_path }}
+        # The setup PR's own review artifact already records where the base graph lives.
+        REVIEW_ARTIFACT_DIR: ${{ steps.review_artifact.outputs.artifact_dir }}
+        ENGINE_VERSION: ${{ steps.state.outputs.engine_version }}
+        CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
+        DEPTH_CAP: ${{ inputs.depth_cap }}
+        MODEL: ${{ inputs.model }}
+        AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
+        PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
+        KEEP_AUTH: 'true'
+      run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/review-preview-pr.sh" 2'
+
+    - name: Upload preview 2
+      id: upload_preview_2
+      if: steps.preview_2.outputs.artifact_dir != '' && github.server_url == 'https://github.com'
+      continue-on-error: true
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: codeboarding-preview-${{ github.run_id }}-${{ github.run_attempt }}-pr${{ steps.preview_2.outputs.pr_number }}-${{ steps.preview_2.outputs.head_sha }}
+        path: ${{ steps.preview_2.outputs.artifact_dir }}
+        if-no-files-found: error
+        retention-days: 14
+
+    - name: Preview pull request 3 for the setup PR
+      id: preview_3
+      if: steps.guard.outputs.mode == 'review' && steps.preview_list.outputs.count >= 3
+      continue-on-error: true
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
+        GIT_TOKEN: ${{ inputs.github_token }}
+        REPOSITORY: ${{ github.repository }}
+        SETUP_PR: ${{ steps.guard.outputs.pr_number }}
+        REVIEW_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
+        BASE_ANALYSIS_PATH: ${{ steps.review_baseline.outputs.base_analysis_path }}
+        # The setup PR's own review artifact already records where the base graph lives.
+        REVIEW_ARTIFACT_DIR: ${{ steps.review_artifact.outputs.artifact_dir }}
+        ENGINE_VERSION: ${{ steps.state.outputs.engine_version }}
+        CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
+        DEPTH_CAP: ${{ inputs.depth_cap }}
+        MODEL: ${{ inputs.model }}
+        AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
+        PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
+      run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/review-preview-pr.sh" 3'
+
+    - name: Upload preview 3
+      id: upload_preview_3
+      if: steps.preview_3.outputs.artifact_dir != '' && github.server_url == 'https://github.com'
+      continue-on-error: true
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: codeboarding-preview-${{ github.run_id }}-${{ github.run_attempt }}-pr${{ steps.preview_3.outputs.pr_number }}-${{ steps.preview_3.outputs.head_sha }}
+        path: ${{ steps.preview_3.outputs.artifact_dir }}
+        if-no-files-found: error
+        retention-days: 14
+
+    # The head and preview steps remove the credentials themselves; this covers a run that
+    # failed before them, and a setup PR's run, which keeps them for its previews.
+    - name: Remove analysis credentials
+      if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review'
+      shell: bash
+      run: '"$GITHUB_ACTION_PATH/scripts/action/clear-auth.sh"'
 
     # The same body, on the run page. Job summaries and logs are explicitly excluded from
     # the artifact storage allowance, and the cap is 1MiB per step against a diagram
