@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.16.3...v1.17.0) (2026-10-28)
+
+
+### Features
+
+* preview picked pull requests and email the author from a setup PR's run ([#152](https://github.com/CodeBoarding/CodeBoarding-action/issues/152)) ([a3ccd97](https://github.com/CodeBoarding/CodeBoarding-action/commit/a3ccd97c2d4d3461aa138ffcd72e640d92224362))
+
 ## [1.16.3](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.16.2...v1.16.3) (2026-10-26)
 
 
