@@ -143,6 +143,14 @@ inputs:
     description: 'Positive integer analysis depth cap, used for both review and sync, including full fallbacks.'
     required: false
     default: '2'
+  review_guide_url:
+    description: >-
+      Experimental. The CodeBoarding service that writes a pull request's review guide (main
+      changes, each change as numbered steps on the map). When set, a review run sends it this
+      run's analysis and stores the guide in the review artifact for the platform to show. Empty
+      leaves it off.
+    required: false
+    default: ''
   github_token:
     description: 'Token used for comments and sync delivery.'
     required: false
@@ -685,6 +693,28 @@ runs:
         CHAIN_DEPTH: ${{ steps.review_analyze.outputs.chain_depth }}
         ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-artifact.sh"
+
+    # After the artifact holds the analysis and before it is uploaded: the guide is one more file
+    # in it. Experimental and off unless the workflow names the service; it never fails the run.
+    - name: Build review guide
+      id: review_guide
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && inputs.review_guide_url != ''
+      continue-on-error: true
+      shell: bash
+      env:
+        REVIEW_GUIDE_URL: ${{ inputs.review_guide_url }}
+        REPOSITORY: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
+        ARTIFACT_DIR: ${{ steps.review_artifact.outputs.artifact_dir }}
+        HEAD_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
+        BASE_ANALYSIS_PATH: ${{ steps.review_baseline.outputs.base_analysis_path }}
+        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        LICENSE_KEY: ${{ inputs.license_key }}
+        OLLAMA_API_KEY: ${{ inputs.ollama_api_key }}
+        OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
+        OPENAI_API_KEY: ${{ inputs.openai_api_key }}
+      run: python3 "$GITHUB_ACTION_PATH/scripts/review_guide.py"
 
     - name: Upload review artifact
       id: upload_review_artifact_dotcom
