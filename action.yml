@@ -780,29 +780,43 @@ runs:
         MAX_PREVIEWS: '3'
       run: "$GITHUB_ACTION_PATH/scripts/action/resolve-preview-prs.sh"
 
+    # Composite action metadata does not support YAML anchors. Share the environment
+    # through a step output instead, without exporting it into the caller's GITHUB_ENV.
+    # Keep analysis and upload steps separate for per-preview failure isolation.
+    - name: Prepare the shared preview environment
+      id: preview_env
+      if: steps.guard.outputs.mode == 'review' && steps.preview_list.outputs.count >= 1
+      continue-on-error: true
+      shell: bash
+      env:
+        PREVIEW_ENV: |
+          {
+            "ACTION_PATH": ${{ toJSON(github.action_path) }},
+            "CHECKOUT_DIR": ${{ toJSON(format('{0}/.codeboarding-target', github.workspace)) }},
+            "GIT_TOKEN": ${{ toJSON(inputs.github_token) }},
+            "REPOSITORY": ${{ toJSON(github.repository) }},
+            "SETUP_PR": ${{ toJSON(steps.guard.outputs.pr_number) }},
+            "REVIEW_BASE_SHA": ${{ toJSON(steps.guard.outputs.merge_base_sha) }},
+            "BASE_ANALYSIS_PATH": ${{ toJSON(steps.review_baseline.outputs.base_analysis_path) }},
+            "REVIEW_ARTIFACT_DIR": ${{ toJSON(steps.review_artifact.outputs.artifact_dir) }},
+            "ENGINE_VERSION": ${{ toJSON(steps.state.outputs.engine_version) }},
+            "CFG_HASH": ${{ toJSON(steps.state.outputs.cfg_hash) }},
+            "DEPTH_CAP": ${{ toJSON(inputs.depth_cap) }},
+            "MODEL": ${{ toJSON(inputs.model) }},
+            "AGENT_MODEL_INPUT": ${{ toJSON(inputs.agent_model) }},
+            "PARSING_MODEL_INPUT": ${{ toJSON(inputs.parsing_model) }}
+          }
+      run: |
+        preview_env="$(jq -c . <<< "$PREVIEW_ENV")"
+        printf 'env=%s\n' "$preview_env" >> "$GITHUB_OUTPUT"
+
     - name: Preview pull request 1 for the setup PR
       id: preview_1
       if: steps.guard.outputs.mode == 'review' && steps.preview_list.outputs.count >= 1
       continue-on-error: true
       shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
-        GIT_TOKEN: ${{ inputs.github_token }}
-        REPOSITORY: ${{ github.repository }}
-        SETUP_PR: ${{ steps.guard.outputs.pr_number }}
-        REVIEW_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
-        BASE_ANALYSIS_PATH: ${{ steps.review_baseline.outputs.base_analysis_path }}
-        # The setup PR's own review artifact already records where the base graph lives.
-        REVIEW_ARTIFACT_DIR: ${{ steps.review_artifact.outputs.artifact_dir }}
-        ENGINE_VERSION: ${{ steps.state.outputs.engine_version }}
-        CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
-        DEPTH_CAP: ${{ inputs.depth_cap }}
-        MODEL: ${{ inputs.model }}
-        AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
-        PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
-        KEEP_AUTH: 'true'
-      run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/review-preview-pr.sh" 1'
+      env: ${{ fromJSON(steps.preview_env.outputs.env) }}
+      run: 'KEEP_AUTH=true "$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/review-preview-pr.sh" 1'
 
     - name: Upload preview 1
       id: upload_preview_1
@@ -840,24 +854,8 @@ runs:
       if: steps.guard.outputs.mode == 'review' && steps.preview_list.outputs.count >= 2
       continue-on-error: true
       shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
-        GIT_TOKEN: ${{ inputs.github_token }}
-        REPOSITORY: ${{ github.repository }}
-        SETUP_PR: ${{ steps.guard.outputs.pr_number }}
-        REVIEW_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
-        BASE_ANALYSIS_PATH: ${{ steps.review_baseline.outputs.base_analysis_path }}
-        # The setup PR's own review artifact already records where the base graph lives.
-        REVIEW_ARTIFACT_DIR: ${{ steps.review_artifact.outputs.artifact_dir }}
-        ENGINE_VERSION: ${{ steps.state.outputs.engine_version }}
-        CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
-        DEPTH_CAP: ${{ inputs.depth_cap }}
-        MODEL: ${{ inputs.model }}
-        AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
-        PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
-        KEEP_AUTH: 'true'
-      run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/review-preview-pr.sh" 2'
+      env: ${{ fromJSON(steps.preview_env.outputs.env) }}
+      run: 'KEEP_AUTH=true "$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/review-preview-pr.sh" 2'
 
     - name: Upload preview 2
       id: upload_preview_2
@@ -875,22 +873,7 @@ runs:
       if: steps.guard.outputs.mode == 'review' && steps.preview_list.outputs.count >= 3
       continue-on-error: true
       shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
-        GIT_TOKEN: ${{ inputs.github_token }}
-        REPOSITORY: ${{ github.repository }}
-        SETUP_PR: ${{ steps.guard.outputs.pr_number }}
-        REVIEW_BASE_SHA: ${{ steps.guard.outputs.merge_base_sha }}
-        BASE_ANALYSIS_PATH: ${{ steps.review_baseline.outputs.base_analysis_path }}
-        # The setup PR's own review artifact already records where the base graph lives.
-        REVIEW_ARTIFACT_DIR: ${{ steps.review_artifact.outputs.artifact_dir }}
-        ENGINE_VERSION: ${{ steps.state.outputs.engine_version }}
-        CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
-        DEPTH_CAP: ${{ inputs.depth_cap }}
-        MODEL: ${{ inputs.model }}
-        AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
-        PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
+      env: ${{ fromJSON(steps.preview_env.outputs.env) }}
       run: '"$GITHUB_ACTION_PATH/scripts/action/with-auth.sh" "$GITHUB_ACTION_PATH/scripts/action/review-preview-pr.sh" 3'
 
     - name: Upload preview 3
