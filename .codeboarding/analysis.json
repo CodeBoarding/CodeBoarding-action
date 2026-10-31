@@ -1,17 +1,17 @@
 {
   "metadata": {
-    "generated_at": "2026-10-28T17:00:47.488624+00:00",
-    "source_tree_hash": "44164ea071a5dfc11db9eece204acf9ed9126b2058ad1638a067ee36a7614936",
+    "generated_at": "2026-10-31T15:38:07.242198+00:00",
+    "source_tree_hash": "f23f7c6d843cee37bbefbe9175c18c0ebc0b25b035bb7f8763deac1f8aa78b29",
     "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
     "file_coverage_summary": {
-      "total_files": 63,
-      "analyzed": 4,
-      "not_analyzed": 59,
+      "total_files": 65,
+      "analyzed": 5,
+      "not_analyzed": 60,
       "not_analyzed_by_reason": {
         "other": 39,
-        "codeboardingignore": 20
+        "codeboardingignore": 21
       }
     },
     "tree_spec": {
@@ -47,7 +47,7 @@
       }
     }
   },
-  "description": "Contains automation and support scripts for running CodeBoarding in GitHub Actions, including preflight credential checking, loopback OIDC token relaying, repository analysis execution, and diff rendering to Mermaid graphs.",
+  "description": "Automation and support scripts for running CodeBoarding in GitHub Actions, including preflight credential checking, loopback OIDC token relaying, repository analysis execution, diff rendering to Mermaid graphs, and bundling PR analyses to fetch review guides.",
   "files": {
     "scripts/action/credential_check.py": {
       "method_keys": [
@@ -154,6 +154,24 @@
       ],
       "content_hash": "5af0d8557c0af6e0",
       "module_hash": "581a285c4c8aad4a"
+    },
+    "scripts/review_guide.py": {
+      "method_keys": [
+        "scripts/review_guide.py|scripts.review_guide.Skip",
+        "scripts/review_guide.py|scripts.review_guide._github",
+        "scripts/review_guide.py|scripts.review_guide._github_json",
+        "scripts/review_guide.py|scripts.review_guide.call_graph",
+        "scripts/review_guide.py|scripts.review_guide._diff",
+        "scripts/review_guide.py|scripts.review_guide._contents",
+        "scripts/review_guide.py|scripts.review_guide.bundle",
+        "scripts/review_guide.py|scripts.review_guide._relay",
+        "scripts/review_guide.py|scripts.review_guide.credentials",
+        "scripts/review_guide.py|scripts.review_guide._bearer",
+        "scripts/review_guide.py|scripts.review_guide.request_guide",
+        "scripts/review_guide.py|scripts.review_guide.main"
+      ],
+      "content_hash": "3318d8920a364935",
+      "module_hash": "f9ee449c3bb8b8d1"
     }
   },
   "methods_index": {
@@ -812,12 +830,108 @@
       "end_line": 183,
       "type": "FUNCTION",
       "content_hash": "32cb887f244d21dd"
+    },
+    "scripts/review_guide.py|scripts.review_guide.Skip": {
+      "file_path": "scripts/review_guide.py",
+      "qualified_name": "scripts.review_guide.Skip",
+      "start_line": 42,
+      "end_line": 43,
+      "type": "CLASS",
+      "content_hash": "dc124b04a2def6a1"
+    },
+    "scripts/review_guide.py|scripts.review_guide._github": {
+      "file_path": "scripts/review_guide.py",
+      "qualified_name": "scripts.review_guide._github",
+      "start_line": 46,
+      "end_line": 57,
+      "type": "FUNCTION",
+      "content_hash": "4921eb79810bebc5"
+    },
+    "scripts/review_guide.py|scripts.review_guide._github_json": {
+      "file_path": "scripts/review_guide.py",
+      "qualified_name": "scripts.review_guide._github_json",
+      "start_line": 60,
+      "end_line": 61,
+      "type": "FUNCTION",
+      "content_hash": "524f8b94439ea108"
+    },
+    "scripts/review_guide.py|scripts.review_guide.call_graph": {
+      "file_path": "scripts/review_guide.py",
+      "qualified_name": "scripts.review_guide.call_graph",
+      "start_line": 64,
+      "end_line": 86,
+      "type": "FUNCTION",
+      "content_hash": "cd6e687c016caa7f"
+    },
+    "scripts/review_guide.py|scripts.review_guide._diff": {
+      "file_path": "scripts/review_guide.py",
+      "qualified_name": "scripts.review_guide._diff",
+      "start_line": 89,
+      "end_line": 100,
+      "type": "FUNCTION",
+      "content_hash": "63427c552f7a1baf"
+    },
+    "scripts/review_guide.py|scripts.review_guide._contents": {
+      "file_path": "scripts/review_guide.py",
+      "qualified_name": "scripts.review_guide._contents",
+      "start_line": 103,
+      "end_line": 111,
+      "type": "FUNCTION",
+      "content_hash": "30fdcf11bfee6226"
+    },
+    "scripts/review_guide.py|scripts.review_guide.bundle": {
+      "file_path": "scripts/review_guide.py",
+      "qualified_name": "scripts.review_guide.bundle",
+      "start_line": 114,
+      "end_line": 163,
+      "type": "FUNCTION",
+      "content_hash": "52fb841c306a244f"
+    },
+    "scripts/review_guide.py|scripts.review_guide._relay": {
+      "file_path": "scripts/review_guide.py",
+      "qualified_name": "scripts.review_guide._relay",
+      "start_line": 166,
+      "end_line": 172,
+      "type": "FUNCTION",
+      "content_hash": "5ac724b334ca5bc8"
+    },
+    "scripts/review_guide.py|scripts.review_guide.credentials": {
+      "file_path": "scripts/review_guide.py",
+      "qualified_name": "scripts.review_guide.credentials",
+      "start_line": 175,
+      "end_line": 182,
+      "type": "FUNCTION",
+      "content_hash": "b0bff87945f9a67f"
+    },
+    "scripts/review_guide.py|scripts.review_guide._bearer": {
+      "file_path": "scripts/review_guide.py",
+      "qualified_name": "scripts.review_guide._bearer",
+      "start_line": 185,
+      "end_line": 203,
+      "type": "FUNCTION",
+      "content_hash": "fe3b076030da5de2"
+    },
+    "scripts/review_guide.py|scripts.review_guide.request_guide": {
+      "file_path": "scripts/review_guide.py",
+      "qualified_name": "scripts.review_guide.request_guide",
+      "start_line": 206,
+      "end_line": 223,
+      "type": "FUNCTION",
+      "content_hash": "acd4c456ef92307b"
+    },
+    "scripts/review_guide.py|scripts.review_guide.main": {
+      "file_path": "scripts/review_guide.py",
+      "qualified_name": "scripts.review_guide.main",
+      "start_line": 226,
+      "end_line": 248,
+      "type": "FUNCTION",
+      "content_hash": "945a23a8690cdaa7"
     }
   },
   "components": [
     {
       "name": "action_support_scripts",
-      "description": "Provides command-line helpers for Action credential validation, OIDC token relaying, CLI execution, and diff rendering.",
+      "description": "Provides command-line helpers for Action credential validation, OIDC token relaying, CLI execution, diff rendering, and review guide generation.",
       "key_entities": [
         {
           "qualified_name": "scripts.diff_to_mermaid.load_analysis",
@@ -830,6 +944,18 @@
           "reference_file": "scripts/oidc_relay.py",
           "reference_start_line": 155,
           "reference_end_line": 161
+        },
+        {
+          "qualified_name": "scripts.review_guide.bundle",
+          "reference_file": "scripts/review_guide.py",
+          "reference_start_line": 114,
+          "reference_end_line": 163
+        },
+        {
+          "qualified_name": "scripts.review_guide.request_guide",
+          "reference_file": "scripts/review_guide.py",
+          "reference_start_line": 206,
+          "reference_end_line": 223
         }
       ],
       "source_cluster_ids": [
@@ -939,6 +1065,23 @@
             "scripts.oidc_relay.RelayServer",
             "scripts.oidc_relay.RelayServer.__init__",
             "scripts.oidc_relay.main"
+          ]
+        },
+        {
+          "file_path": "scripts/review_guide.py",
+          "methods": [
+            "scripts.review_guide.Skip",
+            "scripts.review_guide._github",
+            "scripts.review_guide._github_json",
+            "scripts.review_guide.call_graph",
+            "scripts.review_guide._diff",
+            "scripts.review_guide._contents",
+            "scripts.review_guide.bundle",
+            "scripts.review_guide._relay",
+            "scripts.review_guide.credentials",
+            "scripts.review_guide._bearer",
+            "scripts.review_guide.request_guide",
+            "scripts.review_guide.main"
           ]
         }
       ],
