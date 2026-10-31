@@ -146,11 +146,11 @@ inputs:
   review_guide_url:
     description: >-
       Experimental. The CodeBoarding service that writes a pull request's review guide (main
-      changes, each change as numbered steps on the map). When set, a review run sends it this
-      run's analysis and stores the guide in the review artifact for the platform to show. Empty
-      leaves it off.
+      changes, each change as numbered steps on the map). Defaults to the production service.
+      A review run sends it this run's analysis and stores the guide in the review artifact for
+      the platform to show. Set to an empty string to disable.
     required: false
-    default: ''
+    default: 'https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/'
   github_token:
     description: 'Token used for comments and sync delivery.'
     required: false
@@ -695,7 +695,7 @@ runs:
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-artifact.sh"
 
     # After the artifact holds the analysis and before it is uploaded: the guide is one more file
-    # in it. Experimental and off unless the workflow names the service; it never fails the run.
+    # in it. Uses production by default; an empty URL disables it. It never fails the run.
     - name: Build review guide
       id: review_guide
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && inputs.review_guide_url != ''
