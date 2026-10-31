@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.17.0...v1.18.0) (2026-10-31)
+
+
+### Features
+
+* ask CodeBoarding for the pull request's review guide (experimental) ([#160](https://github.com/CodeBoarding/CodeBoarding-action/issues/160)) ([d55de4f](https://github.com/CodeBoarding/CodeBoarding-action/commit/d55de4fb3a04656f604e74f30316a908fa372e99))
+
 ## [1.17.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.16.3...v1.17.0) (2026-10-28)
 
 
