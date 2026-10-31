@@ -347,6 +347,7 @@ The first sync after the merge creates `codeboarding/baseline`, catching up from
 | `github_token` | both | `${{ github.token }}` | Token for comments and sync delivery. |
 | `codeboarding_analysis_location` | both | `codeboarding_branch` | Where the synced branch's analysis is stored: `codeboarding_branch` (on `codeboarding/baseline`, for the default branch; the code is never written) or `in_place` (committed as `.codeboarding/` on the synced branch). Sync saves it there and review reads it from there. |
 | `warmstart_retention_days` | review | `1` | Days to keep the reusable analysis. Only the next run reads it. |
+| `review_guide_url` | review | `https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/` | Experimental. Production service base URL for the pull request's review guide. The run sends it this analysis and stores `review_guide.json` in the review artifact. Set to `''` to disable. Never fails the run. |
 
 `target_branch` and `sync_strategy` are deprecated, and read as the `codeboarding_analysis_location` they stand for, with a warning: `sync_strategy: push` as `in_place`, `sync_strategy: pull_request` as `codeboarding_branch`. `target_branch` is accepted only when it names the branch the run is on: the push trigger picks the branch. `force_full: true` is ignored with a warning. Anything the new input cannot express fails, linking to [moving an existing setup](#moving-an-existing-setup).
 
