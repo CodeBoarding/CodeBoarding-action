@@ -154,8 +154,9 @@ inputs:
   closed_features_source:
     description: >-
       Whether a closed feature that asks for it may read this repository's source, for checks that
-      need the whole tree. Only that feature's request carries it, capped in size, and the service
-      keeps nothing. With 'false' those checks do not run and the result says so.
+      need the whole tree and to verify a finding. Only that feature's request carries it, capped in
+      size, and the service keeps nothing. The model sees the code around a finding, never the tree.
+      With 'false' those checks and the model review do not run, and the result says so.
     required: false
     default: 'true'
   github_token:
