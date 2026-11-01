@@ -123,8 +123,10 @@ class BundleTests(unittest.TestCase):
 
 
 class CredentialTests(unittest.TestCase):
+    HOSTS = {"openrouter": "openrouter.ai", "ollama": "ollama.com", "anthropic": "api.anthropic.com"}
+
     def test_without_oidc_the_runs_own_token_proves_the_repository(self):
-        self.assertEqual(closed_features.credentials({"GITHUB_TOKEN": "ghs_run"}), {"Authorization": "Bearer ghs_run"})
+        self.assertEqual(closed_features._bearer({"GITHUB_TOKEN": "ghs_run"}), {"Authorization": "Bearer ghs_run"})
 
     def test_with_oidc_the_bearer_is_the_proxys_own_with_the_license(self):
         mint = _Server(lambda path, body: (200, {"value": "jwt.token.sig"}))
@@ -137,19 +139,34 @@ class CredentialTests(unittest.TestCase):
             }
             with tempfile.TemporaryDirectory() as t:
                 env["RUNNER_TEMP"] = t
-                headers = closed_features.credentials(env)
+                headers = closed_features._bearer(env)
                 self.assertEqual(list(Path(t).iterdir()), [])  # the license file does not outlive the call
             self.assertEqual(headers, {"Authorization": "Bearer jwt.token.sig~codeboarding-license~LIC"})
             self.assertIn("audience=codeboarding-proxy", mint.requests[0]["path"])
         finally:
             mint.close()
 
-    def test_the_runs_own_provider_key_goes_along_and_the_caller_is_still_proved(self):
-        headers = closed_features.credentials({"GITHUB_TOKEN": "ghs_run", "OPENROUTER_API_KEY": " sk-or "})
+    def test_a_hosted_or_licensed_run_sends_no_model_at_all(self):
+        for llm in ("hosted", "license", ""):
+            env = {"LLM": llm, "OPENROUTER_API_KEY": "left over"}
+            self.assertEqual(closed_features.model_headers(env, self.HOSTS), {})
+
+    def test_a_runs_own_provider_key_and_model_are_used(self):
+        env = {"LLM": "anthropic", "ANTHROPIC_API_KEY": " sk-a ", "MODEL": "claude-sonnet-5"}
         self.assertEqual(
-            headers,
-            {"Authorization": "Bearer ghs_run", "x-llm-api-key": "sk-or", "x-llm-provider": "openrouter"},
+            closed_features.model_headers(env, self.HOSTS),
+            {"x-llm-api-key": "sk-a", "x-llm-provider": "anthropic", "x-llm-model": "claude-sonnet-5"},
         )
+
+    def test_ollama_on_its_cloud_is_reachable_and_a_self_hosted_one_is_not(self):
+        cloud = {"LLM": "ollama", "OLLAMA_API_KEY": "k", "OLLAMA_BASE_URL": "https://ollama.com"}
+        self.assertEqual(closed_features.model_headers(cloud, self.HOSTS)["x-llm-api-key"], "k")
+        own = {**cloud, "OLLAMA_BASE_URL": "http://10.0.0.5:11434"}
+        self.assertEqual(closed_features.model_headers(own, self.HOSTS), {"x-llm-provider": "ollama"})
+
+    def test_a_provider_the_service_cannot_call_never_sends_its_key(self):
+        env = {"LLM": "aws_bedrock", "AWS_BEDROCK_API_KEY": "k"}
+        self.assertEqual(closed_features.model_headers(env, self.HOSTS), {"x-llm-provider": "aws_bedrock"})
 
 
 GUIDE = {
@@ -204,7 +221,7 @@ def _read(env, name):
 class RunnerTests(unittest.TestCase):
     def _serve(self, features, answer):
         def respond(path, body):
-            if path == "/v1/features":
+            if path.startswith("/v1/features?"):
                 return features if isinstance(features, tuple) else (200, {"version": 1, "features": features})
             return answer(path, body)
 
@@ -269,7 +286,8 @@ class RunnerTests(unittest.TestCase):
             env = {**_workspace(Path(t)), "CLOSED_FUNCTIONS_URL": service.url}
             _run(env)
             self.assertEqual(_read(env, "closed/other.json")["status"], "skipped")
-        self.assertEqual([r["path"] for r in service.requests], ["/v1/features"])
+        self.assertEqual([r["path"] for r in service.requests], ["/v1/features?repo=o/r"])
+        self.assertEqual(service.requests[0]["headers"]["Authorization"], "Bearer ghs_run")
 
     def test_a_feature_needing_what_this_action_does_not_collect_is_skipped(self):
         wants = {**OTHER, "needs": ["whole-repo.tar"]}
@@ -316,6 +334,39 @@ class RunnerTests(unittest.TestCase):
             env = {**_workspace(Path(t)), "CLOSED_FUNCTIONS_URL": service.url}
             self.assertEqual(_run(env)[0], 0)
             self.assertFalse((Path(t) / "outside.json").exists())
+
+
+class OwnProviderTests(RunnerTests):
+    def test_a_provider_the_service_cannot_call_gets_no_guide_and_no_hosted_model(self):
+        env_keys = {"LLM": "litellm", "LITELLM_API_KEY": "k", "LITELLM_BASE_URL": "http://proxy:4000"}
+        guide = {**GUIDE, "needsModel": True}
+        other = {**OTHER, "needsModel": False}
+        service = self._serve([guide, other], lambda p, b: (200, {"envelope": _envelope("other", {}), "usage": {}}))
+        with tempfile.TemporaryDirectory() as t:
+            env = {**_workspace(Path(t)), **env_keys, "CLOSED_FUNCTIONS_URL": service.url}
+            _, printed = _run(env)
+            self.assertEqual(_read(env, "closed/review-guide.json")["status"], "skipped")
+            self.assertFalse((Path(env["ARTIFACT_DIR"]) / "review_guide.json").exists())
+            self.assertEqual(_read(env, "closed/other.json")["status"], "ok")
+        posts = [r for r in service.requests if r["body"]]
+        self.assertEqual([r["path"] for r in posts], ["/v1/features/other"])
+        lower = {k.lower(): v for k, v in posts[0]["headers"].items()}
+        self.assertEqual(lower["x-llm-provider"], "litellm")
+        self.assertNotIn("x-llm-api-key", lower)
+        self.assertEqual(sum("cannot call this run's provider" in line for line in printed), 2)
+
+    def test_with_no_manifest_a_run_on_its_own_provider_still_never_reaches_the_hosted_model(self):
+        service = self._serve((404, {}), lambda p, b: (200, {"guide": {"version": 1}, "usage": {}}))
+        with tempfile.TemporaryDirectory() as t:
+            env = {
+                **_workspace(Path(t)),
+                "LLM": "anthropic",
+                "ANTHROPIC_API_KEY": "k",
+                "CLOSED_FUNCTIONS_URL": service.url,
+            }
+            _run(env)
+            self.assertEqual(_read(env, "closed/review-guide.json")["status"], "skipped")
+        self.assertEqual([r for r in service.requests if r["body"]], [])
 
 
 class SourceTests(unittest.TestCase):

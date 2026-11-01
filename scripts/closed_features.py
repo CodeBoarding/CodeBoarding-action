@@ -19,14 +19,18 @@ size the service names, or with ``closed_features_source: false`` in the workflo
 without it and says why, so the feature reports what it could not check. This script reads the files
 and sends them; it computes nothing from them.
 
-Credentials follow the analysis: the run's own Ollama, OpenRouter or OpenAI key when it has one,
-otherwise CodeBoarding's hosted model. Either way the service needs to know the caller is this
-repository's run: a fresh GitHub Actions OIDC token (plus the license, the same bearer the hosted
-proxy gets), or the run's GITHUB_TOKEN when the workflow cannot mint one. Nothing here fails the run.
+Credentials follow the analysis: a run that chose its own provider uses its own key and model for
+every feature, and a hosted or licensed run uses CodeBoarding's hosted model. A run whose provider the
+service cannot call (a self-hosted endpoint, Bedrock) makes no model call at all: its features report
+what they can without one, and it never falls back to the hosted model. Either way the service needs
+to know the caller is this repository's run: a fresh GitHub Actions OIDC token (plus the license, the
+same bearer the hosted proxy gets), or the run's GITHUB_TOKEN when the workflow cannot mint one.
+Nothing here fails the run.
 
 Environment: CLOSED_FUNCTIONS_URL, REPOSITORY, PR_NUMBER, ARTIFACT_DIR, HEAD_ANALYSIS_PATH,
 BASE_ANALYSIS_PATH, CHECKOUT_DIR, GITHUB_TOKEN, GITHUB_API_URL, and optionally LICENSE_KEY,
-CLOSED_FEATURES_SOURCE, OLLAMA_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN.
+CLOSED_FEATURES_SOURCE, LLM, MODEL, <PROVIDER>_API_KEY, <PROVIDER>_BASE_URL,
+ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN.
 """
 
 from __future__ import annotations
@@ -42,7 +46,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urljoin
+from urllib.parse import quote, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 # A Function URL takes 6 MB, measured after base64, and a gzipped body goes through base64 on the way
@@ -50,7 +54,8 @@ from urllib.request import Request, urlopen
 MAX_BUNDLE_BYTES = 4_300_000
 # Changed files whose contents are sent at both commits; past this a feature reads diffs only.
 MAX_FILES = 300
-OWN_KEYS = (("OLLAMA_API_KEY", "ollama"), ("OPENROUTER_API_KEY", "openrouter"), ("OPENAI_API_KEY", "openai"))
+# The providers a service from before the manifest can call, each with the host it calls.
+FALLBACK_HOSTS = {"ollama": "ollama.com", "openrouter": "openrouter.ai", "openai": "api.openai.com"}
 # What the review guide has always been: asked for when the service lists no features.
 FALLBACK = {
     "name": "review-guide",
@@ -205,14 +210,23 @@ def _relay():
     return sys.modules[spec.name]
 
 
-def credentials(env: dict) -> dict[str, str]:
-    """The request headers: the run's own key for a provider the service speaks, else the hosted
-    model's bearer, the same one the hosted proxy gets (a fresh OIDC token, plus the license)."""
-    for name, provider in OWN_KEYS:
-        if env.get(name, "").strip():
-            # The service still checks the caller is this repository's run.
-            return {**_bearer(env), "x-llm-api-key": env[name].strip(), "x-llm-provider": provider}
-    return _bearer(env)
+def model_headers(env: dict, hosts: dict[str, str]) -> dict[str, str]:
+    """What tells the service which model this run uses. Nothing for a hosted or licensed run. A run's
+    own provider sends its key and model; one the service cannot reach sends its name alone, which
+    the service reads as "no model here", so a run that chose its own provider is never sent to ours.
+    A base URL elsewhere is a provider the service cannot reach: it calls fixed hosts only."""
+    llm = env.get("LLM", "").strip().lower()
+    if llm in ("", "hosted", "license"):
+        return {}
+    key = env.get(f"{llm.upper()}_API_KEY", "").strip()
+    base = env.get(f"{llm.upper()}_BASE_URL", "").strip()
+    host = hosts.get(llm)
+    if not key or not host or (base and urlparse(base).hostname != host):
+        return {"x-llm-provider": llm}
+    out = {"x-llm-api-key": key, "x-llm-provider": llm}
+    if env.get("MODEL", "").strip():
+        out["x-llm-model"] = env["MODEL"].strip()
+    return out
 
 
 def _bearer(env: dict) -> dict[str, str]:
@@ -263,23 +277,26 @@ def collect_source(spec: dict, env: dict) -> tuple[str | None, str | None]:
     return json.dumps(files), None
 
 
-def read_manifest(url: str) -> list[dict]:
-    """What the service runs, or the guide alone when it cannot say. A feature that cannot be read
-    is left out rather than guessed at; a service that names none is treated as one that failed."""
+def read_manifest(url: str, headers: dict[str, str], repo: str) -> tuple[list[dict], dict[str, str]]:
+    """What the service runs and which providers it can call, or the guide alone when it cannot say.
+    A feature that cannot be read is left out rather than guessed at; a service that names none is
+    treated as one that failed."""
+    address = f"{url.rstrip('/')}/v1/features?repo={quote(repo, safe='/')}"
     try:
-        with urlopen(  # nosec B310 - the service URL the workflow names
-            Request(f"{url.rstrip('/')}/v1/features", headers={"User-Agent": "codeboarding-action"}), timeout=15
-        ) as res:
-            features = json.loads(res.read()).get("features")
+        req = Request(address, headers={**headers, "User-Agent": "codeboarding-action"})
+        with urlopen(req, timeout=15) as res:  # nosec B310 - the service URL the workflow names
+            manifest = json.loads(res.read())
+        features = manifest.get("features")
     except (OSError, ValueError, AttributeError) as e:
         print(f"::notice::The service listed no features ({type(e).__name__}); asking for the review guide alone.")
-        return [FALLBACK]
+        return [FALLBACK], FALLBACK_HOSTS
     usable = [
         f
         for f in features or []
         if isinstance(f, dict) and isinstance(f.get("name"), str) and isinstance(f.get("output"), str)
     ]
-    return usable or [FALLBACK]
+    hosts = manifest.get("providers")
+    return (usable, hosts if isinstance(hosts, dict) else {}) if usable else ([FALLBACK], FALLBACK_HOSTS)
 
 
 def _in_artifact(artifact: Path, relative: str) -> Path:
@@ -358,6 +375,8 @@ def run_feature(
     source: tuple[str | None, str | None] | None = None,
 ) -> dict:
     """One feature, start to finish: never raises, always an envelope."""
+    if "x-llm-provider" in headers and "x-llm-api-key" not in headers and feature.get("needsModel", True):
+        return _no_result(feature, ctx, "skipped", "it needs a model, and the service cannot call this run's provider")
     needs = feature.get("needs") or []
     missing = [n for n in needs if n not in inputs]
     if missing:
@@ -419,7 +438,12 @@ def main(env: dict | None = None) -> int:
         meta = json.loads((artifact / "metadata.json").read_text())
         ctx = {"repo": env["REPOSITORY"], "pr": int(env["PR_NUMBER"]), "head": meta.get("head_sha")}
         base = env["CLOSED_FUNCTIONS_URL"]
-        features = read_manifest(base)
+        try:
+            bearer = _bearer(env)
+            features, hosts = read_manifest(base, bearer, ctx["repo"])
+        except Exception as e:  # the caller could not be proved, so nothing can be asked for
+            print(f"::notice::Could not identify this run to the service: {type(e).__name__}")
+            bearer, features, hosts = None, [FALLBACK], FALLBACK_HOSTS
         results: dict[str, dict] = {
             f["name"]: _no_result(f, ctx, "skipped", "turned off by the service")
             for f in features
@@ -428,8 +452,15 @@ def main(env: dict | None = None) -> int:
         enabled = [f for f in features if f["name"] not in results]
         if enabled:
             try:
+                if bearer is None:
+                    raise Skip("this run could not be identified to the service")
                 inputs = collect(env)
-                headers = credentials(env)
+                headers = {**bearer, **model_headers(env, hosts)}
+                if "x-llm-provider" in headers and "x-llm-api-key" not in headers:
+                    print(
+                        f"::notice::The service cannot call this run's provider ({headers['x-llm-provider']}), "
+                        "so it makes no model call: measured findings only, and no review guide."
+                    )
             except Exception as e:  # every feature reads this, so every feature is told why
                 reason = str(e) if isinstance(e, Skip) else f"collecting its inputs failed: {type(e).__name__}: {e}"
                 results.update({f["name"]: _no_result(f, ctx, "failed", reason) for f in enabled})

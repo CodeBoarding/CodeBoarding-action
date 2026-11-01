@@ -719,9 +719,28 @@ runs:
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
         GITHUB_TOKEN: ${{ inputs.github_token }}
         LICENSE_KEY: ${{ inputs.license_key }}
+        LLM: ${{ inputs.llm }}
+        MODEL: ${{ inputs.model }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+        CEREBRAS_API_KEY: ${{ inputs.cerebras_api_key }}
+        DEEPSEEK_API_KEY: ${{ inputs.deepseek_api_key }}
+        DEEPSEEK_BASE_URL: ${{ inputs.deepseek_base_url }}
+        GLM_API_KEY: ${{ inputs.glm_api_key }}
+        GLM_BASE_URL: ${{ inputs.glm_base_url }}
+        GOOGLE_API_KEY: ${{ inputs.google_api_key }}
+        KIMI_API_KEY: ${{ inputs.kimi_api_key }}
+        KIMI_BASE_URL: ${{ inputs.kimi_base_url }}
         OLLAMA_API_KEY: ${{ inputs.ollama_api_key }}
-        OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
+        OLLAMA_BASE_URL: ${{ inputs.ollama_base_url }}
         OPENAI_API_KEY: ${{ inputs.openai_api_key }}
+        OPENAI_BASE_URL: ${{ inputs.openai_base_url }}
+        OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
+        OPPER_API_KEY: ${{ inputs.opper_api_key }}
+        ORCAROUTER_API_KEY: ${{ inputs.orcarouter_api_key }}
+        REQUESTY_API_KEY: ${{ inputs.requesty_api_key }}
+        REQUESTY_BASE_URL: ${{ inputs.requesty_base_url }}
+        VERCEL_API_KEY: ${{ inputs.vercel_api_key }}
+        VERCEL_BASE_URL: ${{ inputs.vercel_base_url }}
       run: python3 "$GITHUB_ACTION_PATH/scripts/closed_features.py"
 
     - name: Upload review artifact
