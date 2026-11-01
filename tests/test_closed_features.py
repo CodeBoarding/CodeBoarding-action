@@ -6,6 +6,7 @@ from __future__ import annotations
 import gzip
 import importlib.util
 import json
+import subprocess
 import sys
 import tempfile
 import threading
@@ -315,6 +316,77 @@ class RunnerTests(unittest.TestCase):
             env = {**_workspace(Path(t)), "CLOSED_FUNCTIONS_URL": service.url}
             self.assertEqual(_run(env)[0], 0)
             self.assertFalse((Path(t) / "outside.json").exists())
+
+
+class SourceTests(unittest.TestCase):
+    SPEC = {
+        "input": "source.json",
+        "extensions": [".py"],
+        "exclude": r"(^|/)tests/",
+        "maxFileBytes": 1000,
+        "maxBytes": 5000,
+    }
+
+    def _repo(self, tmp: Path) -> Path:
+        (tmp / "tests").mkdir()
+        (tmp / "a.py").write_text("x = 1\n")
+        (tmp / "big.py").write_text("x" * 2000)
+        (tmp / "b.txt").write_text("not asked for")
+        (tmp / "tests" / "t.py").write_text("excluded")
+        (tmp / "untracked.py").write_text("not tracked")
+        subprocess.run(["git", "init", "-q", str(tmp)], check=True)
+        subprocess.run(["git", "-C", str(tmp), "add", "a.py", "big.py", "b.txt", "tests"], check=True)
+        return tmp
+
+    def test_only_the_tracked_files_a_feature_asked_for_are_sent(self):
+        with tempfile.TemporaryDirectory() as t:
+            text, why = closed_features.collect_source(self.SPEC, {"CHECKOUT_DIR": str(self._repo(Path(t)))})
+        self.assertEqual((json.loads(text), why), ({"a.py": "x = 1\n"}, None))
+
+    def test_the_workflow_can_turn_it_off(self):
+        out = closed_features.collect_source(self.SPEC, {"CLOSED_FEATURES_SOURCE": "false", "CHECKOUT_DIR": "/nowhere"})
+        self.assertEqual(out, (None, "turned off by the workflow"))
+
+    def test_past_the_cap_nothing_is_sent_and_it_says_why(self):
+        with tempfile.TemporaryDirectory() as t:
+            text, why = closed_features.collect_source(
+                {**self.SPEC, "maxBytes": 3}, {"CHECKOUT_DIR": str(self._repo(Path(t)))}
+            )
+        self.assertIsNone(text)
+        self.assertIn("limit", why)
+
+    def _sent(self, source, inputs=None):
+        feature = {**OTHER, "source": self.SPEC, "needs": ["pr.json"]}
+        service = _Server(lambda p, b: (200, {"envelope": _envelope("other", {}), "usage": {}}))
+        self.addCleanup(service.close)
+        ctx = {"repo": "o/r", "pr": 7, "head": "H"}
+        with mock.patch("builtins.print"):
+            closed_features.run_feature(feature, service.url, ctx, inputs or {"pr.json": "{}"}, {}, source)
+        return json.loads(gzip.decompress(service.requests[0]["body"]))
+
+    def test_the_source_goes_only_in_the_request_of_the_feature_that_asked(self):
+        sent = self._sent(('{"a.py": "x"}', None))
+        self.assertEqual(sent["files"]["source.json"], '{"a.py": "x"}')
+        service = _Server(lambda p, b: (200, {"envelope": _envelope("other", {}), "usage": {}}))
+        self.addCleanup(service.close)
+        with mock.patch("builtins.print"):
+            closed_features.run_feature(
+                {**GUIDE, "url": "/g"}, service.url, {"repo": "o/r", "pr": 7, "head": "H"}, {"pr.json": "{}"}, {}, None
+            )
+        self.assertNotIn("source.json", json.loads(gzip.decompress(service.requests[0]["body"]))["files"])
+
+    def test_a_feature_without_its_source_is_told_why(self):
+        sent = self._sent((None, "turned off by the workflow"))
+        self.assertNotIn("source.json", sent["files"])
+        self.assertEqual(sent["omitted"], {"source.json": "turned off by the workflow"})
+
+    def test_a_bundle_too_large_to_send_drops_the_source_and_keeps_the_feature(self):
+        import os
+
+        huge = os.urandom(5_000_000).hex()
+        sent = self._sent((json.dumps({"a.py": huge}), None))
+        self.assertNotIn("source.json", sent["files"])
+        self.assertIn("too large", sent["omitted"]["source.json"])
 
 
 GUIDE_INPUTS = closed_features.FALLBACK["needs"]

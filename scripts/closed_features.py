@@ -14,6 +14,11 @@ a new one needs no release of this Action unless it asks for an input this scrip
 The one exception is ``FALLBACK``: a service that cannot name its features still gets asked for the
 review guide, because that is what every service since this Action's first release can answer.
 
+A feature can ask for the repository's source. Only that feature's request carries it, and past the
+size the service names, or with ``closed_features_source: false`` in the workflow, the request goes
+without it and says why, so the feature reports what it could not check. This script reads the files
+and sends them; it computes nothing from them.
+
 Credentials follow the analysis: the run's own Ollama, OpenRouter or OpenAI key when it has one,
 otherwise CodeBoarding's hosted model. Either way the service needs to know the caller is this
 repository's run: a fresh GitHub Actions OIDC token (plus the license, the same bearer the hosted
@@ -21,7 +26,7 @@ proxy gets), or the run's GITHUB_TOKEN when the workflow cannot mint one. Nothin
 
 Environment: CLOSED_FUNCTIONS_URL, REPOSITORY, PR_NUMBER, ARTIFACT_DIR, HEAD_ANALYSIS_PATH,
 BASE_ANALYSIS_PATH, CHECKOUT_DIR, GITHUB_TOKEN, GITHUB_API_URL, and optionally LICENSE_KEY,
-OLLAMA_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN.
+CLOSED_FEATURES_SOURCE, OLLAMA_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN.
 """
 
 from __future__ import annotations
@@ -31,6 +36,8 @@ import importlib.util
 import json
 import os
 import pickle
+import re
+import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -38,8 +45,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urljoin
 from urllib.request import Request, urlopen
 
-# A Function URL takes at most 6 MB; each feature's bundle is gzipped JSON, sent as is.
-MAX_BUNDLE_BYTES = 5_800_000
+# A Function URL takes 6 MB, measured after base64, and a gzipped body goes through base64 on the way
+# in: 4.5 MB of bundle arrives, and 5 MB is refused with a 413.
+MAX_BUNDLE_BYTES = 4_300_000
 # Changed files whose contents are sent at both commits; past this a feature reads diffs only.
 MAX_FILES = 300
 OWN_KEYS = (("OLLAMA_API_KEY", "ollama"), ("OPENROUTER_API_KEY", "openrouter"), ("OPENAI_API_KEY", "openai"))
@@ -228,6 +236,33 @@ def _bearer(env: dict) -> dict[str, str]:
             license_file.unlink(missing_ok=True)
 
 
+def collect_source(spec: dict, env: dict) -> tuple[str | None, str | None]:
+    """The tracked files a feature asked for, as one JSON document, or why there is none."""
+    if env.get("CLOSED_FEATURES_SOURCE", "true").strip().lower() == "false":
+        return None, "turned off by the workflow"
+    checkout = Path(env["CHECKOUT_DIR"])
+    listed = subprocess.run(["git", "-C", str(checkout), "ls-files", "-z"], capture_output=True, check=True).stdout
+    extensions = tuple(spec.get("extensions") or ())
+    exclude = re.compile(spec["exclude"]) if spec.get("exclude") else None
+    limit, total = spec.get("maxBytes") or 0, 0
+    files: dict[str, str] = {}
+    for name in listed.decode("utf-8", "replace").split("\0"):
+        if not name or not name.endswith(extensions) or (exclude and exclude.search(name)):
+            continue
+        path = checkout / name
+        try:
+            size = path.stat().st_size
+            if size > (spec.get("maxFileBytes") or size) or not path.is_file():
+                continue
+            files[name] = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        total += size
+        if limit and total > limit:
+            return None, f"its source is over the {limit / 1e6:.0f} MB limit"
+    return json.dumps(files), None
+
+
 def read_manifest(url: str) -> list[dict]:
     """What the service runs, or the guide alone when it cannot say. A feature that cannot be read
     is left out rather than guessed at; a service that names none is treated as one that failed."""
@@ -307,7 +342,21 @@ def _post(url: str, body: bytes, headers: dict[str, str]) -> dict:
         return json.loads(res.read())
 
 
-def run_feature(feature: dict, base: str, ctx: dict, inputs: dict[str, str], headers: dict[str, str]) -> dict:
+def _pack(ctx: dict, files: dict[str, str], omitted: dict[str, str]) -> bytes:
+    body = {"version": 1, "repo": ctx["repo"], "pr": ctx["pr"], "files": files}
+    if omitted:
+        body["omitted"] = omitted
+    return gzip.compress(json.dumps(body).encode(), compresslevel=9)
+
+
+def run_feature(
+    feature: dict,
+    base: str,
+    ctx: dict,
+    inputs: dict[str, str],
+    headers: dict[str, str],
+    source: tuple[str | None, str | None] | None = None,
+) -> dict:
     """One feature, start to finish: never raises, always an envelope."""
     needs = feature.get("needs") or []
     missing = [n for n in needs if n not in inputs]
@@ -316,12 +365,21 @@ def run_feature(feature: dict, base: str, ctx: dict, inputs: dict[str, str], hea
     url = urljoin(f"{base.rstrip('/')}/", (feature.get("url") or "").lstrip("/"))
     if not url.startswith((base.rstrip("/"), "https://")):
         return _no_result(feature, ctx, "failed", "the service named an address that is not https")
-    data = gzip.compress(
-        json.dumps(
-            {"version": 1, "repo": ctx["repo"], "pr": ctx["pr"], "files": {n: inputs[n] for n in needs}}
-        ).encode(),
-        compresslevel=9,
-    )
+    files = {n: inputs[n] for n in needs}
+    spec = feature.get("source") or None
+    omitted: dict[str, str] = {}
+    if spec:
+        text, why = source if source else (None, "the source was not collected")
+        if text is None:
+            omitted[spec["input"]] = why or "the source was not collected"
+        else:
+            files[spec["input"]] = text
+    data = _pack(ctx, files, omitted)
+    if spec and spec["input"] in files and len(data) > MAX_BUNDLE_BYTES:
+        # The source is the one optional part: past the limit the feature runs without it.
+        del files[spec["input"]]
+        omitted[spec["input"]] = "the repository is too large to send"
+        data = _pack(ctx, files, omitted)
     if len(data) > MAX_BUNDLE_BYTES:
         return _no_result(feature, ctx, "skipped", f"its bundle is {len(data) / 1e6:.1f} MB, over the service's limit")
     try:
@@ -347,6 +405,13 @@ def run_feature(feature: dict, base: str, ctx: dict, inputs: dict[str, str], hea
     return out
 
 
+def _source_of(feature: dict, env: dict) -> tuple[str | None, str | None]:
+    try:
+        return collect_source(feature["source"], env)
+    except (OSError, ValueError, subprocess.SubprocessError) as e:
+        return None, f"reading it failed: {type(e).__name__}"
+
+
 def main(env: dict | None = None) -> int:
     env = dict(os.environ if env is None else env)
     try:
@@ -369,8 +434,9 @@ def main(env: dict | None = None) -> int:
                 reason = str(e) if isinstance(e, Skip) else f"collecting its inputs failed: {type(e).__name__}: {e}"
                 results.update({f["name"]: _no_result(f, ctx, "failed", reason) for f in enabled})
                 enabled = []
+            sources = {f["name"]: _source_of(f, env) for f in enabled if f.get("source")}
             with ThreadPoolExecutor(max_workers=max(1, len(enabled))) as pool:
-                done = pool.map(lambda f: run_feature(f, base, ctx, inputs, headers), enabled)
+                done = pool.map(lambda f: run_feature(f, base, ctx, inputs, headers, sources.get(f["name"])), enabled)
                 results.update({f["name"]: r for f, r in zip(enabled, done)})
         for f in features:
             out = results[f["name"]]

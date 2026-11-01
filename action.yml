@@ -151,6 +151,13 @@ inputs:
       answer in the review artifact for the platform to show. Set to an empty string to disable.
     required: false
     default: 'https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/'
+  closed_features_source:
+    description: >-
+      Whether a closed feature that asks for it may read this repository's source, for checks that
+      need the whole tree. Only that feature's request carries it, capped in size, and the service
+      keeps nothing. With 'false' those checks do not run and the result says so.
+    required: false
+    default: 'true'
   github_token:
     description: 'Token used for comments and sync delivery.'
     required: false
@@ -703,6 +710,7 @@ runs:
       shell: bash
       env:
         CLOSED_FUNCTIONS_URL: ${{ inputs.review_guide_url }}
+        CLOSED_FEATURES_SOURCE: ${{ inputs.closed_features_source }}
         REPOSITORY: ${{ github.repository }}
         PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
         ARTIFACT_DIR: ${{ steps.review_artifact.outputs.artifact_dir }}
