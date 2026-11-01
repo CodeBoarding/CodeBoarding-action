@@ -158,6 +158,10 @@ class CredentialTests(unittest.TestCase):
             {"x-llm-api-key": "sk-a", "x-llm-provider": "anthropic", "x-llm-model": "claude-sonnet-5"},
         )
 
+    def test_the_analysis_model_wins_as_it_does_in_the_analysis(self):
+        env = {"LLM": "anthropic", "ANTHROPIC_API_KEY": "k", "MODEL": "general", "AGENT_MODEL": "analysis"}
+        self.assertEqual(closed_features.model_headers(env, self.HOSTS)["x-llm-model"], "analysis")
+
     def test_ollama_on_its_cloud_is_reachable_and_a_self_hosted_one_is_not(self):
         cloud = {"LLM": "ollama", "OLLAMA_API_KEY": "k", "OLLAMA_BASE_URL": "https://ollama.com"}
         self.assertEqual(closed_features.model_headers(cloud, self.HOSTS)["x-llm-api-key"], "k")

@@ -29,7 +29,7 @@ Nothing here fails the run.
 
 Environment: CLOSED_FUNCTIONS_URL, REPOSITORY, PR_NUMBER, ARTIFACT_DIR, HEAD_ANALYSIS_PATH,
 BASE_ANALYSIS_PATH, CHECKOUT_DIR, GITHUB_TOKEN, GITHUB_API_URL, and optionally LICENSE_KEY,
-CLOSED_FEATURES_SOURCE, LLM, MODEL, <PROVIDER>_API_KEY, <PROVIDER>_BASE_URL,
+CLOSED_FEATURES_SOURCE, LLM, MODEL, AGENT_MODEL, <PROVIDER>_API_KEY, <PROVIDER>_BASE_URL,
 ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN.
 """
 
@@ -211,8 +211,8 @@ def _relay():
 
 
 def model_headers(env: dict, hosts: dict[str, str]) -> dict[str, str]:
-    """What tells the service which model this run uses. Nothing for a hosted or licensed run. A run's
-    own provider sends its key and model; one the service cannot reach sends its name alone, which
+    """What tells the service which model this run uses. Nothing for a hosted or licensed run, which
+    use CodeBoarding's model and settings as they stand. A run's own provider sends its key and model; one the service cannot reach sends its name alone, which
     the service reads as "no model here", so a run that chose its own provider is never sent to ours.
     A base URL elsewhere is a provider the service cannot reach: it calls fixed hosts only."""
     llm = env.get("LLM", "").strip().lower()
@@ -226,8 +226,10 @@ def model_headers(env: dict, hosts: dict[str, str]) -> dict[str, str]:
     out = {"x-llm-api-key": key, "x-llm-provider": llm}
     if env.get(f"{llm.upper()}_REGION", "").strip():
         out["x-llm-region"] = env[f"{llm.upper()}_REGION"].strip()
-    if env.get("MODEL", "").strip():
-        out["x-llm-model"] = env["MODEL"].strip()
+    # The analysis's own order, so a run's closed features use its analysis model.
+    model = env.get("AGENT_MODEL", "").strip() or env.get("MODEL", "").strip()
+    if model:
+        out["x-llm-model"] = model
     return out
 
 

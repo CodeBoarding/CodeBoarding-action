@@ -164,6 +164,7 @@ The same rule makes the combinations explicit rather than order-dependent:
 | `llm: hosted` + any provider key | refused: pick one |
 | `llm: hosted` + `license_key` | refused: use `llm: license` |
 | `llm: license` without `license_key` | refused: names the secret to add |
+| `llm: hosted` or `license` + `model`, `agent_model` or `parsing_model` | refused: CodeBoarding picks the model on its own key; bring your own key to choose one |
 | `llm: anthropic` + `anthropic_api_key` | Anthropic, directly |
 | `llm: anthropic`, key empty or absent | refused: names the input and the secret |
 | `llm: anthropic` + `openai_api_key` | refused: a second provider's key |
