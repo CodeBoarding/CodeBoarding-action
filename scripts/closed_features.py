@@ -224,6 +224,8 @@ def model_headers(env: dict, hosts: dict[str, str]) -> dict[str, str]:
     if not key or not host or (base and urlparse(base).hostname != host):
         return {"x-llm-provider": llm}
     out = {"x-llm-api-key": key, "x-llm-provider": llm}
+    if env.get(f"{llm.upper()}_REGION", "").strip():
+        out["x-llm-region"] = env[f"{llm.upper()}_REGION"].strip()
     if env.get("MODEL", "").strip():
         out["x-llm-model"] = env["MODEL"].strip()
     return out

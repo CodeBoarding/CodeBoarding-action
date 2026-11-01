@@ -170,10 +170,16 @@ The same rule makes the combinations explicit rather than order-dependent:
 | `llm: anthropic` + key + `license_key` | Anthropic, on a CodeBoarding plan |
 
 A licence alongside your own key is deliberately allowed: it says "my CodeBoarding plan,
-my own tokens". **Your key always wins.** A direct provider call never reaches
-CodeBoarding, so the licence is recorded and reported but not spent, and nothing meters
-that combination today. The job summary says so on every run, rather than leaving you to
-infer it from the tier name.
+my own tokens". **Your key always wins.** The analysis calls your provider directly, so
+the licence is recorded and reported but not spent, and nothing meters that combination
+today. The job summary says so on every run, rather than leaving you to infer it from the
+tier name.
+
+The closed features, such as the review guide, are the exception to "directly": their code
+runs on CodeBoarding's service, so your key travels with that request, is used for that run
+and is neither stored nor logged. A provider the service cannot call, such as a custom base
+URL, LiteLLM or a self-hosted Ollama, keeps its key on the runner: those features make no
+model call, and the run never falls back to CodeBoarding's model.
 
 ### Providers
 

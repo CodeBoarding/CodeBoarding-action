@@ -722,6 +722,8 @@ runs:
         LLM: ${{ inputs.llm }}
         MODEL: ${{ inputs.model }}
         ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+        AWS_BEDROCK_API_KEY: ${{ inputs.aws_bedrock_api_key }}
+        AWS_BEDROCK_REGION: ${{ inputs.aws_bedrock_region }}
         CEREBRAS_API_KEY: ${{ inputs.cerebras_api_key }}
         DEEPSEEK_API_KEY: ${{ inputs.deepseek_api_key }}
         DEEPSEEK_BASE_URL: ${{ inputs.deepseek_base_url }}

@@ -165,8 +165,21 @@ class CredentialTests(unittest.TestCase):
         self.assertEqual(closed_features.model_headers(own, self.HOSTS), {"x-llm-provider": "ollama"})
 
     def test_a_provider_the_service_cannot_call_never_sends_its_key(self):
-        env = {"LLM": "aws_bedrock", "AWS_BEDROCK_API_KEY": "k"}
-        self.assertEqual(closed_features.model_headers(env, self.HOSTS), {"x-llm-provider": "aws_bedrock"})
+        env = {"LLM": "litellm", "LITELLM_API_KEY": "k", "LITELLM_BASE_URL": "https://proxy.internal"}
+        self.assertEqual(closed_features.model_headers(env, self.HOSTS), {"x-llm-provider": "litellm"})
+
+    def test_a_base_url_elsewhere_keeps_the_key_at_home(self):
+        env = {"LLM": "openai", "OPENAI_API_KEY": "k", "OPENAI_BASE_URL": "https://gateway.corp/v1"}
+        hosts = {"openai": "api.openai.com"}
+        self.assertEqual(closed_features.model_headers(env, hosts), {"x-llm-provider": "openai"})
+
+    def test_bedrock_sends_its_region(self):
+        env = {"LLM": "aws_bedrock", "AWS_BEDROCK_API_KEY": "k", "AWS_BEDROCK_REGION": "eu-west-1"}
+        hosts = {"aws_bedrock": "bedrock-runtime.{region}.amazonaws.com"}
+        self.assertEqual(
+            closed_features.model_headers(env, hosts),
+            {"x-llm-api-key": "k", "x-llm-provider": "aws_bedrock", "x-llm-region": "eu-west-1"},
+        )
 
 
 GUIDE = {
