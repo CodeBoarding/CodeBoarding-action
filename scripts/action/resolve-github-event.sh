@@ -138,3 +138,6 @@ is_fork=false
   echo "comment_id=$comment_id"
   echo "is_fork=$is_fork"
 } >> "$GITHUB_OUTPUT"
+# Last, so the failure comment has its pull request. Checked here, in seconds, rather than
+# after the analysis it would otherwise be paid for.
+[[ "${COMMENT_DEPTH:-1}" =~ ^[1-9][0-9]*$ ]] || fail "comment_depth must be a positive integer."
