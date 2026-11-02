@@ -226,6 +226,11 @@ class TestDiff(unittest.TestCase):
         nested_relations = projected["components"][0]["components_relations"]
         self.assertEqual(nested_relations[0]["src_id"], "1.1")
         self.assertEqual(nested_relations[0]["dst_id"], "1.2")
+        self.assertEqual(
+            [r["src_id"] for r in projected["leaf_relations"]],
+            [global_relation.src_id, sibling_relation.src_id],
+            "an edge between two parents' children survives only unprojected",
+        )
 
     def test_added_modified_deleted_unchanged(self):
         base = {"components": [comp("A", {"a.py": ["f"]}), comp("B"), comp("D")], "components_relations": []}
@@ -529,6 +534,90 @@ class TestRender(unittest.TestCase):
     def test_no_edge_labels(self):
         text, _ = dm.render_mermaid(self._diff(), render_depth=1, edge_labels=False)
         self.assertNotIn(' -- "', text)
+
+
+class TestSpecificView(unittest.TestCase):
+    """The deepest changed components, flat, joined by the relations that changed."""
+
+    def _diff(self, base_leaf=(), head_leaf=()):
+        def tree(alpha_methods):
+            return [
+                comp(
+                    "One", subs=[comp("Alpha", {"a.py": alpha_methods}, cid="1.1"), comp("Quiet", cid="1.2")], cid="1"
+                ),
+                comp("Two", subs=[comp("Beta", {"b.py": ["b"]}, cid="2.1"), comp("Gamma", cid="2.2")], cid="2"),
+            ]
+
+        base = {"components": tree(["f"]), "components_relations": [], "leaf_relations": list(base_leaf)}
+        head = {"components": tree(["f", "g"]), "components_relations": [], "leaf_relations": list(head_leaf)}
+        return dm.build_diff(base, head)
+
+    @staticmethod
+    def _names(diff):
+        return {c["name"]: c["diff_status"] for c in dm._specific_view(diff)["components"]}
+
+    def test_the_deepest_changed_component_stands_in_for_its_parent(self):
+        self.assertEqual(self._names(self._diff()), {"Alpha": "modified"})
+
+    def test_a_body_only_edit_lands_on_the_nested_component_that_owns_it(self):
+        """Nothing moved between components, so only the file's hash says anything changed."""
+        method = "a.py|f"
+
+        def analysis(digest):
+            return {
+                "components": [comp("One", {"a.py": ["f"]}, subs=[comp("Owner", {"a.py": ["f"]}), comp("Bystander")])],
+                "components_relations": [],
+                "methods_index": {method: {"file_path": "a.py", "content_hash": digest}},
+            }
+
+        diff = dm.build_diff(analysis("h1"), analysis("h2"))
+        self.assertEqual(self._names(diff), {"Owner": "modified"})
+        self.assertEqual(dm.render_mermaid(diff)[1]["n_changed"], 1, "owning a change adds nothing to the count")
+
+    def test_a_parent_with_no_changed_children_is_drawn_itself(self):
+        base = {"components": [comp("One", {"a.py": ["f"]}, subs=[comp("Child")])], "components_relations": []}
+        head = {"components": [comp("One", {"a.py": ["f", "g"]}, subs=[comp("Child")])], "components_relations": []}
+        self.assertEqual(self._names(dm.build_diff(base, head)), {"One": "modified"})
+
+    def test_an_added_parent_is_drawn_as_its_added_children(self):
+        base = {"components": [], "components_relations": []}
+        head = {"components": [comp("New", subs=[comp("Kid"), comp("Sibling")])], "components_relations": []}
+        self.assertEqual(self._names(dm.build_diff(base, head)), {"Kid": "added", "Sibling": "added"})
+
+    def test_a_relation_across_parents_is_drawn(self):
+        edge = {**rel("Alpha", "Beta"), "src_id": "1.1", "dst_id": "2.1"}
+        text, meta = dm.render_specific(self._diff(head_leaf=[edge]))
+        self.assertRegex(text, r'n_Alpha -- "calls" --> n_Beta')
+        self.assertNotIn("subgraph", text)
+        self.assertEqual(meta["n_edges"], 1)
+
+    def test_an_unchanged_component_is_drawn_only_for_a_changed_relation(self):
+        changed = rel("Alpha", "Beta")
+        steady = rel("Alpha", "Gamma")
+        names = self._names(self._diff(base_leaf=[steady], head_leaf=[steady, changed]))
+        self.assertEqual(names, {"Alpha": "modified", "Beta": "unchanged"})
+
+    def test_a_neighbour_is_not_coloured(self):
+        text, _ = dm.render_specific(self._diff(head_leaf=[rel("Alpha", "Beta")]))
+        self.assertRegex(text, r"class n_Alpha modified;")
+        self.assertNotIn("class n_Alpha,n_Beta", text)
+
+    def test_a_relation_that_did_not_change_is_not_drawn(self):
+        steady = rel("Alpha", "Gamma")
+        text, meta = dm.render_specific(self._diff(base_leaf=[steady], head_leaf=[steady]))
+        self.assertEqual(meta["n_edges"], 0)
+        self.assertNotIn("Gamma", text)
+
+    def test_a_changed_relation_alone_is_enough_to_draw(self):
+        tree = [comp("One", subs=[comp("A")]), comp("Two", subs=[comp("B")])]
+        base = {"components": tree, "components_relations": [], "leaf_relations": []}
+        head = {"components": tree, "components_relations": [], "leaf_relations": [rel("A", "B")]}
+        self.assertEqual(self._names(dm.build_diff(base, head)), {"A": "unchanged", "B": "unchanged"})
+
+    def test_the_top_view_ignores_the_unprojected_relations(self):
+        with_edge = self._diff(head_leaf=[rel("Alpha", "Beta")])
+        without = self._diff()
+        self.assertEqual(dm.render_mermaid(with_edge), dm.render_mermaid(without))
 
 
 if __name__ == "__main__":

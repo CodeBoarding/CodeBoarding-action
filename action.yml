@@ -143,13 +143,13 @@ inputs:
     description: 'Positive integer analysis depth cap, used for both review and sync, including full fallbacks.'
     required: false
     default: '2'
-  comment_depth:
+  comment_detail:
     description: >-
-      Positive integer number of component levels the pull request comment's diagram draws.
-      1 draws the top level only; 2 also draws each component's sub-components inside it, up to
-      what depth_cap analyzed. Rendering only: it does not change the analysis or its reuse.
+      What the pull request comment's diagram draws. top: every top-level component (default).
+      specific: only the most specific components that changed, flat, joined by the relations
+      that changed. Rendering only: it does not change the analysis or its reuse.
     required: false
-    default: '1'
+    default: 'top'
   review_guide_url:
     description: >-
       Experimental. The CodeBoarding service that writes a pull request's review guide (main
@@ -270,7 +270,7 @@ runs:
         PULL_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
         REPOSITORY: ${{ github.repository }}
         DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        COMMENT_DEPTH: ${{ inputs.comment_depth }}
+        COMMENT_DETAIL: ${{ inputs.comment_detail }}
       run: "$GITHUB_ACTION_PATH/scripts/action/resolve-github-event.sh"
 
     - name: Acknowledge review command
@@ -679,7 +679,7 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         BASE_ANALYSIS_PATH: ${{ steps.review_baseline.outputs.base_analysis_path }}
         HEAD_ANALYSIS_PATH: ${{ steps.review_analyze.outputs.analysis_path }}
-        COMMENT_DEPTH: ${{ inputs.comment_depth }}
+        COMMENT_DETAIL: ${{ inputs.comment_detail }}
       run: "$GITHUB_ACTION_PATH/scripts/action/render-review.sh"
 
     - name: Build review artifact

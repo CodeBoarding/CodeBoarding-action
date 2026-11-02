@@ -64,8 +64,13 @@ def _relation_dict(relation) -> dict:
 
 
 def _project_analysis(data: dict, root_analysis, sub_analyses: dict, id_to_name: dict, projector) -> dict:
-    """Attach Core's global-relation projection to every nested JSON level."""
+    """Attach Core's global-relation projection to every nested JSON level.
+
+    The unprojected relations are kept too: a level only holds edges with both ends inside it,
+    so an edge between two parents' children survives nowhere else.
+    """
     global_relations = list(root_analysis.components_relations)
+    data["leaf_relations"] = [_relation_dict(relation) for relation in global_relations]
 
     def project_level(container: dict, analysis) -> None:
         level_ids = {component.component_id for component in analysis.components}
@@ -215,6 +220,27 @@ def _owns_analysis_change(
     return bool(owned_methods & changed_methods or owned_files & changed_files)
 
 
+def _mark_change_owners(
+    components: list,
+    base_components: list,
+    changed_methods: set[str],
+    changed_files: set[str],
+) -> None:
+    """Note, at every level, which components hold code that changed."""
+    base_by_name = {_comp_name(component): component for component in base_components}
+    for component in components:
+        base_component = base_by_name.get(_comp_name(component))
+        if base_component is None:
+            continue
+        component["owns_change"] = _owns_analysis_change(base_component, component, changed_methods, changed_files)
+        _mark_change_owners(
+            component.get("components") or [],
+            base_component.get("components") or [],
+            changed_methods,
+            changed_files,
+        )
+
+
 def _rel_key(r: dict) -> tuple:
     # Name is the stable join across two independent analyses; component ids are
     # positional and can be reshuffled on a full re-run, so prefer names.
@@ -332,19 +358,9 @@ def _diff_components(base_components: list, current_components: list) -> list:
 def build_diff(base: dict, head: dict) -> dict:
     changed_methods, changed_files = _analysis_changes(base, head)
     components = _diff_components(base.get("components") or [], head.get("components") or [])
-    base_by_name = {_comp_name(component): component for component in base.get("components") or []}
+    _mark_change_owners(components, base.get("components") or [], changed_methods, changed_files)
     for component in components:
-        base_component = base_by_name.get(_comp_name(component))
-        if (
-            component.get("diff_status") == "unchanged"
-            and base_component is not None
-            and _owns_analysis_change(
-                base_component,
-                component,
-                changed_methods,
-                changed_files,
-            )
-        ):
+        if component.get("diff_status") == "unchanged" and component.get("owns_change"):
             component["diff_status"] = "modified"
     return {
         "components": components,
@@ -352,6 +368,7 @@ def build_diff(base: dict, head: dict) -> dict:
             base.get("components_relations") or [],
             head.get("components_relations") or [],
         ),
+        "leaf_relations": _diff_relations(base.get("leaf_relations") or [], head.get("leaf_relations") or []),
     }
 
 
@@ -490,6 +507,53 @@ def _filter_changed(components: list, relations: list) -> tuple:
         if r.get("diff_status") in CHANGED or (touches(r, "src_id", "src_name") and touches(r, "dst_id", "dst_name"))
     ]
     return kept, rels
+
+
+def _flat(comp: dict, status: str) -> dict:
+    return {"component_id": _comp_id(comp), "name": _comp_name(comp), "diff_status": status}
+
+
+def _deepest_changed(components: list, force: str | None = None) -> list:
+    """The changed components with nothing changed below them, as one flat list.
+
+    Status is read before ``display_status``, which only says something below a component
+    changed. A body-only edit moves no method between components, so nested components carry
+    it as ``owns_change`` alone.
+    """
+    deepest: list = []
+    for comp in components:
+        status = force or comp.get("diff_status", "unchanged")
+        child_force = status if status in ("added", "deleted") else None
+        below = _deepest_changed(comp.get("components") or [], child_force)
+        if below:
+            deepest.extend(below)
+        elif status in CHANGED:
+            deepest.append(_flat(comp, status))
+        elif comp.get("owns_change"):
+            deepest.append(_flat(comp, "modified"))
+    return deepest
+
+
+def _specific_view(diff: dict) -> dict:
+    """The deepest changed components joined by every changed relation, as a one-level diff."""
+    components = _deepest_changed(diff.get("components") or [])
+    relations = [r for r in diff.get("leaf_relations") or [] if r.get("diff_status") in CHANGED]
+
+    known: dict = {}
+
+    def index(comps: list) -> None:
+        for comp in comps:
+            known[_comp_name(comp)] = comp
+            index(comp.get("components") or [])
+
+    index(diff.get("components") or [])
+    drawn = {_comp_name(c) for c in components}
+    for rel in relations:  # an unchanged component is drawn only for a changed edge that ends at it
+        for name in (rel.get("src_name"), rel.get("dst_name")):
+            if name in known and name not in drawn:
+                drawn.add(name)
+                components.append(_flat(known[name], "unchanged"))
+    return {"components": components, "components_relations": relations}
 
 
 def _init_directive(font_size, node_padding, node_spacing, rank_spacing) -> str | None:
@@ -661,6 +725,22 @@ def render_mermaid(
     return text, meta
 
 
+def render_specific(diff: dict, **options) -> tuple:
+    """``render_mermaid`` of the specific view, or of ``diff`` when that cannot be drawn.
+
+    The counts describe the change, not the picture, so they stay the whole diff's.
+    """
+    top_mermaid, top_meta = render_mermaid(diff, **options)
+    view = _specific_view(diff)
+    if not view["components"]:  # nothing changed
+        return top_mermaid, top_meta
+    mermaid, meta = render_mermaid(view, **options)
+    if mermaid is None:
+        print("::warning::The specific diagram is too large to draw; drawing the top level.", file=sys.stderr)
+        return top_mermaid, {**top_meta, "truncated": True}
+    return mermaid, {**meta, "n_changed": top_meta["n_changed"], "changed": top_meta["changed"]}
+
+
 # --------------------------------------------------------------------------- #
 # cli
 # --------------------------------------------------------------------------- #
@@ -681,6 +761,12 @@ def main() -> int:
         help="Component levels to draw: 1=top-level flat, 2=+one nesting level, ...",
     )
     p.add_argument(
+        "--detail",
+        default="top",
+        choices=["top", "specific"],
+        help="top=the --render-depth levels, specific=only the deepest changed components, flat",
+    )
+    p.add_argument(
         "--font-size", type=int, default=None, help="Node label font size in px (bigger label ⇒ bigger node)"
     )
     p.add_argument("--node-padding", type=int, default=None, help="Interior padding around each node label")
@@ -690,7 +776,8 @@ def main() -> int:
 
     base, head = load_analysis(args.base), load_analysis(args.head)
     diff = build_diff(base, head)
-    mermaid, meta = render_mermaid(
+    render = render_specific if args.detail == "specific" else render_mermaid
+    mermaid, meta = render(
         diff,
         direction=args.direction,
         changed_only=args.changed_only,

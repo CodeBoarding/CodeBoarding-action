@@ -71,15 +71,17 @@ class ActionInputTests(unittest.TestCase):
             block = ACTION[start : ACTION.index("\n      run:", start)]
             self.assertIn("DEPTH_CAP: ${{ inputs.depth_cap }}", block)
 
-    def test_comment_depth_reaches_rendering_and_nothing_else(self) -> None:
+    def test_comment_detail_reaches_rendering_and_nothing_else(self) -> None:
         """It changes one picture. Reaching a cache key or the engine would rebuild analyses for it."""
-        self.assertIn("default: '1'", self.inputs["comment_depth"])
-        self.assertEqual(ACTION.count("inputs.comment_depth"), 2)
+        self.assertIn("default: 'top'", self.inputs["comment_detail"])
+        self.assertNotIn("comment_depth", self.inputs, "a free number can select nested subgraphs")
+        self.assertEqual(ACTION.count("inputs.comment_detail"), 2)
         for identifier in ("id: guard", "id: review_render"):
             start = ACTION.index(identifier)
             block = ACTION[start : ACTION.index("\n      run:", start)]
-            self.assertIn("COMMENT_DEPTH: ${{ inputs.comment_depth }}", block)
-        readers = {p.name for p in (ROOT / "scripts").rglob("*.*") if "COMMENT_DEPTH" in p.read_text(encoding="utf-8")}
+            self.assertIn("COMMENT_DETAIL: ${{ inputs.comment_detail }}", block)
+        sources = [*(ROOT / "scripts").rglob("*.sh"), *(ROOT / "scripts").rglob("*.py")]
+        readers = {p.name for p in sources if "COMMENT_DETAIL" in p.read_text(encoding="utf-8")}
         self.assertEqual(readers, {"render-review.sh", "resolve-github-event.sh"})
 
     def test_default_workflow_reviews_drafts_on_open_and_new_commits(self) -> None:

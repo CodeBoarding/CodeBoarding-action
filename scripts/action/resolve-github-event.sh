@@ -140,4 +140,7 @@ is_fork=false
 } >> "$GITHUB_OUTPUT"
 # Last, so the failure comment has its pull request. Checked here, in seconds, rather than
 # after the analysis it would otherwise be paid for.
-[[ "${COMMENT_DEPTH:-1}" =~ ^[1-9][0-9]*$ ]] || fail "comment_depth must be a positive integer."
+case "${COMMENT_DETAIL:-top}" in
+  top|specific) ;;
+  *) fail "comment_detail must be top or specific." ;;
+esac
