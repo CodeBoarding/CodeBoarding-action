@@ -1,27 +1,13 @@
 #!/usr/bin/env python3
-"""Run CodeBoarding's closed features on this pull request and keep what each one answers in the
-review artifact.
+"""Call the review-guide and architecture endpoints independently after the review analysis.
 
-Runs after the review analysis. It asks the service which features exist (``GET /v1/features``),
-packs what the run already has once (both analyses, both call graphs from the ``static_analysis.pkl``
-beside each ``analysis.json``, the head checkout, the diff between the two analysed commits), and
-posts one request per feature in parallel, each with the inputs that feature names. Every feature
-gets a file in the artifact whatever happens to it: its answer, or an envelope saying it was skipped
-or failed, so a reader can tell "not checked" from "nothing found".
-
-Nothing here knows what a feature does. A feature's code is CodeBoarding's and stays on its side, and
-a new one needs no release of this Action unless it asks for an input this script does not collect.
-The one exception is ``FALLBACK``: a service that cannot name its features still gets asked for the
-review guide, because that is what every service since this Action's first release can answer.
-
-A feature can ask for the repository's source. Only that feature's request carries it, and past the
-size the service names, or with ``closed_features_source: false`` in the workflow, the request goes
-without it and says why, so the feature reports what it could not check. This script reads the files
-and sends them; it computes nothing from them.
+Both requests carry the same analyses, call graphs, PR metadata and changed files. Only architecture
+carries optional source. Store the legacy guide in review_guide.json and the unchanged architecture
+envelope in closed/architecture.json, including partial, skipped and failed results.
 
 Credentials follow the analysis: a run that chose its own provider uses its own key and model for
 every feature, and a hosted or licensed run uses CodeBoarding's hosted model. A run whose provider the
-service cannot call (a self-hosted endpoint, Bedrock) makes no model call at all: its features report
+service cannot call (a self-hosted endpoint) makes no model call at all: its results report
 what they can without one, and it never falls back to the hosted model. Either way the service needs
 to know the caller is this repository's run: a fresh GitHub Actions OIDC token (plus the license, the
 same bearer the hosted proxy gets), or the run's GITHUB_TOKEN when the workflow cannot mint one.
@@ -45,8 +31,8 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urljoin, urlparse
+from urllib.error import HTTPError
+from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 # A Function URL takes 6 MB, measured after base64, and a gzipped body goes through base64 on the way
@@ -54,27 +40,27 @@ from urllib.request import Request, urlopen
 MAX_BUNDLE_BYTES = 4_300_000
 # Changed files whose contents are sent at both commits; past this a feature reads diffs only.
 MAX_FILES = 300
-# The providers a service from before the manifest can call, each with the host it calls.
-FALLBACK_HOSTS = {"ollama": "ollama.com", "openrouter": "openrouter.ai", "openai": "api.openai.com"}
-# What the review guide has always been: asked for when the service lists no features.
-FALLBACK = {
-    "name": "review-guide",
-    "schema": 1,
-    "url": "/v1/review-guide",
-    "needs": [
-        "analysis.json",
-        "base/analysis.json",
-        "metadata.json",
-        "pr.json",
-        "pr-files.json",
-        "head-cg.json",
-        "base-cg.json",
-        "files.json",
-    ],
-    "output": "closed/review-guide.json",
-    "dataOutput": "review_guide.json",
-    "enabled": True,
+# Fixed hosts matching closed_functions/llm.py; never supplied by a remote service.
+PROVIDER_HOSTS = {
+    "ollama": "ollama.com",
+    "openrouter": "openrouter.ai",
+    "openai": "api.openai.com",
+    "anthropic": "api.anthropic.com",
+    "aws_bedrock": "bedrock-runtime.{region}.amazonaws.com",
+    "google": "generativelanguage.googleapis.com",
+    "cerebras": "api.cerebras.ai",
+    "deepseek": "api.deepseek.com",
+    "glm": "open.bigmodel.cn",
+    "kimi": "api.moonshot.cn",
+    "vercel": "ai-gateway.vercel.sh",
+    "orcarouter": "api.orcarouter.ai",
+    "requesty": "router.requesty.ai",
+    "opper": "api.opper.ai",
 }
+SOURCE_EXTENSIONS = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".cs", ".csproj")
+SOURCE_EXCLUDE = re.compile(r"(^|/)(node_modules|dist|build|vendor|__fixtures__|docs|public)/|\.min\.js$|\.d\.ts$")
+MAX_SOURCE_FILE_BYTES = 300_000
+MAX_SOURCE_BYTES = 16_000_000
 
 
 class Skip(Exception):
@@ -150,7 +136,7 @@ def _contents(repo: str, sha: str, path: str) -> str | None:
 
 
 def collect(env: dict) -> dict:
-    """Everything a feature can ask for, as the service's bundle format names it."""
+    """The required inputs shared by both endpoints."""
     repo, pr = env["REPOSITORY"], int(env["PR_NUMBER"])
     artifact = Path(env["ARTIFACT_DIR"])
     head_dir, base_dir = Path(env["HEAD_ANALYSIS_PATH"]).parent, Path(env["BASE_ANALYSIS_PATH"]).parent
@@ -169,8 +155,8 @@ def collect(env: dict) -> dict:
     files: dict[str, str] = {}
     for f in pr_files[:MAX_FILES]:
         if f.get("status") != "removed":
-            p = checkout / f["filename"]
             try:
+                p = _checkout_file(checkout, f["filename"])
                 files[f"{head_sha}:{f['filename']}"] = p.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 pass
@@ -210,7 +196,7 @@ def _relay():
     return sys.modules[spec.name]
 
 
-def model_headers(env: dict, hosts: dict[str, str]) -> dict[str, str]:
+def model_headers(env: dict) -> dict[str, str]:
     """What tells the service which model this run uses. Nothing for a hosted or licensed run, which
     use CodeBoarding's model and settings as they stand. A run's own provider sends its key and model; one the service cannot reach sends its name alone, which
     the service reads as "no model here", so a run that chose its own provider is never sent to ours.
@@ -220,7 +206,9 @@ def model_headers(env: dict, hosts: dict[str, str]) -> dict[str, str]:
         return {}
     key = env.get(f"{llm.upper()}_API_KEY", "").strip()
     base = env.get(f"{llm.upper()}_BASE_URL", "").strip()
-    host = hosts.get(llm)
+    host = PROVIDER_HOSTS.get(llm)
+    if host and llm == "aws_bedrock":
+        host = host.format(region=env.get("AWS_BEDROCK_REGION", "").strip())
     if not key or not host or (base and urlparse(base).hostname != host):
         return {"x-llm-provider": llm}
     out = {"x-llm-api-key": key, "x-llm-provider": llm}
@@ -254,78 +242,49 @@ def _bearer(env: dict) -> dict[str, str]:
             license_file.unlink(missing_ok=True)
 
 
-def collect_source(spec: dict, env: dict) -> tuple[str | None, str | None]:
-    """The tracked files a feature asked for, as one JSON document, or why there is none."""
+def _checkout_file(checkout: Path, name: str) -> Path:
+    """Reject traversal and symlinks (including parent directories) before reading source."""
+    relative = Path(name)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise OSError("path outside checkout")
+    path = checkout
+    for part in relative.parts:
+        path = path / part
+        if path.is_symlink():
+            raise OSError("symlink in checkout")
+    return path
+
+
+def collect_source(env: dict) -> tuple[str | None, str | None]:
+    """Tracked architecture source, within fixed size and extension limits, or an omission reason."""
     if env.get("CLOSED_FEATURES_SOURCE", "true").strip().lower() == "false":
         return None, "turned off by the workflow"
     checkout = Path(env["CHECKOUT_DIR"])
     listed = subprocess.run(["git", "-C", str(checkout), "ls-files", "-z"], capture_output=True, check=True).stdout
-    extensions = tuple(spec.get("extensions") or ())
-    exclude = re.compile(spec["exclude"]) if spec.get("exclude") else None
-    limit, total = spec.get("maxBytes") or 0, 0
+    total = 0
     files: dict[str, str] = {}
     for name in listed.decode("utf-8", "replace").split("\0"):
-        if not name or not name.endswith(extensions) or (exclude and exclude.search(name)):
+        if not name or not name.endswith(SOURCE_EXTENSIONS) or SOURCE_EXCLUDE.search(name):
             continue
-        path = checkout / name
         try:
+            path = _checkout_file(checkout, name)
             size = path.stat().st_size
-            if size > (spec.get("maxFileBytes") or size) or not path.is_file():
+            if size > MAX_SOURCE_FILE_BYTES or not path.is_file():
                 continue
             files[name] = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
         total += size
-        if limit and total > limit:
-            return None, f"its source is over the {limit / 1e6:.0f} MB limit"
+        if total > MAX_SOURCE_BYTES:
+            return None, f"its source is over the {MAX_SOURCE_BYTES / 1e6:.0f} MB limit"
     return json.dumps(files), None
 
 
-def read_manifest(url: str, headers: dict[str, str], repo: str) -> tuple[list[dict], dict[str, str]]:
-    """What the service runs and which providers it can call, or the guide alone when it cannot say.
-    A feature that cannot be read is left out rather than guessed at; a service that names none is
-    treated as one that failed."""
-    address = f"{url.rstrip('/')}/v1/features?repo={quote(repo, safe='/')}"
-    try:
-        req = Request(address, headers={**headers, "User-Agent": "codeboarding-action"})
-        with urlopen(req, timeout=15) as res:  # nosec B310 - the service URL the workflow names
-            manifest = json.loads(res.read())
-        features = manifest.get("features")
-    except (OSError, ValueError, AttributeError) as e:
-        print(f"::notice::The service listed no features ({type(e).__name__}); asking for the review guide alone.")
-        return [FALLBACK], FALLBACK_HOSTS
-    usable = [
-        f
-        for f in features or []
-        if isinstance(f, dict) and isinstance(f.get("name"), str) and isinstance(f.get("output"), str)
-    ]
-    hosts = manifest.get("providers")
-    return (usable, hosts if isinstance(hosts, dict) else {}) if usable else ([FALLBACK], FALLBACK_HOSTS)
-
-
-def _in_artifact(artifact: Path, relative: str) -> Path:
-    """A path the service named, held inside the artifact."""
-    path = (artifact / relative).resolve()
-    if not path.is_relative_to(artifact.resolve()):
-        raise Skip(f"the service named a path outside the artifact: {relative}")
-    return path
-
-
-def _write(artifact: Path, feature: dict, env_out: dict) -> None:
-    path = _in_artifact(artifact, feature["output"])
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(env_out, ensure_ascii=False, indent=1))
-    # A reader from before the envelope takes the bare data, and only a good result.
-    plain = feature.get("dataOutput")
-    if plain and env_out.get("status") in ("ok", "partial") and env_out.get("data") is not None:
-        _in_artifact(artifact, plain).write_text(json.dumps(env_out["data"], ensure_ascii=False, indent=1))
-
-
-def _no_result(feature: dict, ctx: dict, status: str, reason: str) -> dict:
-    """The envelope of a feature that never answered."""
+def _no_architecture(ctx: dict, status: str, reason: str) -> dict:
+    """Preserve the architecture envelope even when the request cannot complete."""
     return {
-        "feature": feature["name"],
-        "schema": feature.get("schema"),
+        "feature": "architecture",
+        "schema": 1,
         "status": status,
         "repo": ctx["repo"],
         "pr": ctx["pr"],
@@ -337,21 +296,6 @@ def _no_result(feature: dict, ctx: dict, status: str, reason: str) -> dict:
     }
 
 
-def _answered(feature: dict, ctx: dict, answer: dict) -> dict:
-    env_out = answer.get("envelope")
-    if isinstance(env_out, dict) and env_out.get("status"):
-        return env_out
-    # A service from before the manifest answers the bare guide.
-    usage = answer.get("usage") or {}
-    if isinstance(answer.get("guide"), dict):
-        return {
-            **_no_result(feature, ctx, "ok", ""),
-            "generator": {"model": usage.get("model"), "hosted": bool(usage.get("hosted")), "version": None},
-            "data": answer["guide"],
-        }
-    return _no_result(feature, ctx, "failed", "the service returned no result")
-
-
 def _post(url: str, body: bytes, headers: dict[str, str]) -> dict:
     req = Request(
         url,
@@ -359,8 +303,18 @@ def _post(url: str, body: bytes, headers: dict[str, str]) -> dict:
         headers={**headers, "Content-Type": "application/gzip", "User-Agent": "codeboarding-action"},
         method="POST",
     )
-    with urlopen(req, timeout=600) as res:  # nosec B310 - a URL the workflow's service named
-        return json.loads(res.read())
+    try:
+        with urlopen(req, timeout=600) as res:  # nosec B310 - service URL from workflow configuration
+            return json.loads(res.read())
+    except HTTPError as e:
+        try:
+            message = json.loads(e.read()).get("message") or e.reason
+        except (ValueError, AttributeError):
+            message = e.reason
+        reason = f"the service answered {e.code}: {message}"
+        if e.code == 402:
+            raise Skip(reason) from e
+        raise RuntimeError(reason) from e
 
 
 def _pack(ctx: dict, files: dict[str, str], omitted: dict[str, str]) -> bytes:
@@ -370,69 +324,50 @@ def _pack(ctx: dict, files: dict[str, str], omitted: dict[str, str]) -> bytes:
     return gzip.compress(json.dumps(body).encode(), compresslevel=9)
 
 
-def run_feature(
-    feature: dict,
-    base: str,
-    ctx: dict,
-    inputs: dict[str, str],
-    headers: dict[str, str],
-    source: tuple[str | None, str | None] | None = None,
-) -> dict:
-    """One feature, start to finish: never raises, always an envelope."""
-    if "x-llm-provider" in headers and "x-llm-api-key" not in headers and feature.get("needsModel", True):
-        return _no_result(feature, ctx, "skipped", "it needs a model, and the service cannot call this run's provider")
-    needs = feature.get("needs") or []
-    missing = [n for n in needs if n not in inputs]
-    if missing:
-        return _no_result(feature, ctx, "skipped", f"this Action does not collect {', '.join(missing)}")
-    url = urljoin(f"{base.rstrip('/')}/", (feature.get("url") or "").lstrip("/"))
-    if not url.startswith((base.rstrip("/"), "https://")):
-        return _no_result(feature, ctx, "failed", "the service named an address that is not https")
-    files = {n: inputs[n] for n in needs}
-    spec = feature.get("source") or None
-    omitted: dict[str, str] = {}
-    if spec:
-        text, why = source if source else (None, "the source was not collected")
-        if text is None:
-            omitted[spec["input"]] = why or "the source was not collected"
-        else:
-            files[spec["input"]] = text
-    data = _pack(ctx, files, omitted)
-    if spec and spec["input"] in files and len(data) > MAX_BUNDLE_BYTES:
-        # The source is the one optional part: past the limit the feature runs without it.
-        del files[spec["input"]]
-        omitted[spec["input"]] = "the repository is too large to send"
-        data = _pack(ctx, files, omitted)
+def _check_size(data: bytes) -> None:
     if len(data) > MAX_BUNDLE_BYTES:
-        return _no_result(feature, ctx, "skipped", f"its bundle is {len(data) / 1e6:.1f} MB, over the service's limit")
+        raise Skip(f"its bundle is {len(data) / 1e6:.1f} MB, over the service's limit")
+
+
+def run_review_guide(base: str, ctx: dict, inputs: dict, headers: dict, artifact: Path) -> None:
     try:
-        answer = _post(url, data, headers)
-    except HTTPError as e:
+        if "x-llm-provider" in headers and "x-llm-api-key" not in headers:
+            raise Skip("the service cannot call this run's provider")
+        data = _pack(ctx, inputs, {})
+        _check_size(data)
+        answer = _post(f"{base.rstrip('/')}/v1/review-guide", data, headers)
+        guide = answer.get("guide")
+        if not isinstance(guide, dict):
+            raise ValueError("the service returned no guide")
+        (artifact / "review_guide.json").write_text(json.dumps(guide, ensure_ascii=False, indent=1))
+    except Exception as e:
+        print(f"::notice::review-guide {'skipped' if isinstance(e, Skip) else 'failed'}: {e}")
+
+
+def run_architecture(base: str, ctx: dict, inputs: dict, headers: dict, env: dict) -> dict:
+    try:
         try:
-            message = json.loads(e.read()).get("message") or e.reason
-        except ValueError:
-            message = e.reason
-        # 402 is the owner's weekly bucket: nothing went wrong, and nothing was checked.
-        return _no_result(
-            feature, ctx, "skipped" if e.code == 402 else "failed", f"the service answered {e.code}: {message}"
-        )
-    except (OSError, ValueError) as e:
-        return _no_result(feature, ctx, "failed", f"the service did not answer: {type(e).__name__}")
-    out = _answered(feature, ctx, answer)
-    usage = answer.get("usage") or {}
-    print(
-        f"{feature['name']}: {out.get('status')}; {usage.get('provider')} {usage.get('model')}, "
-        f"{usage.get('promptTokens', 0) + usage.get('outputTokens', 0)} tokens "
-        f"({'hosted' if usage.get('hosted') else 'own key'}); bundle {len(data) / 1e6:.2f} MB"
-    )
-    return out
-
-
-def _source_of(feature: dict, env: dict) -> tuple[str | None, str | None]:
-    try:
-        return collect_source(feature["source"], env)
-    except (OSError, ValueError, subprocess.SubprocessError) as e:
-        return None, f"reading it failed: {type(e).__name__}"
+            source, why = collect_source(env)
+        except Exception as e:
+            source, why = None, f"reading it failed: {type(e).__name__}"
+        files, omitted = dict(inputs), {}
+        if source is None:
+            omitted["source.json"] = why or "the source was not collected"
+        else:
+            files["source.json"] = source
+        data = _pack(ctx, files, omitted)
+        if "source.json" in files and len(data) > MAX_BUNDLE_BYTES:
+            del files["source.json"]
+            omitted["source.json"] = "the repository is too large to send"
+            data = _pack(ctx, files, omitted)
+        _check_size(data)
+        answer = _post(f"{base.rstrip('/')}/v1/architecture", data, headers)
+        envelope = answer.get("envelope")
+        if not isinstance(envelope, dict) or envelope.get("status") not in ("ok", "partial", "skipped", "failed"):
+            raise ValueError("the service returned no architecture result")
+        return envelope
+    except Exception as e:
+        return _no_architecture(ctx, "skipped" if isinstance(e, Skip) else "failed", str(e))
 
 
 def main(env: dict | None = None) -> int:
@@ -442,42 +377,26 @@ def main(env: dict | None = None) -> int:
         meta = json.loads((artifact / "metadata.json").read_text())
         ctx = {"repo": env["REPOSITORY"], "pr": int(env["PR_NUMBER"]), "head": meta.get("head_sha")}
         base = env["CLOSED_FUNCTIONS_URL"]
+        if not base.strip():
+            return 0
         try:
-            bearer = _bearer(env)
-            features, hosts = read_manifest(base, bearer, ctx["repo"])
-        except Exception as e:  # the caller could not be proved, so nothing can be asked for
-            print(f"::notice::Could not identify this run to the service: {type(e).__name__}")
-            bearer, features, hosts = None, [FALLBACK], FALLBACK_HOSTS
-        results: dict[str, dict] = {
-            f["name"]: _no_result(f, ctx, "skipped", "turned off by the service")
-            for f in features
-            if not f.get("enabled") or not f.get("url")
-        }
-        enabled = [f for f in features if f["name"] not in results]
-        if enabled:
-            try:
-                if bearer is None:
-                    raise Skip("this run could not be identified to the service")
-                inputs = collect(env)
-                headers = {**bearer, **model_headers(env, hosts)}
-                if "x-llm-provider" in headers and "x-llm-api-key" not in headers:
-                    print(
-                        f"::notice::The service cannot call this run's provider ({headers['x-llm-provider']}), "
-                        "so it makes no model call: measured findings only, and no review guide."
-                    )
-            except Exception as e:  # every feature reads this, so every feature is told why
-                reason = str(e) if isinstance(e, Skip) else f"collecting its inputs failed: {type(e).__name__}: {e}"
-                results.update({f["name"]: _no_result(f, ctx, "failed", reason) for f in enabled})
-                enabled = []
-            sources = {f["name"]: _source_of(f, env) for f in enabled if f.get("source")}
-            with ThreadPoolExecutor(max_workers=max(1, len(enabled))) as pool:
-                done = pool.map(lambda f: run_feature(f, base, ctx, inputs, headers, sources.get(f["name"])), enabled)
-                results.update({f["name"]: r for f, r in zip(enabled, done)})
-        for f in features:
-            out = results[f["name"]]
-            _write(artifact, f, out)
-            if out["status"] not in ("ok", "partial"):
-                print(f"::notice::{f['name']} {out['status']}: {out.get('reason')}")
+            headers = {**_bearer(env), **model_headers(env)}
+            inputs = collect(env)
+        except Exception as e:
+            reason = f"collecting inputs or credentials failed: {type(e).__name__}: {e}"
+            print(f"::notice::review-guide failed: {reason}")
+            architecture = _no_architecture(ctx, "failed", reason)
+        else:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                guide = pool.submit(run_review_guide, base, ctx, inputs, headers, artifact)
+                result = pool.submit(run_architecture, base, ctx, inputs, headers, env)
+                architecture = result.result()
+                guide.result()
+        path = artifact / "closed" / "architecture.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(architecture, ensure_ascii=False, indent=1))
+        if architecture["status"] not in ("ok", "partial"):
+            print(f"::notice::architecture {architecture['status']}: {architecture.get('reason')}")
     except Exception as e:  # never fail the review over a closed feature
         print(f"::warning::Running the closed features failed: {type(e).__name__}: {e}")
     return 0

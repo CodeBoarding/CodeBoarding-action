@@ -145,16 +145,15 @@ inputs:
     default: '2'
   review_guide_url:
     description: >-
-      Experimental. The CodeBoarding service behind the closed features, such as a pull request's
-      review guide (main changes, each change as numbered steps on the map). Defaults to the
-      production service. A review run sends it this run's analysis and stores each feature's
-      answer in the review artifact for the platform to show. Set to an empty string to disable.
+      Experimental. Service base URL for POST /v1/review-guide and POST /v1/architecture.
+      Defaults to production. Both receive this run's analysis independently; results are stored
+      as review_guide.json and closed/architecture.json. Set to an empty string to disable both.
     required: false
     default: 'https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/'
   closed_features_source:
     description: >-
-      Whether a closed feature that asks for it may read this repository's source, for checks that
-      need the whole tree and to verify a finding. Only that feature's request carries it, capped in
+      Whether architecture checks may read this repository's source, for checks that
+      need the whole tree and to verify a finding. Only the architecture request carries it, capped in
       size, and the service keeps nothing. The model sees the code around a finding, never the tree.
       With 'false' those checks and the model review do not run, and the result says so.
     required: false

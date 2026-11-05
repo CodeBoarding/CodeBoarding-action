@@ -176,11 +176,26 @@ the licence is recorded and reported but not spent, and nothing meters that comb
 today. The job summary says so on every run, rather than leaving you to infer it from the
 tier name.
 
-The closed features, such as the review guide, are the exception to "directly": their code
+The review guide and architecture checks are the exception to "directly": their code
 runs on CodeBoarding's service, so your key travels with that request, is used for that run
 and is neither stored nor logged. A provider the service cannot call, such as a custom base
 URL, LiteLLM or a self-hosted Ollama, keeps its key on the runner: those features make no
 model call, and the run never falls back to CodeBoarding's model.
+
+The action independently calls `POST /v1/review-guide` and `POST /v1/architecture` on the
+same `review_guide_url` base URL. There is no discovery request. Both receive the same
+required analysis inputs. The guide endpoint returns `{guide, usage, timingsMs}`; the action
+saves the bare guide as `review_guide.json`. Architecture returns `{envelope, usage}`; its
+envelope is saved unchanged as `closed/architecture.json`, including partial, skipped and
+failed results. Failure of either request does not prevent the other or fail the review.
+
+Only architecture receives optional `source.json`: tracked Python, JavaScript/TypeScript
+and C# files (`.py`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.cs`, `.csproj`), excluding
+dependency/build directories, docs/public/fixtures, minified JS and TypeScript declarations.
+Symlinks are not read. Individual files are capped at 300 KB and source at 16 MB. If adding
+source exceeds the 4.3 MB compressed request limit, it is omitted with a reason; architecture
+still runs with the required inputs. `closed_features_source: false` also omits source.
+An unsupported provider skips the guide, but architecture can still return measured findings.
 
 ### Providers
 
@@ -354,8 +369,8 @@ The first sync after the merge creates `codeboarding/baseline`, catching up from
 | `github_token` | both | `${{ github.token }}` | Token for comments and sync delivery. |
 | `codeboarding_analysis_location` | both | `codeboarding_branch` | Where the synced branch's analysis is stored: `codeboarding_branch` (on `codeboarding/baseline`, for the default branch; the code is never written) or `in_place` (committed as `.codeboarding/` on the synced branch). Sync saves it there and review reads it from there. |
 | `warmstart_retention_days` | review | `1` | Days to keep the reusable analysis. Only the next run reads it. |
-| `review_guide_url` | review | `https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/` | Experimental. Production service base URL for the closed features, such as the pull request's review guide. The run sends it this analysis and stores one file per feature in the review artifact (`closed/<feature>.json`, plus `review_guide.json`). Set to `''` to disable. Never fails the run. |
-| `closed_features_source` | review | `true` | Whether a closed feature that asks for it may read this repository's source, for checks that need the whole tree and to verify a finding. Only that feature's request carries it, capped in size, and the service keeps nothing. The model sees the code around a finding, never the tree. With `false` those checks and the model review do not run, and the result says so. |
+| `review_guide_url` | review | `https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/` | Experimental. Shared base URL for `/v1/review-guide` and `/v1/architecture`. Saves `review_guide.json` and `closed/architecture.json` in the review artifact. Set to `''` to disable both. Never fails the run. |
+| `closed_features_source` | review | `true` | Whether architecture checks may read this repository's source. Only the architecture request carries it, capped in size, and the service keeps nothing. The model sees code around a finding, never the tree. With `false`, source-dependent checks and model review do not run, and the result says so. |
 
 `target_branch` and `sync_strategy` are deprecated, and read as the `codeboarding_analysis_location` they stand for, with a warning: `sync_strategy: push` as `in_place`, `sync_strategy: pull_request` as `codeboarding_branch`. `target_branch` is accepted only when it names the branch the run is on: the push trigger picks the branch. `force_full: true` is ignored with a warning. Anything the new input cannot express fails, linking to [moving an existing setup](#moving-an-existing-setup).
 
