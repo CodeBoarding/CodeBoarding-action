@@ -252,7 +252,9 @@ a CodeBoarding service issue. Own-provider quota failures retain their provider 
 
 ## Model selection
 
-All model inputs are optional and are passed directly to Core without action-side validation:
+All model inputs are optional and are passed directly to Core. The action checks one thing: with
+`llm: hosted` or `license` it refuses them, because CodeBoarding picks the model on its own key.
+Bring your own key to choose one:
 
 ```yaml
         with:

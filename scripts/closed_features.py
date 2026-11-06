@@ -187,13 +187,25 @@ def collect(env: dict) -> dict:
     return inputs
 
 
-def _relay():
-    spec = importlib.util.spec_from_file_location("oidc_relay", Path(__file__).with_name("oidc_relay.py"))
+def _load(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     sys.modules.setdefault(spec.name, mod)  # its dataclass looks its own module up while it is defined
     spec.loader.exec_module(sys.modules[spec.name])
     return sys.modules[spec.name]
+
+
+def _relay():
+    return _load("oidc_relay", Path(__file__).with_name("oidc_relay.py"))
+
+
+def _api_key(env: dict, llm: str) -> str:
+    """The key as the analysis read it, so a pasted `VAR="..."` that worked there works here too."""
+    check = _load("credential_check", Path(__file__).parent / "action" / "credential_check.py")
+    inputs = check.load_table()["providers"].get(llm, {}).get("inputs", {})
+    env_var = inputs.get(f"{llm}_api_key", f"{llm.upper()}_API_KEY")
+    return check._clean_key(env.get(f"{llm.upper()}_API_KEY", ""), env_var)
 
 
 def model_headers(env: dict) -> dict[str, str]:
@@ -204,7 +216,7 @@ def model_headers(env: dict) -> dict[str, str]:
     llm = env.get("LLM", "").strip().lower()
     if llm in ("", "hosted", "license"):
         return {}
-    key = env.get(f"{llm.upper()}_API_KEY", "").strip()
+    key = _api_key(env, llm)
     base = env.get(f"{llm.upper()}_BASE_URL", "").strip()
     host = PROVIDER_HOSTS.get(llm)
     if host and llm == "aws_bedrock":

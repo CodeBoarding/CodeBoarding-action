@@ -192,6 +192,16 @@ class CredentialTests(unittest.TestCase):
                 if provider == "aws_bedrock":
                     self.assertEqual(headers["x-llm-region"], "eu-west-1")
 
+    def test_key_is_unwrapped_the_way_the_analysis_reads_it(self):
+        bedrock = {"LLM": "aws_bedrock", "AWS_BEDROCK_REGION": "us-east-1"}
+        for env, want in (
+            ({"LLM": "anthropic", "ANTHROPIC_API_KEY": ' ANTHROPIC_API_KEY="sk-ant-test"\n'}, "sk-ant-test"),
+            ({"LLM": "openai", "OPENAI_API_KEY": "'sk-test'"}, "sk-test"),
+            ({**bedrock, "AWS_BEDROCK_API_KEY": "AWS_BEARER_TOKEN_BEDROCK=abc="}, "abc="),
+        ):
+            with self.subTest(llm=env["LLM"]):
+                self.assertEqual(closed_features.model_headers(env)["x-llm-api-key"], want)
+
     def test_unsupported_self_hosted_and_missing_key_never_fall_back(self):
         for env in (
             {"LLM": "litellm", "LITELLM_API_KEY": "k"},
