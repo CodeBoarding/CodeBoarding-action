@@ -49,6 +49,8 @@ ERROR_CODES = frozenset(
         "hosted_with_provider_key",
         "hosted_with_license",
         "license_with_provider_key",
+        "hosted_with_model",
+        "license_with_model",
         "foreign_provider_key",
     }
 )
@@ -174,6 +176,19 @@ def _reject_provider_inputs(table: dict, given: dict[str, str], llm: str, tier: 
     )
 
 
+def _reject_model(llm: str, tier: str, environ: dict[str, str]) -> None:
+    """On CodeBoarding's key, CodeBoarding picks the model and its settings. Choosing one takes a
+    key of your own, and a workflow that names one here would otherwise run on another without
+    saying so."""
+    for name in ("model", "agent_model", "parsing_model"):
+        if environ.get(f"CB_IN_{name.upper()}", "").strip():
+            raise ConfigError(
+                f"{tier}_with_model",
+                f"`llm: {llm}` runs on CodeBoarding's model, so `{name}` cannot be set. "
+                "Remove it, or set `llm` to a provider and bring your own key to choose a model.",
+            )
+
+
 def _require_id_token(llm: str, environ: dict[str, str]) -> None:
     # Both, because the relay needs both (oidc_relay.py refuses to start without either)
     # and a runner can expose one without the other. Checking only the URL let that case
@@ -259,6 +274,7 @@ def resolve(table: dict, environ: dict[str, str]) -> dict:
 
     if llm == "hosted":
         _reject_provider_inputs(table, given, llm, "hosted")
+        _reject_model(llm, "hosted", environ)
         if license_key:
             raise ConfigError(
                 "hosted_with_license",
@@ -270,6 +286,7 @@ def resolve(table: dict, environ: dict[str, str]) -> dict:
 
     if llm == "license":
         _reject_provider_inputs(table, given, llm, "license")
+        _reject_model(llm, "license", environ)
         if not license_key:
             raise ConfigError(
                 "missing_license_key",
