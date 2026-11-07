@@ -1,7 +1,7 @@
 {
   "metadata": {
-    "generated_at": "2026-10-31T15:45:23.410107+00:00",
-    "source_tree_hash": "6f9ab8fcfce533cd525723bd1f240c00370f216ae8be08f37d4fdfdfd55039e3",
+    "generated_at": "2026-11-07T14:02:06.657450+00:00",
+    "source_tree_hash": "97ee8e028d6ca6283252ba77dc11165b38e07dea647b0cfd1bcc1583cb91415a",
     "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
@@ -47,7 +47,7 @@
       }
     }
   },
-  "description": "Automation and support scripts for running CodeBoarding in GitHub Actions, including preflight credential checking, loopback OIDC token relaying, repository analysis execution, diff rendering to Mermaid graphs, and bundling PR analyses to fetch review guides.",
+  "description": "Automation and support scripts for running CodeBoarding within GitHub Actions workflows, handling preflight LLM credential validation, local loopback OIDC token authentication, repository analysis execution, PR diff visualization via Mermaid diagrams, and bundling analyses for downstream review-guide and architecture features.",
   "files": {
     "scripts/action/credential_check.py": {
       "method_keys": [
@@ -64,6 +64,7 @@
         "scripts/action/credential_check.py|scripts.action.credential_check.owner_of",
         "scripts/action/credential_check.py|scripts.action.credential_check._provider_list",
         "scripts/action/credential_check.py|scripts.action.credential_check._reject_provider_inputs",
+        "scripts/action/credential_check.py|scripts.action.credential_check._reject_model",
         "scripts/action/credential_check.py|scripts.action.credential_check._require_id_token",
         "scripts/action/credential_check.py|scripts.action.credential_check._resolve_byok",
         "scripts/action/credential_check.py|scripts.action.credential_check.resolve",
@@ -76,8 +77,8 @@
         "scripts/action/credential_check.py|scripts.action.credential_check.write_auth_dir",
         "scripts/action/credential_check.py|scripts.action.credential_check.main"
       ],
-      "content_hash": "3a283497aacba653",
-      "module_hash": "32f1bd213d8a350f"
+      "content_hash": "26bf0dbf16311140",
+      "module_hash": "571f030b01ce8e80"
     },
     "scripts/analyze_repository.py": {
       "method_keys": [
@@ -90,6 +91,33 @@
       ],
       "content_hash": "2c3eccb47daa8aac",
       "module_hash": "3e1e441902075cb9"
+    },
+    "scripts/closed_features.py": {
+      "method_keys": [
+        "scripts/closed_features.py|scripts.closed_features.Skip",
+        "scripts/closed_features.py|scripts.closed_features._github",
+        "scripts/closed_features.py|scripts.closed_features._github_json",
+        "scripts/closed_features.py|scripts.closed_features.call_graph",
+        "scripts/closed_features.py|scripts.closed_features._diff",
+        "scripts/closed_features.py|scripts.closed_features._contents",
+        "scripts/closed_features.py|scripts.closed_features.collect",
+        "scripts/closed_features.py|scripts.closed_features._load",
+        "scripts/closed_features.py|scripts.closed_features._relay",
+        "scripts/closed_features.py|scripts.closed_features._api_key",
+        "scripts/closed_features.py|scripts.closed_features.model_headers",
+        "scripts/closed_features.py|scripts.closed_features._bearer",
+        "scripts/closed_features.py|scripts.closed_features._checkout_file",
+        "scripts/closed_features.py|scripts.closed_features.collect_source",
+        "scripts/closed_features.py|scripts.closed_features._no_architecture",
+        "scripts/closed_features.py|scripts.closed_features._post",
+        "scripts/closed_features.py|scripts.closed_features._pack",
+        "scripts/closed_features.py|scripts.closed_features._check_size",
+        "scripts/closed_features.py|scripts.closed_features.run_review_guide",
+        "scripts/closed_features.py|scripts.closed_features.run_architecture",
+        "scripts/closed_features.py|scripts.closed_features.main"
+      ],
+      "content_hash": "50a12430edb4e53e",
+      "module_hash": "2beebf1980063a03"
     },
     "scripts/diff_to_mermaid.py": {
       "method_keys": [
@@ -154,216 +182,206 @@
       ],
       "content_hash": "5af0d8557c0af6e0",
       "module_hash": "581a285c4c8aad4a"
-    },
-    "scripts/review_guide.py": {
-      "method_keys": [
-        "scripts/review_guide.py|scripts.review_guide.Skip",
-        "scripts/review_guide.py|scripts.review_guide._github",
-        "scripts/review_guide.py|scripts.review_guide._github_json",
-        "scripts/review_guide.py|scripts.review_guide.call_graph",
-        "scripts/review_guide.py|scripts.review_guide._diff",
-        "scripts/review_guide.py|scripts.review_guide._contents",
-        "scripts/review_guide.py|scripts.review_guide.bundle",
-        "scripts/review_guide.py|scripts.review_guide._relay",
-        "scripts/review_guide.py|scripts.review_guide.credentials",
-        "scripts/review_guide.py|scripts.review_guide._bearer",
-        "scripts/review_guide.py|scripts.review_guide.request_guide",
-        "scripts/review_guide.py|scripts.review_guide.main"
-      ],
-      "content_hash": "3318d8920a364935",
-      "module_hash": "f9ee449c3bb8b8d1"
     }
   },
   "methods_index": {
     "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check.ConfigError",
-      "start_line": 57,
-      "end_line": 71,
+      "start_line": 59,
+      "end_line": 73,
       "type": "CLASS",
       "content_hash": "426011d5d2230adc"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError.__init__": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check.ConfigError.__init__",
-      "start_line": 66,
-      "end_line": 71,
+      "start_line": 68,
+      "end_line": 73,
       "type": "METHOD",
       "content_hash": "f81c95d089278b17"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check.secrets_url": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check.secrets_url",
-      "start_line": 74,
-      "end_line": 80,
+      "start_line": 76,
+      "end_line": 82,
       "type": "FUNCTION",
       "content_hash": "1fc04b1cfa8fc297"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check.workflow_path": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check.workflow_path",
-      "start_line": 83,
-      "end_line": 94,
+      "start_line": 85,
+      "end_line": 96,
       "type": "FUNCTION",
       "content_hash": "f324e18326d069a1"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check._add_secret": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check._add_secret",
-      "start_line": 97,
-      "end_line": 101,
+      "start_line": 99,
+      "end_line": 103,
       "type": "FUNCTION",
       "content_hash": "492b070772034e92"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check._wire_it": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check._wire_it",
-      "start_line": 104,
-      "end_line": 110,
+      "start_line": 106,
+      "end_line": 112,
       "type": "FUNCTION",
       "content_hash": "47d7f21707b95795"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check.load_table": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check.load_table",
-      "start_line": 113,
-      "end_line": 114,
+      "start_line": 115,
+      "end_line": 116,
       "type": "FUNCTION",
       "content_hash": "883b027dcd4a1f81"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check._unquote": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check._unquote",
-      "start_line": 117,
-      "end_line": 121,
+      "start_line": 119,
+      "end_line": 123,
       "type": "FUNCTION",
       "content_hash": "d76d75a01207b5c3"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check._clean_key": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check._clean_key",
-      "start_line": 124,
-      "end_line": 136,
+      "start_line": 126,
+      "end_line": 138,
       "type": "FUNCTION",
       "content_hash": "7022f1f27f479e9a"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check.read_inputs": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check.read_inputs",
-      "start_line": 139,
-      "end_line": 149,
+      "start_line": 141,
+      "end_line": 151,
       "type": "FUNCTION",
       "content_hash": "63027aa36242eaee"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check.owner_of": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check.owner_of",
-      "start_line": 152,
-      "end_line": 156,
+      "start_line": 154,
+      "end_line": 158,
       "type": "FUNCTION",
       "content_hash": "642022ffe104707b"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check._provider_list": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check._provider_list",
-      "start_line": 159,
-      "end_line": 160,
+      "start_line": 161,
+      "end_line": 162,
       "type": "FUNCTION",
       "content_hash": "dc5cdf89617abb12"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check._reject_provider_inputs": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check._reject_provider_inputs",
-      "start_line": 163,
-      "end_line": 174,
+      "start_line": 165,
+      "end_line": 176,
       "type": "FUNCTION",
       "content_hash": "74b7a440fc4d6a4f"
+    },
+    "scripts/action/credential_check.py|scripts.action.credential_check._reject_model": {
+      "file_path": "scripts/action/credential_check.py",
+      "qualified_name": "scripts.action.credential_check._reject_model",
+      "start_line": 179,
+      "end_line": 189,
+      "type": "FUNCTION",
+      "content_hash": "aa6dea0b8de5a54f"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check._require_id_token": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check._require_id_token",
-      "start_line": 177,
-      "end_line": 196,
+      "start_line": 192,
+      "end_line": 211,
       "type": "FUNCTION",
       "content_hash": "d851b0187fc2ff80"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check._resolve_byok": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check._resolve_byok",
-      "start_line": 199,
-      "end_line": 243,
+      "start_line": 214,
+      "end_line": 258,
       "type": "FUNCTION",
       "content_hash": "450353451688c808"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check.resolve": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check.resolve",
-      "start_line": 246,
-      "end_line": 311,
+      "start_line": 261,
+      "end_line": 328,
       "type": "FUNCTION",
-      "content_hash": "61ef327e9a6141da"
+      "content_hash": "c43ce3700fc188c3"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check._is_endpoint": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check._is_endpoint",
-      "start_line": 314,
-      "end_line": 316,
+      "start_line": 331,
+      "end_line": 333,
       "type": "FUNCTION",
       "content_hash": "d2e340c8c4019c62"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check._safe_endpoint": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check._safe_endpoint",
-      "start_line": 319,
-      "end_line": 337,
+      "start_line": 336,
+      "end_line": 354,
       "type": "FUNCTION",
       "content_hash": "fe29000746501ef5"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check._pays": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check._pays",
-      "start_line": 340,
-      "end_line": 358,
+      "start_line": 357,
+      "end_line": 375,
       "type": "FUNCTION",
       "content_hash": "5b05786790186cee"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check.reported_provider": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check.reported_provider",
-      "start_line": 361,
-      "end_line": 372,
+      "start_line": 378,
+      "end_line": 389,
       "type": "FUNCTION",
       "content_hash": "74017705ae0828bb"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check.plan_headline": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check.plan_headline",
-      "start_line": 375,
-      "end_line": 380,
+      "start_line": 392,
+      "end_line": 397,
       "type": "FUNCTION",
       "content_hash": "524ee91b9da8fbdf"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check.plan_summary": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check.plan_summary",
-      "start_line": 383,
-      "end_line": 409,
+      "start_line": 400,
+      "end_line": 426,
       "type": "FUNCTION",
       "content_hash": "e651d73f54fb8285"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check.write_auth_dir": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check.write_auth_dir",
-      "start_line": 412,
-      "end_line": 452,
+      "start_line": 429,
+      "end_line": 469,
       "type": "FUNCTION",
       "content_hash": "35b0b557c638ebea"
     },
     "scripts/action/credential_check.py|scripts.action.credential_check.main": {
       "file_path": "scripts/action/credential_check.py",
       "qualified_name": "scripts.action.credential_check.main",
-      "start_line": 455,
-      "end_line": 492,
+      "start_line": 472,
+      "end_line": 509,
       "type": "FUNCTION",
       "content_hash": "1d67aac61f0b0b91"
     },
@@ -414,6 +432,174 @@
       "end_line": 174,
       "type": "FUNCTION",
       "content_hash": "884750cb5fd6b713"
+    },
+    "scripts/closed_features.py|scripts.closed_features.Skip": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features.Skip",
+      "start_line": 66,
+      "end_line": 67,
+      "type": "CLASS",
+      "content_hash": "2baab45c3c2e218f"
+    },
+    "scripts/closed_features.py|scripts.closed_features._github": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features._github",
+      "start_line": 70,
+      "end_line": 81,
+      "type": "FUNCTION",
+      "content_hash": "4921eb79810bebc5"
+    },
+    "scripts/closed_features.py|scripts.closed_features._github_json": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features._github_json",
+      "start_line": 84,
+      "end_line": 85,
+      "type": "FUNCTION",
+      "content_hash": "524f8b94439ea108"
+    },
+    "scripts/closed_features.py|scripts.closed_features.call_graph": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features.call_graph",
+      "start_line": 88,
+      "end_line": 110,
+      "type": "FUNCTION",
+      "content_hash": "cd6e687c016caa7f"
+    },
+    "scripts/closed_features.py|scripts.closed_features._diff": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features._diff",
+      "start_line": 113,
+      "end_line": 124,
+      "type": "FUNCTION",
+      "content_hash": "24c570588e951ef7"
+    },
+    "scripts/closed_features.py|scripts.closed_features._contents": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features._contents",
+      "start_line": 127,
+      "end_line": 135,
+      "type": "FUNCTION",
+      "content_hash": "30fdcf11bfee6226"
+    },
+    "scripts/closed_features.py|scripts.closed_features.collect": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features.collect",
+      "start_line": 138,
+      "end_line": 187,
+      "type": "FUNCTION",
+      "content_hash": "017b42984e091591"
+    },
+    "scripts/closed_features.py|scripts.closed_features._load": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features._load",
+      "start_line": 190,
+      "end_line": 196,
+      "type": "FUNCTION",
+      "content_hash": "55d11ece37d3950c"
+    },
+    "scripts/closed_features.py|scripts.closed_features._relay": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features._relay",
+      "start_line": 199,
+      "end_line": 200,
+      "type": "FUNCTION",
+      "content_hash": "80f8d2e6ce1c62ab"
+    },
+    "scripts/closed_features.py|scripts.closed_features._api_key": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features._api_key",
+      "start_line": 203,
+      "end_line": 208,
+      "type": "FUNCTION",
+      "content_hash": "71192b42bce6b03c"
+    },
+    "scripts/closed_features.py|scripts.closed_features.model_headers": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features.model_headers",
+      "start_line": 211,
+      "end_line": 233,
+      "type": "FUNCTION",
+      "content_hash": "e0be777214763b5a"
+    },
+    "scripts/closed_features.py|scripts.closed_features._bearer": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features._bearer",
+      "start_line": 236,
+      "end_line": 254,
+      "type": "FUNCTION",
+      "content_hash": "fe3b076030da5de2"
+    },
+    "scripts/closed_features.py|scripts.closed_features._checkout_file": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features._checkout_file",
+      "start_line": 257,
+      "end_line": 267,
+      "type": "FUNCTION",
+      "content_hash": "9bc86b2bfe606e15"
+    },
+    "scripts/closed_features.py|scripts.closed_features.collect_source": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features.collect_source",
+      "start_line": 270,
+      "end_line": 292,
+      "type": "FUNCTION",
+      "content_hash": "2c6fab6ff4793d3e"
+    },
+    "scripts/closed_features.py|scripts.closed_features._no_architecture": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features._no_architecture",
+      "start_line": 295,
+      "end_line": 308,
+      "type": "FUNCTION",
+      "content_hash": "29cc5f21db774bfa"
+    },
+    "scripts/closed_features.py|scripts.closed_features._post": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features._post",
+      "start_line": 311,
+      "end_line": 329,
+      "type": "FUNCTION",
+      "content_hash": "bc08e7dc6c277e9d"
+    },
+    "scripts/closed_features.py|scripts.closed_features._pack": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features._pack",
+      "start_line": 332,
+      "end_line": 336,
+      "type": "FUNCTION",
+      "content_hash": "c690681cd9f4ccfe"
+    },
+    "scripts/closed_features.py|scripts.closed_features._check_size": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features._check_size",
+      "start_line": 339,
+      "end_line": 341,
+      "type": "FUNCTION",
+      "content_hash": "c12d80c3add577b0"
+    },
+    "scripts/closed_features.py|scripts.closed_features.run_review_guide": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features.run_review_guide",
+      "start_line": 344,
+      "end_line": 356,
+      "type": "FUNCTION",
+      "content_hash": "d05dcc96abd11150"
+    },
+    "scripts/closed_features.py|scripts.closed_features.run_architecture": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features.run_architecture",
+      "start_line": 359,
+      "end_line": 382,
+      "type": "FUNCTION",
+      "content_hash": "d5a396e513b3ba15"
+    },
+    "scripts/closed_features.py|scripts.closed_features.main": {
+      "file_path": "scripts/closed_features.py",
+      "qualified_name": "scripts.closed_features.main",
+      "start_line": 385,
+      "end_line": 414,
+      "type": "FUNCTION",
+      "content_hash": "00953518e65887e5"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._relation_dict": {
       "file_path": "scripts/diff_to_mermaid.py",
@@ -830,109 +1016,25 @@
       "end_line": 183,
       "type": "FUNCTION",
       "content_hash": "32cb887f244d21dd"
-    },
-    "scripts/review_guide.py|scripts.review_guide.Skip": {
-      "file_path": "scripts/review_guide.py",
-      "qualified_name": "scripts.review_guide.Skip",
-      "start_line": 42,
-      "end_line": 43,
-      "type": "CLASS",
-      "content_hash": "dc124b04a2def6a1"
-    },
-    "scripts/review_guide.py|scripts.review_guide._github": {
-      "file_path": "scripts/review_guide.py",
-      "qualified_name": "scripts.review_guide._github",
-      "start_line": 46,
-      "end_line": 57,
-      "type": "FUNCTION",
-      "content_hash": "4921eb79810bebc5"
-    },
-    "scripts/review_guide.py|scripts.review_guide._github_json": {
-      "file_path": "scripts/review_guide.py",
-      "qualified_name": "scripts.review_guide._github_json",
-      "start_line": 60,
-      "end_line": 61,
-      "type": "FUNCTION",
-      "content_hash": "524f8b94439ea108"
-    },
-    "scripts/review_guide.py|scripts.review_guide.call_graph": {
-      "file_path": "scripts/review_guide.py",
-      "qualified_name": "scripts.review_guide.call_graph",
-      "start_line": 64,
-      "end_line": 86,
-      "type": "FUNCTION",
-      "content_hash": "cd6e687c016caa7f"
-    },
-    "scripts/review_guide.py|scripts.review_guide._diff": {
-      "file_path": "scripts/review_guide.py",
-      "qualified_name": "scripts.review_guide._diff",
-      "start_line": 89,
-      "end_line": 100,
-      "type": "FUNCTION",
-      "content_hash": "63427c552f7a1baf"
-    },
-    "scripts/review_guide.py|scripts.review_guide._contents": {
-      "file_path": "scripts/review_guide.py",
-      "qualified_name": "scripts.review_guide._contents",
-      "start_line": 103,
-      "end_line": 111,
-      "type": "FUNCTION",
-      "content_hash": "30fdcf11bfee6226"
-    },
-    "scripts/review_guide.py|scripts.review_guide.bundle": {
-      "file_path": "scripts/review_guide.py",
-      "qualified_name": "scripts.review_guide.bundle",
-      "start_line": 114,
-      "end_line": 163,
-      "type": "FUNCTION",
-      "content_hash": "52fb841c306a244f"
-    },
-    "scripts/review_guide.py|scripts.review_guide._relay": {
-      "file_path": "scripts/review_guide.py",
-      "qualified_name": "scripts.review_guide._relay",
-      "start_line": 166,
-      "end_line": 172,
-      "type": "FUNCTION",
-      "content_hash": "5ac724b334ca5bc8"
-    },
-    "scripts/review_guide.py|scripts.review_guide.credentials": {
-      "file_path": "scripts/review_guide.py",
-      "qualified_name": "scripts.review_guide.credentials",
-      "start_line": 175,
-      "end_line": 182,
-      "type": "FUNCTION",
-      "content_hash": "b0bff87945f9a67f"
-    },
-    "scripts/review_guide.py|scripts.review_guide._bearer": {
-      "file_path": "scripts/review_guide.py",
-      "qualified_name": "scripts.review_guide._bearer",
-      "start_line": 185,
-      "end_line": 203,
-      "type": "FUNCTION",
-      "content_hash": "fe3b076030da5de2"
-    },
-    "scripts/review_guide.py|scripts.review_guide.request_guide": {
-      "file_path": "scripts/review_guide.py",
-      "qualified_name": "scripts.review_guide.request_guide",
-      "start_line": 206,
-      "end_line": 223,
-      "type": "FUNCTION",
-      "content_hash": "acd4c456ef92307b"
-    },
-    "scripts/review_guide.py|scripts.review_guide.main": {
-      "file_path": "scripts/review_guide.py",
-      "qualified_name": "scripts.review_guide.main",
-      "start_line": 226,
-      "end_line": 248,
-      "type": "FUNCTION",
-      "content_hash": "945a23a8690cdaa7"
     }
   },
   "components": [
     {
       "name": "action_support_scripts",
-      "description": "Provides command-line helpers for Action credential validation, OIDC token relaying, CLI execution, diff rendering, and review guide generation.",
+      "description": "Provides command-line utilities and helper scripts for GitHub Actions credential validation, OIDC token relaying, repository analysis, diff rendering, and closed-feature bundle generation.",
       "key_entities": [
+        {
+          "qualified_name": "scripts.action.credential_check.resolve",
+          "reference_file": "scripts/action/credential_check.py",
+          "reference_start_line": 261,
+          "reference_end_line": 328
+        },
+        {
+          "qualified_name": "scripts.closed_features.collect",
+          "reference_file": "scripts/closed_features.py",
+          "reference_start_line": 138,
+          "reference_end_line": 187
+        },
         {
           "qualified_name": "scripts.diff_to_mermaid.load_analysis",
           "reference_file": "scripts/diff_to_mermaid.py",
@@ -944,18 +1046,6 @@
           "reference_file": "scripts/oidc_relay.py",
           "reference_start_line": 155,
           "reference_end_line": 161
-        },
-        {
-          "qualified_name": "scripts.review_guide.bundle",
-          "reference_file": "scripts/review_guide.py",
-          "reference_start_line": 114,
-          "reference_end_line": 163
-        },
-        {
-          "qualified_name": "scripts.review_guide.request_guide",
-          "reference_file": "scripts/review_guide.py",
-          "reference_start_line": 206,
-          "reference_end_line": 223
         }
       ],
       "source_cluster_ids": [
@@ -981,6 +1071,7 @@
             "scripts.action.credential_check.owner_of",
             "scripts.action.credential_check._provider_list",
             "scripts.action.credential_check._reject_provider_inputs",
+            "scripts.action.credential_check._reject_model",
             "scripts.action.credential_check._require_id_token",
             "scripts.action.credential_check._resolve_byok",
             "scripts.action.credential_check.resolve",
@@ -1003,6 +1094,32 @@
             "scripts.analyze_repository._run_command",
             "scripts.analyze_repository._run_command.forward_stderr",
             "scripts.analyze_repository.main"
+          ]
+        },
+        {
+          "file_path": "scripts/closed_features.py",
+          "methods": [
+            "scripts.closed_features.Skip",
+            "scripts.closed_features._github",
+            "scripts.closed_features._github_json",
+            "scripts.closed_features.call_graph",
+            "scripts.closed_features._diff",
+            "scripts.closed_features._contents",
+            "scripts.closed_features.collect",
+            "scripts.closed_features._load",
+            "scripts.closed_features._relay",
+            "scripts.closed_features._api_key",
+            "scripts.closed_features.model_headers",
+            "scripts.closed_features._bearer",
+            "scripts.closed_features._checkout_file",
+            "scripts.closed_features.collect_source",
+            "scripts.closed_features._no_architecture",
+            "scripts.closed_features._post",
+            "scripts.closed_features._pack",
+            "scripts.closed_features._check_size",
+            "scripts.closed_features.run_review_guide",
+            "scripts.closed_features.run_architecture",
+            "scripts.closed_features.main"
           ]
         },
         {
@@ -1065,23 +1182,6 @@
             "scripts.oidc_relay.RelayServer",
             "scripts.oidc_relay.RelayServer.__init__",
             "scripts.oidc_relay.main"
-          ]
-        },
-        {
-          "file_path": "scripts/review_guide.py",
-          "methods": [
-            "scripts.review_guide.Skip",
-            "scripts.review_guide._github",
-            "scripts.review_guide._github_json",
-            "scripts.review_guide.call_graph",
-            "scripts.review_guide._diff",
-            "scripts.review_guide._contents",
-            "scripts.review_guide.bundle",
-            "scripts.review_guide._relay",
-            "scripts.review_guide.credentials",
-            "scripts.review_guide._bearer",
-            "scripts.review_guide.request_guide",
-            "scripts.review_guide.main"
           ]
         }
       ],
