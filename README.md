@@ -356,7 +356,7 @@ The first sync after the merge creates `codeboarding/baseline`, catching up from
 
 ## Problem history
 
-Off by default. With `problem_history: 'true'` on the sync job, every sync (a push to the analysed branch) keeps a list of this repository's problems up to date for the CodeBoarding Briefing: the issues that report a bug, and the merged changes that later needed a fix. Without it nothing is sent and nothing is written, and the Briefing lists the repository as keeping no problem history.
+Off by default. With `problem_history: 'true'` on the sync job, every sync (a push to the analysed branch) keeps a list of this repository's problems for the CodeBoarding Briefing: issues that report a bug, and merged changes that later needed a fix. Without it nothing is sent and nothing is written.
 
 ```yaml
   sync:
@@ -377,17 +377,17 @@ Off by default. With `problem_history: 'true'` on the sync job, every sync (a pu
           problem_history: 'true'
 ```
 
-What is sent, with the run's own token as the only GitHub credential, to `POST /v1/briefing` on `review_guide_url`:
+What is sent to `POST /v1/briefing` on `review_guide_url`, with the run's own token as the only GitHub credential:
 
-- **Issues** (never pull requests): on the first run, the open issues and those closed in the last 90 days, at most 1000 of each, most recently updated first; afterwards, those updated since the last update, at most 1000 per run, plus up to 100 stored open issues read again because a pull request linked to them is still open. Issues a limit skipped are read by later runs. For each: number, title, the first 2000 characters of its body, URL, state, when it was opened, closed and updated, its author's login, whether that author is a bot, and their association with the repository, labels, assignees, the pull request that closed it, and the pull requests linked to it (number, title, URL, state, draft, review decision, checks, author, last update, and whether it closes the issue).
-- **The numbers of every open issue** (up to 5000), so the service can drop an issue that was deleted, transferred or made a discussion.
-- **Merged pull requests** into the analysed branch: on the first run, the last 56 days; afterwards, those merged since the last update; at most the 1000 most recently updated pull requests are scanned. For each: number, title, URL, author, merge time, who approved it, and up to 300 changed file paths. No code and no diffs.
-- **Architecture findings** for each of those pull requests: the `closed/architecture.json` its newest successful CodeBoarding review left in the review artifact, when there is one (at most 40 per run, plus up to 10 earlier merges whose findings were not found yet). Artifacts over 50 MB are not downloaded.
-- **The current problem list**, so the service can update it. The service keeps none of this: the list comes in with each request and goes back in the answer.
+- **Issues**, never pull requests. The first run reads the open issues and those closed in the last 90 days, at most 1000 of each; later runs read those updated since, at most 1000, plus up to 100 stored open issues whose linked pull request is still open. Later runs pick up what a limit skipped. For each: number, title, the first 2000 characters of the body, URL, state, open, close and update times, the author's login, bot flag and association, labels, assignees, the closing pull request, and linked pull requests (number, title, URL, state, draft, review decision, checks, author, last update, whether it closes the issue).
+- **Every open issue's number** (up to 5000), so the service can drop one that was deleted, transferred or made a discussion.
+- **Merged pull requests** into the analysed branch: the last 56 days on the first run, then those merged since, scanning at most the 1000 most recently updated. For each: number, title, URL, author, merge time, approvers and up to 300 changed paths. No code and no diffs.
+- **Architecture findings**: the `closed/architecture.json` from each one's newest successful CodeBoarding review artifact, for at most 40 merges per run plus 10 whose findings were not found yet. Artifacts over 50 MB are not downloaded.
+- **The current problem list**, which the service updates and sends back. It keeps none of this.
 
-What is written: one file, `problems.json`, on `codeboarding/briefing` in this repository. Like `codeboarding/baseline`, that branch is an orphan that shares no history with your code, is never merged, and holds no workflow, so writing it runs nothing; each update is one commit, `Update problem history (<n> problems, through #<pr>)`, made with the git data API by the run's token. The file holds the merged pull requests of the last 56 days (title, URL, author, approvers, paths), the issues from above without their body (the first sentence is kept, and a `Priority:` line or CodeBoarding marker if the issue has one), the High and Medium architecture findings, and the problems derived from them, each with a short history of its status and priority. The CodeBoarding web platform reads it from there.
+What is written: one file, `problems.json`, on `codeboarding/briefing`, one commit per update (`Update problem history (<n> problems, through #<pr>)`) through the git data API. Like `codeboarding/baseline`, that branch is an orphan that is never merged and holds no workflow, so writing it runs nothing. It holds the last 56 days of merged pull requests, the issues above without their body (only the first sentence, and a `Priority:` line or CodeBoarding marker), High and Medium architecture findings, and the problems derived from them with a short status and priority history. The CodeBoarding web platform reads it from there.
 
-The update runs after the baseline is saved, stops itself after 10 minutes, and never fails the run: a missing permission, an unreachable service, a busy branch or a ruleset that protects `codeboarding/briefing` is a notice or a warning in the log. Every rule about what counts as a problem, how urgent it is and whether it is fixed lives in the service, so the list improves without changing the action. Setting `review_guide_url: ''` turns it off along with the review features. Delete the branch to drop the history; the next sync with `problem_history: 'true'` starts it again.
+The update runs after the baseline is saved, stops itself after 10 minutes and never fails the run: a missing permission, an unreachable service, a busy branch or a ruleset on `codeboarding/briefing` is a notice or warning in the log. `review_guide_url: ''` turns it off with the review features. Delete the branch to drop the history; the next sync starts it again.
 
 ## Inputs
 
