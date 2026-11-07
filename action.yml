@@ -148,6 +148,7 @@ inputs:
       Experimental. Service base URL for POST /v1/review-guide and POST /v1/architecture.
       Defaults to production. Both receive this run's analysis independently; results are stored
       as review_guide.json and closed/architecture.json. Set to an empty string to disable both.
+      Sync's opt-in problem_history calls POST /v1/briefing on the same URL.
     required: false
     default: 'https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/'
   closed_features_source:
@@ -158,6 +159,16 @@ inputs:
       With 'false' those checks and the model review do not run, and the result says so.
     required: false
     default: 'true'
+  problem_history:
+    description: >-
+      Off by default: nothing is sent or written. When 'true', every sync run (a push to the
+      analysed branch) sends this repository's issues and merged pull requests to the CodeBoarding
+      service at review_guide_url, and commits the problem list it returns as problems.json on
+      codeboarding/briefing, an orphan branch in this repository with one commit per update that is
+      never merged and runs no workflow. The sync job then needs contents: write, issues: read,
+      pull-requests: read and actions: read. It never fails the run.
+    required: false
+    default: 'false'
   github_token:
     description: 'Token used for comments and sync delivery.'
     required: false
@@ -570,6 +581,23 @@ runs:
         # less. 30 leaves a 16-day reuse window.
         retention-days: 30
         if-no-files-found: ignore
+
+    # Opt-in. Facts go in and the service's ledger comes back: every rule about what counts as a
+    # problem lives in the service, so this only reads GitHub and commits the answer. Never fails the run.
+    - name: Update problem history
+      id: problem_history
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && inputs.problem_history == 'true' && inputs.review_guide_url != ''
+      continue-on-error: true
+      shell: bash
+      env:
+        CLOSED_FUNCTIONS_URL: ${{ inputs.review_guide_url }}
+        REPOSITORY: ${{ github.repository }}
+        BRANCH: ${{ steps.guard.outputs.synced_branch }}
+        PUSH_SHA: ${{ github.sha }}
+        PUSH_BEFORE: ${{ github.event.before }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        LICENSE_KEY: ${{ inputs.license_key }}
+      run: python3 "$GITHUB_ACTION_PATH/scripts/problem_history.py"
 
     - name: Write sync summary
       if: always() && steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync'
