@@ -22,6 +22,7 @@ import sys
 import threading
 import zipfile
 from datetime import datetime, timedelta, timezone
+from itertools import islice
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import quote
@@ -176,10 +177,15 @@ def _parse(s: str | None) -> datetime | None:
 MORE = object()
 
 
-def _nodes(gh: GitHub, query: str, variables: dict, field: str, pages: int | None = None):
+def _nodes(gh: GitHub, query: str, variables: dict, *path: str, pages: int | None = None, conn: dict | None = None):
+    """The nodes of the connection at repository.<path>, page by page, from `conn` when the first page
+    came with another query."""
     cursor, read = None, 0
     while True:
-        conn = gh.graphql(query, {**variables, "c": cursor})["repository"][field]
+        if conn is None:
+            conn = gh.graphql(query, {**variables, "c": cursor})["repository"]
+            for key in path:
+                conn = conn[key]
         read += 1
         yield from conn.get("nodes") or []
         page = conn.get("pageInfo") or {}
@@ -188,11 +194,25 @@ def _nodes(gh: GitHub, query: str, variables: dict, field: str, pages: int | Non
         if pages and read >= pages:
             yield MORE
             return
-        cursor = page.get("endCursor")
+        cursor, conn = page.get("endCursor"), None
 
 
 def _login(actor) -> str | None:
     return (actor or {}).get("login") or None
+
+
+def _author(actor) -> dict:
+    """{"author": login}, or nothing when there is no login, ready to spread into a fact."""
+    login = _login(actor)
+    return {"author": login} if login else {}
+
+
+# Where each timeline event names the pull request; a link event's subject or source may be the issue.
+_LINK_SIDES = {
+    "CrossReferencedEvent": ("source",),
+    "ConnectedEvent": ("subject", "source"),
+    "DisconnectedEvent": ("subject", "source"),
+}
 
 
 def linked_pull_requests(node: dict) -> list[dict]:
@@ -202,17 +222,9 @@ def linked_pull_requests(node: dict) -> list[dict]:
     keyword, connected = set(), set()
     for t in (node.get("timelineItems") or {}).get("nodes") or []:
         kind = (t or {}).get("__typename")
-        if kind == "CrossReferencedEvent":
-            pr = t.get("source")
-        elif kind in ("ConnectedEvent", "DisconnectedEvent"):
-            pr = next(
-                (x for x in (t.get("subject"), t.get("source")) if (x or {}).get("__typename") == "PullRequest"), None
-            )
-        else:
-            pr = None
-        if not pr or pr.get("__typename") != "PullRequest" or not pr.get("repository"):
-            continue
-        if not pr.get("number") or not pr.get("state"):
+        sides = _LINK_SIDES.get(kind, ())
+        pr = next((t[s] for s in sides if (t.get(s) or {}).get("__typename") == "PullRequest"), None)
+        if not pr or not all(pr.get(k) for k in ("repository", "number", "state")):
             continue
         key = f"{pr['repository']['nameWithOwner']}#{pr['number']}".lower()
         commits = (pr.get("commits") or {}).get("nodes") or []
@@ -225,25 +237,21 @@ def linked_pull_requests(node: dict) -> list[dict]:
             connected.add(key)
         if kind == "DisconnectedEvent":
             connected.discard(key)
-    out = []
-    for key, (s, checks) in prs.items():
-        decision = s.get("reviewDecision")
-        item = {"repo": s["repository"]["nameWithOwner"], "number": s["number"]}
-        item.update({k: s[k] for k in ("title", "url") if s.get(k) is not None})
-        item.update(
-            {
-                "state": s["state"],
-                "draft": bool(s.get("isDraft")),
-                "updatedAt": s.get("updatedAt") or node.get("updatedAt"),
-                "review": {"APPROVED": "approved", "CHANGES_REQUESTED": "changes"}.get(decision, "review"),
-                "checks": checks,
-                "closes": key in keyword or key in connected,
-            }
-        )
-        if _login(s.get("author")):
-            item["author"] = _login(s.get("author"))
-        out.append(item)
-    return out
+    return [
+        {
+            "repo": s["repository"]["nameWithOwner"],
+            "number": s["number"],
+            **{k: s[k] for k in ("title", "url") if s.get(k) is not None},
+            "state": s["state"],
+            "draft": bool(s.get("isDraft")),
+            "updatedAt": s.get("updatedAt") or node.get("updatedAt"),
+            "review": {"APPROVED": "approved", "CHANGES_REQUESTED": "changes"}.get(s.get("reviewDecision"), "review"),
+            "checks": checks,
+            "closes": key in keyword or key in connected,
+            **_author(s.get("author")),
+        }
+        for key, (s, checks) in prs.items()
+    ]
 
 
 def cut(text: str, limit: int = MAX_BODY_CHARS) -> str:
@@ -265,7 +273,14 @@ def issue_facts(node: dict) -> dict:
         None,
     )
     author = node.get("author") or {}
-    out = {
+    closed_by = None
+    if closer and closer.get("repository") and closer.get("number"):
+        closed_by = {
+            "repo": closer["repository"]["nameWithOwner"],
+            "number": closer["number"],
+            **_author(closer.get("author")),
+        }
+    return {
         "repo": node["repository"]["nameWithOwner"],
         "number": node["number"],
         "title": node.get("title") or "",
@@ -276,32 +291,21 @@ def issue_facts(node: dict) -> dict:
         "createdAt": node.get("createdAt"),
         "closedAt": node.get("closedAt"),
         "updatedAt": node.get("updatedAt"),
+        **_author(author),
+        "authorBot": author.get("__typename") == "Bot",
+        "association": node.get("authorAssociation") or "NONE",
+        "labels": [label["name"] for label in (node.get("labels") or {}).get("nodes") or [] if label],
+        "assignees": [a["login"] for a in (node.get("assignees") or {}).get("nodes") or [] if a],
+        "closedBy": closed_by,
+        "linked": linked_pull_requests(node),
     }
-    if _login(author):
-        out["author"] = _login(author)
-    out["authorBot"] = author.get("__typename") == "Bot"
-    out["association"] = node.get("authorAssociation") or "NONE"
-    out["labels"] = [label["name"] for label in (node.get("labels") or {}).get("nodes") or [] if label]
-    out["assignees"] = [a["login"] for a in (node.get("assignees") or {}).get("nodes") or [] if a]
-    closed_by = None
-    if closer and closer.get("repository") and closer.get("number"):
-        closed_by = {"repo": closer["repository"]["nameWithOwner"], "number": closer["number"]}
-        if _login(closer.get("author")):
-            closed_by["author"] = _login(closer.get("author"))
-    out["closedBy"] = closed_by
-    out["linked"] = linked_pull_requests(node)
-    return out
 
 
 def read_ledger(gh: GitHub, repo: str) -> tuple[str | None, dict | None]:
     """The ledger branch's head and its problems.json; (None, None) before the first update."""
+    head = None
     try:
         head = gh.json(f"/repos/{repo}/git/ref/heads/{LEDGER_BRANCH}")["object"]["sha"]
-    except HTTPError as e:
-        if e.code == 404:
-            return None, None
-        raise
-    try:
         raw = gh.call("GET", f"/repos/{repo}/contents/{LEDGER_PATH}?ref={head}", accept="application/vnd.github.raw")
     except HTTPError as e:
         if e.code == 404:
@@ -317,8 +321,7 @@ def open_issue_numbers(gh: GitHub, repo: str) -> dict:
     """`openIssues`: every issue open now, by number, or an incomplete list past MAX_OPEN_NUMBERS."""
     owner, name = repo.split("/", 1)
     numbers = []
-    variables = {"owner": owner, "name": name}
-    for n in _nodes(gh, OPEN_NUMBERS_QUERY, variables, "issues", pages=MAX_OPEN_NUMBERS // 100):
+    for n in _nodes(gh, OPEN_NUMBERS_QUERY, {"owner": owner, "name": name}, "issues", pages=MAX_OPEN_NUMBERS // 100):
         if n is MORE:
             return {"numbers": [], "complete": False}
         if n and isinstance(n.get("number"), int):
@@ -424,17 +427,6 @@ def _merged_since(ledger: dict | None, now: datetime) -> datetime:
     return now - timedelta(days=FIRST_MERGED_DAYS)
 
 
-def _paths(gh: GitHub, owner: str, name: str, number: int, files: dict) -> list[str]:
-    paths = [f["path"] for f in files.get("nodes") or [] if f]
-    page = files.get("pageInfo") or {}
-    while page.get("hasNextPage") and len(paths) < MAX_PATHS:
-        variables = {"owner": owner, "name": name, "n": number, "c": page.get("endCursor")}
-        more = gh.graphql(FILES_QUERY, variables)["repository"]["pullRequest"]["files"]
-        paths += [f["path"] for f in more.get("nodes") or [] if f]
-        page = more.get("pageInfo") or {}
-    return paths[:MAX_PATHS]
-
-
 def collect_merged(
     gh: GitHub, repo: str, branch: str, ledger: dict | None, now: datetime
 ) -> tuple[list[dict], dict[int, str], bool]:
@@ -457,18 +449,21 @@ def collect_merged(
             continue
         if len(out) >= MAX_MERGED:
             break
-        approvers = []
-        for review in (n.get("reviews") or {}).get("nodes") or []:
-            login = _login((review or {}).get("author"))
-            if login and login not in approvers:
-                approvers.append(login)
-        pr = {"number": n["number"], "title": n.get("title") or "", "url": n.get("url")}
-        if _login(n.get("author")):
-            pr["author"] = _login(n.get("author"))
-        pr["mergedAt"] = n["mergedAt"]
-        pr["approvers"] = approvers
-        pr["paths"] = _paths(gh, owner, name, n["number"], n.get("files") or {})
-        out.append(pr)
+        reviews = (n.get("reviews") or {}).get("nodes") or []
+        pr = {"owner": owner, "name": name, "n": n["number"]}
+        files = _nodes(gh, FILES_QUERY, pr, "pullRequest", "files", conn=n.get("files") or {})
+        out.append(
+            {
+                "number": n["number"],
+                "title": n.get("title") or "",
+                "url": n.get("url"),
+                **_author(n.get("author")),
+                "mergedAt": n["mergedAt"],
+                "approvers": list(dict.fromkeys(filter(None, (_login((r or {}).get("author")) for r in reviews)))),
+                # islice asks for no page past the cap.
+                "paths": [f["path"] for f in islice(filter(None, files), MAX_PATHS)],
+            }
+        )
         heads[n["number"]] = n.get("headRefOid")
     return out, heads, False
 
@@ -603,11 +598,7 @@ def build_request(env: dict, ledger: dict | None, facts: dict) -> dict:
         "branch": env["BRANCH"],
         "push": {"sha": env.get("PUSH_SHA", ""), "before": env.get("PUSH_BEFORE", "")},
         "ledger": ledger,
-        "issues": facts["issues"],
-        "issuesThrough": facts["issuesThrough"],
-        "openIssues": facts["openIssues"],
-        "merged": facts["merged"],
-        "findings": facts["findings"],
+        **{k: facts[k] for k in ("issues", "issuesThrough", "openIssues", "merged", "findings")},
     }
 
 
@@ -627,15 +618,10 @@ def commit_ledger(gh: GitHub, repo: str, head: str | None, ledger: dict, message
     """One commit holding only problems.json on top of `head`; Conflict when the branch moved."""
     text = json.dumps(ledger, ensure_ascii=False, separators=(",", ":"))
     blob = gh.json(f"/repos/{repo}/git/blobs", "POST", {"content": text, "encoding": "utf-8"})["sha"]
-    tree = gh.json(
-        f"/repos/{repo}/git/trees",
-        "POST",
-        {"tree": [{"path": LEDGER_PATH, "mode": "100644", "type": "blob", "sha": blob}]},
-    )["sha"]
-    parents = [head] if head else []
-    commit = gh.json(f"/repos/{repo}/git/commits", "POST", {"message": message, "tree": tree, "parents": parents})[
-        "sha"
-    ]
+    entry = {"path": LEDGER_PATH, "mode": "100644", "type": "blob", "sha": blob}
+    tree = gh.json(f"/repos/{repo}/git/trees", "POST", {"tree": [entry]})["sha"]
+    payload = {"message": message, "tree": tree, "parents": [head] if head else []}
+    commit = gh.json(f"/repos/{repo}/git/commits", "POST", payload)["sha"]
     try:
         if head:
             gh.json(f"/repos/{repo}/git/refs/heads/{LEDGER_BRANCH}", "PATCH", {"sha": commit, "force": False})
@@ -668,7 +654,7 @@ def update(gh: GitHub, env: dict, now: datetime | None = None) -> str:
     now = now or datetime.now(timezone.utc)
     head, ledger = read_ledger(gh, repo)
     facts = collect(gh, env, ledger, now)
-    for attempt in range(2):
+    for retried in (False, True):
         data = pack(build_request(env, ledger, facts))
         answer = _post(f"{base}/v1/briefing", data, _bearer(env), timeout=SERVICE_TIMEOUT)
         new = answer.get("ledger") if isinstance(answer, dict) else None
@@ -681,7 +667,7 @@ def update(gh: GitHub, env: dict, now: datetime | None = None) -> str:
         try:
             sha = commit_ledger(gh, repo, head, new, f"Update problem history ({count} problems, through {through})")
         except Conflict:
-            if attempt:
+            if retried:
                 raise Skip(f"{LEDGER_BRANCH} moved twice while this run updated it; the next sync carries on")
             # Another run updated it first: fold our facts into its ledger instead. They are a superset
             # of what that ledger lacks, and the service merges what it already holds. Its issues may
@@ -694,7 +680,6 @@ def update(gh: GitHub, env: dict, now: datetime | None = None) -> str:
             f" through {through}; committed {sha[:7]} to {LEDGER_BRANCH}"
         )
         return "; ".join([line, *facts["notes"]])
-    raise AssertionError("unreachable")
 
 
 def _stop() -> None:
