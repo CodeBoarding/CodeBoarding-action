@@ -584,6 +584,8 @@ runs:
 
     # Opt-in. Facts go in and the service's ledger comes back: every rule about what counts as a
     # problem lives in the service, so this only reads GitHub and commits the answer. Never fails the run.
+    # A composite step cannot set timeout-minutes (the runner rejects the key), so the script stops
+    # itself after 10 minutes.
     - name: Update problem history
       id: problem_history
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'sync' && inputs.problem_history == 'true' && inputs.review_guide_url != ''

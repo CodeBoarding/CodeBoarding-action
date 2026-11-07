@@ -308,7 +308,7 @@ def _no_architecture(ctx: dict, status: str, reason: str) -> dict:
     }
 
 
-def _post(url: str, body: bytes, headers: dict[str, str]) -> dict:
+def _post(url: str, body: bytes, headers: dict[str, str], timeout: int = 600) -> dict:
     req = Request(
         url,
         data=body,
@@ -316,7 +316,7 @@ def _post(url: str, body: bytes, headers: dict[str, str]) -> dict:
         method="POST",
     )
     try:
-        with urlopen(req, timeout=600) as res:  # nosec B310 - service URL from workflow configuration
+        with urlopen(req, timeout=timeout) as res:  # nosec B310 - service URL from workflow configuration
             return json.loads(res.read())
     except HTTPError as e:
         try:

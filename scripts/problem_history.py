@@ -19,6 +19,7 @@ import json
 import os
 import re
 import sys
+import threading
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -36,33 +37,61 @@ ISSUE_OVERLAP = timedelta(minutes=5)
 MERGED_OVERLAP = timedelta(hours=1)
 FIRST_CLOSED_DAYS = 90
 FIRST_MERGED_DAYS = 56
+# The service refuses more than 3000 issues, 1000 merged pull requests or 200 findings in one request.
+# These stay under that by construction: 1000 + 1000 issues on a first run, 1000 + 100 later.
+MAX_FIRST_OPEN = 1000
+MAX_FIRST_CLOSED = 1000
 MAX_ISSUES = 1000
+MAX_RELINKED = 100
 MAX_MERGED = 500
+# Pages of 50 merged pull requests scanned, newest update first, before the scan stops short of the window.
+MAX_MERGED_PAGES = 20
 MAX_PATHS = 300
 MAX_ARTIFACTS = 40
+MAX_FINDINGS_RETRIES = 10
+# Past this many open issues the list is sent as incomplete, and the service drops none.
+MAX_OPEN_NUMBERS = 5000
 # Successful runs on a head commit whose artifacts are listed before giving up on its review.
 MAX_RUNS_PER_PR = 6
+MAX_ARTIFACT_BYTES = 50 * 1024 * 1024
 MAX_BODY_CHARS = 2000
+SERVICE_TIMEOUT = 300
+# A composite action's step cannot set timeout-minutes, so the script stops itself at the step's budget.
+STEP_LIMIT_SECONDS = 600
 
 # The webview's Briefing query (src/lib/github.ts, BRIEFING_ISSUES_QUERY), plus a linked pull
 # request's title and url, read from the repository's own issue list rather than search so an issue
 # updated a moment ago is never missed.
 _BRIEF_PR = "fragment BriefPr on PullRequest{ number title url state isDraft reviewDecision updatedAt author{ login } repository{ nameWithOwner } }"
+_ISSUE_FIELDS = """
+fragment IssueFields on Issue{ number title body url state createdAt closedAt updatedAt authorAssociation
+  author{ __typename login } repository{ nameWithOwner } labels(first:10){ nodes{ name } } assignees(first:5){ nodes{ login } }
+  timelineItems(last:30, itemTypes:[CLOSED_EVENT, CROSS_REFERENCED_EVENT, CONNECTED_EVENT, DISCONNECTED_EVENT]){ nodes{ __typename
+    ... on ClosedEvent{ closer{ __typename ... on PullRequest{ number author{ login } repository{ nameWithOwner } } } }
+    ... on CrossReferencedEvent{ willCloseTarget source{ __typename ...BriefPr ... on PullRequest{ commits(last:1){ nodes{ commit{ statusCheckRollup{ state } } } } } } }
+    ... on ConnectedEvent{ subject{ __typename ...BriefPr } source{ __typename ...BriefPr } }
+    ... on DisconnectedEvent{ subject{ __typename ...BriefPr } source{ __typename ...BriefPr } } } } }"""
 ISSUES_QUERY = (
     _BRIEF_PR
+    + _ISSUE_FIELDS
     + """
 query($owner:String!,$name:String!,$states:[IssueState!],$since:DateTime,$dir:OrderDirection!,$c:String){
   repository(owner:$owner, name:$name){
     issues(first:50, after:$c, states:$states, filterBy:{since:$since}, orderBy:{field:UPDATED_AT, direction:$dir}){
-      pageInfo{ hasNextPage endCursor }
-      nodes{ number title body url state createdAt closedAt updatedAt authorAssociation
-        author{ __typename login } repository{ nameWithOwner } labels(first:10){ nodes{ name } } assignees(first:5){ nodes{ login } }
-        timelineItems(last:30, itemTypes:[CLOSED_EVENT, CROSS_REFERENCED_EVENT, CONNECTED_EVENT, DISCONNECTED_EVENT]){ nodes{ __typename
-          ... on ClosedEvent{ closer{ __typename ... on PullRequest{ number author{ login } repository{ nameWithOwner } } } }
-          ... on CrossReferencedEvent{ willCloseTarget source{ __typename ...BriefPr ... on PullRequest{ commits(last:1){ nodes{ commit{ statusCheckRollup{ state } } } } } } }
-          ... on ConnectedEvent{ subject{ __typename ...BriefPr } source{ __typename ...BriefPr } }
-          ... on DisconnectedEvent{ subject{ __typename ...BriefPr } source{ __typename ...BriefPr } } } } } } } }"""
+      pageInfo{ hasNextPage endCursor } nodes{ ...IssueFields } } } }"""
 )
+# Creation order, so an issue updated while the pages are read cannot move past the cursor and be missed.
+OPEN_NUMBERS_QUERY = """
+query($owner:String!,$name:String!,$c:String){
+  repository(owner:$owner, name:$name){
+    issues(first:100, after:$c, states:[OPEN], orderBy:{field:CREATED_AT, direction:ASC}){
+      pageInfo{ hasNextPage endCursor } nodes{ number } } } }"""
+OLDEST_OPEN_QUERY = """
+query($owner:String!,$name:String!){
+  repository(owner:$owner, name:$name){
+    issues(first:1, states:[OPEN], orderBy:{field:UPDATED_AT, direction:ASC}){ nodes{ updatedAt } } } }"""
+# Issues read again by number, this many to a request.
+ISSUES_PER_QUERY = 25
 MERGED_QUERY = """
 query($owner:String!,$name:String!,$base:String!,$c:String){
   repository(owner:$owner, name:$name){
@@ -143,13 +172,21 @@ def _parse(s: str | None) -> datetime | None:
         return None
 
 
-def _nodes(gh: GitHub, query: str, variables: dict, field: str):
-    cursor = None
+# Yielded last when `pages` ran out with more to read.
+MORE = object()
+
+
+def _nodes(gh: GitHub, query: str, variables: dict, field: str, pages: int | None = None):
+    cursor, read = None, 0
     while True:
         conn = gh.graphql(query, {**variables, "c": cursor})["repository"][field]
+        read += 1
         yield from conn.get("nodes") or []
         page = conn.get("pageInfo") or {}
         if not page.get("hasNextPage"):
+            return
+        if pages and read >= pages:
+            yield MORE
             return
         cursor = page.get("endCursor")
 
@@ -209,6 +246,12 @@ def linked_pull_requests(node: dict) -> list[dict]:
     return out
 
 
+def cut(text: str, limit: int = MAX_BODY_CHARS) -> str:
+    """The first `limit` characters of `text` as JavaScript counts them (UTF-16 code units), so also at
+    most `limit` Python characters, never ending on half a surrogate pair."""
+    return text.encode("utf-16-le", "surrogatepass")[: 2 * limit].decode("utf-16-le", "ignore")
+
+
 def issue_facts(node: dict) -> dict:
     """An issue node as IssueFacts: what the webview's `fetchBriefingIssues` builds from the same query."""
     timeline = (node.get("timelineItems") or {}).get("nodes") or []
@@ -226,7 +269,8 @@ def issue_facts(node: dict) -> dict:
         "repo": node["repository"]["nameWithOwner"],
         "number": node["number"],
         "title": node.get("title") or "",
-        "body": node.get("body") or "",
+        # The service reads a body for its first sentence and two marker lines, all near the top.
+        "body": cut(node.get("body") or ""),
         "url": node.get("url"),
         "state": node.get("state"),
         "createdAt": node.get("createdAt"),
@@ -269,39 +313,107 @@ def read_ledger(gh: GitHub, repo: str) -> tuple[str | None, dict | None]:
     return head, ledger
 
 
-def collect_issues(gh: GitHub, repo: str, ledger: dict | None, started: datetime) -> tuple[list[dict], str, bool]:
-    """Issues for the request, the `issuesThrough` to record, and whether the cap cut the list.
+def open_issue_numbers(gh: GitHub, repo: str) -> dict:
+    """`openIssues`: every issue open now, by number, or an incomplete list past MAX_OPEN_NUMBERS."""
+    owner, name = repo.split("/", 1)
+    numbers = []
+    variables = {"owner": owner, "name": name}
+    for n in _nodes(gh, OPEN_NUMBERS_QUERY, variables, "issues", pages=MAX_OPEN_NUMBERS // 100):
+        if n is MORE:
+            return {"numbers": [], "complete": False}
+        if n and isinstance(n.get("number"), int):
+            numbers.append(n["number"])
+    return {"numbers": numbers, "complete": True}
 
-    A later run reads oldest update first, so when the cap cuts it short `issuesThrough` stops at the
-    last issue read and the next run carries on from there."""
+
+def _oldest_open(gh: GitHub, repo: str) -> datetime | None:
+    owner, name = repo.split("/", 1)
+    nodes = gh.graphql(OLDEST_OPEN_QUERY, {"owner": owner, "name": name})["repository"]["issues"].get("nodes")
+    return _parse(((nodes or [None])[0] or {}).get("updatedAt"))
+
+
+def collect_issues(gh: GitHub, repo: str, ledger: dict | None, started: datetime) -> tuple[list[dict], str, list[str]]:
+    """Issues for the request, the `issuesThrough` to record, and a note per cap that cut a pass short.
+
+    `issuesThrough` never claims an issue a cap skipped, so the next run reads it. A later run reads oldest
+    update first and stops at the last issue read. A first run reads newest first: a cut open pass stops at
+    the oldest open issue's update, and a cut closed pass at the start of its 90 days."""
     owner, name = repo.split("/", 1)
     since = _parse((ledger or {}).get("issuesThrough"))
     cutoff = None
     if since is None:
         cutoff = started - timedelta(days=FIRST_CLOSED_DAYS)
-        passes = [(["OPEN"], None, "DESC"), (["CLOSED"], _iso(cutoff), "DESC")]
+        passes = [
+            ("open", ["OPEN"], None, "DESC", MAX_FIRST_OPEN),
+            ("recently closed", ["CLOSED"], _iso(cutoff), "DESC", MAX_FIRST_CLOSED),
+        ]
     else:
-        passes = [(None, _iso(since - ISSUE_OVERLAP), "ASC")]
+        passes = [("", None, _iso(since - ISSUE_OVERLAP), "ASC", MAX_ISSUES)]
     out: dict[int, dict] = {}
-    through, cut = _iso(started), False
-    for states, after, direction in passes:
+    through, notes = started, []
+    for label, states, after, direction, cap in passes:
         variables = {"owner": owner, "name": name, "states": states, "since": after, "dir": direction}
+        read, last = 0, None
         for n in _nodes(gh, ISSUES_QUERY, variables, "issues"):
             if not n or "number" not in n:
                 continue
             if cutoff and n.get("state") == "CLOSED" and (_parse(n.get("closedAt")) or cutoff) <= cutoff:
                 continue
-            if len(out) >= MAX_ISSUES:
-                cut = True
+            if read >= cap:
+                notes.append(f"read the first {cap} {label + ' ' if label else ''}issues only")
+                if since is not None:
+                    stop = last
+                elif states == ["OPEN"]:
+                    stop = _oldest_open(gh, repo)
+                else:
+                    stop = cutoff
+                through = min(through, stop or started)
                 break
+            read += 1
             out[n["number"]] = issue_facts(n)
-            if direction == "ASC":
-                through = n.get("updatedAt") or through
-        if cut:
-            break
-    if not cut or since is None:
-        through = _iso(started)
-    return list(out.values()), through, cut
+            last = _parse(n.get("updatedAt")) or last
+    return list(out.values()), _iso(through), notes
+
+
+def relinked(ledger: dict | None, repo: str, read: set[int]) -> list[int]:
+    """Stored open issues with an open linked pull request, which can move without updating the issue:
+    those whose pull requests moved most recently first, capped."""
+    picked = []
+    for i in (ledger or {}).get("issues") or []:
+        if not isinstance(i, dict) or i.get("state") != "OPEN" or str(i.get("repo", "")).lower() != repo.lower():
+            continue
+        number = i.get("number")
+        if not isinstance(number, int) or isinstance(number, bool) or number in read:
+            continue
+        moved = [str(p.get("updatedAt") or "") for p in i.get("linked") or [] if (p or {}).get("state") == "OPEN"]
+        if moved:
+            picked.append((max(moved), number))
+    return [n for _, n in sorted(picked, reverse=True)[:MAX_RELINKED]]
+
+
+def issues_by_number(gh: GitHub, repo: str, numbers: list[int]) -> list[dict]:
+    """IssueFacts for these issue numbers; one deleted, transferred or never an issue is left out."""
+    owner, name = repo.split("/", 1)
+    out = []
+    for start in range(0, len(numbers), ISSUES_PER_QUERY):
+        batch = numbers[start : start + ISSUES_PER_QUERY]
+        params = "".join(f",$n{k}:Int!" for k in range(len(batch)))
+        fields = " ".join(f"i{k}: issue(number:$n{k}){{ ...IssueFields }}" for k in range(len(batch)))
+        query = (
+            _BRIEF_PR
+            + _ISSUE_FIELDS
+            + f"\nquery($owner:String!,$name:String!{params}){{ repository(owner:$owner, name:$name){{ {fields} }} }}"
+        )
+        variables = {"owner": owner, "name": name, **{f"n{k}": n for k, n in enumerate(batch)}}
+        found = gh.graphql(query, variables)["repository"]
+        for k in range(len(batch)):
+            node = found.get(f"i{k}") or {}
+            if (
+                node.get("number")
+                and str((node.get("repository") or {}).get("nameWithOwner", "")).lower() == repo.lower()
+            ):
+                out.append(issue_facts(node))
+    return out
 
 
 def _merged_since(ledger: dict | None, now: datetime) -> datetime:
@@ -325,12 +437,16 @@ def _paths(gh: GitHub, owner: str, name: str, number: int, files: dict) -> list[
 
 def collect_merged(
     gh: GitHub, repo: str, branch: str, ledger: dict | None, now: datetime
-) -> tuple[list[dict], dict[int, str]]:
-    """Pull requests merged into `branch` since the ledger's last one, and each one's head commit."""
+) -> tuple[list[dict], dict[int, str], bool]:
+    """Pull requests merged into `branch` since the ledger's last one, each one's head commit, and whether
+    the scan stopped at its page cap before reaching the window's start."""
     owner, name = repo.split("/", 1)
     since = _merged_since(ledger, now)
     out, heads = [], {}
-    for n in _nodes(gh, MERGED_QUERY, {"owner": owner, "name": name, "base": branch}, "pullRequests"):
+    variables = {"owner": owner, "name": name, "base": branch}
+    for n in _nodes(gh, MERGED_QUERY, variables, "pullRequests", pages=MAX_MERGED_PAGES):
+        if n is MORE:
+            return out, heads, True
         if not n:
             continue
         # Merging updates a pull request, so past this point everything merged earlier.
@@ -354,11 +470,12 @@ def collect_merged(
         pr["paths"] = _paths(gh, owner, name, n["number"], n.get("files") or {})
         out.append(pr)
         heads[n["number"]] = n.get("headRefOid")
-    return out, heads
+    return out, heads, False
 
 
 def read_architecture(archive: bytes, pr: int) -> dict | None:
-    """closed/architecture.json from a review artifact, when it holds findings for this pull request."""
+    """closed/architecture.json from a review artifact, when it answers for this pull request. A skipped
+    one carries no findings, and still tells the service the pull request was read."""
     with zipfile.ZipFile(io.BytesIO(archive)) as z:
         names = set(z.namelist())
         if "metadata.json" in names:
@@ -368,7 +485,7 @@ def read_architecture(archive: bytes, pr: int) -> dict | None:
         if "closed/architecture.json" not in names:
             return None
         envelope = json.loads(z.read("closed/architecture.json"))
-    if not isinstance(envelope, dict) or envelope.get("status") not in ("ok", "partial"):
+    if not isinstance(envelope, dict) or envelope.get("status") not in ("ok", "partial", "skipped"):
         return None
     return envelope
 
@@ -379,30 +496,58 @@ def review_findings(gh: GitHub, repo: str, pr: int, sha: str) -> dict | None:
     runs = sorted(
         runs.get("workflow_runs") or [], key=lambda r: not re.search("codeboarding", r.get("name") or "", re.I)
     )
+    too_big = False
     for run in runs[:MAX_RUNS_PER_PR]:
         want = f"codeboarding-review-{run['id']}-{run.get('run_attempt') or 1}"
         listed = gh.json(f"/repos/{repo}/actions/runs/{run['id']}/artifacts?name={quote(want)}")
         for artifact in listed.get("artifacts") or []:
             if artifact.get("name") != want or artifact.get("expired"):
                 continue
+            if (artifact.get("size_in_bytes") or 0) > MAX_ARTIFACT_BYTES:
+                too_big = True
+                continue
             envelope = read_architecture(gh.download(artifact["archive_download_url"]), pr)
             if envelope:
                 return envelope
+    if too_big:
+        raise ValueError(f"its review artifact is over {MAX_ARTIFACT_BYTES >> 20} MB, not downloaded")
     return None
+
+
+def _unread(ledger: dict | None) -> list[dict]:
+    """The ledger's merged pull requests whose findings were never read. A ledger from before
+    `warningsRead` has no flag; a merge with warnings stored counts as read."""
+    warned = {w.get("pr") for w in (ledger or {}).get("warnings") or [] if isinstance(w, dict)}
+    return [
+        m
+        for m in (ledger or {}).get("merged") or []
+        if isinstance(m, dict)
+        and isinstance(m.get("number"), int)
+        and m.get("warningsRead") is not True
+        and m["number"] not in warned
+    ]
 
 
 def collect_findings(
     gh: GitHub, repo: str, merged: list[dict], heads: dict[int, str], ledger: dict | None
 ) -> tuple[dict[str, dict], list[str]]:
-    """Findings per merged pull request the ledger has not folded in yet, newest first, capped."""
+    """Findings per merged pull request the ledger has not folded in yet, and again for a few it holds
+    unread, newest first, each capped."""
     known = {m.get("number") for m in (ledger or {}).get("merged") or [] if isinstance(m, dict)}
-    todo = sorted((m for m in merged if m["number"] not in known), key=lambda m: m["mergedAt"], reverse=True)
+
+    def newest(items):
+        return sorted(items, key=lambda m: str(m.get("mergedAt") or ""), reverse=True)
+
+    todo = newest(m for m in merged if m["number"] not in known)[:MAX_ARTIFACTS]
+    todo += newest(_unread(ledger))[:MAX_FINDINGS_RETRIES]
     out, errors = {}, []
-    for m in todo[:MAX_ARTIFACTS]:
-        if not heads.get(m["number"]):
-            continue
+    for m in todo:
         try:
-            envelope = review_findings(gh, repo, m["number"], heads[m["number"]])
+            # A merge read from the ledger has no head commit stored; its pull request names it.
+            head = heads.get(m["number"]) or gh.json(f"/repos/{repo}/pulls/{m['number']}")["head"]["sha"]
+            if not head:
+                continue
+            envelope = review_findings(gh, repo, m["number"], head)
         except Exception as e:  # a missing or unreadable artifact only means no findings for it
             errors.append(f"#{m['number']}: {type(e).__name__}: {e}")
             continue
@@ -413,18 +558,37 @@ def collect_findings(
 
 def collect(gh: GitHub, env: dict, ledger: dict | None, now: datetime) -> dict:
     repo = env["REPOSITORY"]
-    issues, through, cut = collect_issues(gh, repo, ledger, now)
-    merged, heads = collect_merged(gh, repo, env["BRANCH"], ledger, now)
-    findings, errors = collect_findings(gh, repo, merged, heads, ledger)
     notes = []
-    if cut:
-        notes.append(f"read the first {MAX_ISSUES} issues only")
+    # Read before the issues, so an issue closed in between is still listed rather than dropped.
+    try:
+        open_issues = open_issue_numbers(gh, repo)
+        if not open_issues["complete"]:
+            notes.append(f"over {MAX_OPEN_NUMBERS} open issues, so none was checked for removal")
+    except Exception as e:  # without the list the service drops nothing, which is only slower
+        open_issues = {"numbers": [], "complete": False}
+        notes.append(f"open issues not listed ({type(e).__name__}: {e})")
+    issues, through, capped = collect_issues(gh, repo, ledger, now)
+    notes += capped
+    if capped:
+        # An issue the cap skipped may have closed since the ledger stored it open; it must not be dropped.
+        open_issues = {"numbers": [], "complete": False}
+    if ledger:
+        again = relinked(ledger, repo, {i["number"] for i in issues})
+        try:
+            issues += issues_by_number(gh, repo, again)
+        except Exception as e:  # their pull requests are read again next time
+            notes.append(f"{len(again)} issues with open pull requests not read again ({type(e).__name__}: {e})")
+    merged, heads, scan_cut = collect_merged(gh, repo, env["BRANCH"], ledger, now)
+    if scan_cut:
+        notes.append(f"scanned the {MAX_MERGED_PAGES * 50} latest updated pull requests only")
+    findings, errors = collect_findings(gh, repo, merged, heads, ledger)
     if errors:
         notes.append(f"no findings for {len(errors)} merged pull requests ({errors[0]})")
     return {
         "now": _iso(now),
         "issues": issues,
         "issuesThrough": through,
+        "openIssues": open_issues,
         "merged": merged,
         "findings": findings,
         "notes": notes,
@@ -441,6 +605,7 @@ def build_request(env: dict, ledger: dict | None, facts: dict) -> dict:
         "ledger": ledger,
         "issues": facts["issues"],
         "issuesThrough": facts["issuesThrough"],
+        "openIssues": facts["openIssues"],
         "merged": facts["merged"],
         "findings": facts["findings"],
     }
@@ -448,10 +613,6 @@ def build_request(env: dict, ledger: dict | None, facts: dict) -> dict:
 
 def pack(body: dict) -> bytes:
     data = gzip.compress(json.dumps(body).encode(), compresslevel=9)
-    if len(data) > MAX_BUNDLE_BYTES:
-        # The service reads a body for its first sentence and two marker lines, all near the top.
-        body = {**body, "issues": [{**i, "body": i["body"][:MAX_BODY_CHARS]} for i in body["issues"]]}
-        data = gzip.compress(json.dumps(body).encode(), compresslevel=9)
     if len(data) > MAX_BUNDLE_BYTES:
         raise Skip(f"its request is {len(data) / 1e6:.1f} MB, over the service's limit")
     return data
@@ -481,10 +642,24 @@ def commit_ledger(gh: GitHub, repo: str, head: str | None, ledger: dict, message
         else:
             gh.json(f"/repos/{repo}/git/refs", "POST", {"ref": f"refs/heads/{LEDGER_BRANCH}", "sha": commit})
     except HTTPError as e:
-        if e.code == 422:  # not a fast-forward, or the branch appeared since we read it
+        if e.code != 422:
+            raise
+        message = " ".join(_message(e).split())
+        # Only a lost race is worth a retry: not a fast-forward, or the branch appeared since it was read.
+        if not message or re.search(r"fast.forward|already exists", message, re.I):
             raise Conflict() from e
-        raise
+        raise Skip(
+            f"GitHub refused to write {LEDGER_BRANCH}: {message}. A ruleset that covers it, or a branch named"
+            f" {LEDGER_BRANCH.split('/')[0]}, stops the update; exempt the branch or rename that one"
+        ) from e
     return commit
+
+
+def _message(e: HTTPError) -> str:
+    try:
+        return str(json.loads(e.read()).get("message") or "")
+    except (ValueError, AttributeError, OSError):
+        return ""
 
 
 def update(gh: GitHub, env: dict, now: datetime | None = None) -> str:
@@ -494,7 +669,8 @@ def update(gh: GitHub, env: dict, now: datetime | None = None) -> str:
     head, ledger = read_ledger(gh, repo)
     facts = collect(gh, env, ledger, now)
     for attempt in range(2):
-        answer = _post(f"{base}/v1/briefing", pack(build_request(env, ledger, facts)), _bearer(env))
+        data = pack(build_request(env, ledger, facts))
+        answer = _post(f"{base}/v1/briefing", data, _bearer(env), timeout=SERVICE_TIMEOUT)
         new = answer.get("ledger") if isinstance(answer, dict) else None
         if not isinstance(new, dict) or new.get("schema") != 1 or str(new.get("repo", "")).lower() != repo.lower():
             raise ValueError("the service returned no ledger for this repository")
@@ -506,10 +682,12 @@ def update(gh: GitHub, env: dict, now: datetime | None = None) -> str:
             sha = commit_ledger(gh, repo, head, new, f"Update problem history ({count} problems, through {through})")
         except Conflict:
             if attempt:
-                raise
+                raise Skip(f"{LEDGER_BRANCH} moved twice while this run updated it; the next sync carries on")
             # Another run updated it first: fold our facts into its ledger instead. They are a superset
-            # of what that ledger lacks, and the service merges what it already holds.
+            # of what that ledger lacks, and the service merges what it already holds. Its issues may
+            # postdate our list of open ones, so this request lets the service drop none.
             head, ledger = read_ledger(gh, repo)
+            facts = {**facts, "openIssues": {"numbers": [], "complete": False}}
             continue
         line = (
             f"Problem history: {count} problems ({summary.get('open', '?')} open, {summary.get('added', '?')} new),"
@@ -519,8 +697,16 @@ def update(gh: GitHub, env: dict, now: datetime | None = None) -> str:
     raise AssertionError("unreachable")
 
 
+def _stop() -> None:
+    print(f"::warning::Updating the problem history stopped after {int(STEP_LIMIT_SECONDS // 60)} minutes", flush=True)
+    os._exit(0)
+
+
 def main(env: dict | None = None) -> int:
     env = dict(os.environ if env is None else env)
+    timer = threading.Timer(STEP_LIMIT_SECONDS, _stop)
+    timer.daemon = True
+    timer.start()
     try:
         if not env.get("CLOSED_FUNCTIONS_URL", "").strip():
             return 0
@@ -532,6 +718,8 @@ def main(env: dict | None = None) -> int:
         if isinstance(e, HTTPError) and e.code in (403, 404):
             hint = " (the sync job needs contents: write, issues: read, pull-requests: read and actions: read)"
         print(f"::warning::Updating the problem history failed: {type(e).__name__}: {e}{hint}")
+    finally:
+        timer.cancel()
     return 0
 
 
