@@ -164,6 +164,20 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(error.code, "hosted_with_license")
         self.assertIn("llm: license", error.message)
 
+    def test_hosted_and_license_refuse_a_model_of_your_choosing(self) -> None:
+        """Choosing a model takes your own key. Each of the three inputs names one."""
+        for name in ("CB_IN_MODEL", "CB_IN_AGENT_MODEL", "CB_IN_PARSING_MODEL"):
+            with self.subTest(input=name):
+                error = self.refuse(CB_IN_LLM="hosted", **OIDC, **{name: "gpt-x"})
+                self.assertEqual(error.code, "hosted_with_model")
+                self.assertIn(name.removeprefix("CB_IN_").lower(), error.message)
+                error = self.refuse(CB_IN_LLM="license", CB_IN_LICENSE_KEY="lic", **OIDC, **{name: "gpt-x"})
+                self.assertEqual(error.code, "license_with_model")
+
+    def test_a_provider_of_your_own_can_run_any_model(self) -> None:
+        plan = self.resolve(CB_IN_LLM="anthropic", CB_IN_ANTHROPIC_API_KEY="k", CB_IN_MODEL="any-model")
+        self.assertEqual(plan["provider"], "anthropic")
+
     def test_license_without_a_licence_key_is_refused(self) -> None:
         error = self.refuse(CB_IN_LLM="license", **OIDC)
         self.assertEqual(error.code, "missing_license_key")
@@ -342,6 +356,8 @@ class ContractTests(unittest.TestCase):
             {"CB_IN_LLM": "hosted", "CB_IN_ANTHROPIC_API_KEY": "k", **OIDC},
             {"CB_IN_LLM": "hosted", "CB_IN_LICENSE_KEY": "lic", **OIDC},
             {"CB_IN_LLM": "license", "CB_IN_LICENSE_KEY": "lic", "CB_IN_ANTHROPIC_API_KEY": "k", **OIDC},
+            {"CB_IN_LLM": "hosted", "CB_IN_MODEL": "x", **OIDC},
+            {"CB_IN_LLM": "license", "CB_IN_LICENSE_KEY": "lic", "CB_IN_AGENT_MODEL": "x", **OIDC},
             {"CB_IN_LLM": "anthropic", "CB_IN_ANTHROPIC_API_KEY": "k", "CB_IN_OPENAI_API_KEY": "o"},
         ]
         seen = {self.refuse(**case).code for case in cases}

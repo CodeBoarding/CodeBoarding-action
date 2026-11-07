@@ -145,12 +145,19 @@ inputs:
     default: '2'
   review_guide_url:
     description: >-
-      Experimental. The CodeBoarding service that writes a pull request's review guide (main
-      changes, each change as numbered steps on the map). Defaults to the production service.
-      A review run sends it this run's analysis and stores the guide in the review artifact for
-      the platform to show. Set to an empty string to disable.
+      Experimental. Service base URL for POST /v1/review-guide and POST /v1/architecture.
+      Defaults to production. Both receive this run's analysis independently; results are stored
+      as review_guide.json and closed/architecture.json. Set to an empty string to disable both.
     required: false
     default: 'https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/'
+  closed_features_source:
+    description: >-
+      Whether architecture checks may read this repository's source, for checks that
+      need the whole tree and to verify a finding. Only the architecture request carries it, capped in
+      size, and the service keeps nothing. The model sees the code around a finding, never the tree.
+      With 'false' those checks and the model review do not run, and the result says so.
+    required: false
+    default: 'true'
   github_token:
     description: 'Token used for comments and sync delivery.'
     required: false
@@ -301,6 +308,9 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         CB_IN_LLM: ${{ inputs.llm }}
         CB_IN_LICENSE_KEY: ${{ inputs.license_key }}
+        CB_IN_MODEL: ${{ inputs.model }}
+        CB_IN_AGENT_MODEL: ${{ inputs.agent_model }}
+        CB_IN_PARSING_MODEL: ${{ inputs.parsing_model }}
         CB_IN_ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
         CB_IN_AWS_BEDROCK_API_KEY: ${{ inputs.aws_bedrock_api_key }}
         CB_IN_AWS_BEDROCK_REGION: ${{ inputs.aws_bedrock_region }}
@@ -694,15 +704,16 @@ runs:
         ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-artifact.sh"
 
-    # After the artifact holds the analysis and before it is uploaded: the guide is one more file
-    # in it. Uses production by default; an empty URL disables it. It never fails the run.
-    - name: Build review guide
-      id: review_guide
+    # After the artifact holds the analysis and before it is uploaded: each feature is one more
+    # file in it. Uses production by default; an empty URL disables it. It never fails the run.
+    - name: Run closed features
+      id: closed_features
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && inputs.review_guide_url != ''
       continue-on-error: true
       shell: bash
       env:
-        REVIEW_GUIDE_URL: ${{ inputs.review_guide_url }}
+        CLOSED_FUNCTIONS_URL: ${{ inputs.review_guide_url }}
+        CLOSED_FEATURES_SOURCE: ${{ inputs.closed_features_source }}
         REPOSITORY: ${{ github.repository }}
         PR_NUMBER: ${{ steps.guard.outputs.pr_number }}
         ARTIFACT_DIR: ${{ steps.review_artifact.outputs.artifact_dir }}
@@ -711,10 +722,32 @@ runs:
         CHECKOUT_DIR: ${{ github.workspace }}/.codeboarding-target
         GITHUB_TOKEN: ${{ inputs.github_token }}
         LICENSE_KEY: ${{ inputs.license_key }}
+        LLM: ${{ inputs.llm }}
+        MODEL: ${{ inputs.model }}
+        AGENT_MODEL: ${{ inputs.agent_model }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic_api_key }}
+        AWS_BEDROCK_API_KEY: ${{ inputs.aws_bedrock_api_key }}
+        AWS_BEDROCK_REGION: ${{ inputs.aws_bedrock_region }}
+        CEREBRAS_API_KEY: ${{ inputs.cerebras_api_key }}
+        DEEPSEEK_API_KEY: ${{ inputs.deepseek_api_key }}
+        DEEPSEEK_BASE_URL: ${{ inputs.deepseek_base_url }}
+        GLM_API_KEY: ${{ inputs.glm_api_key }}
+        GLM_BASE_URL: ${{ inputs.glm_base_url }}
+        GOOGLE_API_KEY: ${{ inputs.google_api_key }}
+        KIMI_API_KEY: ${{ inputs.kimi_api_key }}
+        KIMI_BASE_URL: ${{ inputs.kimi_base_url }}
         OLLAMA_API_KEY: ${{ inputs.ollama_api_key }}
-        OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
+        OLLAMA_BASE_URL: ${{ inputs.ollama_base_url }}
         OPENAI_API_KEY: ${{ inputs.openai_api_key }}
-      run: python3 "$GITHUB_ACTION_PATH/scripts/review_guide.py"
+        OPENAI_BASE_URL: ${{ inputs.openai_base_url }}
+        OPENROUTER_API_KEY: ${{ inputs.openrouter_api_key }}
+        OPPER_API_KEY: ${{ inputs.opper_api_key }}
+        ORCAROUTER_API_KEY: ${{ inputs.orcarouter_api_key }}
+        REQUESTY_API_KEY: ${{ inputs.requesty_api_key }}
+        REQUESTY_BASE_URL: ${{ inputs.requesty_base_url }}
+        VERCEL_API_KEY: ${{ inputs.vercel_api_key }}
+        VERCEL_BASE_URL: ${{ inputs.vercel_base_url }}
+      run: python3 "$GITHUB_ACTION_PATH/scripts/closed_features.py"
 
     - name: Upload review artifact
       id: upload_review_artifact_dotcom
