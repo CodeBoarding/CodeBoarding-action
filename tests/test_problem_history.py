@@ -4,7 +4,6 @@ import gzip
 import importlib.util
 import io
 import json
-import os
 import re
 import sys
 import threading
@@ -17,13 +16,12 @@ from pathlib import Path
 from unittest import mock
 from urllib.error import HTTPError
 
-_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "problem_history.py"
-_SPEC = importlib.util.spec_from_file_location("problem_history", _SCRIPT)
-problem_history = importlib.util.module_from_spec(_SPEC)
+ROOT = Path(__file__).resolve().parent.parent
+_SPEC = importlib.util.spec_from_file_location("problem_history", ROOT / "scripts" / "problem_history.py")
+problem_history = ph = importlib.util.module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = problem_history
 _SPEC.loader.exec_module(problem_history)
 
-ROOT = Path(__file__).resolve().parent.parent
 NOW = datetime(2026, 11, 7, 12, 0, tzinfo=timezone.utc)
 ENV = {
     "REPOSITORY": "o/r",
@@ -33,13 +31,15 @@ ENV = {
     "CLOSED_FUNCTIONS_URL": "https://svc.test/",
     "GITHUB_TOKEN": "t",
 }
-ENVELOPE = {
-    "feature": "architecture",
-    "schema": 1,
-    "status": "ok",
-    "pr": 41,
-    "data": {"findings": [{"severity": "high"}]},
-}
+ENVELOPE = {"feature": "architecture", "schema": 1, "status": "ok", "pr": 41, "data": {"findings": [{}]}}
+
+
+def ledger(**fields):
+    return {"schema": 1, "repo": "o/r", **fields}
+
+
+def numbers(items):
+    return [i["number"] for i in items]
 
 
 def _http_error(code, message=None):
@@ -56,7 +56,7 @@ def _zip(files):
 
 
 def issue_node(number, state="OPEN", updated="2026-11-07T10:00:00Z", closed=None, **extra):
-    node = {
+    return {
         "number": number,
         "title": f"Issue {number} crashes",
         "body": "It breaks when saving.",
@@ -71,19 +71,22 @@ def issue_node(number, state="OPEN", updated="2026-11-07T10:00:00Z", closed=None
         "labels": {"nodes": []},
         "assignees": {"nodes": []},
         "timelineItems": {"nodes": []},
+        **extra,
     }
-    node.update(extra)
-    return node
 
 
-def pr_node(number, merged, updated=None, paths=("a.py",), approvers=(), more=False, head=None):
+def closed_node(number, closed="2026-10-20T00:00:00Z", **extra):
+    return issue_node(number, "CLOSED", closed=closed, **extra)
+
+
+def pr_node(number, merged, updated=None, paths=("a.py",), approvers=(), more=False):
     return {
         "number": number,
         "title": f"Fix {number}",
         "url": f"https://github.com/o/r/pull/{number}",
         "mergedAt": merged,
         "updatedAt": updated or merged,
-        "headRefOid": head or f"head{number}",
+        "headRefOid": f"head{number}",
         "author": {"login": "dev"},
         "reviews": {"nodes": [{"author": {"login": a}} for a in approvers]},
         "files": {"pageInfo": {"hasNextPage": more, "endCursor": "0"}, "nodes": [{"path": p} for p in paths]},
@@ -99,10 +102,10 @@ def _page(pages, cursor):
 class FakeGitHub(problem_history.GitHub):
     """The ledger branch, issues, pull requests, runs and artifacts of one repository, in memory."""
 
-    def __init__(self, head=None, ledger=None):
+    def __init__(self, head=None, stored=None):
         self.api, self.graphql_url, self.token = "https://api.test", "https://api.test/graphql", "t"
         self.head = head
-        self.ledgers = {head: ledger} if head and ledger is not None else {}
+        self.ledgers = {head: stored} if head and stored is not None else {}
         self.issue_pages, self.merged_pages, self.file_pages = {}, [], {}
         self.open_pages, self.oldest_open, self.by_number = [], None, {}
         self.runs, self.artifacts, self.archives, self.downloads = {}, {}, {}, []
@@ -110,11 +113,22 @@ class FakeGitHub(problem_history.GitHub):
         self.races = []  # (head, ledger) another run writes just before our next ref update
         self.refusal = None  # the message of a 422 every ref update gets, like a ruleset's
 
+    def add_review(self, pr, run, envelope=ENVELOPE, **artifact):
+        """A successful CodeBoarding run on head{pr} whose review artifact holds `envelope`."""
+        self.runs.setdefault(f"head{pr}", []).append({"id": run, "name": "CodeBoarding", "run_attempt": 1})
+        url = f"zip{run}"
+        self.artifacts[run] = [{"name": f"codeboarding-review-{run}-1", "archive_download_url": url, **artifact}]
+        self.archives[url] = _zip({"closed/architecture.json": {**envelope, "pr": pr}})
+
+    def calls(self, needle):
+        """The variables of every GraphQL request whose query contains `needle`."""
+        return [v for q, v in self.graphql_calls if needle in q]
+
     def graphql(self, query, variables):
         self.graphql_calls.append((query, variables))
-        if query is problem_history.OPEN_NUMBERS_QUERY:
+        if query is ph.OPEN_NUMBERS_QUERY:
             return {"repository": {"issues": _page(self.open_pages, variables["c"])}}
-        if query is problem_history.OLDEST_OPEN_QUERY:
+        if query is ph.OLDEST_OPEN_QUERY:
             return {"repository": {"issues": {"nodes": [{"updatedAt": self.oldest_open}]}}}
         if "issue(number:" in query:
             found = {k: self.by_number.get(v) for k, v in variables.items() if re.fullmatch(r"n\d+", k)}
@@ -146,8 +160,7 @@ class FakeGitHub(problem_history.GitHub):
         if method == "GET" and "/actions/runs?head_sha=" in path:
             return {"workflow_runs": self.runs.get(re.search(r"head_sha=(\w+)", path).group(1), [])}
         if method == "GET" and "/artifacts?name=" in path:
-            run = int(re.search(r"runs/(\d+)/", path).group(1))
-            return {"artifacts": self.artifacts.get(run, [])}
+            return {"artifacts": self.artifacts.get(int(re.search(r"runs/(\d+)/", path).group(1)), [])}
         if method == "GET" and re.search(r"/pulls/\d+$", path):
             return {"head": {"sha": f"head{path.rsplit('/', 1)[1]}"}}
         self.writes.append((method, path, payload))
@@ -160,8 +173,8 @@ class FakeGitHub(problem_history.GitHub):
             self.commits[sha] = payload
             return {"sha": sha}
         if self.races:
-            self.head, ledger = self.races.pop(0)
-            self.ledgers[self.head] = ledger
+            self.head, raced = self.races.pop(0)
+            self.ledgers[self.head] = raced
         if self.refusal:
             raise _http_error(422, self.refusal)
         if method == "PATCH" and path.endswith("/git/refs/heads/codeboarding/briefing"):
@@ -177,18 +190,24 @@ class FakeGitHub(problem_history.GitHub):
         return {}
 
 
+def _patched(**names):
+    return mock.patch.multiple(problem_history, **names) if names else nullcontext()
+
+
 def _service(seen, problems=3):
     def post(url, data, headers, timeout=None):
         body = json.loads(gzip.decompress(data))
         seen.append({"url": url, "body": body, "headers": headers, "timeout": timeout})
         merged = (body["ledger"] or {}).get("merged", []) + body["merged"]
-        ledger = {"schema": 1, "repo": body["repo"], "merged": merged, "problems": [{}] * problems}
-        return {"ledger": ledger, "summary": {"problems": problems, "open": 2, "added": 1}}
+        answer = {"schema": 1, "repo": body["repo"], "merged": merged, "problems": [{}] * problems}
+        return {"ledger": answer, "summary": {"problems": problems, "open": 2, "added": 1}}
 
     return post
 
 
 class _Patched(unittest.TestCase):
+    """The service and its credentials faked; `seen` holds every request sent."""
+
     def setUp(self):
         self.seen = []
         for name, kwargs in (("_post", {"side_effect": _service(self.seen)}), ("_bearer", {"return_value": {}})):
@@ -196,9 +215,18 @@ class _Patched(unittest.TestCase):
             patch.start()
             self.addCleanup(patch.stop)
 
-    def run_update(self, gh, env=ENV):
-        with mock.patch("builtins.print"):
-            return problem_history.update(gh, dict(env), NOW)
+    @property
+    def body(self):
+        return self.seen[0]["body"]
+
+    def run_update(self, gh, **caps):
+        with mock.patch("builtins.print"), _patched(**caps):
+            return problem_history.update(gh, dict(ENV), NOW)
+
+    def run_main(self, gh):
+        with mock.patch.object(problem_history, "GitHub", return_value=gh), mock.patch("builtins.print") as out:
+            self.assertEqual(problem_history.main(dict(ENV)), 0)
+        return out.call_args.args[0]
 
 
 class RequestTests(_Patched):
@@ -206,24 +234,20 @@ class RequestTests(_Patched):
         gh = FakeGitHub()
         gh.issue_pages[(("OPEN",), "DESC")] = [[issue_node(1)], [issue_node(2)]]
         gh.issue_pages[(("CLOSED",), "DESC")] = [
-            [
-                issue_node(3, "CLOSED", closed="2026-10-20T00:00:00Z"),
-                issue_node(4, "CLOSED", updated="2026-10-01T00:00:00Z", closed="2026-07-01T00:00:00Z"),
-            ]
+            [closed_node(3), closed_node(4, closed="2026-07-01T00:00:00Z", updated="2026-10-01T00:00:00Z")]
         ]
         gh.merged_pages = [
             [
                 pr_node(41, "2026-11-06T00:00:00Z", approvers=("ana", "ana", "bo")),
                 pr_node(40, "2026-08-01T00:00:00Z", updated="2026-11-05T00:00:00Z"),
-                pr_node(39, "2026-07-01T00:00:00Z", updated="2026-07-01T00:00:00Z"),
+                pr_node(39, "2026-07-01T00:00:00Z"),
             ]
         ]
         self.run_update(gh)
 
-        body = self.seen[0]["body"]
         self.assertEqual(self.seen[0]["url"], "https://svc.test/v1/briefing")
         self.assertEqual(
-            {k: body[k] for k in ("version", "repo", "now", "branch", "push", "ledger", "issuesThrough")},
+            {k: self.body[k] for k in ("version", "repo", "now", "branch", "push", "ledger", "issuesThrough")},
             {
                 "version": 1,
                 "repo": "o/r",
@@ -234,11 +258,11 @@ class RequestTests(_Patched):
                 "issuesThrough": "2026-11-07T12:00:00Z",
             },
         )
-        self.assertEqual([i["number"] for i in body["issues"]], [1, 2, 3])
-        closed_pass = [v for q, v in gh.graphql_calls if "issues(" in q and v.get("states") == ["CLOSED"]][0]
-        self.assertEqual(closed_pass["since"], "2026-08-09T12:00:00Z")
+        self.assertEqual(numbers(self.body["issues"]), [1, 2, 3])
+        closed_pass = [v["since"] for v in gh.calls(ph.ISSUES_QUERY) if v["states"] == ["CLOSED"]]
+        self.assertEqual(closed_pass, ["2026-08-09T12:00:00Z"])
         self.assertEqual(
-            body["merged"],
+            self.body["merged"],
             [
                 {
                     "number": 41,
@@ -251,18 +275,16 @@ class RequestTests(_Patched):
                 }
             ],
         )
-        self.assertEqual(body["findings"], {})
+        self.assertEqual(self.body["findings"], {})
 
     def test_later_run_reads_since_the_ledger_with_overlap(self):
-        ledger = {
-            "schema": 1,
-            "repo": "o/r",
-            "issuesThrough": "2026-11-07T09:00:00Z",
-            "updatedAt": "2026-11-07T09:00:00Z",
-            "through": {"sha": "s", "mergedAt": "2026-11-07T08:30:00Z"},
-            "merged": [{"number": 50, "mergedAt": "2026-11-07T08:30:00Z"}],
-        }
-        gh = FakeGitHub("h1", ledger)
+        stored = ledger(
+            issuesThrough="2026-11-07T09:00:00Z",
+            updatedAt="2026-11-07T09:00:00Z",
+            through={"sha": "s", "mergedAt": "2026-11-07T08:30:00Z"},
+            merged=[{"number": 50, "mergedAt": "2026-11-07T08:30:00Z"}],
+        )
+        gh = FakeGitHub("h1", stored)
         gh.issue_pages[(None, "ASC")] = [[issue_node(9, updated="2026-11-07T11:00:00Z")]]
         gh.merged_pages = [
             [
@@ -274,80 +296,73 @@ class RequestTests(_Patched):
         ]
         self.run_update(gh)
 
-        body = self.seen[0]["body"]
-        issue_calls = [v for q, v in gh.graphql_calls if q is problem_history.ISSUES_QUERY]
-        self.assertEqual(len(issue_calls), 1)
-        self.assertEqual((issue_calls[0]["states"], issue_calls[0]["since"]), (None, "2026-11-07T08:55:00Z"))
-        self.assertEqual(body["ledger"], ledger)
-        self.assertEqual([i["number"] for i in body["issues"]], [9])
-        self.assertEqual(body["issuesThrough"], "2026-11-07T12:00:00Z")
+        self.assertEqual(
+            [(v["states"], v["since"]) for v in gh.calls(ph.ISSUES_QUERY)], [(None, "2026-11-07T08:55:00Z")]
+        )
+        self.assertEqual(self.body["ledger"], stored)
+        self.assertEqual(numbers(self.body["issues"]), [9])
+        self.assertEqual(self.body["issuesThrough"], "2026-11-07T12:00:00Z")
         # An hour of overlap re-reads #50; #49 merged earlier and the list stops at it.
-        self.assertEqual([m["number"] for m in body["merged"]], [51, 50])
+        self.assertEqual(numbers(self.body["merged"]), [51, 50])
 
     def test_findings_only_for_merges_the_ledger_has_not_folded_in(self):
-        ledger = {"schema": 1, "repo": "o/r", "issuesThrough": "2026-11-07T11:00:00Z"}
-        ledger["merged"] = [{"number": 50, "warningsRead": True}]
-        ledger["through"] = {"mergedAt": "2026-11-07T11:00:00Z"}
-        gh = FakeGitHub("h1", ledger)
+        stored = ledger(
+            issuesThrough="2026-11-07T11:00:00Z",
+            merged=[{"number": 50, "warningsRead": True}],
+            through={"mergedAt": "2026-11-07T11:00:00Z"},
+        )
+        gh = FakeGitHub("h1", stored)
         gh.merged_pages = [[pr_node(51, "2026-11-07T11:50:00Z"), pr_node(50, "2026-11-07T11:00:00Z")]]
-        for n in (50, 51):
-            gh.runs[f"head{n}"] = [{"id": n, "name": "CodeBoarding", "run_attempt": 1}]
-            gh.artifacts[n] = [{"name": f"codeboarding-review-{n}-1", "archive_download_url": f"zip{n}"}]
-            gh.archives[f"zip{n}"] = _zip({"closed/architecture.json": {**ENVELOPE, "pr": n}})
+        gh.add_review(50, 50)
+        gh.add_review(51, 51)
         self.run_update(gh)
-        self.assertEqual(list(self.seen[0]["body"]["findings"]), ["51"])
+        self.assertEqual(list(self.body["findings"]), ["51"])
 
     def test_capped_later_run_records_where_it_stopped(self):
-        gh = FakeGitHub("h1", {"schema": 1, "repo": "o/r", "issuesThrough": "2026-11-01T00:00:00Z"})
+        gh = FakeGitHub("h1", ledger(issuesThrough="2026-11-01T00:00:00Z"))
         gh.issue_pages[(None, "ASC")] = [
             [issue_node(1, updated="2026-11-02T00:00:00Z"), issue_node(2, updated="2026-11-03T00:00:00Z")],
             [issue_node(3, updated="2026-11-04T00:00:00Z")],
         ]
-        with mock.patch.object(problem_history, "MAX_ISSUES", 2):
-            notice = self.run_update(gh)
-        body = self.seen[0]["body"]
-        self.assertEqual([i["number"] for i in body["issues"]], [1, 2])
-        self.assertEqual(body["issuesThrough"], "2026-11-03T00:00:00Z")
+        notice = self.run_update(gh, MAX_ISSUES=2)
+        self.assertEqual(numbers(self.body["issues"]), [1, 2])
+        self.assertEqual(self.body["issuesThrough"], "2026-11-03T00:00:00Z")
         self.assertIn("first 2 issues", notice)
 
-    def test_changed_paths_page_and_are_capped(self):
+    def test_changed_paths_page_and_stop_at_the_cap(self):
         gh = FakeGitHub()
         gh.merged_pages = [[pr_node(41, "2026-11-06T00:00:00Z", paths=[f"a{i}" for i in range(100)], more=True)]]
-        gh.file_pages[41] = [[{"path": f"b{i}"} for i in range(100)], [{"path": f"c{i}"} for i in range(100)]]
-        gh.file_pages[41].append([{"path": f"d{i}"} for i in range(100)])
-        gh.file_pages[41].append([{"path": "never"}])
+        gh.file_pages[41] = [[{"path": f"{p}{i}"} for i in range(100)] for p in "bcd"] + [[{"path": "never"}]]
         self.run_update(gh)
-        paths = self.seen[0]["body"]["merged"][0]["paths"]
-        self.assertEqual(len(paths), 300)
-        self.assertEqual((paths[0], paths[-1]), ("a0", "c99"))
+        paths = self.body["merged"][0]["paths"]
+        self.assertEqual((len(paths), paths[0], paths[-1]), (300, "a0", "c99"))
+        self.assertEqual([v["c"] for v in gh.calls(ph.FILES_QUERY)], ["0", "1"])
 
     def test_every_body_is_cut_to_2000_characters_and_an_oversized_request_is_refused(self):
         gh = FakeGitHub()
         gh.issue_pages[(("OPEN",), "DESC")] = [[issue_node(1, body="x" * 5000), issue_node(2)]]
         self.run_update(gh)
-        bodies = [i["body"] for i in self.seen[0]["body"]["issues"]]
-        self.assertEqual(bodies, ["x" * 2000, "It breaks when saving."])
+        self.assertEqual([i["body"] for i in self.body["issues"]], ["x" * 2000, "It breaks when saving."])
         with mock.patch.object(problem_history, "MAX_BUNDLE_BYTES", 10), self.assertRaises(problem_history.Skip):
             problem_history.pack({"issues": []})
 
-    def test_a_cut_never_splits_a_surrogate_pair(self):
-        cut = problem_history.cut
+    def test_a_cut_counts_utf16_units_and_never_splits_a_surrogate_pair(self):
         smile = "\U0001f600"  # two UTF-16 code units
-        self.assertEqual(cut("a" * 1999 + smile), "a" * 1999)
-        self.assertEqual(cut("a" * 1998 + smile + "b"), "a" * 1998 + smile)
-        self.assertEqual(cut(smile * 1500), smile * 1000)
-        self.assertEqual(cut("x\ud83dy"), "xy")
+        for text, want in (
+            ("a" * 1999 + smile, "a" * 1999),
+            ("a" * 1998 + smile + "b", "a" * 1998 + smile),
+            (smile * 1500, smile * 1000),
+            ("x\ud83dy", "xy"),
+        ):
+            self.assertEqual(problem_history.cut(text), want)
 
-    def test_requests_stay_under_the_service_caps(self):
-        ph = problem_history
+    def test_limits_stay_under_the_service_caps_and_inside_the_step(self):
         self.assertLessEqual(max(ph.MAX_FIRST_OPEN + ph.MAX_FIRST_CLOSED, ph.MAX_ISSUES + ph.MAX_RELINKED), 3000)
         self.assertLessEqual(ph.MAX_MERGED, 1000)
         self.assertLessEqual(ph.MAX_ARTIFACTS + ph.MAX_FINDINGS_RETRIES, 200)
-
-    def test_the_service_call_ends_inside_the_step(self):
         self.run_update(FakeGitHub())
         self.assertEqual(self.seen[0]["timeout"], 300)
-        self.assertLess(problem_history.SERVICE_TIMEOUT, problem_history.STEP_LIMIT_SECONDS)
+        self.assertLess(ph.SERVICE_TIMEOUT, ph.STEP_LIMIT_SECONDS)
 
 
 class OpenIssuesTests(_Patched):
@@ -355,125 +370,99 @@ class OpenIssuesTests(_Patched):
         gh = FakeGitHub()
         gh.open_pages = [[{"number": n} for n in range(1, 101)], [{"number": 205}]]
         self.run_update(gh)
-        self.assertEqual(self.seen[0]["body"]["openIssues"], {"numbers": [*range(1, 101), 205], "complete": True})
-        calls = [v for q, v in gh.graphql_calls if q is problem_history.OPEN_NUMBERS_QUERY]
-        self.assertEqual([c["c"] for c in calls], [None, "1"])
-        self.assertIn("first:100", problem_history.OPEN_NUMBERS_QUERY)
-        self.assertIn("nodes{ number }", problem_history.OPEN_NUMBERS_QUERY)
+        self.assertEqual(self.body["openIssues"], {"numbers": [*range(1, 101), 205], "complete": True})
+        self.assertEqual([v["c"] for v in gh.calls(ph.OPEN_NUMBERS_QUERY)], [None, "1"])
+        self.assertIn("first:100", ph.OPEN_NUMBERS_QUERY)
+        self.assertIn("nodes{ number }", ph.OPEN_NUMBERS_QUERY)
 
-    def test_past_5000_the_list_is_incomplete(self):
-        gh = FakeGitHub()
-        gh.open_pages = [[{"number": p * 100 + k} for k in range(100)] for p in range(51)]
-        notice = self.run_update(gh)
-        self.assertEqual(self.seen[0]["body"]["openIssues"], {"numbers": [], "complete": False})
-        self.assertEqual(len([q for q, _ in gh.graphql_calls if q is problem_history.OPEN_NUMBERS_QUERY]), 50)
-        self.assertIn("over 5000 open issues", notice)
-
-    def test_exactly_5000_is_complete(self):
-        gh = FakeGitHub()
-        gh.open_pages = [[{"number": p * 100 + k} for k in range(100)] for p in range(50)]
-        self.run_update(gh)
-        self.assertTrue(self.seen[0]["body"]["openIssues"]["complete"])
-        self.assertEqual(len(self.seen[0]["body"]["openIssues"]["numbers"]), 5000)
+    def test_5000_is_complete_and_past_it_the_list_is_incomplete(self):
+        for pages, complete in ((50, True), (51, False)):
+            with self.subTest(pages=pages):
+                self.seen.clear()
+                gh = FakeGitHub()
+                gh.open_pages = [[{"number": p * 100 + k} for k in range(100)] for p in range(pages)]
+                notice = self.run_update(gh)
+                sent = self.body["openIssues"]
+                self.assertEqual((sent["complete"], len(sent["numbers"])), (complete, 5000 if complete else 0))
+                self.assertEqual(len(gh.calls(ph.OPEN_NUMBERS_QUERY)), 50)
+                self.assertEqual("over 5000 open issues" in notice, not complete)
 
     def test_a_capped_issue_read_or_a_retry_lets_the_service_drop_nothing(self):
-        gh = FakeGitHub("h1", {"schema": 1, "repo": "o/r", "issuesThrough": "2026-11-01T00:00:00Z"})
+        gh = FakeGitHub("h1", ledger(issuesThrough="2026-11-01T00:00:00Z"))
         gh.open_pages = [[{"number": 1}]]
         gh.issue_pages[(None, "ASC")] = [[issue_node(1), issue_node(2)]]
-        with mock.patch.object(problem_history, "MAX_ISSUES", 1):
-            self.run_update(gh)
-        self.assertEqual(self.seen[0]["body"]["openIssues"]["complete"], False)
+        self.run_update(gh, MAX_ISSUES=1)
+        self.assertEqual(self.body["openIssues"]["complete"], False)
 
         self.seen.clear()
-        gh = FakeGitHub("h1", {"schema": 1, "repo": "o/r", "merged": []})
+        gh = FakeGitHub("h1", ledger(merged=[]))
         gh.open_pages = [[{"number": 1}]]
-        gh.races.append(("h2", {"schema": 1, "repo": "o/r", "merged": []}))
+        gh.races.append(("h2", ledger(merged=[])))
         self.run_update(gh)
         self.assertEqual([s["body"]["openIssues"]["complete"] for s in self.seen], [True, False])
 
     def test_an_unreadable_list_is_a_note(self):
-        gh = FakeGitHub()
         with mock.patch.object(problem_history, "open_issue_numbers", side_effect=RuntimeError("boom")):
-            notice = self.run_update(gh)
-        self.assertEqual(self.seen[0]["body"]["openIssues"], {"numbers": [], "complete": False})
+            notice = self.run_update(FakeGitHub())
+        self.assertEqual(self.body["openIssues"], {"numbers": [], "complete": False})
         self.assertIn("open issues not listed (RuntimeError: boom)", notice)
 
 
 class FirstRunCapTests(_Patched):
-    def capped(self, open_cap, closed_cap):
-        gh = FakeGitHub()
-        gh.oldest_open = "2025-01-01T00:00:00Z"
-        gh.issue_pages[(("OPEN",), "DESC")] = [[issue_node(1), issue_node(2), issue_node(3)]]
-        gh.issue_pages[(("CLOSED",), "DESC")] = [
-            [issue_node(n, "CLOSED", closed="2026-10-20T00:00:00Z") for n in (11, 12, 13)]
-        ]
-        patches = {"MAX_FIRST_OPEN": open_cap, "MAX_FIRST_CLOSED": closed_cap}
-        with mock.patch.multiple(problem_history, **patches):
-            notice = self.run_update(gh)
-        return self.seen[-1]["body"], notice
-
-    def test_each_pass_has_its_own_cap(self):
-        body, notice = self.capped(2, 3)
-        self.assertEqual([i["number"] for i in body["issues"]], [1, 2, 11, 12, 13])
-        self.assertIn("first 2 open issues", notice)
-
-    def test_a_cut_open_pass_does_not_claim_the_issues_it_skipped(self):
-        body, _ = self.capped(2, 3)
-        self.assertEqual(body["issuesThrough"], "2025-01-01T00:00:00Z")
-
-    def test_a_cut_closed_pass_stops_at_the_start_of_its_90_days(self):
-        body, notice = self.capped(3, 1)
-        self.assertEqual([i["number"] for i in body["issues"]], [1, 2, 3, 11])
-        self.assertEqual(body["issuesThrough"], "2026-08-09T12:00:00Z")
-        self.assertIn("first 1 recently closed issues", notice)
-
-    def test_uncapped_it_is_the_start(self):
-        body, notice = self.capped(3, 3)
-        self.assertEqual(body["issuesThrough"], "2026-11-07T12:00:00Z")
-        self.assertNotIn("issues only", notice)
+    def test_each_pass_has_its_own_cap_and_never_claims_what_it_skipped(self):
+        for open_cap, closed_cap, read, through, note in (
+            # A cut open pass stops at the oldest open issue's update.
+            (2, 3, [1, 2, 11, 12, 13], "2025-01-01T00:00:00Z", "first 2 open issues"),
+            # A cut closed pass stops at the start of its 90 days.
+            (3, 1, [1, 2, 3, 11], "2026-08-09T12:00:00Z", "first 1 recently closed issues"),
+            (3, 3, [1, 2, 3, 11, 12, 13], "2026-11-07T12:00:00Z", None),
+        ):
+            with self.subTest(open_cap=open_cap, closed_cap=closed_cap):
+                self.seen.clear()
+                gh = FakeGitHub()
+                gh.oldest_open = "2025-01-01T00:00:00Z"
+                gh.issue_pages[(("OPEN",), "DESC")] = [[issue_node(1), issue_node(2), issue_node(3)]]
+                gh.issue_pages[(("CLOSED",), "DESC")] = [[closed_node(n) for n in (11, 12, 13)]]
+                notice = self.run_update(gh, MAX_FIRST_OPEN=open_cap, MAX_FIRST_CLOSED=closed_cap)
+                self.assertEqual((numbers(self.body["issues"]), self.body["issuesThrough"]), (read, through))
+                if note:
+                    self.assertIn(note, notice)
+                else:
+                    self.assertNotIn("issues only", notice)
 
 
 class RelinkedTests(_Patched):
-    def linked(self, number, state="OPEN", updated="2026-11-01T00:00:00Z"):
-        return {"repo": "o/r", "number": number, "state": state, "updatedAt": updated}
-
-    def stored(self, number, state="OPEN", linked=()):
-        return {
-            "repo": "o/r",
-            "number": number,
-            "state": state,
-            "updatedAt": "2026-10-01T00:00:00Z",
-            "linked": list(linked),
-        }
+    @staticmethod
+    def stored(number, state="OPEN", linked=()):
+        links = [{"repo": "o/r", "number": n, "state": s, "updatedAt": u} for n, s, u in linked]
+        return {"repo": "o/r", "number": number, "state": state, "updatedAt": "2026-10-01T00:00:00Z", "linked": links}
 
     def test_open_issues_with_an_open_pull_request_are_read_again(self):
-        ledger = {"schema": 1, "repo": "o/r", "issuesThrough": "2026-11-07T11:00:00Z"}
-        ledger["issues"] = [
-            self.stored(1, linked=[self.linked(40)]),
-            self.stored(2, linked=[self.linked(41, "MERGED")]),
-            self.stored(3, "CLOSED", linked=[self.linked(42)]),
-            self.stored(4, linked=[self.linked(43)]),
+        day = "2026-11-01T00:00:00Z"
+        stored = ledger(issuesThrough="2026-11-07T11:00:00Z")
+        stored["issues"] = [
+            self.stored(1, linked=[(40, "OPEN", day)]),
+            self.stored(2, linked=[(41, "MERGED", day)]),
+            self.stored(3, "CLOSED", linked=[(42, "OPEN", day)]),
+            self.stored(4, linked=[(43, "OPEN", day)]),
             self.stored(5),
-            {**self.stored(6, linked=[self.linked(44)]), "repo": "o/other"},
-            self.stored(7, linked=[self.linked(45)]),
+            {**self.stored(6, linked=[(44, "OPEN", day)]), "repo": "o/other"},
+            self.stored(7, linked=[(45, "OPEN", day)]),
         ]
-        gh = FakeGitHub("h1", ledger)
+        gh = FakeGitHub("h1", stored)
         gh.issue_pages[(None, "ASC")] = [[issue_node(4, updated="2026-11-07T11:30:00Z")]]
         gh.by_number = {1: issue_node(1), 7: issue_node(7, repository={"nameWithOwner": "o/elsewhere"})}
         self.run_update(gh)
-        asked = [v for q, v in gh.graphql_calls if "issue(number:" in q]
-        self.assertEqual(asked, [{"owner": "o", "name": "r", "n0": 7, "n1": 1}])
+        self.assertEqual(gh.calls("issue(number:"), [{"owner": "o", "name": "r", "n0": 7, "n1": 1}])
         # #4 was read as updated already; #7 now answers from another repository and is left out.
-        self.assertEqual([i["number"] for i in self.seen[0]["body"]["issues"]], [4, 1])
+        self.assertEqual(numbers(self.body["issues"]), [4, 1])
 
-    def test_at_most_100_newest_pull_request_activity_first(self):
+    def test_at_most_100_newest_pull_request_activity_first_25_per_query(self):
         stored = [
-            self.stored(n, linked=[self.linked(1000 + n, updated=f"2026-{n % 12 + 1:02d}-01T00:00:00Z")])
-            for n in range(1, 151)
+            self.stored(n, linked=[(1000 + n, "OPEN", f"2026-{n % 12 + 1:02d}-01T00:00:00Z")]) for n in range(1, 151)
         ]
         picked = problem_history.relinked({"issues": stored}, "o/r", set())
-        self.assertEqual(len(picked), 100)
-        self.assertEqual(picked[0], 143)  # the latest December, highest number first
+        self.assertEqual((len(picked), picked[0]), (100, 143))  # the latest December, highest number first
         gh = FakeGitHub()
         problem_history.issues_by_number(gh, "o/r", picked)
         self.assertEqual(len(gh.graphql_calls), 4)
@@ -481,11 +470,12 @@ class RelinkedTests(_Patched):
     def test_a_first_run_reads_nothing_again(self):
         gh = FakeGitHub()
         self.run_update(gh)
-        self.assertFalse([q for q, _ in gh.graphql_calls if "issue(number:" in q])
+        self.assertEqual(gh.calls("issue(number:"), [])
 
 
 class IssueFactsTests(unittest.TestCase):
-    def pr(self, number, repo="o/r", **extra):
+    @staticmethod
+    def pr(number, repo="o/r", **extra):
         return {
             "__typename": "PullRequest",
             "number": number,
@@ -501,41 +491,26 @@ class IssueFactsTests(unittest.TestCase):
         }
 
     def test_node_maps_to_issue_facts(self):
+        issue = {"__typename": "Issue"}
+        rollup = {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]}
+        merged = self.pr(6, state="MERGED", reviewDecision="APPROVED", commits=rollup)
+        closer = {"__typename": "PullRequest", "number": 6, "author": None, "repository": {"nameWithOwner": "o/r"}}
         timeline = [
             {"__typename": "CrossReferencedEvent", "willCloseTarget": False, "source": self.pr(5)},
-            {
-                "__typename": "CrossReferencedEvent",
-                "willCloseTarget": True,
-                "source": self.pr(
-                    6,
-                    state="MERGED",
-                    reviewDecision="APPROVED",
-                    commits={"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]},
-                ),
-            },
-            {"__typename": "ConnectedEvent", "subject": {"__typename": "Issue"}, "source": self.pr(7, isDraft=True)},
-            {"__typename": "ConnectedEvent", "subject": self.pr(8, "o/other"), "source": {"__typename": "Issue"}},
-            {"__typename": "DisconnectedEvent", "subject": self.pr(8, "o/other"), "source": {"__typename": "Issue"}},
+            {"__typename": "CrossReferencedEvent", "willCloseTarget": True, "source": merged},
+            {"__typename": "ConnectedEvent", "subject": issue, "source": self.pr(7, isDraft=True)},
+            {"__typename": "ConnectedEvent", "subject": self.pr(8, "o/other"), "source": issue},
+            {"__typename": "DisconnectedEvent", "subject": self.pr(8, "o/other"), "source": issue},
             {"__typename": "CrossReferencedEvent", "willCloseTarget": True, "source": None},
             {"__typename": "CrossReferencedEvent", "source": {"__typename": "Issue", "number": 2}},
-            {
-                "__typename": "ClosedEvent",
-                "closer": {
-                    "__typename": "PullRequest",
-                    "number": 6,
-                    "author": None,
-                    "repository": {"nameWithOwner": "o/r"},
-                },
-            },
+            {"__typename": "ClosedEvent", "closer": closer},
             {
                 "__typename": "CrossReferencedEvent",
-                "willCloseTarget": False,
                 "source": self.pr(9, reviewDecision="CHANGES_REQUESTED", author=None),
             },
         ]
-        node = issue_node(
+        node = closed_node(
             12,
-            state="CLOSED",
             closed="2026-11-06T00:00:00Z",
             body=None,
             author={"__typename": "Bot", "login": "renovate"},
@@ -545,7 +520,7 @@ class IssueFactsTests(unittest.TestCase):
             timelineItems={"nodes": timeline},
         )
         facts = problem_history.issue_facts(node)
-        linked = facts.pop("linked")
+        linked = {p["number"]: p for p in facts.pop("linked")}
         self.assertEqual(
             facts,
             {
@@ -566,10 +541,9 @@ class IssueFactsTests(unittest.TestCase):
                 "closedBy": {"repo": "o/r", "number": 6},
             },
         )
-        by_number = {p["number"]: p for p in linked}
-        self.assertEqual(list(by_number), [5, 6, 7, 8, 9])
+        self.assertEqual(list(linked), [5, 6, 7, 8, 9])
         self.assertEqual(
-            by_number[6],
+            linked[6],
             {
                 "repo": "o/r",
                 "number": 6,
@@ -584,13 +558,11 @@ class IssueFactsTests(unittest.TestCase):
                 "author": "dev",
             },
         )
-        self.assertEqual(
-            {n: p["closes"] for n, p in by_number.items()}, {5: False, 6: True, 7: True, 8: False, 9: False}
-        )
-        self.assertTrue(by_number[7]["draft"])
-        self.assertEqual(by_number[8]["repo"], "o/other")
-        self.assertEqual((by_number[9]["review"], "author" in by_number[9]), ("changes", False))
-        self.assertIsNone(by_number[5]["checks"])
+        self.assertEqual({n: p["closes"] for n, p in linked.items()}, {5: False, 6: True, 7: True, 8: False, 9: False})
+        self.assertTrue(linked[7]["draft"])
+        self.assertEqual(linked[8]["repo"], "o/other")
+        self.assertEqual((linked[9]["review"], "author" in linked[9]), ("changes", False))
+        self.assertIsNone(linked[5]["checks"])
 
     def test_an_issue_with_no_closer_or_author(self):
         facts = problem_history.issue_facts(issue_node(3, author=None, authorAssociation=None))
@@ -609,19 +581,18 @@ class IssueFactsTests(unittest.TestCase):
 
 
 class ArtifactTests(_Patched):
-    def test_architecture_read_only_when_it_has_findings_for_this_pr(self):
-        read = problem_history.read_architecture
-        self.assertEqual(
-            read(_zip({"metadata.json": {"pr_number": "41"}, "closed/architecture.json": ENVELOPE}), 41), ENVELOPE
-        )
-        self.assertEqual(
-            read(_zip({"closed/architecture.json": {**ENVELOPE, "status": "partial"}}), 41)["status"], "partial"
-        )
-        self.assertIsNone(read(_zip({"closed/architecture.json": {**ENVELOPE, "status": "failed"}}), 41))
+    def test_architecture_read_only_when_it_answers_for_this_pr(self):
         skipped = {**ENVELOPE, "status": "skipped", "data": None}
-        self.assertEqual(read(_zip({"closed/architecture.json": skipped}), 41), skipped)
-        self.assertIsNone(read(_zip({"metadata.json": {"pr_number": "7"}, "closed/architecture.json": ENVELOPE}), 41))
-        self.assertIsNone(read(_zip({"analysis.json": "{}"}), 41))
+        for files, want in (
+            ({"metadata.json": {"pr_number": "41"}, "closed/architecture.json": ENVELOPE}, ENVELOPE),
+            ({"closed/architecture.json": {**ENVELOPE, "status": "partial"}}, {**ENVELOPE, "status": "partial"}),
+            ({"closed/architecture.json": {**ENVELOPE, "status": "failed"}}, None),
+            ({"closed/architecture.json": skipped}, skipped),
+            ({"metadata.json": {"pr_number": "7"}, "closed/architecture.json": ENVELOPE}, None),
+            ({"analysis.json": "{}"}, None),
+        ):
+            with self.subTest(files=files):
+                self.assertEqual(problem_history.read_architecture(_zip(files), 41), want)
 
     def test_newest_codeboarding_run_with_a_live_artifact(self):
         gh = FakeGitHub()
@@ -638,59 +609,57 @@ class ArtifactTests(_Patched):
         gh.archives["z3"] = _zip({"closed/architecture.json": ENVELOPE})
         self.assertEqual(problem_history.review_findings(gh, "o/r", 41, "h"), ENVELOPE)
 
+    def test_an_artifact_over_50_mb_is_not_downloaded(self):
+        gh = FakeGitHub()
+        gh.add_review(41, 2, size_in_bytes=50 * 2**20 + 1)
+        gh.add_review(41, 1, size_in_bytes=900)
+        del gh.runs["head41"][1]["run_attempt"]  # read as the first attempt
+        self.assertEqual(problem_history.review_findings(gh, "o/r", 41, "head41"), ENVELOPE)
+        self.assertEqual(gh.downloads, ["zip1"])
+        gh.artifacts[1] = []
+        with self.assertRaisesRegex(ValueError, "over 50 MB"):
+            problem_history.review_findings(gh, "o/r", 41, "head41")
+        self.assertEqual(gh.downloads, ["zip1"])
+
     def test_unreadable_artifacts_are_counted_not_fatal(self):
         gh = FakeGitHub()
         merged = [{"number": 41, "mergedAt": "2026-11-06T00:00:00Z"}]
         with mock.patch.object(gh, "_route", side_effect=_http_error(403)):
             findings, errors = problem_history.collect_findings(gh, "o/r", merged, {41: "h"}, None)
-        self.assertEqual(findings, {})
-        self.assertEqual(len(errors), 1)
+        self.assertEqual((findings, len(errors)), ({}, 1))
+
+    def asked(self, merged, heads, stored=None):
+        """The (pr, head) pairs collect_findings looks up a review for."""
+        with mock.patch.object(problem_history, "review_findings", return_value=None) as rf:
+            problem_history.collect_findings(FakeGitHub(), "o/r", merged, heads, stored)
+        return [c.args[2:] for c in rf.call_args_list]
 
     def test_first_run_reads_at_most_40_artifacts_newest_first(self):
-        gh = FakeGitHub()
         merged = [{"number": n, "mergedAt": f"2026-10-{n % 28 + 1:02d}T{n % 24:02d}:00:00Z"} for n in range(1, 61)]
-        with mock.patch.object(problem_history, "review_findings", return_value=None) as rf:
-            problem_history.collect_findings(gh, "o/r", merged, {n: f"h{n}" for n in range(1, 61)}, None)
-        self.assertEqual(rf.call_count, 40)
+        asked = self.asked(merged, {n: f"h{n}" for n in range(1, 61)})
         newest = sorted(merged, key=lambda m: m["mergedAt"], reverse=True)[:40]
-        self.assertEqual([c.args[2] for c in rf.call_args_list], [m["number"] for m in newest])
-
-    def test_an_artifact_over_50_mb_is_not_downloaded(self):
-        gh = FakeGitHub()
-        gh.runs["h"] = [{"id": 2, "name": "CodeBoarding", "run_attempt": 1}, {"id": 1, "name": "CodeBoarding"}]
-        big = {"name": "codeboarding-review-2-1", "archive_download_url": "z2", "size_in_bytes": 50 * 2**20 + 1}
-        gh.artifacts[2] = [big]
-        gh.artifacts[1] = [{"name": "codeboarding-review-1-1", "archive_download_url": "z1", "size_in_bytes": 900}]
-        gh.archives["z1"] = _zip({"closed/architecture.json": ENVELOPE})
-        self.assertEqual(problem_history.review_findings(gh, "o/r", 41, "h"), ENVELOPE)
-        self.assertEqual(gh.downloads, ["z1"])
-        gh.artifacts[1] = []
-        with self.assertRaisesRegex(ValueError, "over 50 MB"):
-            problem_history.review_findings(gh, "o/r", 41, "h")
-        self.assertEqual(gh.downloads, ["z1"])
+        self.assertEqual([n for n, _ in asked], numbers(newest))
 
     def test_unread_merges_are_asked_again_newest_first_at_most_10(self):
-        gh = FakeGitHub()
         merged = [{"number": n, "mergedAt": f"2026-10-{n:02d}T00:00:00Z"} for n in range(1, 21)]
         merged[19]["warningsRead"] = True  # #20 read
         merged[18]["warningsRead"] = False  # #19 not
-        ledger = {"merged": merged, "warnings": [{"id": "warning:o/r#18:x", "pr": 18}]}
+        stored = {"merged": merged, "warnings": [{"id": "warning:o/r#18:x", "pr": 18}]}
         new = [{"number": 30, "mergedAt": "2026-11-06T00:00:00Z"}]
-        with mock.patch.object(problem_history, "review_findings", return_value=None) as rf:
-            problem_history.collect_findings(gh, "o/r", new, {30: "h30"}, ledger)
+        asked = self.asked(new, {30: "h30"}, stored)
         # #18 has warnings stored, which a ledger from before warningsRead counts as read.
-        self.assertEqual([c.args[2] for c in rf.call_args_list], [30, 19, 17, 16, 15, 14, 13, 12, 11, 10, 9])
-        self.assertEqual([c.args[3] for c in rf.call_args_list][:3], ["h30", "head19", "head17"])
+        self.assertEqual([n for n, _ in asked], [30, 19, 17, 16, 15, 14, 13, 12, 11, 10, 9])
+        self.assertEqual([h for _, h in asked][:3], ["h30", "head19", "head17"])
 
     def test_a_retried_merge_sends_what_it_found(self):
-        ledger = {"schema": 1, "repo": "o/r", "issuesThrough": "2026-11-07T11:00:00Z"}
-        ledger["merged"] = [{"number": 50, "mergedAt": "2026-11-01T00:00:00Z", "warningsRead": False}]
-        gh = FakeGitHub("h1", ledger)
-        gh.runs["head50"] = [{"id": 5, "name": "CodeBoarding", "run_attempt": 1}]
-        gh.artifacts[5] = [{"name": "codeboarding-review-5-1", "archive_download_url": "z5"}]
-        gh.archives["z5"] = _zip({"closed/architecture.json": {**ENVELOPE, "pr": 50}})
+        stored = ledger(
+            issuesThrough="2026-11-07T11:00:00Z",
+            merged=[{"number": 50, "mergedAt": "2026-11-01T00:00:00Z", "warningsRead": False}],
+        )
+        gh = FakeGitHub("h1", stored)
+        gh.add_review(50, 5)
         self.run_update(gh)
-        self.assertEqual(list(self.seen[0]["body"]["findings"]), ["50"])
+        self.assertEqual(list(self.body["findings"]), ["50"])
 
     def test_download_does_not_send_the_token_to_the_storage_redirect(self):
         seen = []
@@ -723,65 +692,48 @@ class ArtifactTests(_Patched):
 
 
 class CommitTests(_Patched):
-    def test_first_update_creates_an_orphan_branch_with_one_file(self):
-        gh = FakeGitHub()
-        gh.merged_pages = [[pr_node(41, "2026-11-06T00:00:00Z")]]
-        notice = self.run_update(gh)
-        blob, tree, commit, ref = gh.writes
-        self.assertEqual(blob[1], "/repos/o/r/git/blobs")
-        self.assertEqual(
-            tree[2], {"tree": [{"path": "problems.json", "mode": "100644", "type": "blob", "sha": "blob1"}]}
-        )
-        self.assertEqual(
-            commit[2], {"message": "Update problem history (3 problems, through #41)", "tree": "tree1", "parents": []}
-        )
-        self.assertEqual(
-            ref, ("POST", "/repos/o/r/git/refs", {"ref": "refs/heads/codeboarding/briefing", "sha": "commit1"})
-        )
-        self.assertEqual(gh.ledgers[gh.head]["repo"], "o/r")
-        self.assertEqual(
-            notice,
-            "Problem history: 3 problems (2 open, 1 new), through #41; committed commit1 to codeboarding/briefing",
-        )
-
-    def test_later_update_fast_forwards_the_branch(self):
-        gh = FakeGitHub(
-            "h1", {"schema": 1, "repo": "o/r", "merged": [{"number": 40, "mergedAt": "2026-11-01T00:00:00Z"}]}
-        )
-        self.run_update(gh)
-        commit, ref = gh.writes[2:]
-        self.assertEqual(commit[2]["parents"], ["h1"])
-        self.assertEqual(commit[2]["message"], "Update problem history (3 problems, through #40)")
-        self.assertEqual(
-            ref, ("PATCH", "/repos/o/r/git/refs/heads/codeboarding/briefing", {"sha": "commit1", "force": False})
-        )
-        self.assertEqual(gh.head, "commit1")
-
-    def test_no_merged_pull_request_names_the_push(self):
-        gh = FakeGitHub()
-        self.run_update(gh)
-        self.assertEqual(gh.writes[2][2]["message"], "Update problem history (3 problems, through abc1234)")
+    def test_each_update_is_one_commit_of_one_file_on_the_branch(self):
+        branch = "refs/heads/codeboarding/briefing"
+        created = ("POST", "/repos/o/r/git/refs", {"ref": branch, "sha": "commit1"})
+        moved = ("PATCH", f"/repos/o/r/git/{branch}", {"sha": "commit1", "force": False})
+        last = ledger(merged=[{"number": 40, "mergedAt": "2026-11-01T00:00:00Z"}])
+        for head, stored, merged, through, ref in (
+            (None, None, [[pr_node(41, "2026-11-06T00:00:00Z")]], "#41", created),  # an orphan branch
+            ("h1", last, [], "#40", moved),  # fast-forwarded
+            (None, None, [], "abc1234", created),  # no merged pull request names the push
+        ):
+            with self.subTest(through=through):
+                gh = FakeGitHub(head, stored)
+                gh.merged_pages = merged
+                notice = self.run_update(gh)
+                blob, tree, commit, written = gh.writes
+                self.assertEqual(blob[1], "/repos/o/r/git/blobs")
+                self.assertEqual(
+                    tree[2]["tree"], [{"path": "problems.json", "mode": "100644", "type": "blob", "sha": "blob1"}]
+                )
+                message = f"Update problem history (3 problems, through {through})"
+                self.assertEqual(commit[2], {"message": message, "tree": "tree1", "parents": [head] if head else []})
+                self.assertEqual((written, gh.head, gh.ledgers[gh.head]["repo"]), (ref, "commit1", "o/r"))
+                summary = f"Problem history: 3 problems (2 open, 1 new), through {through}"
+                self.assertEqual(notice, f"{summary}; committed commit1 to codeboarding/briefing")
 
     def test_a_concurrent_update_is_reread_and_the_request_rebuilt_once(self):
-        gh = FakeGitHub("h1", {"schema": 1, "repo": "o/r", "merged": []})
-        theirs = {"schema": 1, "repo": "o/r", "merged": [{"number": 44, "mergedAt": "2026-11-07T11:00:00Z"}]}
+        gh = FakeGitHub("h1", ledger(merged=[]))
+        theirs = ledger(merged=[{"number": 44, "mergedAt": "2026-11-07T11:00:00Z"}])
         gh.races.append(("h2", theirs))
         self.run_update(gh)
-        self.assertEqual(len(self.seen), 2)
-        self.assertEqual(self.seen[0]["body"]["ledger"]["merged"], [])
-        self.assertEqual(self.seen[1]["body"]["ledger"], theirs)
-        self.assertEqual(self.seen[0]["body"]["issuesThrough"], self.seen[1]["body"]["issuesThrough"])
-        self.assertEqual(gh.commits["commit2"]["parents"], ["h2"])
-        self.assertEqual(gh.head, "commit2")
+        first, second = (s["body"] for s in self.seen)
+        self.assertEqual((first["ledger"]["merged"], second["ledger"]), ([], theirs))
+        self.assertEqual(first["issuesThrough"], second["issuesThrough"])
+        self.assertEqual((gh.commits["commit2"]["parents"], gh.head), (["h2"], "commit2"))
 
     def test_two_conflicts_give_up_without_failing_the_run(self):
-        gh = FakeGitHub("h1", {"schema": 1, "repo": "o/r"})
-        gh.races += [("h2", {"schema": 1, "repo": "o/r"}), ("h3", {"schema": 1, "repo": "o/r"})]
-        with mock.patch.object(problem_history, "GitHub", return_value=gh), mock.patch("builtins.print") as out:
-            self.assertEqual(problem_history.main(dict(ENV)), 0)
+        gh = FakeGitHub("h1", ledger())
+        gh.races += [("h2", ledger()), ("h3", ledger())]
+        line = self.run_main(gh)
         self.assertEqual(len(self.seen), 2)
         self.assertEqual(
-            out.call_args.args[0],
+            line,
             "::notice::Problem history skipped: codeboarding/briefing moved twice while this run updated it;"
             " the next sync carries on",
         )
@@ -794,13 +746,10 @@ class CommitTests(_Patched):
         ):
             with self.subTest(message=message):
                 self.seen.clear()
-                gh = FakeGitHub(head, {"schema": 1, "repo": "o/r"} if head else None)
+                gh = FakeGitHub(head, ledger() if head else None)
                 gh.refusal = message
-                with mock.patch.object(problem_history, "GitHub", return_value=gh):
-                    with mock.patch("builtins.print") as out:
-                        self.assertEqual(problem_history.main(dict(ENV)), 0)
+                line = self.run_main(gh)
                 self.assertEqual(len(self.seen), 1)
-                line = out.call_args.args[0]
                 self.assertTrue(line.startswith("::notice::Problem history skipped: GitHub refused to write"))
                 self.assertIn(" ".join(message.split()), line)
                 self.assertIn("a branch named codeboarding", line)
@@ -808,39 +757,36 @@ class CommitTests(_Patched):
 
     def test_a_ledger_for_another_repository_is_not_committed(self):
         gh = FakeGitHub()
-        with mock.patch.object(problem_history, "_post", return_value={"ledger": {"schema": 1, "repo": "x/y"}}):
+        with mock.patch.object(problem_history, "_post", return_value={"ledger": ledger(repo="x/y")}):
             with self.assertRaisesRegex(ValueError, "no ledger"):
                 self.run_update(gh)
         self.assertEqual(gh.writes, [])
 
 
 class MainTests(unittest.TestCase):
-    def run_main(self, env, **patches):
-        with mock.patch("builtins.print") as out:
-            with mock.patch.multiple(problem_history, **patches) if patches else nullcontext():
-                self.assertEqual(problem_history.main(env), 0)
+    def run_main(self, env=ENV, update=None, **patches):
+        if update is not None:
+            patches["update"] = mock.Mock(side_effect=update)
+        with mock.patch("builtins.print") as out, _patched(**patches):
+            self.assertEqual(problem_history.main(dict(env)), 0)
         return [c.args[0] for c in out.call_args_list]
 
-    def test_never_raises(self):
-        failures = [
-            {"update": mock.Mock(side_effect=_http_error(403))},
-            {"update": mock.Mock(side_effect=RuntimeError("the service answered 500: failed"))},
-            {"update": mock.Mock(side_effect=KeyError("BRANCH"))},
-            {"update": mock.Mock(side_effect=ValueError("bad json"))},
-        ]
-        for patches in failures:
-            with self.subTest(error=patches["update"].side_effect):
-                lines = self.run_main(dict(ENV), **patches)
-                self.assertTrue(lines[0].startswith("::warning::Updating the problem history failed"))
-        self.assertIn("issues: read", self.run_main(dict(ENV), update=mock.Mock(side_effect=_http_error(403)))[0])
-
-    def test_missing_token_is_a_warning(self):
-        env = {k: v for k, v in ENV.items() if k != "GITHUB_TOKEN"}
-        self.assertTrue(self.run_main(env)[0].startswith("::warning::"))
-
-    def test_quota_is_a_notice(self):
-        lines = self.run_main(dict(ENV), update=mock.Mock(side_effect=problem_history.Skip("the service answered 402")))
-        self.assertEqual(lines, ["::notice::Problem history skipped: the service answered 402"])
+    def test_never_raises_and_says_why(self):
+        failed = "::warning::Updating the problem history failed"
+        no_token = {k: v for k, v in ENV.items() if k != "GITHUB_TOKEN"}
+        for env, error, want in (
+            (ENV, _http_error(403), failed),
+            (ENV, RuntimeError("the service answered 500: failed"), failed),
+            (ENV, KeyError("BRANCH"), failed),
+            (ENV, ValueError("bad json"), failed),
+            (no_token, None, failed),
+            (ENV, ph.Skip("the service answered 402"), "::notice::Problem history skipped: the service answered 402"),
+        ):
+            with self.subTest(error=error):
+                lines = self.run_main(env, error)
+                self.assertEqual(len(lines), 1)
+                self.assertTrue(lines[0].startswith(want))
+        self.assertIn("issues: read", self.run_main(update=_http_error(403))[0])
 
     def test_the_script_stops_itself_at_the_step_limit(self):
         gate = threading.Event()
@@ -849,18 +795,16 @@ class MainTests(unittest.TestCase):
             gate.wait(5)
             return "late"
 
-        with (
-            mock.patch.object(problem_history, "STEP_LIMIT_SECONDS", 0.05),
-            mock.patch.object(problem_history.os, "_exit", side_effect=lambda code: gate.set()) as exit_,
-        ):
-            lines = self.run_main(dict(ENV), update=mock.Mock(side_effect=stuck))
+        exit_ = mock.Mock(side_effect=lambda code: gate.set())
+        with mock.patch.object(problem_history.os, "_exit", exit_):
+            lines = self.run_main(update=stuck, STEP_LIMIT_SECONDS=0.05)
         exit_.assert_called_once_with(0)
         self.assertEqual(lines[0], "::warning::Updating the problem history stopped after 0 minutes")
 
     def test_empty_url_does_nothing(self):
-        with mock.patch.object(problem_history, "GitHub") as gh:
-            self.assertEqual(self.run_main({**ENV, "CLOSED_FUNCTIONS_URL": " "}), [])
-        gh.assert_not_called()
+        github = mock.Mock()
+        self.assertEqual(self.run_main({**ENV, "CLOSED_FUNCTIONS_URL": " "}, GitHub=github), [])
+        github.assert_not_called()
 
 
 class WiringTests(unittest.TestCase):
@@ -870,17 +814,17 @@ class WiringTests(unittest.TestCase):
         start = self.ACTION.index("    - name: Update problem history\n")
         return self.ACTION[start : self.ACTION.index("\n\n", start)]
 
-    def test_opt_in_and_off_by_default(self):
+    def test_opt_in_sync_only_and_never_fails_the_run(self):
         block = self.ACTION[self.ACTION.index("  problem_history:\n") :]
         self.assertIn("default: 'false'", block[: block.index("\n  github_token:")])
-
-    def test_sync_only_never_fails_the_run(self):
-        step = self.step()
-        self.assertIn("steps.guard.outputs.mode == 'sync'", step)
-        self.assertIn("inputs.problem_history == 'true'", step)
-        self.assertIn("inputs.review_guide_url != ''", step)
-        self.assertIn("continue-on-error: true", step)
-        self.assertIn('scripts/problem_history.py"', step)
+        for wired in (
+            "steps.guard.outputs.mode == 'sync'",
+            "inputs.problem_history == 'true'",
+            "inputs.review_guide_url != ''",
+            "continue-on-error: true",
+            'scripts/problem_history.py"',
+        ):
+            self.assertIn(wired, self.step())
         self.assertLess(
             self.ACTION.index("- name: Publish baseline analysis for the analyzed commit"),
             self.ACTION.index("- name: Update problem history"),
