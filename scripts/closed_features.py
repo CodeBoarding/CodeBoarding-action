@@ -67,18 +67,38 @@ class Skip(Exception):
     """A step that did not happen, for a reason worth one line in the log."""
 
 
-def _github(path: str, accept: str = "application/vnd.github+json") -> bytes:
-    api = os.environ.get("GITHUB_API_URL", "https://api.github.com").rstrip("/")
+def _github(
+    path: str,
+    accept: str = "application/vnd.github+json",
+    *,
+    method: str = "GET",
+    payload=None,
+    api: str | None = None,
+    token: str | None = None,
+    timeout: int = 30,
+) -> bytes:
+    """A GitHub API call: `path` under `api` (default GITHUB_API_URL), or a full URL."""
+    api = (api or os.environ.get("GITHUB_API_URL", "https://api.github.com")).rstrip("/")
     req = Request(
-        f"{api}{path}",
+        path if path.startswith("http") else f"{api}{path}",
+        data=None if payload is None else json.dumps(payload).encode(),
+        method=method,
         headers={
-            "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+            "Authorization": f"Bearer {token or os.environ['GITHUB_TOKEN']}",
             "Accept": accept,
             "User-Agent": "codeboarding-action",
         },
     )
-    with urlopen(req, timeout=30) as res:  # nosec B310 - GitHub API URL
+    with urlopen(req, timeout=timeout) as res:  # nosec B310 - GitHub API URL
         return res.read()
+
+
+def _error_message(e: HTTPError) -> str:
+    """The `message` of an error answer's JSON body, or "" when it has none."""
+    try:
+        return str(json.loads(e.read()).get("message") or "")
+    except (ValueError, AttributeError, OSError):
+        return ""
 
 
 def _github_json(path: str):
@@ -308,7 +328,7 @@ def _no_architecture(ctx: dict, status: str, reason: str) -> dict:
     }
 
 
-def _post(url: str, body: bytes, headers: dict[str, str]) -> dict:
+def _post(url: str, body: bytes, headers: dict[str, str], timeout: int = 600) -> dict:
     req = Request(
         url,
         data=body,
@@ -316,29 +336,29 @@ def _post(url: str, body: bytes, headers: dict[str, str]) -> dict:
         method="POST",
     )
     try:
-        with urlopen(req, timeout=600) as res:  # nosec B310 - service URL from workflow configuration
+        with urlopen(req, timeout=timeout) as res:  # nosec B310 - service URL from workflow configuration
             return json.loads(res.read())
     except HTTPError as e:
-        try:
-            message = json.loads(e.read()).get("message") or e.reason
-        except (ValueError, AttributeError):
-            message = e.reason
-        reason = f"the service answered {e.code}: {message}"
+        reason = f"the service answered {e.code}: {_error_message(e) or e.reason}"
         if e.code == 402:
             raise Skip(reason) from e
         raise RuntimeError(reason) from e
+
+
+def _gzip(body: dict) -> bytes:
+    return gzip.compress(json.dumps(body).encode(), compresslevel=9)
 
 
 def _pack(ctx: dict, files: dict[str, str], omitted: dict[str, str]) -> bytes:
     body = {"version": 1, "repo": ctx["repo"], "pr": ctx["pr"], "files": files}
     if omitted:
         body["omitted"] = omitted
-    return gzip.compress(json.dumps(body).encode(), compresslevel=9)
+    return _gzip(body)
 
 
-def _check_size(data: bytes) -> None:
+def _check_size(data: bytes, what: str = "bundle") -> None:
     if len(data) > MAX_BUNDLE_BYTES:
-        raise Skip(f"its bundle is {len(data) / 1e6:.1f} MB, over the service's limit")
+        raise Skip(f"its {what} is {len(data) / 1e6:.1f} MB, over the service's limit")
 
 
 def run_review_guide(base: str, ctx: dict, inputs: dict, headers: dict, artifact: Path) -> None:

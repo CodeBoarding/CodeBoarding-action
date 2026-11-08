@@ -354,6 +354,41 @@ Move this repository's CodeBoarding sync to the codeboarding/baseline analysis b
 
 The first sync after the merge creates `codeboarding/baseline`, catching up from a saved analysis when there is one. To keep committing to the code branch instead, set `codeboarding_analysis_location: in_place`, as [above](#keep-the-analysis-on-the-code-branch).
 
+## Problem history
+
+Off by default. With `problem_history: 'true'` on the sync job, every sync (a push to the analysed branch) keeps a list of this repository's problems for the CodeBoarding Briefing: issues that report a bug, and merged changes that later needed a fix. Without it nothing is sent and nothing is written.
+
+```yaml
+  sync:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write        # also writes codeboarding/briefing
+      actions: read          # also reads merged pull requests' review artifacts
+      issues: read
+      pull-requests: read
+      id-token: write
+    steps:
+      - uses: CodeBoarding/CodeBoarding-action@v1
+        with:
+          mode: sync
+          llm: hosted
+          problem_history: 'true'
+```
+
+What is sent to `POST /v1/briefing` on `review_guide_url`, authenticated with the run's OIDC token (plus `license_key`, when set) and never with its `GITHUB_TOKEN`:
+
+- **Issues**, never pull requests. The first run reads the open issues and those closed in the last 90 days, at most 1000 of each; later runs read those updated since, at most 1000, plus up to 100 stored open issues whose linked pull request is still open, taking turns when there are more. Later runs pick up what a limit skipped. For each: number, title, the first 2000 characters of the body, URL, state, open, close and update times, the author's login, bot flag and association, labels, assignees, the closing pull request, and linked pull requests (number, title, URL, state, draft, review decision, checks, author, last update, whether it closes the issue).
+- **Every open issue's number** (up to 5000), by the first update of each day (UTC), so the service can drop one that was deleted, transferred or made a discussion.
+- **Merged pull requests** into the analysed branch: the last 56 days on the first run, then those merged since, scanning at most the 1000 most recently updated. At most 500 a run, oldest first, so later runs read the rest. For each: number, title, URL, author, merge time, approvers and up to 300 changed paths. No code and no diffs.
+- **Architecture findings**: the `closed/architecture.json` from each one's newest successful CodeBoarding review artifact, for at most 40 merges per run plus 10 merged in the last 14 days (the artifact's retention) whose findings were not found yet. Only a review of this repository's own branch counts, never a fork's, and only when the artifact's `metadata.json` names that pull request. Artifacts over 50 MB are not downloaded, and neither file is read past 1 MB. Findings that would take the request over the service's size limit wait for a later run.
+- **The current problem list**, which the service updates and sends back. It keeps none of this.
+
+What is written: one file, `problems.json`, on `codeboarding/briefing`, one commit per update (`Update problem history (<n> problems, through #<pr>)`) through the git data API. Like `codeboarding/baseline`, that branch is an orphan that is never merged and holds no workflow, so writing it runs nothing. It holds the last 56 days of merged pull requests, the issues above without their body (only the first sentence, and a `Priority:` line or CodeBoarding marker), High and Medium architecture findings, and the problems derived from them with a short status and priority history. The CodeBoarding web platform reads it from there.
+
+The update runs after the baseline is saved, stops itself after 10 minutes and never fails the run: a missing permission, an unreachable service, a busy branch or a ruleset on `codeboarding/briefing` is a notice or warning in the log. Without `id-token: write` the update is skipped with a notice rather than sending the `GITHUB_TOKEN` in its place, since that token can write to this repository. `review_guide_url: ''` turns it off with the review features. Delete the branch to drop the history; the next sync starts it again.
+
 ## Inputs
 
 | Input | Mode | Default | Description |
@@ -371,8 +406,9 @@ The first sync after the merge creates `codeboarding/baseline`, catching up from
 | `github_token` | both | `${{ github.token }}` | Token for comments and sync delivery. |
 | `codeboarding_analysis_location` | both | `codeboarding_branch` | Where the synced branch's analysis is stored: `codeboarding_branch` (on `codeboarding/baseline`, for the default branch; the code is never written) or `in_place` (committed as `.codeboarding/` on the synced branch). Sync saves it there and review reads it from there. |
 | `warmstart_retention_days` | review | `1` | Days to keep the reusable analysis. Only the next run reads it. |
-| `review_guide_url` | review | `https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/` | Experimental. Shared base URL for `/v1/review-guide` and `/v1/architecture`. Saves `review_guide.json` and `closed/architecture.json` in the review artifact. Set to `''` to disable both. Never fails the run. |
+| `review_guide_url` | both | `https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/` | Experimental. Shared base URL for `/v1/review-guide` and `/v1/architecture`, and for sync's `/v1/briefing` when `problem_history` is on. Saves `review_guide.json` and `closed/architecture.json` in the review artifact. Set to `''` to disable all three. Never fails the run. |
 | `closed_features_source` | review | `true` | Whether architecture checks may read this repository's source. Only the architecture request carries it, capped in size, and the service keeps nothing. The model sees code around a finding, never the tree. With `false`, source-dependent checks and model review do not run, and the result says so. |
+| `problem_history` | sync | `false` | Opt-in. With `'true'`, each sync sends this repository's issues and merged pull requests to `review_guide_url` and commits the returned problem list as `problems.json` on the orphan branch `codeboarding/briefing`. Needs `contents: write`, `issues: read`, `pull-requests: read`, `actions: read` and `id-token: write` on the sync job. See [Problem history](#problem-history). Never fails the run. |
 
 `target_branch` and `sync_strategy` are deprecated, and read as the `codeboarding_analysis_location` they stand for, with a warning: `sync_strategy: push` as `in_place`, `sync_strategy: pull_request` as `codeboarding_branch`. `target_branch` is accepted only when it names the branch the run is on: the push trigger picks the branch. `force_full: true` is ignored with a warning. Anything the new input cannot express fails, linking to [moving an existing setup](#moving-an-existing-setup).
 
