@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.19.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.18.0...v1.19.0) (2026-11-08)
+
+
+### Features
+
+* keep an opt-in problem history for the Briefing ([#165](https://github.com/CodeBoarding/CodeBoarding-action/issues/165)) ([b5ae0c1](https://github.com/CodeBoarding/CodeBoarding-action/commit/b5ae0c1bf933ceb9ecc5df986ba219f5e69e2d6c))
+* run the review guide and architecture checks ([#162](https://github.com/CodeBoarding/CodeBoarding-action/issues/162)) ([d5023e7](https://github.com/CodeBoarding/CodeBoarding-action/commit/d5023e792b7161df2f707f2e8e22f4fe6e54b991))
+
+
+### Bug Fixes
+
+* update CodeBoarding dependency to 0.15.4 ([#166](https://github.com/CodeBoarding/CodeBoarding-action/issues/166)) ([efffa30](https://github.com/CodeBoarding/CodeBoarding-action/commit/efffa309f0bec013d672dda85c1bf6527c0b5343))
+
 ## [1.18.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.17.0...v1.18.0) (2026-10-31)
 
 
