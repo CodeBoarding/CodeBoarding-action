@@ -333,9 +333,10 @@ def _oldest_open(gh: GitHub, repo: str) -> datetime | None:
 def collect_issues(gh: GitHub, repo: str, ledger: dict | None, started: datetime) -> tuple[list[dict], str, list[str]]:
     """Issues for the request, the `issuesThrough` to record, and a note per cap that cut a pass short.
 
-    `issuesThrough` never claims an issue a cap skipped, so the next run reads it. A later run reads oldest
-    update first and stops at the last issue read. A first run reads newest first: a cut open pass stops at
-    the oldest open issue's update, and a cut closed pass at the start of its 90 days."""
+    `issuesThrough` never claims an issue a cap skipped, so the next run reads it, except ties a bulk edit
+    left past the cap. A later run reads oldest update first and stops at the last issue read, or past the
+    overlap when that would read the same page again. A first run reads newest first: a cut open pass stops
+    at the oldest open issue's update, and a cut closed pass at the start of its 90 days."""
     owner, name = repo.split("/", 1)
     since = _parse((ledger or {}).get("issuesThrough"))
     cutoff = None
@@ -360,7 +361,9 @@ def collect_issues(gh: GitHub, repo: str, ledger: dict | None, started: datetime
             if read >= cap:
                 notes.append(f"read the first {cap} {label + ' ' if label else ''}issues only")
                 if since is not None:
-                    stop = last
+                    # A bulk edit can give more issues than the cap one update time, and stopping at it would
+                    # start every later run on the same page. Moving past the overlap loses ties past the cap.
+                    stop = max(last or since, since + ISSUE_OVERLAP + timedelta(seconds=1))
                 elif states == ["OPEN"]:
                     stop = _oldest_open(gh, repo)
                 else:

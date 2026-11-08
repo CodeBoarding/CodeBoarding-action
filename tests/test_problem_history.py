@@ -329,6 +329,22 @@ class RequestTests(_Patched):
         self.assertEqual(self.body["issuesThrough"], "2026-11-03T00:00:00Z")
         self.assertIn("first 2 issues", notice)
 
+    def test_a_bulk_edit_past_the_cap_does_not_stall_later_runs(self):
+        # 1500 issues edited within two minutes, then 50 ordinary updates days later.
+        bulk = [issue_node(n, updated=f"2026-11-01T10:0{n // 750}:00Z") for n in range(1500)]
+        later = [issue_node(2000 + n, updated=f"2026-11-05T{10 + n % 10}:00:00Z") for n in range(50)]
+        rows = sorted(bulk + later, key=lambda i: (i["updatedAt"], i["number"]))
+        through, runs = "2026-11-01T09:59:00Z", []
+        for _ in range(4):
+            gh = FakeGitHub()
+            since = ph._parse(through) - ph.ISSUE_OVERLAP
+            window = [i for i in rows if ph._parse(i["updatedAt"]) >= since]
+            gh.issue_pages[(None, "ASC")] = [window[k : k + 50] for k in range(0, len(window), 50)]
+            issues, through, _ = ph.collect_issues(gh, "o/r", ledger(issuesThrough=through), NOW)
+            runs.append(sum(i["number"] >= 2000 for i in issues))
+        self.assertEqual(runs, [0, 0, 50, 0])
+        self.assertEqual(through, "2026-11-07T12:00:00Z")
+
     def test_changed_paths_page_and_stop_at_the_cap(self):
         gh = FakeGitHub()
         gh.merged_pages = [[pr_node(41, "2026-11-06T00:00:00Z", paths=[f"a{i}" for i in range(100)], more=True)]]
