@@ -4,6 +4,7 @@ import gzip
 import importlib.util
 import io
 import json
+import random
 import re
 import sys
 import threading
@@ -93,6 +94,17 @@ def pr_node(number, merged, updated=None, paths=("a.py",), approvers=(), more=Fa
     }
 
 
+def review_run(run, name="CodeBoarding", head_repo="o/r", **extra):
+    return {
+        "id": run,
+        "name": name,
+        "event": "pull_request",
+        "run_attempt": 1,
+        "head_repository": {"full_name": head_repo},
+        **extra,
+    }
+
+
 def _page(pages, cursor):
     i = int(cursor or 0)
     nodes = pages[i] if i < len(pages) else []
@@ -108,7 +120,7 @@ class FakeGitHub(problem_history.GitHub):
         self.ledgers = {head: stored} if head and stored is not None else {}
         self.issue_pages, self.merged_pages, self.file_pages = {}, [], {}
         self.open_pages, self.oldest_open, self.by_number = [], None, {}
-        self.runs, self.artifacts, self.archives, self.downloads = {}, {}, {}, []
+        self.runs, self.artifacts, self.archives, self.downloads, self.listed = {}, {}, {}, [], []
         self.graphql_calls, self.writes, self.commits = [], [], {}
         self.updates = 1 if head else 0  # commits on the ledger branch
         self.races = []  # (head, ledger) another run writes just before our next ref update
@@ -116,10 +128,12 @@ class FakeGitHub(problem_history.GitHub):
 
     def add_review(self, pr, run, envelope=ENVELOPE, **artifact):
         """A successful CodeBoarding run on head{pr} whose review artifact holds `envelope`."""
-        self.runs.setdefault(f"head{pr}", []).append({"id": run, "name": "CodeBoarding", "run_attempt": 1})
+        self.runs.setdefault(f"head{pr}", []).append(review_run(run))
         url = f"zip{run}"
         self.artifacts[run] = [{"name": f"codeboarding-review-{run}-1", "archive_download_url": url, **artifact}]
-        self.archives[url] = _zip({"closed/architecture.json": {**envelope, "pr": pr}})
+        self.archives[url] = _zip(
+            {"metadata.json": {"pr_number": str(pr)}, "closed/architecture.json": {**envelope, "pr": pr}}
+        )
 
     def calls(self, needle):
         """The variables of every GraphQL request whose query contains `needle`."""
@@ -134,9 +148,11 @@ class FakeGitHub(problem_history.GitHub):
             return {"repository": {"issues": _page(self.open_pages, variables["c"])}}
         if query is ph.OLDEST_OPEN_QUERY:
             return {"repository": {"issues": {"nodes": [{"updatedAt": self.oldest_open}]}}}
+        asked = {f"a{k[1:]}": v for k, v in variables.items() if re.fullmatch(r"n\d+", k)}
         if "issue(number:" in query:
-            found = {k: self.by_number.get(v) for k, v in variables.items() if re.fullmatch(r"n\d+", k)}
-            return {"repository": {f"i{k[1:]}": node for k, node in found.items()}}
+            return {"repository": {k: self.by_number.get(n) for k, n in asked.items()}}
+        if "a0: pullRequest(number:$n0){ headRefOid }" in query:
+            return {"repository": {k: {"headRefOid": f"head{n}"} for k, n in asked.items()}}
         if "issues(" in query:
             key = (tuple(variables["states"]) if variables["states"] else None, variables["dir"])
             return {"repository": {"issues": _page(self.issue_pages.get(key, []), variables["c"])}}
@@ -158,11 +174,13 @@ class FakeGitHub(problem_history.GitHub):
                 raise _http_error(404)
             return self.ledgers[ref]
         if method == "GET" and "/actions/runs?head_sha=" in path:
-            return {"workflow_runs": self.runs.get(re.search(r"head_sha=(\w+)", path).group(1), [])}
+            self.listed.append(path)
+            runs = self.runs.get(re.search(r"head_sha=(\w+)", path).group(1), [])
+            return {
+                "workflow_runs": [r for r in runs if "event=pull_request&" not in path or r["event"] == "pull_request"]
+            }
         if method == "GET" and "/artifacts?name=" in path:
             return {"artifacts": self.artifacts.get(int(re.search(r"runs/(\d+)/", path).group(1)), [])}
-        if method == "GET" and re.search(r"/pulls/\d+$", path):
-            return {"head": {"sha": f"head{path.rsplit('/', 1)[1]}"}}
         self.writes.append((method, path, payload))
         if path.endswith("/git/blobs"):
             return {"sha": "blob1"}
@@ -626,33 +644,55 @@ class IssueFactsTests(unittest.TestCase):
 
 
 class ArtifactTests(_Patched):
-    def test_architecture_read_only_when_it_answers_for_this_pr(self):
+    def test_architecture_read_only_when_its_metadata_answers_for_this_pr(self):
         skipped = {**ENVELOPE, "status": "skipped", "data": None}
+        meta = {"metadata.json": {"pr_number": "41"}}
         for files, want in (
-            ({"metadata.json": {"pr_number": "41"}, "closed/architecture.json": ENVELOPE}, ENVELOPE),
-            ({"closed/architecture.json": {**ENVELOPE, "status": "partial"}}, {**ENVELOPE, "status": "partial"}),
-            ({"closed/architecture.json": {**ENVELOPE, "status": "failed"}}, None),
-            ({"closed/architecture.json": skipped}, skipped),
+            ({**meta, "closed/architecture.json": ENVELOPE}, ENVELOPE),
+            (
+                {**meta, "closed/architecture.json": {**ENVELOPE, "status": "partial"}},
+                {**ENVELOPE, "status": "partial"},
+            ),
+            ({**meta, "closed/architecture.json": {**ENVELOPE, "status": "failed"}}, None),
+            ({**meta, "closed/architecture.json": skipped}, skipped),
             ({"metadata.json": {"pr_number": "7"}, "closed/architecture.json": ENVELOPE}, None),
-            ({"analysis.json": "{}"}, None),
+            ({"metadata.json": {}, "closed/architecture.json": ENVELOPE}, None),
+            ({"closed/architecture.json": ENVELOPE}, None),
+            ({**meta, "analysis.json": "{}"}, None),
         ):
             with self.subTest(files=files):
                 self.assertEqual(problem_history.read_architecture(_zip(files), 41), want)
 
-    def test_newest_codeboarding_run_with_a_live_artifact(self):
+    def test_an_oversized_file_in_an_artifact_is_not_read(self):
+        big = {**ENVELOPE, "data": {"findings": ["x" * (1 << 20)]}}
+        for files in (
+            {"metadata.json": {"pr_number": "41", "pad": "x" * (1 << 20)}, "closed/architecture.json": ENVELOPE},
+            {"metadata.json": {"pr_number": "41"}, "closed/architecture.json": big},
+        ):
+            with self.subTest(file=next(k for k, v in files.items() if len(json.dumps(v)) > 1 << 20)):
+                with self.assertRaisesRegex(ValueError, "over 1 MB, not read"):
+                    problem_history.read_architecture(_zip(files), 41)
+
+    def test_newest_codeboarding_run_of_this_repository_with_a_live_artifact(self):
         gh = FakeGitHub()
         gh.runs["h"] = [
-            {"id": 1, "name": "Tests", "run_attempt": 1},
-            {"id": 2, "name": "CodeBoarding", "run_attempt": 2},
-            {"id": 3, "name": "CodeBoarding", "run_attempt": 1},
+            review_run(1, name="Tests"),
+            review_run(4, head_repo="fork/r"),  # a fork's workflow can upload any artifact under the name
+            review_run(5, event="issue_comment"),
+            review_run(2, run_attempt=2),
+            review_run(3),
         ]
+        for run in (1, 4, 5):
+            gh.artifacts[run] = [{"name": f"codeboarding-review-{run}-1", "archive_download_url": "forged"}]
         gh.artifacts[2] = [{"name": "codeboarding-review-2-2", "expired": True, "archive_download_url": "z2"}]
         gh.artifacts[3] = [
             {"name": "codeboarding-review-3-1-extra", "archive_download_url": "nope"},
             {"name": "codeboarding-review-3-1", "archive_download_url": "z3"},
         ]
-        gh.archives["z3"] = _zip({"closed/architecture.json": ENVELOPE})
+        gh.archives["z3"] = _zip({"metadata.json": {"pr_number": "41"}, "closed/architecture.json": ENVELOPE})
         self.assertEqual(problem_history.review_findings(gh, "o/r", 41, "h"), ENVELOPE)
+        self.assertEqual(gh.downloads, ["z3"])
+        self.assertIn("&event=pull_request&status=success&", gh.listed[0])
 
     def test_an_artifact_over_50_mb_is_not_downloaded(self):
         gh = FakeGitHub()
@@ -670,13 +710,13 @@ class ArtifactTests(_Patched):
         gh = FakeGitHub()
         merged = [{"number": 41, "mergedAt": "2026-11-06T00:00:00Z"}]
         with mock.patch.object(gh, "_route", side_effect=_http_error(403)):
-            findings, errors = problem_history.collect_findings(gh, "o/r", merged, {41: "h"}, None)
+            findings, errors = problem_history.collect_findings(gh, "o/r", merged, {41: "h"}, None, NOW)
         self.assertEqual((findings, len(errors)), ({}, 1))
 
-    def asked(self, merged, heads, stored=None):
+    def asked(self, merged, heads, stored=None, gh=None):
         """The (pr, head) pairs collect_findings looks up a review for."""
         with mock.patch.object(problem_history, "review_findings", return_value=None) as rf:
-            problem_history.collect_findings(FakeGitHub(), "o/r", merged, heads, stored)
+            problem_history.collect_findings(gh or FakeGitHub(), "o/r", merged, heads, stored, NOW)
         return [c.args[2:] for c in rf.call_args_list]
 
     def test_first_run_reads_at_most_40_artifacts_newest_first(self):
@@ -686,15 +726,51 @@ class ArtifactTests(_Patched):
         self.assertEqual([n for n, _ in asked], numbers(newest))
 
     def test_unread_merges_are_asked_again_newest_first_at_most_10(self):
-        merged = [{"number": n, "mergedAt": f"2026-10-{n:02d}T00:00:00Z"} for n in range(1, 21)]
+        merged = [{"number": n, "mergedAt": f"2026-11-01T{n:02d}:00:00Z"} for n in range(1, 21)]
         merged[19]["warningsRead"] = True  # #20 read
         merged[18]["warningsRead"] = False  # #19 not
         stored = {"merged": merged, "warnings": [{"id": "warning:o/r#18:x", "pr": 18}]}
         new = [{"number": 30, "mergedAt": "2026-11-06T00:00:00Z"}]
-        asked = self.asked(new, {30: "h30"}, stored)
+        gh = FakeGitHub()
+        asked = self.asked(new, {30: "h30"}, stored, gh)
         # #18 has warnings stored, which a ledger from before warningsRead counts as read.
         self.assertEqual([n for n, _ in asked], [30, 19, 17, 16, 15, 14, 13, 12, 11, 10, 9])
         self.assertEqual([h for _, h in asked][:3], ["h30", "head19", "head17"])
+        # The ten head commits come from one query.
+        self.assertEqual(len(gh.calls("pullRequest(number:")), 1)
+
+    def test_an_unread_merge_older_than_the_review_artifacts_is_not_asked_again(self):
+        stored = {
+            "merged": [
+                {"number": 1, "mergedAt": "2026-10-24T11:00:00Z"},
+                {"number": 2, "mergedAt": "2026-10-24T13:00:00Z"},
+                {"number": 3},
+            ]
+        }
+        self.assertEqual([n for n, _ in self.asked([], {}, stored)], [2])
+        upload = WiringTests.ACTION[WiringTests.ACTION.index("- name: Upload review artifact") :]
+        retention = re.search(r"retention-days: (\d+)", upload).group(1)
+        self.assertEqual(int(retention), ph.REVIEW_RETENTION_DAYS)
+
+    def test_findings_that_would_overflow_the_request_are_left_out(self):
+        small, big = {**ENVELOPE, "data": {"findings": ["a"]}}, {
+            **ENVELOPE,
+            "data": {"findings": [random.Random(1).randbytes(3000).hex()]},
+        }
+        body = {"issues": [], "findings": {"41": small, "42": big}}
+        with mock.patch.dict(ph._check_size.__globals__, {"MAX_BUNDLE_BYTES": 1000}):
+            with mock.patch.object(ph, "MAX_BUNDLE_BYTES", 1000):
+                data, dropped = ph.pack(body)
+        self.assertEqual((json.loads(gzip.decompress(data))["findings"], dropped), ({"41": small}, ["42"]))
+
+        gh = FakeGitHub()
+        gh.merged_pages = [[pr_node(41, "2026-11-06T00:00:00Z"), pr_node(42, "2026-11-05T00:00:00Z")]]
+        gh.add_review(41, 41, small)
+        gh.add_review(42, 42, big)
+        with mock.patch.object(ph, "MAX_BUNDLE_BYTES", 1200):
+            notice = self.run_update(gh)
+        self.assertEqual(list(self.body["findings"]), ["41"])
+        self.assertIn("left out the findings of #42 to stay under the request limit", notice)
 
     def test_a_retried_merge_sends_what_it_found(self):
         stored = ledger(

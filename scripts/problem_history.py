@@ -28,7 +28,16 @@ from urllib.parse import quote
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from closed_features import Skip, _bearer, _check_size, _error_message, _github, _gzip, _post  # noqa: E402
+from closed_features import (
+    MAX_BUNDLE_BYTES,
+    Skip,
+    _bearer,
+    _check_size,
+    _error_message,
+    _github,
+    _gzip,
+    _post,
+)  # noqa: E402
 
 LEDGER_BRANCH = "codeboarding/briefing"
 LEDGER_PATH = "problems.json"
@@ -54,6 +63,10 @@ MAX_OPEN_NUMBERS = 5000
 # Successful runs on a head commit whose artifacts are listed before giving up on its review.
 MAX_RUNS_PER_PR = 6
 MAX_ARTIFACT_BYTES = 50 * 1024 * 1024
+# metadata.json and closed/architecture.json are read from an artifact only up to this size each.
+MAX_MEMBER_BYTES = 1024 * 1024
+# The review artifact's retention-days in action.yml; an unread merge older than this has nothing left to find.
+REVIEW_RETENTION_DAYS = 14
 MAX_BODY_CHARS = 2000
 SERVICE_TIMEOUT = 300
 # A composite action's step cannot set timeout-minutes, so the script stops itself at the step's budget.
@@ -408,23 +421,24 @@ def relinked(ledger: dict | None, repo: str, read: set[int], turn: int) -> list[
     return [n for n in ring[start:] + ring[:start] if n not in read][:MAX_RELINKED]
 
 
+def _by_number(gh: GitHub, repo: str, numbers: list[int], field: str, selection: str) -> list[dict]:
+    """repository.<field>(number:) for each of `numbers` in one query, in order; {} for one not found."""
+    owner, name = repo.split("/", 1)
+    params = "".join(f",$n{k}:Int!" for k in range(len(numbers)))
+    fields = " ".join(f"a{k}: {field}(number:$n{k}){{ {selection} }}" for k in range(len(numbers)))
+    query = f"query($owner:String!,$name:String!{params}){{ repository(owner:$owner, name:$name){{ {fields} }} }}"
+    if "...IssueFields" in selection:
+        query = _BRIEF_PR + _ISSUE_FIELDS + "\n" + query
+    variables = {"owner": owner, "name": name, **{f"n{k}": n for k, n in enumerate(numbers)}}
+    found = gh.graphql(query, variables)["repository"]
+    return [found.get(f"a{k}") or {} for k in range(len(numbers))]
+
+
 def issues_by_number(gh: GitHub, repo: str, numbers: list[int]) -> list[dict]:
     """IssueFacts for these issue numbers; one deleted, transferred or never an issue is left out."""
-    owner, name = repo.split("/", 1)
     out = []
     for start in range(0, len(numbers), ISSUES_PER_QUERY):
-        batch = numbers[start : start + ISSUES_PER_QUERY]
-        params = "".join(f",$n{k}:Int!" for k in range(len(batch)))
-        fields = " ".join(f"i{k}: issue(number:$n{k}){{ ...IssueFields }}" for k in range(len(batch)))
-        query = (
-            _BRIEF_PR
-            + _ISSUE_FIELDS
-            + f"\nquery($owner:String!,$name:String!{params}){{ repository(owner:$owner, name:$name){{ {fields} }} }}"
-        )
-        variables = {"owner": owner, "name": name, **{f"n{k}": n for k, n in enumerate(batch)}}
-        found = gh.graphql(query, variables)["repository"]
-        for k in range(len(batch)):
-            node = found.get(f"i{k}") or {}
+        for node in _by_number(gh, repo, numbers[start : start + ISSUES_PER_QUERY], "issue", "...IssueFields"):
             if (
                 node.get("number")
                 and str((node.get("repository") or {}).get("nameWithOwner", "")).lower() == repo.lower()
@@ -490,29 +504,42 @@ def collect_merged(
     return out, heads, notes
 
 
+def _member(z: zipfile.ZipFile, name: str):
+    """A JSON file in the archive, or None when it has none. A zip entry reads no further than the size
+    it declares, so checking that size bounds what is read."""
+    try:
+        info = z.getinfo(name)
+    except KeyError:
+        return None
+    if info.file_size > MAX_MEMBER_BYTES:
+        raise ValueError(f"its {name} is over {MAX_MEMBER_BYTES >> 20} MB, not read")
+    return json.loads(z.read(info))
+
+
 def read_architecture(archive: bytes, pr: int) -> dict | None:
-    """closed/architecture.json from a review artifact, when it answers for this pull request. A skipped
-    one carries no findings, and still tells the service the pull request was read."""
+    """closed/architecture.json from a review artifact, when its metadata.json says it answers for this
+    pull request. A skipped one carries no findings, and still tells the service the pull request was read."""
     with zipfile.ZipFile(io.BytesIO(archive)) as z:
-        names = set(z.namelist())
-        if "metadata.json" in names:
-            meta = json.loads(z.read("metadata.json"))
-            if str(meta.get("pr_number", pr)) != str(pr):
-                return None
-        if "closed/architecture.json" not in names:
+        meta = _member(z, "metadata.json")
+        if not isinstance(meta, dict) or str(meta.get("pr_number")) != str(pr):
             return None
-        envelope = json.loads(z.read("closed/architecture.json"))
+        envelope = _member(z, "closed/architecture.json")
     if not isinstance(envelope, dict) or envelope.get("status") not in ("ok", "partial", "skipped"):
         return None
     return envelope
 
 
+def _own_review(run: dict, repo: str) -> bool:
+    """A CodeBoarding run on this repository's own branch. A fork's pull request runs the fork's workflow,
+    which can upload anything under the review artifact's name."""
+    head_repo = str((run.get("head_repository") or {}).get("full_name") or "")
+    return bool(re.search("codeboarding", run.get("name") or "", re.I)) and head_repo.lower() == repo.lower()
+
+
 def review_findings(gh: GitHub, repo: str, pr: int, sha: str) -> dict | None:
     """The architecture envelope from the newest successful CodeBoarding review of this head commit."""
-    runs = gh.json(f"/repos/{repo}/actions/runs?head_sha={quote(sha)}&status=success&per_page=30")
-    runs = sorted(
-        runs.get("workflow_runs") or [], key=lambda r: not re.search("codeboarding", r.get("name") or "", re.I)
-    )
+    listed = gh.json(f"/repos/{repo}/actions/runs?head_sha={quote(sha)}&event=pull_request&status=success&per_page=30")
+    runs = [r for r in listed.get("workflow_runs") or [] if _own_review(r, repo)]
     too_big = False
     for run in runs[:MAX_RUNS_PER_PR]:
         want = f"codeboarding-review-{run['id']}-{run.get('run_attempt') or 1}"
@@ -546,22 +573,33 @@ def _unread(ledger: dict | None) -> list[dict]:
 
 
 def collect_findings(
-    gh: GitHub, repo: str, merged: list[dict], heads: dict[int, str], ledger: dict | None
+    gh: GitHub, repo: str, merged: list[dict], heads: dict[int, str], ledger: dict | None, now: datetime
 ) -> tuple[dict[str, dict], list[str]]:
     """Findings per merged pull request the ledger has not folded in yet, and again for a few it holds
-    unread, newest first, each capped."""
+    unread that merged inside the review artifact's retention, newest first, each capped. Nothing records
+    a look that found nothing, so the retention is what ends the retries."""
     known = {m.get("number") for m in (ledger or {}).get("merged") or [] if isinstance(m, dict)}
+    retained = now - timedelta(days=REVIEW_RETENTION_DAYS)
 
     def newest(items):
         return sorted(items, key=lambda m: str(m.get("mergedAt") or ""), reverse=True)
 
     todo = newest(m for m in merged if m["number"] not in known)[:MAX_ARTIFACTS]
-    todo += newest(_unread(ledger))[:MAX_FINDINGS_RETRIES]
-    out, errors = {}, []
-    for m in todo:
+    retries = newest(m for m in _unread(ledger) if (_parse(m.get("mergedAt")) or retained) > retained)
+    retries = retries[:MAX_FINDINGS_RETRIES]
+    out, errors, heads = {}, [], dict(heads)
+    # A merge read from the ledger has no head commit stored; its pull request names it.
+    missing = [m["number"] for m in retries if not heads.get(m["number"])]
+    if missing:
         try:
-            # A merge read from the ledger has no head commit stored; its pull request names it.
-            head = heads.get(m["number"]) or gh.json(f"/repos/{repo}/pulls/{m['number']}")["head"]["sha"]
+            heads.update(
+                zip(missing, (p.get("headRefOid") for p in _by_number(gh, repo, missing, "pullRequest", "headRefOid")))
+            )
+        except Exception as e:  # their findings are looked for again next run
+            errors.append(f"#{missing[0]}: {type(e).__name__}: {e}")
+    for m in todo + retries:
+        try:
+            head = heads.get(m["number"])
             if not head:
                 continue
             envelope = review_findings(gh, repo, m["number"], head)
@@ -597,7 +635,7 @@ def collect(gh: GitHub, env: dict, ledger: dict | None, now: datetime, turn: int
             notes.append(f"{len(again)} issues with open pull requests not read again ({type(e).__name__}: {e})")
     merged, heads, cut_merged = collect_merged(gh, repo, env["BRANCH"], ledger, now)
     notes += cut_merged
-    findings, errors = collect_findings(gh, repo, merged, heads, ledger)
+    findings, errors = collect_findings(gh, repo, merged, heads, ledger, now)
     if errors:
         notes.append(f"no findings for {len(errors)} merged pull requests ({errors[0]})")
     return {
@@ -623,10 +661,18 @@ def build_request(env: dict, ledger: dict | None, facts: dict) -> dict:
     }
 
 
-def pack(body: dict) -> bytes:
-    data = _gzip(body)
-    _check_size(data, "request")
-    return data
+def pack(body: dict) -> tuple[bytes, list[str]]:
+    """The gzipped request and the pull requests whose findings were left out of it: the largest
+    envelopes go first while it is over the service's limit, and their merges stay unread for a later run."""
+    findings, dropped = dict(body.get("findings") or {}), []
+    while True:
+        data = _gzip({**body, "findings": findings})
+        if len(data) <= MAX_BUNDLE_BYTES or not findings:
+            _check_size(data, "request")
+            return data, dropped
+        largest = max(findings, key=lambda pr: len(json.dumps(findings[pr])))
+        del findings[largest]
+        dropped.append(largest)
 
 
 def _newest_pr(*lists) -> int | None:
@@ -668,7 +714,7 @@ def update(gh: GitHub, env: dict, now: datetime | None = None) -> str:
     head, ledger, updates = read_ledger(gh, repo)
     facts = collect(gh, env, ledger, now, updates)
     for retried in (False, True):
-        data = pack(build_request(env, ledger, facts))
+        data, dropped = pack(build_request(env, ledger, facts))
         answer = _post(f"{base}/v1/briefing", data, _bearer(env), timeout=SERVICE_TIMEOUT)
         new = answer.get("ledger") if isinstance(answer, dict) else None
         if not isinstance(new, dict) or new.get("schema") != 1 or str(new.get("repo", "")).lower() != repo.lower():
@@ -692,6 +738,8 @@ def update(gh: GitHub, env: dict, now: datetime | None = None) -> str:
             f"Problem history: {count} problems ({summary.get('open', '?')} open, {summary.get('added', '?')} new),"
             f" through {through}; committed {sha[:7]} to {LEDGER_BRANCH}"
         )
+        if dropped:
+            line += f"; left out the findings of #{', #'.join(dropped)} to stay under the request limit"
         return "; ".join([line, *facts["notes"]])
 
 
