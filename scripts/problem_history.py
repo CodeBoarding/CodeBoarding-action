@@ -90,6 +90,10 @@ OLDEST_OPEN_QUERY = """
 query($owner:String!,$name:String!){
   repository(owner:$owner, name:$name){
     issues(first:1, states:[OPEN], orderBy:{field:UPDATED_AT, direction:ASC}){ nodes{ updatedAt } } } }"""
+# The ledger branch's head and how many updates it holds, which says whose turn it is to be read again.
+LEDGER_REF_QUERY = """
+query($owner:String!,$name:String!,$ref:String!){
+  repository(owner:$owner, name:$name){ ref(qualifiedName:$ref){ target{ oid ... on Commit{ history(first:1){ totalCount } } } } } }"""
 # Issues read again by number, this many to a request.
 ISSUES_PER_QUERY = 25
 MERGED_QUERY = """
@@ -296,20 +300,26 @@ def issue_facts(node: dict) -> dict:
     }
 
 
-def read_ledger(gh: GitHub, repo: str) -> tuple[str | None, dict | None]:
-    """The ledger branch's head and its problems.json; (None, None) before the first update."""
-    head = None
+def read_ledger(gh: GitHub, repo: str) -> tuple[str | None, dict | None, int]:
+    """The ledger branch's head, its problems.json and how many commits it holds; (None, None, 0) before
+    the first update."""
+    owner, name = repo.split("/", 1)
+    variables = {"owner": owner, "name": name, "ref": f"refs/heads/{LEDGER_BRANCH}"}
+    target = (gh.graphql(LEDGER_REF_QUERY, variables)["repository"].get("ref") or {}).get("target") or {}
+    head = target.get("oid")
+    if not head:
+        return None, None, 0
+    updates = (target.get("history") or {}).get("totalCount") or 0
     try:
-        head = gh.json(f"/repos/{repo}/git/ref/heads/{LEDGER_BRANCH}")["object"]["sha"]
         raw = gh.call("GET", f"/repos/{repo}/contents/{LEDGER_PATH}?ref={head}", accept="application/vnd.github.raw")
     except HTTPError as e:
         if e.code == 404:
-            return head, None
+            return head, None, updates
         raise
     ledger = json.loads(raw)
     if not isinstance(ledger, dict):
         raise Skip(f"{LEDGER_PATH} on {LEDGER_BRANCH} is not a ledger")
-    return head, ledger
+    return head, ledger, updates
 
 
 def open_issue_numbers(gh: GitHub, repo: str) -> dict:
@@ -376,20 +386,26 @@ def collect_issues(gh: GitHub, repo: str, ledger: dict | None, started: datetime
     return list(out.values()), _iso(through), notes
 
 
-def relinked(ledger: dict | None, repo: str, read: set[int]) -> list[int]:
-    """Stored open issues with an open linked pull request, which can move without updating the issue:
-    those whose pull requests moved most recently first, capped."""
-    picked = []
+def relinked(ledger: dict | None, repo: str, read: set[int], turn: int) -> list[int]:
+    """Stored open issues with an open linked pull request, which can move without updating the issue.
+
+    Past MAX_RELINKED they take turns in number order, and update number `turn` starts where the one
+    before it stopped, so the least recently read come first and each is read again at least every
+    ceil(n / MAX_RELINKED) updates. Issues read this run already are passed over."""
+    candidates = set()
     for i in (ledger or {}).get("issues") or []:
         if not isinstance(i, dict) or i.get("state") != "OPEN" or str(i.get("repo", "")).lower() != repo.lower():
             continue
         number = i.get("number")
-        if not isinstance(number, int) or isinstance(number, bool) or number in read:
+        if not isinstance(number, int) or isinstance(number, bool):
             continue
-        moved = [str(p.get("updatedAt") or "") for p in i.get("linked") or [] if (p or {}).get("state") == "OPEN"]
-        if moved:
-            picked.append((max(moved), number))
-    return [n for _, n in sorted(picked, reverse=True)[:MAX_RELINKED]]
+        if any((p or {}).get("state") == "OPEN" for p in i.get("linked") or []):
+            candidates.add(number)
+    if not candidates:
+        return []
+    ring = sorted(candidates)
+    start = turn * MAX_RELINKED % len(ring)
+    return [n for n in ring[start:] + ring[:start] if n not in read][:MAX_RELINKED]
 
 
 def issues_by_number(gh: GitHub, repo: str, numbers: list[int]) -> list[dict]:
@@ -549,7 +565,7 @@ def collect_findings(
     return out, errors
 
 
-def collect(gh: GitHub, env: dict, ledger: dict | None, now: datetime) -> dict:
+def collect(gh: GitHub, env: dict, ledger: dict | None, now: datetime, turn: int = 0) -> dict:
     repo = env["REPOSITORY"]
     notes = []
     # Read before the issues, so an issue closed in between is still listed rather than dropped.
@@ -566,7 +582,7 @@ def collect(gh: GitHub, env: dict, ledger: dict | None, now: datetime) -> dict:
         # An issue the cap skipped may have closed since the ledger stored it open; it must not be dropped.
         open_issues = {"numbers": [], "complete": False}
     if ledger:
-        again = relinked(ledger, repo, {i["number"] for i in issues})
+        again = relinked(ledger, repo, {i["number"] for i in issues}, turn)
         try:
             issues += issues_by_number(gh, repo, again)
         except Exception as e:  # their pull requests are read again next time
@@ -642,8 +658,8 @@ def update(gh: GitHub, env: dict, now: datetime | None = None) -> str:
     """Collect, ask the service, commit; the notice to print."""
     repo, base = env["REPOSITORY"], env["CLOSED_FUNCTIONS_URL"].rstrip("/")
     now = now or datetime.now(timezone.utc)
-    head, ledger = read_ledger(gh, repo)
-    facts = collect(gh, env, ledger, now)
+    head, ledger, updates = read_ledger(gh, repo)
+    facts = collect(gh, env, ledger, now, updates)
     for retried in (False, True):
         data = pack(build_request(env, ledger, facts))
         answer = _post(f"{base}/v1/briefing", data, _bearer(env), timeout=SERVICE_TIMEOUT)
@@ -662,7 +678,7 @@ def update(gh: GitHub, env: dict, now: datetime | None = None) -> str:
             # Another run updated it first: fold our facts into its ledger instead. They are a superset
             # of what that ledger lacks, and the service merges what it already holds. Its issues may
             # postdate our list of open ones, so this request lets the service drop none.
-            head, ledger = read_ledger(gh, repo)
+            head, ledger, _ = read_ledger(gh, repo)
             facts = {**facts, "openIssues": {"numbers": [], "complete": False}}
             continue
         line = (

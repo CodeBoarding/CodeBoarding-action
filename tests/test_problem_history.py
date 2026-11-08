@@ -110,6 +110,7 @@ class FakeGitHub(problem_history.GitHub):
         self.open_pages, self.oldest_open, self.by_number = [], None, {}
         self.runs, self.artifacts, self.archives, self.downloads = {}, {}, {}, []
         self.graphql_calls, self.writes, self.commits = [], [], {}
+        self.updates = 1 if head else 0  # commits on the ledger branch
         self.races = []  # (head, ledger) another run writes just before our next ref update
         self.refusal = None  # the message of a 422 every ref update gets, like a ruleset's
 
@@ -126,6 +127,9 @@ class FakeGitHub(problem_history.GitHub):
 
     def graphql(self, query, variables):
         self.graphql_calls.append((query, variables))
+        if query is ph.LEDGER_REF_QUERY:
+            target = {"oid": self.head, "history": {"totalCount": self.updates}}
+            return {"repository": {"ref": {"target": target} if self.head else None}}
         if query is ph.OPEN_NUMBERS_QUERY:
             return {"repository": {"issues": _page(self.open_pages, variables["c"])}}
         if query is ph.OLDEST_OPEN_QUERY:
@@ -148,10 +152,6 @@ class FakeGitHub(problem_history.GitHub):
         return json.dumps(self._route(method, path, payload)).encode()
 
     def _route(self, method, path, payload):
-        if method == "GET" and path.endswith("/git/ref/heads/codeboarding/briefing"):
-            if self.head is None:
-                raise _http_error(404)
-            return {"object": {"sha": self.head}}
         if method == "GET" and "/contents/problems.json?ref=" in path:
             ref = path.split("ref=")[1]
             if ref not in self.ledgers:
@@ -175,6 +175,7 @@ class FakeGitHub(problem_history.GitHub):
         if self.races:
             self.head, raced = self.races.pop(0)
             self.ledgers[self.head] = raced
+            self.updates += 1
         if self.refusal:
             raise _http_error(422, self.refusal)
         if method == "PATCH" and path.endswith("/git/refs/heads/codeboarding/briefing"):
@@ -186,6 +187,7 @@ class FakeGitHub(problem_history.GitHub):
         else:
             raise AssertionError(f"unexpected {method} {path}")
         self.head = payload["sha"]
+        self.updates += 1
         self.ledgers[self.head] = json.loads(self.writes[-4][2]["content"])
         return {}
 
@@ -469,20 +471,36 @@ class RelinkedTests(_Patched):
         gh = FakeGitHub("h1", stored)
         gh.issue_pages[(None, "ASC")] = [[issue_node(4, updated="2026-11-07T11:30:00Z")]]
         gh.by_number = {1: issue_node(1), 7: issue_node(7, repository={"nameWithOwner": "o/elsewhere"})}
+        gh.updates = 0
         self.run_update(gh)
-        self.assertEqual(gh.calls("issue(number:"), [{"owner": "o", "name": "r", "n0": 7, "n1": 1}])
+        self.assertEqual(gh.calls("issue(number:"), [{"owner": "o", "name": "r", "n0": 1, "n1": 7}])
         # #4 was read as updated already; #7 now answers from another repository and is left out.
         self.assertEqual(numbers(self.body["issues"]), [4, 1])
 
-    def test_at_most_100_newest_pull_request_activity_first_25_per_query(self):
-        stored = [
-            self.stored(n, linked=[(1000 + n, "OPEN", f"2026-{n % 12 + 1:02d}-01T00:00:00Z")]) for n in range(1, 151)
-        ]
-        picked = problem_history.relinked({"issues": stored}, "o/r", set())
-        self.assertEqual((len(picked), picked[0]), (100, 143))  # the latest December, highest number first
+    def test_past_100_they_take_turns_so_each_is_read_again(self):
+        stored = {
+            "issues": [self.stored(n, linked=[(1000 + n, "OPEN", "2026-01-01T00:00:00Z")]) for n in range(1, 251)]
+        }
+        seen = set()
+        for turn, first, last in ((0, 1, 100), (1, 101, 200), (2, 201, 50), (3, 51, 150)):
+            picked = problem_history.relinked(stored, "o/r", set(), turn)
+            self.assertEqual((len(picked), picked[0], picked[-1]), (100, first, last))
+            seen.update(picked)
+        self.assertEqual(seen, set(range(1, 251)))
+        # One read this run already is passed over, and the turn reaches one further.
+        self.assertEqual(problem_history.relinked(stored, "o/r", {5}, 0)[-2:], [100, 101])
         gh = FakeGitHub()
         problem_history.issues_by_number(gh, "o/r", picked)
         self.assertEqual(len(gh.graphql_calls), 4)
+
+    def test_the_turn_is_the_number_of_updates_on_the_ledger_branch(self):
+        stored = ledger(issuesThrough="2026-11-07T11:00:00Z")
+        stored["issues"] = [self.stored(n, linked=[(1000 + n, "OPEN", "2026-01-01T00:00:00Z")]) for n in range(1, 151)]
+        gh = FakeGitHub("h1", stored)
+        gh.updates = 7
+        self.run_update(gh)
+        asked = [v for c in gh.calls("issue(number:") for k, v in c.items() if re.fullmatch(r"n\d+", k)]
+        self.assertEqual((len(asked), asked[0]), (100, 101))  # 7 * 100 % 150 = 100, the 101st issue
 
     def test_a_first_run_reads_nothing_again(self):
         gh = FakeGitHub()
