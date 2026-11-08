@@ -31,6 +31,8 @@ ENV = {
     "PUSH_BEFORE": "0001112223",
     "CLOSED_FUNCTIONS_URL": "https://svc.test/",
     "GITHUB_TOKEN": "t",
+    "ACTIONS_ID_TOKEN_REQUEST_URL": "https://oidc.test/token",
+    "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "oidc",
 }
 ENVELOPE = {"feature": "architecture", "schema": 1, "status": "ok", "pr": 41, "data": {"findings": [{}]}}
 
@@ -634,13 +636,28 @@ class IssueFactsTests(unittest.TestCase):
 
     def test_graphql_keeps_partial_answers_and_refuses_missing_ones(self):
         gh = problem_history.GitHub(ENV)
-        partial = {"data": {"repository": {"x": 1}}, "errors": [{"message": "Resource not accessible"}]}
+        deep = ["repository", "issues", "nodes", 0, "timelineItems", "nodes", 2, "source"]
+        partial = {
+            "data": {"repository": {"x": 1}},
+            "errors": [{"type": "FORBIDDEN", "path": deep, "message": "Resource not accessible"}],
+        }
         with mock.patch.object(gh, "call", return_value=json.dumps(partial).encode()):
             self.assertEqual(gh.graphql("q", {}), {"repository": {"x": 1}})
-        refused = {"data": {"repository": None}, "errors": [{"message": "Could not resolve"}]}
-        with mock.patch.object(gh, "call", return_value=json.dumps(refused).encode()):
-            with self.assertRaisesRegex(RuntimeError, "Could not resolve"):
-                gh.graphql("q", {})
+        for answer, message, types in (
+            ({"data": {"repository": None}, "errors": [{"message": "Could not resolve"}]}, "Could not resolve", set()),
+            (
+                {
+                    "data": {"repository": {"issues": None}},
+                    "errors": [{"type": "FORBIDDEN", "path": ["repository", "issues"], "message": "Not accessible"}],
+                },
+                "Not accessible",
+                {"FORBIDDEN"},
+            ),
+        ):
+            with self.subTest(message=message), mock.patch.object(gh, "call", return_value=json.dumps(answer).encode()):
+                with self.assertRaisesRegex(ph.GraphQLError, message) as caught:
+                    gh.graphql("q", {})
+                self.assertEqual(caught.exception.types - {None}, types)
 
 
 class ArtifactTests(_Patched):
@@ -908,6 +925,22 @@ class MainTests(unittest.TestCase):
                 self.assertEqual(len(lines), 1)
                 self.assertTrue(lines[0].startswith(want))
         self.assertIn("issues: read", self.run_main(update=_http_error(403))[0])
+        denied = ph.GraphQLError([{"type": "FORBIDDEN", "message": "Resource not accessible by integration"}])
+        for error, hinted in ((denied, True), (ph.GraphQLError([{"type": "NOT_FOUND"}]), False)):
+            self.assertEqual("id-token: write" in self.run_main(update=error)[0], hinted)
+
+    def test_without_an_oidc_token_nothing_is_read_or_sent(self):
+        for missing in ("ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"):
+            with self.subTest(missing=missing):
+                gh, post = FakeGitHub(), mock.Mock()
+                env = {k: v for k, v in ENV.items() if k != missing}
+                lines = self.run_main(env, GitHub=mock.Mock(return_value=gh), _post=post)
+                self.assertEqual(len(lines), 1)
+                self.assertTrue(
+                    lines[0].startswith("::notice::Problem history skipped: the service is sent only an OIDC")
+                )
+                self.assertIn("Add `id-token: write` to the sync job's permissions", lines[0])
+                self.assertEqual((gh.graphql_calls, post.called), ([], False))
 
     def test_the_script_stops_itself_at_the_step_limit(self):
         gate = threading.Event()

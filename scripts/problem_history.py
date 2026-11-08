@@ -7,8 +7,11 @@ ledger and returns the new one, which is committed as problems.json on an orphan
 merged. Every rule about what counts as a problem, how urgent it is and whether it is fixed lives in the
 service. Nothing here fails the run.
 
+The service is sent the run's OIDC token, never GITHUB_TOKEN, which can write to this repository: a job
+without `id-token: write` skips the update.
+
 Environment: CLOSED_FUNCTIONS_URL, REPOSITORY, BRANCH, PUSH_SHA, PUSH_BEFORE, GITHUB_TOKEN, GITHUB_API_URL,
-GITHUB_GRAPHQL_URL, and optionally LICENSE_KEY, ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN.
+GITHUB_GRAPHQL_URL, ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN, and optionally LICENSE_KEY.
 """
 
 from __future__ import annotations
@@ -123,6 +126,20 @@ query($owner:String!,$name:String!,$n:Int!,$c:String){
     files(first:100, after:$c){ pageInfo{ hasNextPage endCursor } nodes{ path } } } } }"""
 
 
+PERMISSIONS = "contents: write, issues: read, pull-requests: read, actions: read and id-token: write"
+# GraphQL error types that mean the token was refused, rather than that a node does not exist.
+DENIED = {"FORBIDDEN", "INSUFFICIENT_SCOPES"}
+
+
+class GraphQLError(RuntimeError):
+    """A GraphQL answer without what was asked; `types` holds its errors' types."""
+
+    def __init__(self, errors: list):
+        errors = [e for e in errors if isinstance(e, dict)]
+        self.types = {e.get("type") for e in errors}
+        super().__init__(f"GitHub GraphQL: {'; '.join(e.get('message', '') for e in errors) or 'no data'}")
+
+
 class Conflict(Exception):
     """Another run moved the ledger branch between our read and our write."""
 
@@ -149,12 +166,13 @@ class GitHub:
 
     def graphql(self, query: str, variables: dict) -> dict:
         out = json.loads(self.call("POST", self.graphql_url, {"query": query, "variables": variables}))
-        data = out.get("data")
+        data, errors = out.get("data"), [e for e in out.get("errors") or [] if isinstance(e, dict)]
         # A node the token cannot read (a pull request in another private repository) comes back null
-        # beside an error; only a missing answer is a failure.
-        if not data or any(v is None for v in data.values()):
-            errors = "; ".join(e.get("message", "") for e in out.get("errors") or []) or "no data"
-            raise RuntimeError(f"GitHub GraphQL: {errors}")
+        # beside an error, and the rest stands. A missing answer, or the repository or one of its lists
+        # refused, is a failure.
+        refused = [e for e in errors if e.get("type") in DENIED and len(e.get("path") or []) <= 2]
+        if not data or any(v is None for v in data.values()) or refused:
+            raise GraphQLError(refused or errors)
         return data
 
     def download(self, url: str) -> bytes:
@@ -197,7 +215,9 @@ def _nodes(gh: GitHub, query: str, variables: dict, *path: str, pages: int | Non
         if conn is None:
             conn = gh.graphql(query, {**variables, "c": cursor})["repository"]
             for key in path:
-                conn = conn[key]
+                conn = (conn or {}).get(key)
+            if conn is None:
+                raise GraphQLError([{"message": f"no repository.{'.'.join(path)}"}])
         read += 1
         yield from conn.get("nodes") or []
         page = conn.get("pageInfo") or {}
@@ -710,6 +730,12 @@ def commit_ledger(gh: GitHub, repo: str, head: str | None, ledger: dict, message
 def update(gh: GitHub, env: dict, now: datetime | None = None) -> str:
     """Collect, ask the service, commit; the notice to print."""
     repo, base = env["REPOSITORY"], env["CLOSED_FUNCTIONS_URL"].rstrip("/")
+    if not env.get("ACTIONS_ID_TOKEN_REQUEST_URL") or not env.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN"):
+        # _bearer would fall back to GITHUB_TOKEN, which here can write to the repository.
+        raise Skip(
+            "the service is sent only an OIDC token, and this job cannot mint one."
+            " Add `id-token: write` to the sync job's permissions"
+        )
     now = now or datetime.now(timezone.utc)
     head, ledger, updates = read_ledger(gh, repo)
     facts = collect(gh, env, ledger, now, updates)
@@ -761,8 +787,8 @@ def main(env: dict | None = None) -> int:
         print(f"::notice::Problem history skipped: {e}")
     except Exception as e:  # never fail the sync over the problem history
         hint = ""
-        if isinstance(e, HTTPError) and e.code in (403, 404):
-            hint = " (the sync job needs contents: write, issues: read, pull-requests: read and actions: read)"
+        if (isinstance(e, HTTPError) and e.code in (403, 404)) or (isinstance(e, GraphQLError) and e.types & DENIED):
+            hint = f" (the sync job needs {PERMISSIONS})"
         print(f"::warning::Updating the problem history failed: {type(e).__name__}: {e}{hint}")
     finally:
         timer.cancel()

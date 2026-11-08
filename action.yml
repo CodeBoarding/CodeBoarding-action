@@ -166,7 +166,9 @@ inputs:
       service at review_guide_url, and commits the problem list it returns as problems.json on
       codeboarding/briefing, an orphan branch in this repository with one commit per update that is
       never merged and runs no workflow. The sync job then needs contents: write, issues: read,
-      pull-requests: read and actions: read. It never fails the run.
+      pull-requests: read, actions: read and id-token: write: the service is sent the run's OIDC
+      token, never its GITHUB_TOKEN, and without id-token: write the update is skipped. It never
+      fails the run.
     required: false
     default: 'false'
   github_token:
