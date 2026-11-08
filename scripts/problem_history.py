@@ -13,7 +13,6 @@ GITHUB_GRAPHQL_URL, and optionally LICENSE_KEY, ACTIONS_ID_TOKEN_REQUEST_URL/_TO
 
 from __future__ import annotations
 
-import gzip
 import io
 import json
 import os
@@ -29,7 +28,7 @@ from urllib.parse import quote
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from closed_features import MAX_BUNDLE_BYTES, Skip, _bearer, _post  # noqa: E402
+from closed_features import Skip, _bearer, _check_size, _error_message, _github, _gzip, _post  # noqa: E402
 
 LEDGER_BRANCH = "codeboarding/briefing"
 LEDGER_PATH = "problems.json"
@@ -126,11 +125,7 @@ class GitHub:
         return {"Authorization": f"Bearer {self.token}", "Accept": accept, "User-Agent": "codeboarding-action"}
 
     def call(self, method: str, path: str, payload=None, accept: str = "application/vnd.github+json") -> bytes:
-        url = path if path.startswith("http") else f"{self.api}{path}"
-        data = None if payload is None else json.dumps(payload).encode()
-        req = Request(url, data=data, method=method, headers=self._headers(accept))
-        with urlopen(req, timeout=60) as res:  # nosec B310 - GitHub API URL
-            return res.read()
+        return _github(path, accept, method=method, payload=payload, api=self.api, token=self.token, timeout=60)
 
     def json(self, path: str, method: str = "GET", payload=None):
         return json.loads(self.call(method, path, payload) or b"null")
@@ -603,9 +598,8 @@ def build_request(env: dict, ledger: dict | None, facts: dict) -> dict:
 
 
 def pack(body: dict) -> bytes:
-    data = gzip.compress(json.dumps(body).encode(), compresslevel=9)
-    if len(data) > MAX_BUNDLE_BYTES:
-        raise Skip(f"its request is {len(data) / 1e6:.1f} MB, over the service's limit")
+    data = _gzip(body)
+    _check_size(data, "request")
     return data
 
 
@@ -630,7 +624,7 @@ def commit_ledger(gh: GitHub, repo: str, head: str | None, ledger: dict, message
     except HTTPError as e:
         if e.code != 422:
             raise
-        message = " ".join(_message(e).split())
+        message = " ".join(_error_message(e).split())
         # Only a lost race is worth a retry: not a fast-forward, or the branch appeared since it was read.
         if not message or re.search(r"fast.forward|already exists", message, re.I):
             raise Conflict() from e
@@ -639,13 +633,6 @@ def commit_ledger(gh: GitHub, repo: str, head: str | None, ledger: dict, message
             f" {LEDGER_BRANCH.split('/')[0]}, stops the update; exempt the branch or rename that one"
         ) from e
     return commit
-
-
-def _message(e: HTTPError) -> str:
-    try:
-        return str(json.loads(e.read()).get("message") or "")
-    except (ValueError, AttributeError, OSError):
-        return ""
 
 
 def update(gh: GitHub, env: dict, now: datetime | None = None) -> str:

@@ -343,8 +343,9 @@ class RequestTests(_Patched):
         gh.issue_pages[(("OPEN",), "DESC")] = [[issue_node(1, body="x" * 5000), issue_node(2)]]
         self.run_update(gh)
         self.assertEqual([i["body"] for i in self.body["issues"]], ["x" * 2000, "It breaks when saving."])
-        with mock.patch.object(problem_history, "MAX_BUNDLE_BYTES", 10), self.assertRaises(problem_history.Skip):
-            problem_history.pack({"issues": []})
+        with mock.patch.dict(ph._check_size.__globals__, {"MAX_BUNDLE_BYTES": 10}):
+            with self.assertRaisesRegex(problem_history.Skip, "its request is"):
+                problem_history.pack({"issues": []})
 
     def test_a_cut_counts_utf16_units_and_never_splits_a_surrogate_pair(self):
         smile = "\U0001f600"  # two UTF-16 code units
@@ -839,7 +840,7 @@ class WiringTests(unittest.TestCase):
         self.assertIn("continue-on-error", keys)
 
     def test_shares_the_closed_features_transport(self):
-        for shared in (problem_history._bearer, problem_history._post):
+        for shared in (ph._bearer, ph._post, ph._github, ph._gzip, ph._check_size, ph._error_message):
             self.assertEqual(shared.__module__, "closed_features")
 
 
