@@ -612,11 +612,10 @@ def collect_findings(
     missing = [m["number"] for m in retries if not heads.get(m["number"])]
     if missing:
         try:
-            heads.update(
-                zip(missing, (p.get("headRefOid") for p in _by_number(gh, repo, missing, "pullRequest", "headRefOid")))
-            )
+            found = _by_number(gh, repo, missing, "pullRequest", "headRefOid")
+            heads.update((n, p.get("headRefOid")) for n, p in zip(missing, found))
         except Exception as e:  # their findings are looked for again next run
-            errors.append(f"#{missing[0]}: {type(e).__name__}: {e}")
+            errors += [f"#{n}: {type(e).__name__}: {e}" for n in missing]
     for m in todo + retries:
         try:
             head = heads.get(m["number"])
