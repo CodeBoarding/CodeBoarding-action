@@ -1,11 +1,11 @@
 {
   "files": {
     "AGENTS.md": "a6a308a383ebb225",
-    "CHANGELOG.md": "17f11d90bb063dbb",
-    "README.md": "4cfad6da3a8c2df6",
+    "CHANGELOG.md": "7760ba7ee8a1d15b",
+    "README.md": "a5e0afcd4845ab54",
     "LICENSE": "356a3402bd47e108",
     "pyproject.toml": "e021f980c6c67022",
-    "action.yml": "111c7158ed90e0ae",
+    "action.yml": "23b16e3e624540a5",
     "release-please-config.json": "e1ea6dfc5a9fa8bd",
     "assets/icon.svg": "1f5885e35bb4798e",
     "scripts/closed_features.py": "95725da8c2551918",
@@ -27,7 +27,7 @@
     "scripts/action/check-analysis-branch.sh": "dc1f47acf20d563a",
     "scripts/action/old_api_migrator.sh": "30bd6c9075fa8f76",
     "scripts/action/resolve-preview-prs.sh": "b79b9b864e947d90",
-    "scripts/action/supported-providers.json": "48a85fce8078c188",
+    "scripts/action/supported-providers.json": "02dc273dcd67e25b",
     "scripts/action/deliver-sync.sh": "5bdb3567c7ea3518",
     "scripts/action/analyze.sh": "5f69ca377677d329",
     "scripts/action/sync-generate-baseline.sh": "85d1be08fb4a5ac0",
