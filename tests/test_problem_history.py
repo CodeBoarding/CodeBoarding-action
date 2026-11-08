@@ -450,6 +450,21 @@ class OpenIssuesTests(_Patched):
         self.run_update(gh)
         self.assertEqual([s["body"]["openIssues"]["complete"] for s in self.seen], [True, False])
 
+    def test_the_list_is_read_by_the_first_update_of_each_day(self):
+        for updated, read in (
+            (None, True),
+            ("2026-11-06T23:59:00Z", True),
+            ("2026-11-07T00:01:00Z", False),
+            ("2026-11-07T13:00:00+02:00", False),
+        ):
+            with self.subTest(updated=updated):
+                self.seen.clear()
+                gh = FakeGitHub("h1", ledger(updatedAt=updated) if updated else ledger())
+                gh.open_pages = [[{"number": 1}]]
+                self.run_update(gh)
+                self.assertEqual(len(gh.calls(ph.OPEN_NUMBERS_QUERY)), int(read))
+                self.assertEqual(self.body["openIssues"]["complete"], read)
+
     def test_an_unreadable_list_is_a_note(self):
         with mock.patch.object(problem_history, "open_issue_numbers", side_effect=RuntimeError("boom")):
             notice = self.run_update(FakeGitHub())

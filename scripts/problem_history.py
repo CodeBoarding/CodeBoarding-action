@@ -634,14 +634,18 @@ def collect_findings(
 def collect(gh: GitHub, env: dict, ledger: dict | None, now: datetime, turn: int = 0) -> dict:
     repo = env["REPOSITORY"]
     notes = []
-    # Read before the issues, so an issue closed in between is still listed rather than dropped.
-    try:
-        open_issues = open_issue_numbers(gh, repo)
-        if not open_issues["complete"]:
-            notes.append(f"over {MAX_OPEN_NUMBERS} open issues, so none was checked for removal")
-    except Exception as e:  # without the list the service drops nothing, which is only slower
-        open_issues = {"numbers": [], "complete": False}
-        notes.append(f"open issues not listed ({type(e).__name__}: {e})")
+    # Without the list the service drops nothing, which is only slower, so it is read by the first update of
+    # each UTC day: 20 requests a run for 2000 open issues bought little on a busy branch.
+    open_issues = {"numbers": [], "complete": False}
+    last = _parse((ledger or {}).get("updatedAt"))
+    if not last or last.astimezone(timezone.utc).date() != now.astimezone(timezone.utc).date():
+        # Read before the issues, so an issue closed in between is still listed rather than dropped.
+        try:
+            open_issues = open_issue_numbers(gh, repo)
+            if not open_issues["complete"]:
+                notes.append(f"over {MAX_OPEN_NUMBERS} open issues, so none was checked for removal")
+        except Exception as e:
+            notes.append(f"open issues not listed ({type(e).__name__}: {e})")
     issues, through, capped = collect_issues(gh, repo, ledger, now)
     notes += capped
     if capped:
