@@ -443,26 +443,34 @@ def _merged_since(ledger: dict | None, now: datetime) -> datetime:
 
 def collect_merged(
     gh: GitHub, repo: str, branch: str, ledger: dict | None, now: datetime
-) -> tuple[list[dict], dict[int, str], bool]:
-    """Pull requests merged into `branch` since the ledger's last one, each one's head commit, and whether
-    the scan stopped at its page cap before reaching the window's start."""
+) -> tuple[list[dict], dict[int, str], list[str]]:
+    """Pull requests merged into `branch` since the ledger's last one, each one's head commit, and a note
+    per cap that cut the list short.
+
+    The service records the newest merge it is sent as where the next run starts, so past MAX_MERGED this
+    sends the oldest ones and the next run carries on from there."""
     owner, name = repo.split("/", 1)
     since = _merged_since(ledger, now)
-    out, heads = [], {}
+    found, notes = [], []
     variables = {"owner": owner, "name": name, "base": branch}
     for n in _nodes(gh, MERGED_QUERY, variables, "pullRequests", pages=MAX_MERGED_PAGES):
         if n is MORE:
-            return out, heads, True
+            notes.append(f"scanned the {MAX_MERGED_PAGES * 50} latest updated pull requests only")
+            break
         if not n:
             continue
         # Merging updates a pull request, so past this point everything merged earlier.
         if (_parse(n.get("updatedAt")) or since) < since:
             break
         merged_at = _parse(n.get("mergedAt"))
-        if not merged_at or merged_at < since:
-            continue
-        if len(out) >= MAX_MERGED:
-            break
+        if merged_at and merged_at >= since:
+            found.append((merged_at, n))
+    if len(found) > MAX_MERGED:
+        notes.append(f"read the {MAX_MERGED} oldest of {len(found)} merged pull requests; the next runs read the rest")
+        oldest = {id(n) for _, n in sorted(found, key=lambda m: m[0])[:MAX_MERGED]}
+        found = [m for m in found if id(m[1]) in oldest]
+    out, heads = [], {}
+    for _, n in found:
         reviews = (n.get("reviews") or {}).get("nodes") or []
         pr = {"owner": owner, "name": name, "n": n["number"]}
         files = _nodes(gh, FILES_QUERY, pr, "pullRequest", "files", conn=n.get("files") or {})
@@ -479,7 +487,7 @@ def collect_merged(
             }
         )
         heads[n["number"]] = n.get("headRefOid")
-    return out, heads, False
+    return out, heads, notes
 
 
 def read_architecture(archive: bytes, pr: int) -> dict | None:
@@ -587,9 +595,8 @@ def collect(gh: GitHub, env: dict, ledger: dict | None, now: datetime, turn: int
             issues += issues_by_number(gh, repo, again)
         except Exception as e:  # their pull requests are read again next time
             notes.append(f"{len(again)} issues with open pull requests not read again ({type(e).__name__}: {e})")
-    merged, heads, scan_cut = collect_merged(gh, repo, env["BRANCH"], ledger, now)
-    if scan_cut:
-        notes.append(f"scanned the {MAX_MERGED_PAGES * 50} latest updated pull requests only")
+    merged, heads, cut_merged = collect_merged(gh, repo, env["BRANCH"], ledger, now)
+    notes += cut_merged
     findings, errors = collect_findings(gh, repo, merged, heads, ledger)
     if errors:
         notes.append(f"no findings for {len(errors)} merged pull requests ({errors[0]})")

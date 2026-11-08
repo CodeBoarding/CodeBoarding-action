@@ -347,6 +347,16 @@ class RequestTests(_Patched):
         self.assertEqual(runs, [0, 0, 50, 0])
         self.assertEqual(through, "2026-11-07T12:00:00Z")
 
+    def test_past_the_merged_cap_the_oldest_are_sent_so_the_next_run_reads_the_rest(self):
+        gh = FakeGitHub()
+        # Newest update first, as the query orders them; #7 was merged first but updated last.
+        merged = [pr_node(n, f"2026-11-0{n}T00:00:00Z") for n in (6, 5, 4, 3, 2)]
+        gh.merged_pages = [[pr_node(7, "2026-11-01T00:00:00Z", updated="2026-11-07T00:00:00Z"), *merged]]
+        notice = self.run_update(gh, MAX_MERGED=3)
+        self.assertEqual(numbers(self.body["merged"]), [7, 3, 2])
+        self.assertIn("read the 3 oldest of 6 merged pull requests", notice)
+        self.assertEqual(ph._newest_pr(self.body["merged"]), 3)
+
     def test_changed_paths_page_and_stop_at_the_cap(self):
         gh = FakeGitHub()
         gh.merged_pages = [[pr_node(41, "2026-11-06T00:00:00Z", paths=[f"a{i}" for i in range(100)], more=True)]]
