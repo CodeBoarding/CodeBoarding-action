@@ -151,8 +151,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.depth_cap:
         raise SystemExit("--depth-cap is required for mode=full")
+    # Test only: a seeded static analysis survives the wipe, and Core reuses it when its commit matches.
+    static_files = ("static_analysis.pkl", "static_analysis.sha")
+    kept = {name: (output_dir / name).read_bytes() for name in static_files if (output_dir / name).is_file()}
     shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True)
+    for name, data in kept.items():
+        (output_dir / name).write_bytes(data)
     command = [
         PROG,
         "full",
@@ -162,8 +167,9 @@ def main(argv: list[str] | None = None) -> int:
         str(output_dir),
         "--depth-cap",
         args.depth_cap,
-        "--force",
     ]
+    if len(kept) < len(static_files):
+        command.append("--force")
     _run_command(command, output_dir)
     analysis_path = output_dir / "analysis.json"
     if not analysis_path.is_file():

@@ -50,6 +50,12 @@ else
     "$ACTION_PATH/scripts/action/analyze.sh" base "$checkout" "$state" >/dev/null
   else
     echo "::notice::No saved analysis to start from; analyzing ${REVIEW_BASE_SHA:0:7} from scratch."
+    # Test only: the workflow can hand over an earlier run's static analysis of the same commit.
+    seed="$RUNNER_TEMP/cb-static-seed"
+    if [ -f "$seed/static_analysis.pkl" ] && [ -f "$seed/static_analysis.sha" ]; then
+      cp "$seed/static_analysis.pkl" "$seed/static_analysis.sha" "$state/"
+      echo "::notice::Seeded the static analysis from $seed."
+    fi
     progress base
     "$ACTION_PATH/scripts/action/analyze.sh" base "$checkout" "$state" >/dev/null
     progress head
