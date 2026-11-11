@@ -13,7 +13,7 @@ from pathlib import Path
 from threading import Thread
 
 PROG = "codeboarding"
-STATIC_CACHE = {"static_analysis.pkl", "static_analysis.sha"}
+KEPT_BY_FULL_RUN = {"analysis.json", "static_analysis.pkl", "static_analysis.sha"}
 # Shared with CodeBoarding/codeboarding_cli/main.py; keep the prefix in sync.
 ENGINE_ERROR_PREFIX = "CodeBoarding: "
 
@@ -155,10 +155,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.depth_cap:
         raise SystemExit("--depth-cap is required for mode=full")
-    # Core validates the static-analysis cache itself: one from another cache
-    # version is refused and rebuilt, so it survives every full run but a fresh one.
+    # What a full run continues from, every one but a fresh one: Core keeps the names
+    # of the components the new analysis continues, and refuses and rebuilds a
+    # static-analysis cache from another cache version itself.
     for entry in output_dir.iterdir():
-        if not args.fresh and entry.name in STATIC_CACHE:
+        if not args.fresh and entry.name in KEPT_BY_FULL_RUN:
             continue
         if entry.is_dir() and not entry.is_symlink():
             shutil.rmtree(entry)
