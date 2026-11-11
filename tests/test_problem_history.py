@@ -1,9 +1,9 @@
 """Problem history: the facts a sync run collects, the request it sends, and the ledger commit it makes."""
 
-import gzip
 import importlib.util
 import io
 import json
+import lzma
 import random
 import re
 import sys
@@ -218,7 +218,7 @@ def _patched(**names):
 
 def _service(seen, problems=3):
     def post(url, data, headers, timeout=None):
-        body = json.loads(gzip.decompress(data))
+        body = json.loads(lzma.decompress(data))
         seen.append({"url": url, "body": body, "headers": headers, "timeout": timeout})
         merged = (body["ledger"] or {}).get("merged", []) + body["merged"]
         answer = {"schema": 1, "repo": body["repo"], "merged": merged, "problems": [{}] * problems}
@@ -793,7 +793,7 @@ class ArtifactTests(_Patched):
         with mock.patch.dict(ph._check_size.__globals__, {"MAX_BUNDLE_BYTES": 1000}):
             with mock.patch.object(ph, "MAX_BUNDLE_BYTES", 1000):
                 data, dropped = ph.pack(body)
-        self.assertEqual((json.loads(gzip.decompress(data))["findings"], dropped), ({"41": small}, ["42"]))
+        self.assertEqual((json.loads(lzma.decompress(data))["findings"], dropped), ({"41": small}, ["42"]))
 
         gh = FakeGitHub()
         gh.merged_pages = [[pr_node(41, "2026-11-06T00:00:00Z"), pr_node(42, "2026-11-05T00:00:00Z")]]
@@ -1008,7 +1008,7 @@ class WiringTests(unittest.TestCase):
         self.assertIn("continue-on-error", keys)
 
     def test_shares_the_closed_features_transport(self):
-        for shared in (ph._bearer, ph._post, ph._github, ph._gzip, ph._check_size, ph._error_message):
+        for shared in (ph._bearer, ph._post, ph._github, ph._compress, ph._check_size, ph._error_message):
             self.assertEqual(shared.__module__, "closed_features")
 
 

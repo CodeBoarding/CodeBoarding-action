@@ -38,7 +38,7 @@ from closed_features import (
     _check_size,
     _error_message,
     _github,
-    _gzip,
+    _compress,
     _post,
 )  # noqa: E402
 
@@ -685,11 +685,11 @@ def build_request(env: dict, ledger: dict | None, facts: dict) -> dict:
 
 
 def pack(body: dict) -> tuple[bytes, list[str]]:
-    """The gzipped request and the pull requests whose findings were left out of it: the largest
+    """The compressed request and the pull requests whose findings were left out of it: the largest
     envelopes go first while it is over the service's limit, and their merges stay unread for a later run."""
     findings, dropped = dict(body.get("findings") or {}), []
     while True:
-        data = _gzip({**body, "findings": findings})
+        data = _compress({**body, "findings": findings})
         if len(data) <= MAX_BUNDLE_BYTES or not findings:
             _check_size(data, "request")
             return data, dropped

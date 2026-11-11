@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Call the review-guide and architecture endpoints independently after the review analysis.
 
-Both requests carry the same analyses, call graphs, PR metadata and changed files. Only architecture
-carries optional source. Store the legacy guide in review_guide.json and the unchanged architecture
+Both requests carry the same two sides, PR metadata and changed files. Only architecture carries
+optional source. A side is one document holding what the service reads from that commit's analysis and
+call graph (see side_document), and the bundle is xz: its window spans the whole bundle, so the base
+side costs little next to a head that repeats most of it. Store the legacy guide in review_guide.json and the unchanged architecture
 envelope in closed/architecture.json, including partial, skipped and failed results.
 
 Credentials follow the analysis: a run that chose its own provider uses its own key and model for
@@ -21,9 +23,9 @@ ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN.
 
 from __future__ import annotations
 
-import gzip
 import importlib.util
 import json
+import lzma
 import os
 import pickle
 import re
@@ -35,11 +37,13 @@ from urllib.error import HTTPError
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
-# A Function URL takes 6 MB, measured after base64, and a gzipped body goes through base64 on the way
-# in: 4.5 MB of bundle arrives, and 5 MB is refused with a 413.
+# A Function URL takes 6 MB, measured after base64, and a compressed body goes through base64 on the
+# way in: 4.5 MB of bundle arrives, and 5 MB is refused with a 413.
 MAX_BUNDLE_BYTES = 4_300_000
 # Changed files whose contents are sent at both commits; past this a feature reads diffs only.
 MAX_FILES = 300
+# A file larger than this is sent neither as a changed file's contents nor as source.
+MAX_FILE_BYTES = 300_000
 # Fixed hosts matching closed_functions/llm.py; never supplied by a remote service.
 PROVIDER_HOSTS = {
     "ollama": "ollama.com",
@@ -59,7 +63,6 @@ PROVIDER_HOSTS = {
 }
 SOURCE_EXTENSIONS = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".cs", ".csproj")
 SOURCE_EXCLUDE = re.compile(r"(^|/)(node_modules|dist|build|vendor|__fixtures__|docs|public)/|\.min\.js$|\.d\.ts$")
-MAX_SOURCE_FILE_BYTES = 300_000
 MAX_SOURCE_BYTES = 16_000_000
 
 
@@ -130,6 +133,142 @@ def call_graph(pkl: Path) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
+def _short(q: str, path: str) -> str:
+    """A qualified name as a row writes it: `~.rest` when it is the file's dotted path plus `.rest`, and
+    a leading `~` doubled so a name of its own that starts with one reads back unchanged."""
+    stem = path.rsplit(".", 1)[0].replace("/", ".")
+    if q.startswith(stem + "."):
+        return "~" + q[len(stem) :]
+    return "~" + q if q.startswith("~") else q
+
+
+def side_document(analysis: dict, cg: dict) -> dict:
+    """One commit's analysis and call graph as the service reads them, each fact once. The service's
+    bundle.expand_side turns it back into both, in every field a feature reads.
+
+    - files: per file, rows for the methods_index entries `[name, start, end, type, content_hash, cb]`
+      and for call-graph nodes the index lacks `[name, start, end, cb]`. A method and the graph node of
+      the same name share a row; cb is -1 for a method that is no graph node. A name under its file's
+      dotted path is written `~.rest`. Rows are numbered in order across files; `unplaced` continues the
+      numbering for call ends that are no node.
+    - calls: per caller, `[callee, line, ...]`, one line per call site. No reader takes the column, and a
+      site's file is always its caller's.
+    - components: `[id, name, description, parent, members, relations]` in tree order. Members are rows
+      (a key where the index lacks the method), or null for a parent holding exactly its children's.
+    - The analysis's edges are the calls between two different leaves (a row's leaf is the first one
+      listing it), less `hidden_edges`, plus `extra_edges`. On crate that leaves one extra edge of
+      149,316: the analysis and the graph repeat the same edges, and only their set is read."""
+    index = analysis.get("methods_index") or {}
+    files: dict[str, list[list]] = {}
+    row_of: dict[str, list] = {}  # methods_index key -> its row
+    by_name: dict[str, list[tuple[str, list]]] = {}
+    for key, m in index.items():
+        path, q = m.get("file_path") or "", m.get("qualified_name") or ""
+        if key != f"{path}|{q}":
+            raise ValueError(f"methods_index key {key!r} is not its file and qualified name")
+        row = [q, m.get("start_line"), m.get("end_line"), m.get("type"), m.get("content_hash"), -1]
+        files.setdefault(path, []).append(row)
+        row_of[key] = row
+        by_name.setdefault(q, []).append((path, row))
+    node_row: dict[str, list] = {}
+    spans: list[tuple[list, int, int]] = []
+    for q, n in (cg.get("nodes") or {}).items():
+        same = by_name.get(q) or []
+        hit = next((r for p, r in same if p == n.get("file")), same[0][1] if same else None)
+        if hit is None:
+            hit = [q, n.get("start"), n.get("end"), int(bool(n.get("cb")))]
+            files.setdefault(n.get("file") or "", []).append(hit)
+        else:
+            hit[5] = int(bool(n.get("cb")))
+            if (hit[1], hit[2]) != (n.get("start"), n.get("end")):
+                spans.append((hit, n.get("start"), n.get("end")))
+        node_row[q] = hit
+    position: dict[int, int] = {}
+    out_files = []
+    for path in sorted(files):
+        rows = sorted(files[path], key=lambda r: (r[1] is None, r[1] or 0, r[0]))
+        for r in rows:
+            position[id(r)] = len(position)
+        out_files.append([path, [[_short(r[0], path), *r[1:]] for r in rows]])
+    at = {q: position[id(r)] for q, r in node_row.items()}
+    unplaced = []
+    calls: dict[int, list] = {}
+    for e in cg.get("edges") or []:
+        for q in (e["s"], e["d"]):
+            if q not in at:
+                at[q] = len(position) + len(unplaced)
+                unplaced.append(q)
+        lines = [s.get("line") if isinstance(s, dict) else None for s in e.get("sites") or []]
+        calls.setdefault(at[e["s"]], []).append([at[e["d"]], *lines])
+
+    def token(key):
+        return position[id(row_of[key])] if key in row_of else key
+
+    comps: list[tuple[dict, int]] = []
+
+    def walk(cs, parent):
+        for c in cs or []:
+            comps.append((c, parent))
+            walk(c.get("components"), len(comps) - 1)
+
+    walk(analysis.get("components"), -1)
+    children: list[list[int]] = [[] for _ in comps]
+    for i, (_, parent) in enumerate(comps):
+        if parent >= 0:
+            children[parent].append(i)
+    members: list[list] = [
+        [token(f"{g['file_path']}|{q}") for g in c.get("file_methods") or [] for q in g.get("methods") or []]
+        for c, _ in comps
+    ]
+    implied: list[set] = [set() for _ in comps]
+    for i in reversed(range(len(comps))):
+        implied[i] = set(members[i]) if not children[i] else set().union(*(implied[k] for k in children[i]))
+    relations = lambda rows: [[r.get("src_id"), r.get("dst_id"), r.get("relation")] for r in rows or []]  # noqa: E731
+    out_comps = [
+        [
+            c.get("component_id"),
+            c.get("name"),
+            c.get("description"),
+            parent,
+            None if children[i] and set(members[i]) == implied[i] else members[i],
+            relations(c.get("components_relations")),
+        ]
+        for i, (c, parent) in enumerate(comps)
+    ]
+
+    leaf: dict[int, int] = {}
+    for i, own in enumerate(members):
+        if not children[i]:
+            for m in own:
+                if isinstance(m, int):
+                    leaf.setdefault(m, i)
+    implied_edges = {
+        (s, d) for s, ds in calls.items() for d, *_ in ds if s in leaf and d in leaf and leaf[s] != leaf[d]
+    }
+    edges: set[tuple] = set()
+
+    def collect_edges(o):
+        for r in o.get("components_relations") or []:
+            for e in r.get("all_edges") or []:
+                if e.get("source") and e.get("target"):
+                    edges.add((token(e["source"]), token(e["target"])))
+        for c in o.get("components") or []:
+            collect_edges(c)
+
+    collect_edges(analysis)
+    return {
+        "version": 1,
+        "files": out_files,
+        "unplaced": unplaced,
+        "graph_spans": [[position[id(r)], start, end] for r, start, end in spans],
+        "components": out_comps,
+        "relations": relations(analysis.get("components_relations")),
+        "calls": [[s, calls[s]] for s in sorted(calls)],
+        "extra_edges": sorted(edges - implied_edges, key=repr),
+        "hidden_edges": sorted(implied_edges - edges),
+    }
+
+
 def _diff(repo: str, base: str, head: str) -> list[dict]:
     """The files changed between the two analysed commits, in the shape of a pull request's files
     (the compare API returns the same fields), so a feature reads exactly what was analysed."""
@@ -177,19 +316,25 @@ def collect(env: dict) -> dict:
         if f.get("status") != "removed":
             try:
                 p = _checkout_file(checkout, f["filename"])
-                files[f"{head_sha}:{f['filename']}"] = p.read_text(encoding="utf-8")
+                if p.stat().st_size <= MAX_FILE_BYTES:
+                    files[f"{head_sha}:{f['filename']}"] = p.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError):
                 pass
         if f.get("status") != "added":
             was = f.get("previous_filename") or f["filename"]
             text = _contents(repo, base_sha, was)
-            if text is not None:
+            if text is not None and len(text.encode()) <= MAX_FILE_BYTES:
                 files[f"{base_sha}:{was}"] = text
 
     bundle_meta = {**meta, "base_sha": base_sha, "head_sha": head_sha, "pr_number": str(pr)}
+
+    def side(analysis_path: str, directory: Path) -> str:
+        analysis = json.loads(Path(analysis_path).read_text())
+        return json.dumps(side_document(analysis, call_graph(directory / "static_analysis.pkl")), separators=(",", ":"))
+
     inputs = {
-        "analysis.json": Path(env["HEAD_ANALYSIS_PATH"]).read_text(),
-        "base/analysis.json": Path(env["BASE_ANALYSIS_PATH"]).read_text(),
+        "head.json": side(env["HEAD_ANALYSIS_PATH"], head_dir),
+        "base.json": side(env["BASE_ANALYSIS_PATH"], base_dir),
         "metadata.json": json.dumps(bundle_meta),
         "pr.json": json.dumps(
             {
@@ -200,8 +345,6 @@ def collect(env: dict) -> dict:
             }
         ),
         "pr-files.json": json.dumps(pr_files),
-        "head-cg.json": json.dumps(call_graph(head_dir / "static_analysis.pkl")),
-        "base-cg.json": json.dumps(call_graph(base_dir / "static_analysis.pkl")),
         "files.json": json.dumps(files),
     }
     return inputs
@@ -301,7 +444,7 @@ def collect_source(env: dict) -> tuple[str | None, str | None]:
         try:
             path = _checkout_file(checkout, name)
             size = path.stat().st_size
-            if size > MAX_SOURCE_FILE_BYTES or not path.is_file():
+            if size > MAX_FILE_BYTES or not path.is_file():
                 continue
             files[name] = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
@@ -332,7 +475,7 @@ def _post(url: str, body: bytes, headers: dict[str, str], timeout: int = 600) ->
     req = Request(
         url,
         data=body,
-        headers={**headers, "Content-Type": "application/gzip", "User-Agent": "codeboarding-action"},
+        headers={**headers, "Content-Type": "application/x-xz", "User-Agent": "codeboarding-action"},
         method="POST",
     )
     try:
@@ -345,15 +488,15 @@ def _post(url: str, body: bytes, headers: dict[str, str], timeout: int = 600) ->
         raise RuntimeError(reason) from e
 
 
-def _gzip(body: dict) -> bytes:
-    return gzip.compress(json.dumps(body).encode(), compresslevel=9)
+def _compress(body: dict) -> bytes:
+    return lzma.compress(json.dumps(body).encode(), preset=9 | lzma.PRESET_EXTREME)
 
 
 def _pack(ctx: dict, files: dict[str, str], omitted: dict[str, str]) -> bytes:
     body = {"version": 1, "repo": ctx["repo"], "pr": ctx["pr"], "files": files}
     if omitted:
         body["omitted"] = omitted
-    return _gzip(body)
+    return _compress(body)
 
 
 def _check_size(data: bytes, what: str = "bundle") -> None:

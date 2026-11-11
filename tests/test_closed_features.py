@@ -1,8 +1,8 @@
 """Direct endpoint, source and provider contracts for the optional review requests."""
 
-import gzip
 import importlib.util
 import json
+import lzma
 import os
 import subprocess
 import sys
@@ -20,16 +20,7 @@ closed_features = importlib.util.module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = closed_features
 _SPEC.loader.exec_module(closed_features)
 
-INPUTS = {
-    "analysis.json",
-    "base/analysis.json",
-    "metadata.json",
-    "pr.json",
-    "pr-files.json",
-    "head-cg.json",
-    "base-cg.json",
-    "files.json",
-}
+INPUTS = {"head.json", "base.json", "metadata.json", "pr.json", "pr-files.json", "files.json"}
 GUIDE = {"version": 1, "changes": [{"id": "u1"}]}
 ENVELOPE = {
     "feature": "architecture",
@@ -134,6 +125,18 @@ class BundleTests(unittest.TestCase):
             self.assertEqual(json.loads(bundle["metadata.json"])["base_sha"], "B")
             self.assertEqual(json.loads(bundle["pr.json"])["commits"], ["Return two"])
             self.assertEqual(set(bundle), INPUTS)
+            self.assertEqual(json.loads(bundle["head.json"])["version"], 1)
+
+    def test_a_changed_file_over_the_size_limit_is_sent_at_neither_commit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env = _workspace(Path(tmp))
+            with (
+                mock.patch.object(closed_features, "_github_json", side_effect=_github_json),
+                mock.patch.object(closed_features, "_contents", return_value="b" * 13),
+                mock.patch.object(closed_features, "call_graph", return_value={"nodes": {}, "edges": []}),
+                mock.patch.object(closed_features, "MAX_FILE_BYTES", 12),
+            ):
+                self.assertEqual(json.loads(closed_features.collect(env)["files.json"]), {"H:app.py": "head content"})
 
     def test_changed_file_symlink_is_not_read(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -147,6 +150,131 @@ class BundleTests(unittest.TestCase):
                 mock.patch.object(closed_features, "call_graph", return_value={}),
             ):
                 self.assertEqual(json.loads(closed_features.collect(env)["files.json"]), {})
+
+
+def _method(q, file, start, end, h):
+    return {
+        "file_path": file,
+        "qualified_name": q,
+        "start_line": start,
+        "end_line": end,
+        "type": "FUNCTION",
+        "content_hash": h,
+    }
+
+
+class SideDocumentTests(unittest.TestCase):
+    """The service's bundle.expand_side reads this exact document back (its tests hold the same one)."""
+
+    ANALYSIS = {
+        "methods_index": {
+            "pkg/a.py|pkg.a.run": _method("pkg.a.run", "pkg/a.py", 1, 5, "h1"),
+            "pkg/a.py|pkg.a.helper": _method("pkg.a.helper", "pkg/a.py", 6, 8, "h2"),
+            "pkg/b.py|pkg.b.save": _method("pkg.b.save", "pkg/b.py", 1, 4, "h3"),
+            "pkg/b.py|~Weird": _method("~Weird", "pkg/b.py", 10, 12, "h4"),
+        },
+        "components": [
+            {
+                "component_id": "1",
+                "name": "Core",
+                "description": "d1",
+                "file_methods": [
+                    {"file_path": "pkg/a.py", "methods": ["pkg.a.run", "pkg.a.helper"]},
+                    {"file_path": "pkg/b.py", "methods": ["pkg.b.save", "~Weird"]},
+                ],
+                "components": [
+                    {
+                        "component_id": "1.1",
+                        "name": "Run",
+                        "file_methods": [{"file_path": "pkg/a.py", "methods": ["pkg.a.run", "pkg.a.helper"]}],
+                    },
+                    {
+                        "component_id": "1.2",
+                        "name": "Store",
+                        "file_methods": [{"file_path": "pkg/b.py", "methods": ["pkg.b.save", "~Weird"]}],
+                    },
+                ],
+                "components_relations": [
+                    {
+                        "src_id": "1.1",
+                        "dst_id": "1.2",
+                        "relation": "saves",
+                        "src_name": "Run",
+                        "all_edges": [
+                            {
+                                "source": "pkg/a.py|pkg.a.run",
+                                "target": "pkg/b.py|pkg.b.save",
+                                "call_sites": [{"line": 3}],
+                            },
+                            {"source": "pkg/a.py|pkg.a.helper", "target": "pkg/b.py|pkg.b.save"},
+                        ],
+                    }
+                ],
+            },
+            {
+                "component_id": "2",
+                "name": "Also",
+                "file_methods": [
+                    {"file_path": "pkg/b.py", "methods": ["pkg.b.save"]},
+                    {"file_path": "pkg/c.py", "methods": ["pkg.c.gone"]},
+                ],
+            },
+        ],
+        "components_relations": [
+            {
+                "src_id": "1",
+                "dst_id": "2",
+                "relation": "uses",
+                "key_edges": [],
+                "all_edges": [{"source": "pkg/a.py|pkg.a.run", "target": "pkg/b.py|pkg.b.save"}],
+            }
+        ],
+        "files": {"pkg/a.py": {"method_keys": []}},
+        "metadata": {"depth_level": 2},
+    }
+    GRAPH = {
+        "nodes": {
+            "pkg.a.run": {"file": "pkg/a.py", "start": 1, "end": 5, "callable": True, "cb": False},
+            "pkg.a.helper": {"file": "pkg/a.py", "start": 6, "end": 9, "callable": True, "cb": False},
+            "pkg.b.save": {"file": "pkg/b.py", "start": 1, "end": 4, "callable": True, "cb": False},
+            "pkg.x.Only": {"file": "pkg/x.py", "start": 1, "end": 2, "callable": False, "cb": True},
+        },
+        "edges": [
+            {"s": "pkg.a.run", "d": "pkg.b.save", "sites": [{"line": 3, "file": "pkg/a.py", "column": 9}, {"line": 4}]},
+            {"s": "pkg.a.run", "d": "pkg.a.helper", "sites": [{"line": 2, "file": "pkg/a.py", "column": 1}]},
+            {"s": "pkg.b.save", "d": "pkg.a.run", "sites": [{"line": 2}]},
+            {"s": "pkg.x.Only", "d": "ext.lib.call", "sites": []},
+        ],
+    }
+    DOCUMENT = {
+        "version": 1,
+        "files": [
+            ["pkg/a.py", [["~.run", 1, 5, "FUNCTION", "h1", 0], ["~.helper", 6, 8, "FUNCTION", "h2", 0]]],
+            ["pkg/b.py", [["~.save", 1, 4, "FUNCTION", "h3", 0], ["~~Weird", 10, 12, "FUNCTION", "h4", -1]]],
+            ["pkg/x.py", [["~.Only", 1, 2, 1]]],
+        ],
+        "unplaced": ["ext.lib.call"],
+        "graph_spans": [[1, 6, 9]],
+        "components": [
+            ["1", "Core", "d1", -1, None, [["1.1", "1.2", "saves"]]],
+            ["1.1", "Run", None, 0, [0, 1], []],
+            ["1.2", "Store", None, 0, [2, 3], []],
+            ["2", "Also", None, -1, [2, "pkg/c.py|pkg.c.gone"], []],
+        ],
+        "relations": [["1", "2", "uses"]],
+        "calls": [[0, [[2, 3, 4], [1, 2]]], [2, [[0, 2]]], [4, [[5]]]],
+        "extra_edges": [[1, 2]],
+        "hidden_edges": [[2, 0]],
+    }
+
+    def test_each_fact_once_and_only_what_the_service_reads(self):
+        doc = json.loads(json.dumps(closed_features.side_document(self.ANALYSIS, self.GRAPH)))
+        self.assertEqual(doc, self.DOCUMENT)
+
+    def test_a_key_that_is_not_its_file_and_name_is_refused(self):
+        odd = {"methods_index": {"pkg/a.py|other": _method("pkg.a.run", "pkg/a.py", 1, 5, "h1")}}
+        with self.assertRaises(ValueError):
+            closed_features.side_document(odd, {})
 
 
 class CredentialTests(unittest.TestCase):
@@ -258,7 +386,7 @@ class EndpointTests(unittest.TestCase):
         for request in service.requests:
             self.assertEqual(request["method"], "POST")
             self.assertEqual(request["headers"]["Authorization"], "Bearer ghs_run")
-            bodies[request["path"]] = json.loads(gzip.decompress(request["body"]))
+            bodies[request["path"]] = json.loads(lzma.decompress(request["body"]))
         guide, arch = bodies["/v1/review-guide"], bodies["/v1/architecture"]
         self.assertEqual(set(guide["files"]), INPUTS)
         self.assertEqual(set(arch["files"]), INPUTS | {"source.json"})
@@ -333,7 +461,7 @@ class EndpointTests(unittest.TestCase):
             ):
                 service = self.run_service()
             for request in service.requests:
-                body = json.loads(gzip.decompress(request["body"]))
+                body = json.loads(lzma.decompress(request["body"]))
                 self.assertNotIn("source.json", body["files"])
                 self.assertEqual("omitted" in body, request["path"] == "/v1/architecture")
 
@@ -344,7 +472,7 @@ class EndpointTests(unittest.TestCase):
         ):
             service = self.run_service()
         arch = next(r for r in service.requests if r["path"] == "/v1/architecture")
-        body = json.loads(gzip.decompress(arch["body"]))
+        body = json.loads(lzma.decompress(arch["body"]))
         self.assertNotIn("source.json", body["files"])
         self.assertIn("too large", body["omitted"]["source.json"])
         with mock.patch.object(closed_features, "MAX_BUNDLE_BYTES", 1):
