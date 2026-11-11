@@ -109,8 +109,9 @@ def _github_json(path: str):
 
 
 def call_graph(pkl: Path) -> dict:
-    """A static_analysis.pkl's call graph as the service reads it: nodes and edges with call sites.
-    The pickle holds CodeBoarding's own classes, which the installed engine provides."""
+    """A static_analysis.pkl's call graph as the service reads it: each node's file, span and whether it
+    is a callback, and each call's site lines (a site's file is always its caller's, and no reader takes
+    the column). The pickle holds CodeBoarding's own classes, which the installed engine provides."""
     with pkl.open("rb") as f:
         results = pickle.load(f)  # nosec B301 - written by this run's own analysis
     nodes, edges = {}, []
@@ -121,15 +122,14 @@ def call_graph(pkl: Path) -> dict:
                 "file": n.file_path,
                 "start": n.line_start,
                 "end": n.line_end,
-                "callable": bool(n.is_callable()),
                 "cb": bool(n.is_callback_or_anonymous()),
             }
         for e in graph.edges:
-            sites = []
-            for s in vars(e).get("_call_sites") or []:
-                v = s if isinstance(s, (tuple, list, dict)) else vars(s) if hasattr(s, "__dict__") else str(s)
-                sites.append(list(v) if isinstance(v, tuple) else v)
-            edges.append({"s": e.get_source(), "d": e.get_destination(), "sites": sites})
+            lines = [
+                s.get("line") if isinstance(s, dict) else getattr(s, "line", None)
+                for s in vars(e).get("_call_sites") or []
+            ]
+            edges.append({"s": e.get_source(), "d": e.get_destination(), "lines": lines})
     return {"nodes": nodes, "edges": edges}
 
 
@@ -151,13 +151,11 @@ def side_document(analysis: dict, cg: dict) -> dict:
       the same name share a row; cb is -1 for a method that is no graph node. A name under its file's
       dotted path is written `~.rest`. Rows are numbered in order across files; `unplaced` continues the
       numbering for call ends that are no node.
-    - calls: per caller, `[callee, line, ...]`, one line per call site. No reader takes the column, and a
-      site's file is always its caller's.
+    - calls: per caller, `[callee, line, ...]`, one line per call site.
     - components: `[id, name, description, parent, members, relations]` in tree order. Members are rows
       (a key where the index lacks the method), or null for a parent holding exactly its children's.
-    - The analysis's edges are the calls between two different leaves (a row's leaf is the first one
-      listing it), less `hidden_edges`, plus `extra_edges`. On crate that leaves one extra edge of
-      149,316: the analysis and the graph repeat the same edges, and only their set is read."""
+    - extra_edges: the analysis's edges that are no call. The rest repeat the calls: on crate one of
+      149,316 is not a call."""
     index = analysis.get("methods_index") or {}
     files: dict[str, list[list]] = {}
     row_of: dict[str, list] = {}  # methods_index key -> its row
@@ -176,10 +174,10 @@ def side_document(analysis: dict, cg: dict) -> dict:
         same = by_name.get(q) or []
         hit = next((r for p, r in same if p == n.get("file")), same[0][1] if same else None)
         if hit is None:
-            hit = [q, n.get("start"), n.get("end"), int(bool(n.get("cb")))]
+            hit = [q, n.get("start"), n.get("end"), int(n["cb"])]
             files.setdefault(n.get("file") or "", []).append(hit)
         else:
-            hit[5] = int(bool(n.get("cb")))
+            hit[5] = int(n["cb"])
             if (hit[1], hit[2]) != (n.get("start"), n.get("end")):
                 spans.append((hit, n.get("start"), n.get("end")))
         node_row[q] = hit
@@ -198,8 +196,7 @@ def side_document(analysis: dict, cg: dict) -> dict:
             if q not in at:
                 at[q] = len(position) + len(unplaced)
                 unplaced.append(q)
-        lines = [s.get("line") if isinstance(s, dict) else None for s in e.get("sites") or []]
-        calls.setdefault(at[e["s"]], []).append([at[e["d"]], *lines])
+        calls.setdefault(at[e["s"]], []).append([at[e["d"]], *e["lines"]])
 
     def token(key):
         return position[id(row_of[key])] if key in row_of else key
@@ -235,16 +232,6 @@ def side_document(analysis: dict, cg: dict) -> dict:
         ]
         for i, (c, parent) in enumerate(comps)
     ]
-
-    leaf: dict[int, int] = {}
-    for i, own in enumerate(members):
-        if not children[i]:
-            for m in own:
-                if isinstance(m, int):
-                    leaf.setdefault(m, i)
-    implied_edges = {
-        (s, d) for s, ds in calls.items() for d, *_ in ds if s in leaf and d in leaf and leaf[s] != leaf[d]
-    }
     edges: set[tuple] = set()
 
     def collect_edges(o):
@@ -264,8 +251,7 @@ def side_document(analysis: dict, cg: dict) -> dict:
         "components": out_comps,
         "relations": relations(analysis.get("components_relations")),
         "calls": [[s, calls[s]] for s in sorted(calls)],
-        "extra_edges": sorted(edges - implied_edges, key=repr),
-        "hidden_edges": sorted(implied_edges - edges),
+        "extra_edges": sorted(edges - {(s, d) for s, ds in calls.items() for d, *_ in ds}, key=repr),
     }
 
 

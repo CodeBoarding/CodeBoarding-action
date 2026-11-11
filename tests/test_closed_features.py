@@ -234,16 +234,16 @@ class SideDocumentTests(unittest.TestCase):
     }
     GRAPH = {
         "nodes": {
-            "pkg.a.run": {"file": "pkg/a.py", "start": 1, "end": 5, "callable": True, "cb": False},
-            "pkg.a.helper": {"file": "pkg/a.py", "start": 6, "end": 9, "callable": True, "cb": False},
-            "pkg.b.save": {"file": "pkg/b.py", "start": 1, "end": 4, "callable": True, "cb": False},
-            "pkg.x.Only": {"file": "pkg/x.py", "start": 1, "end": 2, "callable": False, "cb": True},
+            "pkg.a.run": {"file": "pkg/a.py", "start": 1, "end": 5, "cb": False},
+            "pkg.a.helper": {"file": "pkg/a.py", "start": 6, "end": 9, "cb": False},
+            "pkg.b.save": {"file": "pkg/b.py", "start": 1, "end": 4, "cb": False},
+            "pkg.x.Only": {"file": "pkg/x.py", "start": 1, "end": 2, "cb": True},
         },
         "edges": [
-            {"s": "pkg.a.run", "d": "pkg.b.save", "sites": [{"line": 3, "file": "pkg/a.py", "column": 9}, {"line": 4}]},
-            {"s": "pkg.a.run", "d": "pkg.a.helper", "sites": [{"line": 2, "file": "pkg/a.py", "column": 1}]},
-            {"s": "pkg.b.save", "d": "pkg.a.run", "sites": [{"line": 2}]},
-            {"s": "pkg.x.Only", "d": "ext.lib.call", "sites": []},
+            {"s": "pkg.a.run", "d": "pkg.b.save", "lines": [3, 4]},
+            {"s": "pkg.a.run", "d": "pkg.a.helper", "lines": [2]},
+            {"s": "pkg.b.save", "d": "pkg.a.run", "lines": [2]},
+            {"s": "pkg.x.Only", "d": "ext.lib.call", "lines": []},
         ],
     }
     DOCUMENT = {
@@ -264,7 +264,6 @@ class SideDocumentTests(unittest.TestCase):
         "relations": [["1", "2", "uses"]],
         "calls": [[0, [[2, 3, 4], [1, 2]]], [2, [[0, 2]]], [4, [[5]]]],
         "extra_edges": [[1, 2]],
-        "hidden_edges": [[2, 0]],
     }
 
     def test_each_fact_once_and_only_what_the_service_reads(self):
