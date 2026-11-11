@@ -71,6 +71,14 @@ class ActionInputTests(unittest.TestCase):
             block = ACTION[start : ACTION.index("\n      run:", start)]
             self.assertIn("DEPTH_CAP: ${{ inputs.depth_cap }}", block)
 
+    def test_fresh_analysis_is_off_by_default_and_reaches_every_analysis(self) -> None:
+        self.assertIn("default: 'false'", self.inputs["fresh_analysis"])
+        for identifier in ("id: sync_analyze", "id: review_baseline", "id: review_analyze"):
+            start = ACTION.index(identifier)
+            block = ACTION[start : ACTION.index("\n      run:", start)]
+            self.assertIn("FRESH_ANALYSIS: ${{ inputs.fresh_analysis }}", block)
+        self.assertIn("| `fresh_analysis` |", (ROOT / "README.md").read_text(encoding="utf-8"))
+
     def test_default_workflow_reviews_drafts_on_open_and_new_commits(self) -> None:
         self.assertNotIn("github.event.pull_request.draft", DOGFOOD)
         start = DOGFOOD.index("types:")

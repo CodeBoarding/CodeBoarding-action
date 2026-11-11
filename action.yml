@@ -143,6 +143,15 @@ inputs:
     description: 'Positive integer analysis depth cap, used for both review and sync, including full fallbacks.'
     required: false
     default: '2'
+  fresh_analysis:
+    description: >-
+      When 'true', this run reuses nothing saved: every analysis, its static analysis
+      included, is built from scratch. A fresh review republishes only the base at its
+      merge base; later syncs still continue from the analysis branch. Off by default, so
+      a run continues from the nearest saved analysis and, without one, still reuses the
+      nearest saved static analysis.
+    required: false
+    default: 'false'
   review_guide_url:
     description: >-
       Experimental. Service base URL for POST /v1/review-guide and POST /v1/architecture.
@@ -477,10 +486,11 @@ runs:
 
     # Both lookups are best effort. Without them the run derives the base from
     # the committed baseline and the head from the base, which is what every run
-    # did before any of this existed.
+    # did before any of this existed. A fresh run skips them, so no old base id
+    # reaches the review artifact either.
     - name: Fetch published base analysis
       id: fetch_base
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.base_name != '' && github.server_url == 'https://github.com'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.base_name != '' && github.server_url == 'https://github.com' && inputs.fresh_analysis != 'true'
       continue-on-error: true
       shell: bash
       env:
@@ -496,7 +506,7 @@ runs:
       run: "$GITHUB_ACTION_PATH/scripts/action/fetch-state.sh"
 
     - name: Fetch this pull request's last analysis
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.warmstart_name != '' && github.server_url == 'https://github.com'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.warmstart_name != '' && github.server_url == 'https://github.com' && inputs.fresh_analysis != 'true'
       continue-on-error: true
       shell: bash
       env:
@@ -525,6 +535,7 @@ runs:
         GH_HOST: ${{ github.server_url }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         DEPTH_CAP: ${{ inputs.depth_cap }}
+        FRESH_ANALYSIS: ${{ inputs.fresh_analysis }}
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
@@ -639,6 +650,7 @@ runs:
         GIT_TOKEN: ${{ inputs.github_token }}
         GITHUB_SERVER_URL: ${{ github.server_url }}
         DEPTH_CAP: ${{ inputs.depth_cap }}
+        FRESH_ANALYSIS: ${{ inputs.fresh_analysis }}
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}
@@ -662,6 +674,7 @@ runs:
         ENGINE_VERSION: ${{ steps.state.outputs.engine_version }}
         CFG_HASH: ${{ steps.state.outputs.cfg_hash }}
         DEPTH_CAP: ${{ inputs.depth_cap }}
+        FRESH_ANALYSIS: ${{ inputs.fresh_analysis }}
         MODEL: ${{ inputs.model }}
         AGENT_MODEL_INPUT: ${{ inputs.agent_model }}
         PARSING_MODEL_INPUT: ${{ inputs.parsing_model }}

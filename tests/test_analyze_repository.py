@@ -230,6 +230,44 @@ class AnalyzeRepositoryTests(unittest.TestCase):
             self.assertIn(f"analysis_path={out_dir / 'analysis.json'}", stdout.getvalue())
             self.assertFalse(stale_artifact.exists())
 
+    def _full_over_saved_state(self, *extra: str) -> tuple[Path, list[str]]:
+        """Runs mode full over a state holding a static-analysis cache and other output."""
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        checkout, out_dir = root / "repo", root / "out"
+        checkout.mkdir()
+        (out_dir / "logs").mkdir(parents=True)
+        for name in ("static_analysis.pkl", "static_analysis.sha", "analysis.json", "fingerprint.json", "logs/run.log"):
+            (out_dir / name).write_text("saved", encoding="utf-8")
+        commands: list[list[str]] = []
+
+        def fake_run(args, output_dir):
+            commands.append(args)
+            self.assertFalse((output_dir / "analysis.json").exists(), "the old analysis reached the engine")
+            (output_dir / "analysis.json").write_text("ok", encoding="utf-8")
+            return ""
+
+        with patch("sys.stdout", io.StringIO()), patch.object(ar, "_run_command", side_effect=fake_run):
+            ar.main(["full", "--checkout", str(checkout), "--output-dir", str(out_dir), "--depth-cap", "2", *extra])
+        return out_dir, commands[0]
+
+    def test_a_full_run_keeps_the_static_analysis_cache(self) -> None:
+        # Core refuses a cache from another cache version itself, so the action never judges it.
+        out_dir, command = self._full_over_saved_state()
+
+        self.assertEqual(
+            sorted(p.name for p in out_dir.iterdir()), ["analysis.json", "static_analysis.pkl", "static_analysis.sha"]
+        )
+        self.assertEqual((out_dir / "static_analysis.pkl").read_text(encoding="utf-8"), "saved")
+        self.assertNotIn("--force", command)
+
+    def test_a_fresh_full_run_starts_from_nothing(self) -> None:
+        out_dir, command = self._full_over_saved_state("--fresh")
+
+        self.assertEqual(sorted(p.name for p in out_dir.iterdir()), ["analysis.json"])
+        self.assertIn("--force", command)
+
     def test_old_depth_input_is_rejected(self) -> None:
         with patch("sys.stderr", io.StringIO()), patch.object(ar, "_run_command") as command:
             with self.assertRaises(SystemExit) as raised:
