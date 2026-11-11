@@ -14,11 +14,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
-_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "closed_features.py"
-_SPEC = importlib.util.spec_from_file_location("closed_features", _SCRIPT)
-closed_features = importlib.util.module_from_spec(_SPEC)
-sys.modules[_SPEC.name] = closed_features
-_SPEC.loader.exec_module(closed_features)
+_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "remote_features.py"
+_SPEC = importlib.util.spec_from_file_location("remote_features", _SCRIPT)
+remote_features = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = remote_features
+_SPEC.loader.exec_module(remote_features)
 
 INPUTS = {"head.json", "base.json", "metadata.json", "pr.json", "pr-files.json", "files.json"}
 GUIDE = {"version": 1, "changes": [{"id": "u1"}]}
@@ -114,11 +114,11 @@ class BundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = _workspace(Path(tmp))
             with (
-                mock.patch.object(closed_features, "_github_json", side_effect=_github_json) as gh,
-                mock.patch.object(closed_features, "_contents", return_value="base content") as base,
-                mock.patch.object(closed_features, "call_graph", return_value={"nodes": {}, "edges": []}),
+                mock.patch.object(remote_features, "_github_json", side_effect=_github_json) as gh,
+                mock.patch.object(remote_features, "_contents", return_value="base content") as base,
+                mock.patch.object(remote_features, "call_graph", return_value={"nodes": {}, "edges": []}),
             ):
-                bundle = closed_features.collect(env)
+                bundle = remote_features.collect(env)
             self.assertIn("/repos/o/r/compare/B...H", [c.args[0] for c in gh.call_args_list])
             self.assertEqual(json.loads(bundle["files.json"]), {"H:app.py": "head content", "B:app.py": "base content"})
             base.assert_called_once_with("o/r", "B", "app.py")
@@ -131,12 +131,12 @@ class BundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             env = _workspace(Path(tmp))
             with (
-                mock.patch.object(closed_features, "_github_json", side_effect=_github_json),
-                mock.patch.object(closed_features, "_contents", return_value="b" * 13),
-                mock.patch.object(closed_features, "call_graph", return_value={"nodes": {}, "edges": []}),
-                mock.patch.object(closed_features, "MAX_FILE_BYTES", 12),
+                mock.patch.object(remote_features, "_github_json", side_effect=_github_json),
+                mock.patch.object(remote_features, "_contents", return_value="b" * 13),
+                mock.patch.object(remote_features, "call_graph", return_value={"nodes": {}, "edges": []}),
+                mock.patch.object(remote_features, "MAX_FILE_BYTES", 12),
             ):
-                self.assertEqual(json.loads(closed_features.collect(env)["files.json"]), {"H:app.py": "head content"})
+                self.assertEqual(json.loads(remote_features.collect(env)["files.json"]), {"H:app.py": "head content"})
 
     def test_changed_file_symlink_is_not_read(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -145,11 +145,11 @@ class BundleTests(unittest.TestCase):
             path.unlink()
             path.symlink_to(Path(env["ARTIFACT_DIR"]) / "metadata.json")
             with (
-                mock.patch.object(closed_features, "_github_json", side_effect=_github_json),
-                mock.patch.object(closed_features, "_contents", return_value=None),
-                mock.patch.object(closed_features, "call_graph", return_value={}),
+                mock.patch.object(remote_features, "_github_json", side_effect=_github_json),
+                mock.patch.object(remote_features, "_contents", return_value=None),
+                mock.patch.object(remote_features, "call_graph", return_value={}),
             ):
-                self.assertEqual(json.loads(closed_features.collect(env)["files.json"]), {})
+                self.assertEqual(json.loads(remote_features.collect(env)["files.json"]), {})
 
 
 def _method(q, file, start, end, h):
@@ -267,24 +267,44 @@ class SideDocumentTests(unittest.TestCase):
     }
 
     def test_each_fact_once_and_only_what_the_service_reads(self):
-        doc = json.loads(json.dumps(closed_features.side_document(self.ANALYSIS, self.GRAPH)))
+        doc = json.loads(json.dumps(remote_features.side_document(self.ANALYSIS, self.GRAPH)))
         self.assertEqual(doc, self.DOCUMENT)
+
+    def test_a_parent_is_left_out_only_when_its_childrens_members_rebuild_it(self):
+        # The service rebuilds a parent from its children's members, so a parent holding fewer than a
+        # child does is written out even though its leaves hold exactly its members.
+        def component(cid, names, children=()):
+            return {
+                "component_id": cid,
+                "file_methods": [{"file_path": "a.py", "methods": list(names)}],
+                "components": list(children),
+            }
+
+        analysis = {
+            "methods_index": {f"a.py|{q}": _method(q, "a.py", i, i, "h") for i, q in enumerate("xyz", 1)},
+            "components": [
+                component("G", "xy", [component("M", "xyz", [component("L1", "x"), component("L2", "y")])]),
+                component("P", "xy", [component("C1", "x"), component("C2", "y")]),
+            ],
+        }
+        members = [c[4] for c in remote_features.side_document(analysis, {})["components"]]
+        self.assertEqual(members, [[0, 1], [0, 1, 2], [0], [1], None, [0], [1]])
 
     def test_a_key_that_is_not_its_file_and_name_is_refused(self):
         odd = {"methods_index": {"pkg/a.py|other": _method("pkg.a.run", "pkg/a.py", 1, 5, "h1")}}
         with self.assertRaises(ValueError):
-            closed_features.side_document(odd, {})
+            remote_features.side_document(odd, {})
 
 
 class CredentialTests(unittest.TestCase):
     def test_without_oidc_the_runs_own_token_proves_the_repository(self):
-        self.assertEqual(closed_features._bearer({"GITHUB_TOKEN": "ghs_run"}), {"Authorization": "Bearer ghs_run"})
+        self.assertEqual(remote_features._bearer({"GITHUB_TOKEN": "ghs_run"}), {"Authorization": "Bearer ghs_run"})
 
     def test_oidc_bearer_includes_license_and_removes_temporary_file(self):
         mint = _Server(lambda p, b: (200, {"value": "jwt.token.sig"}))
         self.addCleanup(mint.close)
         with tempfile.TemporaryDirectory() as tmp:
-            headers = closed_features._bearer(
+            headers = remote_features._bearer(
                 {
                     "ACTIONS_ID_TOKEN_REQUEST_URL": f"{mint.url}/token?x=1",
                     "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "req",
@@ -298,10 +318,10 @@ class CredentialTests(unittest.TestCase):
 
     def test_hosted_and_license_send_no_model(self):
         for llm in ("", "hosted", "license"):
-            self.assertEqual(closed_features.model_headers({"LLM": llm, "OPENAI_API_KEY": "leftover"}), {})
+            self.assertEqual(remote_features.model_headers({"LLM": llm, "OPENAI_API_KEY": "leftover"}), {})
 
     def test_each_fixed_provider_and_analysis_model(self):
-        for provider, host in closed_features.PROVIDER_HOSTS.items():
+        for provider, host in remote_features.PROVIDER_HOSTS.items():
             with self.subTest(provider=provider):
                 env = {
                     "LLM": provider,
@@ -313,7 +333,7 @@ class CredentialTests(unittest.TestCase):
                     env["AWS_BEDROCK_REGION"] = "eu-west-1"
                     host = host.format(region="eu-west-1")
                 env[f"{provider.upper()}_BASE_URL"] = f"https://{host}/v1"
-                headers = closed_features.model_headers(env)
+                headers = remote_features.model_headers(env)
                 self.assertEqual(headers["x-llm-api-key"], "k")
                 self.assertEqual(headers["x-llm-model"], "analysis")
                 if provider == "aws_bedrock":
@@ -327,7 +347,7 @@ class CredentialTests(unittest.TestCase):
             ({**bedrock, "AWS_BEDROCK_API_KEY": "AWS_BEARER_TOKEN_BEDROCK=abc="}, "abc="),
         ):
             with self.subTest(llm=env["LLM"]):
-                self.assertEqual(closed_features.model_headers(env)["x-llm-api-key"], want)
+                self.assertEqual(remote_features.model_headers(env)["x-llm-api-key"], want)
 
     def test_unsupported_self_hosted_and_missing_key_never_fall_back(self):
         for env in (
@@ -336,7 +356,7 @@ class CredentialTests(unittest.TestCase):
             {"LLM": "openai", "OPENAI_API_KEY": "k", "OPENAI_BASE_URL": "https://gateway.corp/v1"},
             {"LLM": "anthropic"},
         ):
-            self.assertEqual(closed_features.model_headers(env), {"x-llm-provider": env["LLM"]})
+            self.assertEqual(remote_features.model_headers(env), {"x-llm-provider": env["LLM"]})
 
 
 class EndpointTests(unittest.TestCase):
@@ -349,7 +369,7 @@ class EndpointTests(unittest.TestCase):
             ("_contents", {"return_value": "base"}),
             ("call_graph", {"return_value": {"nodes": {}, "edges": []}}),
         ):
-            patch = mock.patch.object(closed_features, name, **kwargs)
+            patch = mock.patch.object(remote_features, name, **kwargs)
             patch.start()
             self.addCleanup(patch.stop)
 
@@ -370,7 +390,7 @@ class EndpointTests(unittest.TestCase):
         self.addCleanup(service.close)
         self.env["CLOSED_FUNCTIONS_URL"] = service.url + "/"
         with mock.patch("builtins.print"):
-            self.assertEqual(closed_features.main(self.env), 0)
+            self.assertEqual(remote_features.main(self.env), 0)
         return service
 
     def test_exactly_two_posts_shared_inputs_and_fixed_outputs(self):
@@ -445,8 +465,8 @@ class EndpointTests(unittest.TestCase):
 
     def test_empty_url_disables_both(self):
         self.env["CLOSED_FUNCTIONS_URL"] = ""
-        with mock.patch.object(closed_features, "_post") as post:
-            self.assertEqual(closed_features.main(self.env), 0)
+        with mock.patch.object(remote_features, "_post") as post:
+            self.assertEqual(remote_features.main(self.env), 0)
             post.assert_not_called()
         self.assertFalse((Path(self.env["ARTIFACT_DIR"]) / "closed").exists())
 
@@ -454,7 +474,7 @@ class EndpointTests(unittest.TestCase):
         for failure in (False, True):
             self.env["CLOSED_FEATURES_SOURCE"] = "false"
             with (
-                mock.patch.object(closed_features, "collect_source", side_effect=OSError())
+                mock.patch.object(remote_features, "collect_source", side_effect=OSError())
                 if failure
                 else nullcontext()
             ):
@@ -466,15 +486,15 @@ class EndpointTests(unittest.TestCase):
 
     def test_bundle_limit_omits_source_then_skips_if_required_inputs_too_large(self):
         with (
-            mock.patch.object(closed_features, "MAX_BUNDLE_BYTES", 1000),
-            mock.patch.object(closed_features, "collect_source", return_value=(os.urandom(2000).hex(), None)),
+            mock.patch.object(remote_features, "MAX_BUNDLE_BYTES", 1000),
+            mock.patch.object(remote_features, "collect_source", return_value=(os.urandom(2000).hex(), None)),
         ):
             service = self.run_service()
         arch = next(r for r in service.requests if r["path"] == "/v1/architecture")
         body = json.loads(lzma.decompress(arch["body"]))
         self.assertNotIn("source.json", body["files"])
         self.assertIn("too large", body["omitted"]["source.json"])
-        with mock.patch.object(closed_features, "MAX_BUNDLE_BYTES", 1):
+        with mock.patch.object(remote_features, "MAX_BUNDLE_BYTES", 1):
             self.assertEqual(self.run_service().requests, [])
         self.assertEqual(_read(self.env, "closed/architecture.json")["status"], "skipped")
 
@@ -511,11 +531,11 @@ class SourceTests(unittest.TestCase):
             (root / "link.py").symlink_to(root / "a.py")
             subprocess.run(["git", "-C", tmp, "add", "."], check=True)
             (root / "untracked.py").write_text("not tracked")
-            text, why = closed_features.collect_source({"CHECKOUT_DIR": tmp})
+            text, why = remote_features.collect_source({"CHECKOUT_DIR": tmp})
             self.assertEqual(set(json.loads(text)), set(names[:9]))
             self.assertIsNone(why)
-            with mock.patch.object(closed_features, "MAX_SOURCE_BYTES", 1):
-                text, why = closed_features.collect_source({"CHECKOUT_DIR": tmp})
+            with mock.patch.object(remote_features, "MAX_SOURCE_BYTES", 1):
+                text, why = remote_features.collect_source({"CHECKOUT_DIR": tmp})
                 self.assertIsNone(text)
                 self.assertIn("limit", why)
 
@@ -525,11 +545,11 @@ class SourceTests(unittest.TestCase):
             (root / "link").symlink_to(root, target_is_directory=True)
             for name in ("link/a.py", "../a.py", "/tmp/a.py"):
                 with self.assertRaises(OSError):
-                    closed_features._checkout_file(root, name)
+                    remote_features._checkout_file(root, name)
 
     def test_disabled_source_does_not_read_checkout(self):
         self.assertEqual(
-            closed_features.collect_source({"CLOSED_FEATURES_SOURCE": "false"}), (None, "turned off by the workflow")
+            remote_features.collect_source({"CLOSED_FEATURES_SOURCE": "false"}), (None, "turned off by the workflow")
         )
 
 

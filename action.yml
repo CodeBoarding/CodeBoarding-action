@@ -736,8 +736,8 @@ runs:
 
     # After the artifact holds the analysis and before it is uploaded: each feature is one more
     # file in it. Uses production by default; an empty URL disables it. It never fails the run.
-    - name: Run closed features
-      id: closed_features
+    - name: Run remote features
+      id: remote_features
       if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && inputs.review_guide_url != ''
       continue-on-error: true
       shell: bash
@@ -777,7 +777,7 @@ runs:
         REQUESTY_BASE_URL: ${{ inputs.requesty_base_url }}
         VERCEL_API_KEY: ${{ inputs.vercel_api_key }}
         VERCEL_BASE_URL: ${{ inputs.vercel_base_url }}
-      run: python3 "$GITHUB_ACTION_PATH/scripts/closed_features.py"
+      run: python3 "$GITHUB_ACTION_PATH/scripts/remote_features.py"
 
     - name: Upload review artifact
       id: upload_review_artifact_dotcom

@@ -1007,9 +1007,9 @@ class WiringTests(unittest.TestCase):
         self.assertLessEqual(keys, allowed)
         self.assertIn("continue-on-error", keys)
 
-    def test_shares_the_closed_features_transport(self):
+    def test_shares_the_remote_features_transport(self):
         for shared in (ph._bearer, ph._post, ph._github, ph._compress, ph._check_size, ph._error_message):
-            self.assertEqual(shared.__module__, "closed_features")
+            self.assertEqual(shared.__module__, "remote_features")
 
 
 if __name__ == "__main__":

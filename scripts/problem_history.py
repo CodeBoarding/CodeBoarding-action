@@ -31,7 +31,7 @@ from urllib.parse import quote
 from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from closed_features import (
+from remote_features import (
     MAX_BUNDLE_BYTES,
     Skip,
     _bearer,
