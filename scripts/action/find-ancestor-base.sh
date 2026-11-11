@@ -3,8 +3,8 @@
 # under this configuration and downloads it into DEST, so a run without an exact
 # base can catch up from it instead of analyzing from scratch. Best effort.
 #
-# With STATIC_ONLY=true a base saved under any configuration will do, and only
-# its static-analysis cache is required, since that is all the caller takes.
+# With ANY_CONFIG=true a base saved under any configuration will do: the caller
+# takes from it only what outlives a configuration.
 #
 # Prints ancestor_sha=<the commit whose analysis is now in DEST, or empty> on
 # stdout and everything else on stderr.
@@ -12,10 +12,10 @@
 # Needs the tip's first-parent history in CHECKOUT_DIR, at least CATCHUP_BOUND deep.
 set -euo pipefail
 : "${REPOSITORY:?}" "${TIP_SHA:?}" "${CHECKOUT_DIR:?}" "${DEST:?}"
-if [ "${STATIC_ONLY:-false}" = true ]; then
-  pattern='codeboarding-base-[0-9a-f]{16}-' needs=(static_analysis.pkl static_analysis.sha)
+if [ "${ANY_CONFIG:-false}" = true ]; then
+  pattern='codeboarding-base-[0-9a-f]{16}-'
 else
-  pattern="codeboarding-base-${CFG_HASH:?}-" needs=(analysis.json)
+  pattern="codeboarding-base-${CFG_HASH:?}-"
 fi
 BOUND="${CATCHUP_BOUND:-100}"
 rm -rf "$DEST"
@@ -30,7 +30,7 @@ trap report EXIT
 
 # The merge base's first-parent history, nearest first. Distance 0 is the tip
 # itself, which a review already looked up by its exact name under this
-# configuration. Sync and STATIC_ONLY lookups pass INCLUDE_TIP=true: nothing
+# configuration. Sync and ANY_CONFIG lookups pass INCLUDE_TIP=true: nothing
 # looked the tip up for them.
 walk="$(git -C "$CHECKOUT_DIR" rev-list --first-parent --max-count=$(( BOUND + 1 )) "$TIP_SHA" 2>/dev/null || true)"
 [ "${INCLUDE_TIP:-false}" = true ] || walk="$(tail -n +2 <<< "$walk")"
@@ -77,7 +77,5 @@ done
 
 # Downloaded by its exact name, through the same checks as every other lookup.
 GITHUB_OUTPUT="" ARTIFACT_NAME="$name" DEST="$DEST" "$(dirname "$0")/fetch-state.sh" >&2 || exit 0
-for file in "${needs[@]}"; do
-  [ -f "$DEST/$file" ] || exit 0
-done
+[ -f "$DEST/analysis.json" ] || exit 0
 ancestor="${name##*-}"

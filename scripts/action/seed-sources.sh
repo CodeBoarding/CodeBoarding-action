@@ -11,6 +11,8 @@ source "$HERE/analysis-state.sh"
 # shellcheck source=scripts/action/codeboarding-baseline.sh
 source "$HERE/codeboarding-baseline.sh"
 SEED_SHA=""
+# Set by reuse_other_configuration; analyze.sh then goes straight to a full run.
+export SEED_NAMES_ONLY=false
 
 # The analysis sync committed under .codeboarding/ on the branch itself. Which
 # commit it describes is not recorded, so it is always caught up.
@@ -67,29 +69,40 @@ from_ancestor_artifact() {
   echo "::notice::Starting from the saved analysis of ${ancestor:0:7}."
 }
 
-# With no analysis to continue from, the static analysis in the nearest saved base
-# for $2 or an ancestor, under any configuration, still spares Core rebuilding it:
-# Core refuses one from another cache version itself. Copies both cache files
-# into $3 or neither. Best effort.
-reuse_static_analysis() {
-  local repository="$1" tip="$2" state="$3" found ancestor dest="$RUNNER_TEMP/codeboarding-static"
-  [ "${ANCESTOR_LOOKUP:-false}" = true ] && [ -n "${REPOSITORY:-}" ] && [ -n "$tip" ] || return 0
-  fetch_commit "$repository" "$tip" "$(( CATCHUP_BOUND + 1 ))" || true
-  found="$(GH_TOKEN="${GIT_TOKEN:-}" GH_ENTERPRISE_TOKEN="${GIT_TOKEN:-}" TIP_SHA="$tip" DEST="$dest" \
-    STATIC_ONLY=true INCLUDE_TIP=true CATCHUP_BOUND="$CATCHUP_BOUND" \
-    "$HERE/find-ancestor-base.sh" || true)"
-  ancestor="$(awk -F= '$1 == "ancestor_sha" {print $2; exit}' <<< "$found")"
-  [ -n "$ancestor" ] || return 0
+# With no analysis to continue from, as after a release, the nearest base saved
+# for $2 or an ancestor under any configuration still lends $3 what outlives a
+# configuration: the component names in its analysis.json, which Core keeps for
+# the components the full run continues, and its static analysis, which Core
+# refuses itself when the cache version changed. Neither is engine state to
+# continue from, so analyze.sh runs in full. $3 already holds the analysed
+# commit's user configuration. Best effort.
+reuse_other_configuration() {
+  local repository="$1" tip="$2" state="$3" found seed="" source="" dest="$RUNNER_TEMP/codeboarding-other-configuration"
+  [ -n "$tip" ] || return 0
+  if [ -n "${CFG_HASH:-}" ] && CFG_HASH='*' restore_codeboarding_baseline "$repository" "$tip" "$dest"; then
+    seed="$dest/.codeboarding" source="$BASELINE_SOURCE"
+  elif [ "${ANCESTOR_LOOKUP:-false}" = true ] && [ -n "${REPOSITORY:-}" ]; then
+    fetch_commit "$repository" "$tip" "$(( CATCHUP_BOUND + 1 ))" || true
+    found="$(GH_TOKEN="${GIT_TOKEN:-}" GH_ENTERPRISE_TOKEN="${GIT_TOKEN:-}" TIP_SHA="$tip" DEST="$dest" \
+      ANY_CONFIG=true INCLUDE_TIP=true CATCHUP_BOUND="$CATCHUP_BOUND" \
+      "$HERE/find-ancestor-base.sh" || true)"
+    seed="$dest" source="$(awk -F= '$1 == "ancestor_sha" {print $2; exit}' <<< "$found")"
+  fi
+  [ -n "$source" ] || return 0
+  if cp "$seed/analysis.json" "$state/"; then
+    SEED_NAMES_ONLY=true
+    echo "::notice::Component names carry over from the analysis of ${source:0:7}, saved under another configuration."
+  fi
   # Core keeps a cached file whatever today's ignore rules say, so a cache made
   # under other rules would keep newly ignored files and miss newly analysed ones.
-  if { [ -e "$dest/.codeboardingignore" ] || [ -e "$state/.codeboardingignore" ]; } &&
-    ! cmp -s "$dest/.codeboardingignore" "$state/.codeboardingignore"; then
-    echo "::notice::The saved static analysis of ${ancestor:0:7} was made with another .codeboardingignore; not reusing it."
+  if { [ -e "$seed/.codeboardingignore" ] || [ -e "$state/.codeboardingignore" ]; } &&
+    ! cmp -s "$seed/.codeboardingignore" "$state/.codeboardingignore"; then
+    echo "::notice::The saved static analysis of ${source:0:7} was made with another .codeboardingignore; not reusing it."
     return 0
   fi
-  if ! cp "$dest/static_analysis.pkl" "$dest/static_analysis.sha" "$state/"; then
+  if ! cp "$seed/static_analysis.pkl" "$seed/static_analysis.sha" "$state/" 2>/dev/null; then
     rm -f "$state/static_analysis.pkl" "$state/static_analysis.sha"
     return 0
   fi
-  echo "::notice::Reusing the saved static analysis of ${ancestor:0:7}."
+  echo "::notice::Reusing the saved static analysis of ${source:0:7}."
 }

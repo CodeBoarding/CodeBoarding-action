@@ -206,10 +206,15 @@ class AnalyzeRepositoryTests(unittest.TestCase):
             out_dir.mkdir()
             stale_artifact = out_dir / "fingerprint.json"
             stale_artifact.write_text("stale", encoding="utf-8")
+            (out_dir / "health").mkdir()
+            (out_dir / "analysis.json").write_text("previous", encoding="utf-8")
 
             def fake_run(_args, output_dir):
                 self.assertIn("--depth-cap", _args)
                 self.assertNotIn("--depth-level", _args)
+                # Core names the components the new run continues after the previous analysis.
+                self.assertEqual(sorted(p.name for p in output_dir.iterdir()), ["analysis.json"])
+                self.assertEqual((output_dir / "analysis.json").read_text(), "previous")
                 (output_dir / "analysis.json").write_text("ok", encoding="utf-8")
                 return "human-readable CLI output"
 
@@ -230,8 +235,10 @@ class AnalyzeRepositoryTests(unittest.TestCase):
             self.assertIn(f"analysis_path={out_dir / 'analysis.json'}", stdout.getvalue())
             self.assertFalse(stale_artifact.exists())
 
-    def _full_over_saved_state(self, *extra: str) -> tuple[Path, list[str]]:
-        """Runs mode full over a state holding a static-analysis cache and other output."""
+    def _full_over_saved_state(self, *extra: str) -> tuple[list[str], list[str]]:
+        """Runs mode full over a state holding a previous analysis and other output.
+
+        Returns what the engine found in the output directory and its command."""
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         root = Path(temp.name)
@@ -241,31 +248,30 @@ class AnalyzeRepositoryTests(unittest.TestCase):
         for name in ("static_analysis.pkl", "static_analysis.sha", "analysis.json", "fingerprint.json", "logs/run.log"):
             (out_dir / name).write_text("saved", encoding="utf-8")
         commands: list[list[str]] = []
+        seen: list[str] = []
 
         def fake_run(args, output_dir):
             commands.append(args)
-            self.assertFalse((output_dir / "analysis.json").exists(), "the old analysis reached the engine")
+            seen.extend(sorted(str(p.relative_to(output_dir)) for p in output_dir.rglob("*")))
             (output_dir / "analysis.json").write_text("ok", encoding="utf-8")
             return ""
 
         with patch("sys.stdout", io.StringIO()), patch.object(ar, "_run_command", side_effect=fake_run):
             ar.main(["full", "--checkout", str(checkout), "--output-dir", str(out_dir), "--depth-cap", "2", *extra])
-        return out_dir, commands[0]
+        return seen, commands[0]
 
-    def test_a_full_run_keeps_the_static_analysis_cache(self) -> None:
-        # Core refuses a cache from another cache version itself, so the action never judges it.
-        out_dir, command = self._full_over_saved_state()
+    def test_a_full_run_keeps_the_previous_analysis_and_the_static_analysis_cache(self) -> None:
+        # Core keeps the names of the components it continues, and refuses a cache from
+        # another cache version itself, so the action never judges either.
+        seen, command = self._full_over_saved_state()
 
-        self.assertEqual(
-            sorted(p.name for p in out_dir.iterdir()), ["analysis.json", "static_analysis.pkl", "static_analysis.sha"]
-        )
-        self.assertEqual((out_dir / "static_analysis.pkl").read_text(encoding="utf-8"), "saved")
+        self.assertEqual(seen, ["analysis.json", "static_analysis.pkl", "static_analysis.sha"])
         self.assertNotIn("--force", command)
 
     def test_a_fresh_full_run_starts_from_nothing(self) -> None:
-        out_dir, command = self._full_over_saved_state("--fresh")
+        seen, command = self._full_over_saved_state("--fresh")
 
-        self.assertEqual(sorted(p.name for p in out_dir.iterdir()), ["analysis.json"])
+        self.assertEqual(seen, [])
         self.assertIn("--force", command)
 
     def test_old_depth_input_is_rejected(self) -> None:

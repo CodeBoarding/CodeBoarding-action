@@ -149,7 +149,7 @@ inputs:
       included, is built from scratch. A fresh review republishes only the base at its
       merge base; later syncs still continue from the analysis branch. Off by default, so
       a run continues from the nearest saved analysis and, without one, still reuses the
-      nearest saved static analysis.
+      component names and static analysis of the nearest one saved under any configuration.
     required: false
     default: 'false'
   review_guide_url:
