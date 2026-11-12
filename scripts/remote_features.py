@@ -13,7 +13,8 @@ One JSON object of named files, compressed with xz. Both requests send the same 
 - head.json and base.json: one side document per commit (see side_document). It holds what the
   service reads from that commit's analysis.json and call graph (static_analysis.pkl), each fact once:
   the methods and graph nodes as one table per file, the calls, the component tree, and the few
-  analysis edges that are no call.
+  analysis edges that are no call. Analyses are read through the installed engine's parser, never as a
+  document, so whatever format the pinned release writes is read.
 - metadata.json: the review artifact's metadata, with the merge base as the base.
 - pr.json: the pull request's title, body, head commit and commit subjects.
 - pr-files.json: the files changed between the two analysed commits, as GitHub's compare API lists them.
@@ -197,13 +198,13 @@ def _site_lines(edge) -> list:
 
 @dataclass(eq=False)
 class _Row:
-    """One row of a side document's file table: a methods_index entry, a call-graph node the index
-    lacks, or a method that is also a node."""
+    """One row of a side document's file table: a method of the analysis, a call-graph node that is no
+    method, or a method that is also a node."""
 
     name: str
     start: int | None
     end: int | None
-    method: tuple | None  # (type, content_hash) for a methods_index entry
+    method: tuple | None  # (type, content_hash) for a method of the analysis
     callback: int = -1  # 1 or 0 once a graph node shares the row; -1 for a method that is no node
     number: int = -1  # the row's position across all files, set by _Table.number_rows
 
@@ -224,30 +225,24 @@ def _short_name(name: str, path: str) -> str:
 
 
 class _Table:
-    """The rows of one side, per file: every methods_index entry, then every call-graph node, which
+    """The rows of one side, per file: every method of the analysis, then every call-graph node, which
     shares the row of a method with its name."""
 
-    def __init__(self, methods_index: dict):
+    def __init__(self, files: dict):
         self.rows_by_file: dict[str, list[_Row]] = {}
         self.row_of_key: dict[str, _Row] = {}
         self.methods_named: dict[str, list[tuple[str, _Row]]] = {}  # qualified name -> (file, row)
         self.row_of_node: dict[str, _Row] = {}
         self.row_count = 0
-        for key, method in methods_index.items():
-            self._add_method(key, method)
+        for path, entry in files.items():
+            for method in entry.methods:
+                self._add_method(path, method)
 
-    def _add_method(self, key: str, method: dict) -> None:
-        path, name = method.get("file_path") or "", method.get("qualified_name") or ""
-        if key != f"{path}|{name}":
-            raise ValueError(f"methods_index key {key!r} is not its file and qualified name")
-        row = _Row(
-            name,
-            start=method.get("start_line"),
-            end=method.get("end_line"),
-            method=(method.get("type"), method.get("content_hash")),
-        )
+    def _add_method(self, path: str, method) -> None:
+        name = method.qualified_name
+        row = _Row(name, start=method.start_line, end=method.end_line, method=(method.node_type, method.content_hash))
         self.rows_by_file.setdefault(path, []).append(row)
-        self.row_of_key[key] = row
+        self.row_of_key[f"{path}|{name}"] = row
         self.methods_named.setdefault(name, []).append((path, row))
 
     def add_node(self, name: str, node: dict) -> _Row:
@@ -275,28 +270,29 @@ class _Table:
         return written
 
     def member(self, key: str) -> int | str:
-        """A methods_index key as a component member or edge end: its row number, or the key itself
-        when the index lacks it."""
+        """A method's `path|qualified_name` key as a component member or edge end: its row number, or
+        the key itself when the analysis lacks the method."""
         row = self.row_of_key.get(key)
         return key if row is None else row.number
 
 
-def side_document(analysis: dict, graph: dict) -> dict:
-    """One commit's analysis and call graph as the service reads them, each fact once. The service's
-    bundle.expand_side turns it back into both, in every field a feature reads.
+def side_document(root, sub_analyses: dict, graph: dict) -> dict:
+    """One commit's analysis, as Core parses it (the root and each component's sub-analysis by id), and
+    its call graph as the service reads them, each fact once. The service's bundle.expand_side turns it
+    back into both, in every field a feature reads.
 
-    - files: per file, rows for the methods_index entries `[name, start, end, type, content_hash, cb]`
-      and for call-graph nodes the index lacks `[name, start, end, cb]`. A method and the graph node of
+    - files: per file, rows for the analysis's methods `[name, start, end, type, content_hash, cb]`
+      and for call-graph nodes that are no method `[name, start, end, cb]`. A method and the graph node of
       the same name share a row; cb is -1 for a method that is no graph node. A name under its file's
       dotted path is written `~.rest`. Rows are numbered in order across files; `unplaced` continues the
       numbering for call ends that are no node.
     - graph_spans: `[row, start, end]` for a node whose span is not its method's.
     - calls: per caller, `[callee, line, ...]`, one line per call site.
     - components: `[id, name, description, parent, members, relations]` in tree order. Members are rows
-      (a key where the index lacks the method), or null for a parent holding exactly its children's.
+      (a key where the analysis lacks the method), or null for a parent holding exactly its children's.
     - extra_edges: the analysis's edges that are no call. The rest repeat the calls: on crate one of
       149,316 is not a call."""
-    table = _Table(analysis.get("methods_index") or {})
+    table = _Table(root.files)
     spans = []
     for name, node in (graph.get("nodes") or {}).items():
         row = table.add_node(name, node)
@@ -305,14 +301,14 @@ def side_document(analysis: dict, graph: dict) -> dict:
     files = table.number_rows()
     calls, unplaced = _calls(graph.get("edges") or [], table)
     called = {(caller, callee) for caller, callees in calls for callee, *_ in callees}
-    edges = {(table.member(source), table.member(target)) for source, target in _analysis_edges(analysis)}
+    edges = {(table.member(source), table.member(target)) for source, target in _analysis_edges(root, sub_analyses)}
     return {
         "version": 1,
         "files": files,
         "unplaced": unplaced,
         "graph_spans": [[row.number, start, end] for row, start, end in spans],
-        "components": _components(analysis.get("components"), table),
-        "relations": _relations(analysis.get("components_relations")),
+        "components": _components(root, sub_analyses, table),
+        "relations": _relations(root.components_relations),
         "calls": calls,
         "extra_edges": sorted(edges - called, key=repr),
     }
@@ -333,66 +329,71 @@ def _calls(edges: list[dict], table: _Table) -> tuple[list, list[str]]:
     return [[caller, by_caller[caller]] for caller in sorted(by_caller)], unplaced
 
 
-def _components(components: list | None, table: _Table) -> list:
+def _components(root, sub_analyses: dict, table: _Table) -> list:
     """The component tree in pre-order, each `[id, name, description, parent, members, relations]`.
     A parent's members are null when they are exactly its children's, which the service rebuilds."""
-    flat = _flatten(components)
+    flat = _flatten(root, sub_analyses)
     children: list[list[int]] = [[] for _ in flat]
-    for position, (_, parent) in enumerate(flat):
+    for position, (_, parent, _) in enumerate(flat):
         if parent >= 0:
             children[parent].append(position)
-    members = [_members(component, table) for component, _ in flat]
+    members = [
+        [
+            table.member(f"{group.file_path}|{method.qualified_name}")
+            for group in component.file_methods
+            for method in group.methods
+        ]
+        for component, _, _ in flat
+    ]
     written = []
-    for position, (component, parent) in enumerate(flat):
+    for position, (component, parent, relations) in enumerate(flat):
         from_children = set().union(*(members[child] for child in children[position]))
         implied = children[position] and set(members[position]) == from_children
         written.append(
             [
-                component.get("component_id"),
-                component.get("name"),
-                component.get("description"),
+                component.component_id,
+                component.name,
+                component.description,
                 parent,
                 None if implied else members[position],
-                _relations(component.get("components_relations")),
+                _relations(relations),
             ]
         )
     return written
 
 
-def _flatten(components: list | None) -> list[tuple[dict, int]]:
-    """The component tree in pre-order, each component with its parent's position (-1 at the top)."""
-    flat: list[tuple[dict, int]] = []
+def _flatten(root, sub_analyses: dict) -> list[tuple[object, int, list]]:
+    """The component tree in pre-order, each component with its parent's position (-1 at the top) and
+    the relations among its children."""
+    flat: list[tuple[object, int, list]] = []
 
-    def visit(level: list | None, parent: int) -> None:
-        for component in level or []:
-            flat.append((component, parent))
-            visit(component.get("components"), len(flat) - 1)
+    def visit(analysis, parent: int) -> None:
+        for component in analysis.components:
+            sub_analysis = sub_analyses.get(component.component_id)
+            flat.append((component, parent, sub_analysis.components_relations if sub_analysis else []))
+            if sub_analysis is not None:
+                visit(sub_analysis, len(flat) - 1)
 
-    visit(components, -1)
+    visit(root, -1)
     return flat
 
 
-def _members(component: dict, table: _Table) -> list:
-    return [
-        table.member(f"{group['file_path']}|{name}")
-        for group in component.get("file_methods") or []
-        for name in group.get("methods") or []
-    ]
-
-
-def _relations(relations: list | None) -> list:
+def _relations(relations: list) -> list:
     """Each relation as `[src_id, dst_id, label]`."""
-    return [[relation.get("src_id"), relation.get("dst_id"), relation.get("relation")] for relation in relations or []]
+    return [[relation.src_id, relation.dst_id, relation.relation] for relation in relations]
 
 
-def _analysis_edges(scope: dict):
-    """Every method edge of every relation in the analysis, top level and nested."""
-    for relation in scope.get("components_relations") or []:
-        for edge in relation.get("all_edges") or []:
-            if edge.get("source") and edge.get("target"):
-                yield edge["source"], edge["target"]
-    for component in scope.get("components") or []:
-        yield from _analysis_edges(component)
+def _analysis_edges(root, sub_analyses: dict):
+    """Every method edge of every relation in the analysis, top level and nested, as `path|qualified_name`
+    keys."""
+    for analysis in (root, *sub_analyses.values()):
+        for relation in analysis.components_relations:
+            for edge in relation.all_edges:
+                yield _method_key(edge.source), _method_key(edge.target)
+
+
+def _method_key(reference) -> str:
+    return f"{reference.reference_file or ''}|{reference.qualified_name}"
 
 
 # --- Collecting the inputs ------------------------------------------------------------------------
@@ -434,9 +435,17 @@ def collect(env: dict) -> dict:
 
 def _side(analysis_path: Path) -> str:
     """The side document of the commit whose analysis this is; its call graph lies beside it."""
-    analysis = json.loads(analysis_path.read_text())
+    root, sub_analyses = read_analysis(analysis_path)
     graph = call_graph(analysis_path.parent / "static_analysis.pkl")
-    return json.dumps(side_document(analysis, graph), separators=(",", ":"))
+    return json.dumps(side_document(root, sub_analyses, graph), separators=(",", ":"))
+
+
+def read_analysis(analysis_path: Path) -> tuple:
+    """The analysis as the installed engine parses it: the root and each component's sub-analysis by id.
+    The run analysed both commits with that engine, so both are in the format it reads."""
+    from diagram_analysis.analysis_json import parse_unified_analysis
+
+    return parse_unified_analysis(json.loads(analysis_path.read_text()))
 
 
 def _changed_contents(repo: str, changed: list[dict], checkout: Path, head_sha: str, base_sha: str) -> dict:

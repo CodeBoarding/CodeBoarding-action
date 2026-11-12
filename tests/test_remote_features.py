@@ -9,9 +9,11 @@ import sys
 import tempfile
 import threading
 import unittest
+from importlib import metadata
 from contextlib import nullcontext
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 _SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "remote_features.py"
@@ -110,6 +112,11 @@ def _read(env, name):
 
 
 class BundleTests(unittest.TestCase):
+    def setUp(self):
+        patch = mock.patch.object(remote_features, "read_analysis", return_value=(_analysis([]), {}))
+        patch.start()
+        self.addCleanup(patch.stop)
+
     def test_analysed_commits_and_both_sides(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = _workspace(Path(tmp))
@@ -152,85 +159,80 @@ class BundleTests(unittest.TestCase):
                 self.assertEqual(json.loads(remote_features.collect(env)["files.json"]), {})
 
 
-def _method(q, file, start, end, h):
-    return {
-        "file_path": file,
-        "qualified_name": q,
-        "start_line": start,
-        "end_line": end,
-        "type": "FUNCTION",
-        "content_hash": h,
-    }
+def _method(name, start, end, content_hash):
+    return SimpleNamespace(
+        qualified_name=name, start_line=start, end_line=end, node_type="FUNCTION", content_hash=content_hash
+    )
+
+
+def _component(cid, name=None, members=None, description=None):
+    """A component as Core parses it; members are qualified names by file."""
+    groups = [
+        SimpleNamespace(file_path=path, methods=[SimpleNamespace(qualified_name=q) for q in names])
+        for path, names in (members or {}).items()
+    ]
+    return SimpleNamespace(component_id=cid, name=name, description=description, file_methods=groups)
+
+
+def _relation(src, dst, label, *edges):
+    """A relation as Core parses it; edges are `path|qualified_name` pairs."""
+
+    def reference(key):
+        path, name = key.split("|")
+        return SimpleNamespace(reference_file=path, qualified_name=name)
+
+    return SimpleNamespace(
+        src_id=src,
+        dst_id=dst,
+        relation=label,
+        all_edges=[SimpleNamespace(source=reference(s), target=reference(t)) for s, t in edges],
+    )
+
+
+def _analysis(components, relations=(), files=None):
+    """A scope as Core parses it: the root carries the file index, a sub-analysis does not need one."""
+    return SimpleNamespace(
+        components=list(components),
+        components_relations=list(relations),
+        files={path: SimpleNamespace(methods=methods) for path, methods in (files or {}).items()},
+    )
 
 
 class SideDocumentTests(unittest.TestCase):
     """The service's bundle.expand_side reads this exact document back (its tests hold the same one)."""
 
-    ANALYSIS = {
-        "methods_index": {
-            "pkg/a.py|pkg.a.run": _method("pkg.a.run", "pkg/a.py", 1, 5, "h1"),
-            "pkg/a.py|pkg.a.helper": _method("pkg.a.helper", "pkg/a.py", 6, 8, "h2"),
-            "pkg/b.py|pkg.b.save": _method("pkg.b.save", "pkg/b.py", 1, 4, "h3"),
-            "pkg/b.py|~Weird": _method("~Weird", "pkg/b.py", 10, 12, "h4"),
+    ROOT = _analysis(
+        [
+            _component(
+                "1",
+                "Core",
+                {"pkg/a.py": ["pkg.a.run", "pkg.a.helper"], "pkg/b.py": ["pkg.b.save", "~Weird"]},
+                description="d1",
+            ),
+            _component("2", "Also", {"pkg/b.py": ["pkg.b.save"], "pkg/c.py": ["pkg.c.gone"]}),
+        ],
+        [_relation("1", "2", "uses", ("pkg/a.py|pkg.a.run", "pkg/b.py|pkg.b.save"))],
+        files={
+            "pkg/a.py": [_method("pkg.a.run", 1, 5, "h1"), _method("pkg.a.helper", 6, 8, "h2")],
+            "pkg/b.py": [_method("pkg.b.save", 1, 4, "h3"), _method("~Weird", 10, 12, "h4")],
         },
-        "components": [
-            {
-                "component_id": "1",
-                "name": "Core",
-                "description": "d1",
-                "file_methods": [
-                    {"file_path": "pkg/a.py", "methods": ["pkg.a.run", "pkg.a.helper"]},
-                    {"file_path": "pkg/b.py", "methods": ["pkg.b.save", "~Weird"]},
-                ],
-                "components": [
-                    {
-                        "component_id": "1.1",
-                        "name": "Run",
-                        "file_methods": [{"file_path": "pkg/a.py", "methods": ["pkg.a.run", "pkg.a.helper"]}],
-                    },
-                    {
-                        "component_id": "1.2",
-                        "name": "Store",
-                        "file_methods": [{"file_path": "pkg/b.py", "methods": ["pkg.b.save", "~Weird"]}],
-                    },
-                ],
-                "components_relations": [
-                    {
-                        "src_id": "1.1",
-                        "dst_id": "1.2",
-                        "relation": "saves",
-                        "src_name": "Run",
-                        "all_edges": [
-                            {
-                                "source": "pkg/a.py|pkg.a.run",
-                                "target": "pkg/b.py|pkg.b.save",
-                                "call_sites": [{"line": 3}],
-                            },
-                            {"source": "pkg/a.py|pkg.a.helper", "target": "pkg/b.py|pkg.b.save"},
-                        ],
-                    }
-                ],
-            },
-            {
-                "component_id": "2",
-                "name": "Also",
-                "file_methods": [
-                    {"file_path": "pkg/b.py", "methods": ["pkg.b.save"]},
-                    {"file_path": "pkg/c.py", "methods": ["pkg.c.gone"]},
-                ],
-            },
-        ],
-        "components_relations": [
-            {
-                "src_id": "1",
-                "dst_id": "2",
-                "relation": "uses",
-                "key_edges": [],
-                "all_edges": [{"source": "pkg/a.py|pkg.a.run", "target": "pkg/b.py|pkg.b.save"}],
-            }
-        ],
-        "files": {"pkg/a.py": {"method_keys": []}},
-        "metadata": {"depth_level": 2},
+    )
+    SUB_ANALYSES = {
+        "1": _analysis(
+            [
+                _component("1.1", "Run", {"pkg/a.py": ["pkg.a.run", "pkg.a.helper"]}),
+                _component("1.2", "Store", {"pkg/b.py": ["pkg.b.save", "~Weird"]}),
+            ],
+            [
+                _relation(
+                    "1.1",
+                    "1.2",
+                    "saves",
+                    ("pkg/a.py|pkg.a.run", "pkg/b.py|pkg.b.save"),
+                    ("pkg/a.py|pkg.a.helper", "pkg/b.py|pkg.b.save"),
+                )
+            ],
+        )
     }
     GRAPH = {
         "nodes": {
@@ -267,33 +269,89 @@ class SideDocumentTests(unittest.TestCase):
     }
 
     def test_each_fact_once_and_only_what_the_service_reads(self):
-        doc = json.loads(json.dumps(remote_features.side_document(self.ANALYSIS, self.GRAPH)))
+        doc = json.loads(json.dumps(remote_features.side_document(self.ROOT, self.SUB_ANALYSES, self.GRAPH)))
         self.assertEqual(doc, self.DOCUMENT)
 
     def test_a_parent_is_left_out_only_when_its_childrens_members_rebuild_it(self):
         # The service rebuilds a parent from its children's members, so a parent holding fewer than a
         # child does is written out even though its leaves hold exactly its members.
-        def component(cid, names, children=()):
-            return {
-                "component_id": cid,
-                "file_methods": [{"file_path": "a.py", "methods": list(names)}],
-                "components": list(children),
-            }
+        def component(cid, names):
+            return _component(cid, members={"a.py": list(names)})
 
-        analysis = {
-            "methods_index": {f"a.py|{q}": _method(q, "a.py", i, i, "h") for i, q in enumerate("xyz", 1)},
-            "components": [
-                component("G", "xy", [component("M", "xyz", [component("L1", "x"), component("L2", "y")])]),
-                component("P", "xy", [component("C1", "x"), component("C2", "y")]),
-            ],
+        root = _analysis(
+            [component("G", "xy"), component("P", "xy")],
+            files={"a.py": [_method(q, i, i, "h") for i, q in enumerate("xyz", 1)]},
+        )
+        sub_analyses = {
+            "G": _analysis([component("M", "xyz")]),
+            "M": _analysis([component("L1", "x"), component("L2", "y")]),
+            "P": _analysis([component("C1", "x"), component("C2", "y")]),
         }
-        members = [c[4] for c in remote_features.side_document(analysis, {})["components"]]
+        members = [c[4] for c in remote_features.side_document(root, sub_analyses, {})["components"]]
         self.assertEqual(members, [[0, 1], [0, 1, 2], [0], [1], None, [0], [1]])
 
-    def test_a_key_that_is_not_its_file_and_name_is_refused(self):
-        odd = {"methods_index": {"pkg/a.py|other": _method("pkg.a.run", "pkg/a.py", 1, 5, "h1")}}
-        with self.assertRaises(ValueError):
-            remote_features.side_document(odd, {})
+
+def _core_installed() -> bool:
+    try:
+        metadata.version("codeboarding")
+    except metadata.PackageNotFoundError:
+        return False
+    return True
+
+
+@unittest.skipUnless(_core_installed(), "the pinned CodeBoarding release is not installed")
+class InstalledCoreTests(unittest.TestCase):
+    """read_analysis and side_document against the release action.yml pins. It runs in the
+    `core-compatibility` CI job.
+
+    tests/fixtures/analysis holds one analysis as two Core releases wrote it: core-0.15.5.json and
+    core-9cf50fb9.json (main after #571). Each release reads only its own, so the pinned one must read at
+    least one, and every one it reads must give the same document. A pin whose release reads none needs
+    that analysis written by it, which is the point: the document has not been checked against its parser."""
+
+    GRAPH = {
+        "nodes": {
+            **SideDocumentTests.GRAPH["nodes"],
+            "pkg.c.load": {"file": "pkg/c.py", "start": 1, "end": 3, "cb": False},
+        },
+        "edges": [*SideDocumentTests.GRAPH["edges"], {"s": "pkg.c.load", "d": "pkg.b.save", "lines": [2]}],
+    }
+    DOCUMENT = {
+        "version": 1,
+        "files": [
+            ["pkg/a.py", [["~.run", 1, 5, "FUNCTION", "h1", 0], ["~.helper", 6, 8, "FUNCTION", "h2", 0]]],
+            ["pkg/b.py", [["~.save", 1, 4, "FUNCTION", "h3", 0], ["~~Weird", 10, 12, "FUNCTION", "h4", -1]]],
+            ["pkg/c.py", [["~.load", 1, 3, "FUNCTION", "h5", 0]]],
+            ["pkg/x.py", [["~.Only", 1, 2, 1]]],
+        ],
+        "unplaced": ["ext.lib.call"],
+        "graph_spans": [[1, 6, 9]],
+        "components": [
+            ["1", "Core", "d1", -1, None, [["1.1", "1.2", "saves"]]],
+            ["1.1", "Run", "", 0, [0, 1], []],
+            ["1.2", "Store", "", 0, [2, 3], []],
+            ["2", "Also", "", -1, [4], []],
+        ],
+        "relations": [["1.1", "1.2", "saves"], ["1.1", "2", "uses"], ["1.2", "2", "loads"], ["2", "1.2", "reads"]],
+        "calls": [[0, [[2, 3, 4], [1, 2]]], [2, [[0, 2]]], [4, [[2, 2]]], [5, [[6]]]],
+        # Of the analysis's edges, the calls are left to the graph: load -> save is one.
+        "extra_edges": [[0, 4], [1, 2], [3, 4]],
+    }
+
+    def test_the_pinned_release_reads_an_analysis_it_wrote_into_the_side_document(self):
+        read = []
+        for fixture in sorted((Path(__file__).parent / "fixtures" / "analysis").glob("*.json")):
+            try:
+                root, sub_analyses = remote_features.read_analysis(fixture)
+            except (TypeError, ValueError):  # another release's format
+                continue
+            read.append(fixture.name)
+            with self.subTest(fixture=fixture.name):
+                doc = json.loads(json.dumps(remote_features.side_document(root, sub_analyses, self.GRAPH)))
+                self.assertEqual(doc, self.DOCUMENT)
+        self.assertTrue(
+            read, "the pinned release reads none of tests/fixtures/analysis; add the analysis as it writes it"
+        )
 
 
 class CredentialTests(unittest.TestCase):
@@ -368,6 +426,7 @@ class EndpointTests(unittest.TestCase):
             ("_github_json", {"side_effect": _github_json}),
             ("_contents", {"return_value": "base"}),
             ("call_graph", {"return_value": {"nodes": {}, "edges": []}}),
+            ("read_analysis", {"return_value": (_analysis([]), {})}),
         ):
             patch = mock.patch.object(remote_features, name, **kwargs)
             patch.start()

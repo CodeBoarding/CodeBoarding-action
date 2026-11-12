@@ -42,6 +42,8 @@ jobs:
           python -m pip install --disable-pip-version-check "$requirement"
       - name: Check the provider table against the installed release
         run: python -m unittest tests.test_provider_table_drift -v
+      - name: Build side documents with the installed release
+        run: python -m unittest tests.test_remote_features.InstalledCoreTests -v
       - name: Install sync artifacts with the installed CodeBoarding release
         shell: bash
         env:

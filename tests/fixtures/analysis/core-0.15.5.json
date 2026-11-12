@@ -1,0 +1,289 @@
+{
+ "metadata": {
+  "generated_at": "2026-11-12T00:00:00Z",
+  "source_tree_hash": "",
+  "repo_name": "pkg",
+  "depth_level": 2,
+  "depth_cap": 2,
+  "file_coverage_summary": {
+   "total_files": 3,
+   "analyzed": 3,
+   "not_analyzed": 0,
+   "not_analyzed_by_reason": {}
+  },
+  "tree_spec": {}
+ },
+ "description": "fixture",
+ "files": {
+  "pkg/a.py": {
+   "method_keys": [
+    "pkg/a.py|pkg.a.run",
+    "pkg/a.py|pkg.a.helper"
+   ],
+   "content_hash": "",
+   "module_hash": ""
+  },
+  "pkg/b.py": {
+   "method_keys": [
+    "pkg/b.py|pkg.b.save",
+    "pkg/b.py|~Weird"
+   ],
+   "content_hash": "",
+   "module_hash": ""
+  },
+  "pkg/c.py": {
+   "method_keys": [
+    "pkg/c.py|pkg.c.load"
+   ],
+   "content_hash": "",
+   "module_hash": ""
+  }
+ },
+ "methods_index": {
+  "pkg/a.py|pkg.a.run": {
+   "file_path": "pkg/a.py",
+   "qualified_name": "pkg.a.run",
+   "start_line": 1,
+   "end_line": 5,
+   "type": "FUNCTION",
+   "content_hash": "h1"
+  },
+  "pkg/a.py|pkg.a.helper": {
+   "file_path": "pkg/a.py",
+   "qualified_name": "pkg.a.helper",
+   "start_line": 6,
+   "end_line": 8,
+   "type": "FUNCTION",
+   "content_hash": "h2"
+  },
+  "pkg/b.py|pkg.b.save": {
+   "file_path": "pkg/b.py",
+   "qualified_name": "pkg.b.save",
+   "start_line": 1,
+   "end_line": 4,
+   "type": "FUNCTION",
+   "content_hash": "h3"
+  },
+  "pkg/b.py|~Weird": {
+   "file_path": "pkg/b.py",
+   "qualified_name": "~Weird",
+   "start_line": 10,
+   "end_line": 12,
+   "type": "FUNCTION",
+   "content_hash": "h4"
+  },
+  "pkg/c.py|pkg.c.load": {
+   "file_path": "pkg/c.py",
+   "qualified_name": "pkg.c.load",
+   "start_line": 1,
+   "end_line": 3,
+   "type": "FUNCTION",
+   "content_hash": "h5"
+  }
+ },
+ "components": [
+  {
+   "name": "Core",
+   "description": "d1",
+   "key_entities": [],
+   "source_cluster_ids": [],
+   "file_methods": [
+    {
+     "file_path": "pkg/a.py",
+     "methods": [
+      "pkg.a.run",
+      "pkg.a.helper"
+     ]
+    },
+    {
+     "file_path": "pkg/b.py",
+     "methods": [
+      "pkg.b.save",
+      "~Weird"
+     ]
+    }
+   ],
+   "component_id": "1",
+   "can_expand": true,
+   "components": [
+    {
+     "name": "Run",
+     "description": "",
+     "key_entities": [],
+     "source_cluster_ids": [],
+     "file_methods": [
+      {
+       "file_path": "pkg/a.py",
+       "methods": [
+        "pkg.a.run",
+        "pkg.a.helper"
+       ]
+      }
+     ],
+     "component_id": "1.1",
+     "can_expand": false,
+     "components": [],
+     "components_relations": []
+    },
+    {
+     "name": "Store",
+     "description": "",
+     "key_entities": [],
+     "source_cluster_ids": [],
+     "file_methods": [
+      {
+       "file_path": "pkg/b.py",
+       "methods": [
+        "pkg.b.save",
+        "~Weird"
+       ]
+      }
+     ],
+     "component_id": "1.2",
+     "can_expand": false,
+     "components": [],
+     "components_relations": []
+    }
+   ],
+   "components_relations": [
+    {
+     "relation": "saves",
+     "src_name": "Run",
+     "dst_name": "Store",
+     "evidence": "",
+     "key_edges": [],
+     "src_id": "1.1",
+     "dst_id": "1.2",
+     "is_static": false,
+     "all_edges": [
+      {
+       "source": "pkg/a.py|pkg.a.run",
+       "target": "pkg/b.py|pkg.b.save",
+       "call_sites": [
+        {
+         "line": 3,
+         "column": 8
+        }
+       ],
+       "description": ""
+      },
+      {
+       "source": "pkg/a.py|pkg.a.helper",
+       "target": "pkg/b.py|pkg.b.save",
+       "call_sites": [],
+       "description": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Also",
+   "description": "",
+   "key_entities": [],
+   "source_cluster_ids": [],
+   "file_methods": [
+    {
+     "file_path": "pkg/c.py",
+     "methods": [
+      "pkg.c.load"
+     ]
+    }
+   ],
+   "component_id": "2",
+   "can_expand": false,
+   "components": [],
+   "components_relations": []
+  }
+ ],
+ "components_relations": [
+  {
+   "relation": "saves",
+   "src_name": "Run",
+   "dst_name": "Store",
+   "evidence": "",
+   "key_edges": [],
+   "src_id": "1.1",
+   "dst_id": "1.2",
+   "is_static": false,
+   "all_edges": [
+    {
+     "source": "pkg/a.py|pkg.a.run",
+     "target": "pkg/b.py|pkg.b.save",
+     "call_sites": [
+      {
+       "line": 3,
+       "column": 8
+      }
+     ],
+     "description": ""
+    },
+    {
+     "source": "pkg/a.py|pkg.a.helper",
+     "target": "pkg/b.py|pkg.b.save",
+     "call_sites": [],
+     "description": ""
+    }
+   ]
+  },
+  {
+   "relation": "uses",
+   "src_name": "Run",
+   "dst_name": "Also",
+   "evidence": "",
+   "key_edges": [],
+   "src_id": "1.1",
+   "dst_id": "2",
+   "is_static": false,
+   "all_edges": [
+    {
+     "source": "pkg/a.py|pkg.a.run",
+     "target": "pkg/c.py|pkg.c.load",
+     "call_sites": [
+      {
+       "line": 4,
+       "column": 4
+      }
+     ],
+     "description": ""
+    }
+   ]
+  },
+  {
+   "relation": "loads",
+   "src_name": "Store",
+   "dst_name": "Also",
+   "evidence": "",
+   "key_edges": [],
+   "src_id": "1.2",
+   "dst_id": "2",
+   "is_static": false,
+   "all_edges": [
+    {
+     "source": "pkg/b.py|~Weird",
+     "target": "pkg/c.py|pkg.c.load",
+     "call_sites": [],
+     "description": ""
+    }
+   ]
+  },
+  {
+   "relation": "reads",
+   "src_name": "Also",
+   "dst_name": "Store",
+   "evidence": "",
+   "key_edges": [],
+   "src_id": "2",
+   "dst_id": "1.2",
+   "is_static": false,
+   "all_edges": [
+    {
+     "source": "pkg/c.py|pkg.c.load",
+     "target": "pkg/b.py|pkg.b.save",
+     "call_sites": [],
+     "description": ""
+    }
+   ]
+  }
+ ]
+}
