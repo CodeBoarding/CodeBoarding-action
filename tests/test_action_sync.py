@@ -317,7 +317,7 @@ class ActionSyncTests(unittest.TestCase):
             )
             (fake_core / "diagram_analysis" / "analysis_json.py").write_text(
                 "from types import SimpleNamespace\n"
-                "def parse_unified_analysis(data): return SimpleNamespace(components=[], components_relations=[]), {}\n"
+                "def parse_unified_analysis(data): return SimpleNamespace(components=[], components_relations=[], files={}), {}\n"
                 "def build_id_to_name_map(*args): return {}\n",
                 encoding="utf-8",
             )
