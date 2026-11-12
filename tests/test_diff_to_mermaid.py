@@ -6,6 +6,7 @@ import re
 import sys
 import tempfile
 import unittest
+from importlib import metadata
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
@@ -25,6 +26,15 @@ def comp(name, files=None, cid=None, subs=None, subrels=None):
     if subrels is not None:
         c["components_relations"] = subrels
     return c
+
+
+def core_component(cid, name, files=None):
+    """A component as Core's parser gives it, with the attributes the loader reads."""
+    groups = [
+        SimpleNamespace(file_path=path, methods=[SimpleNamespace(qualified_name=name) for name in names])
+        for path, names in (files or {}).items()
+    ]
+    return SimpleNamespace(component_id=cid, name=name, file_methods=groups)
 
 
 def rel(src, dst, label="calls"):
@@ -75,14 +85,12 @@ class TestAnalysedFilesChanged(unittest.TestCase):
 
 class TestDiff(unittest.TestCase):
     def test_core_loader_projects_global_relation_into_rendered_mermaid(self):
-        root_a = SimpleNamespace(component_id="1")
-        root_b = SimpleNamespace(component_id="2")
-        child_a = SimpleNamespace(component_id="1.1")
-        child_b = SimpleNamespace(component_id="2.1")
+        root_a, root_b = core_component("1", "Root A"), core_component("2", "Root B")
+        child_a, child_b = core_component("1.1", "Child A"), core_component("2.1", "Child B")
 
         def parse_unified_analysis(data):
             relations = [SimpleNamespace(**relation) for relation in data.get("components_relations", [])]
-            root = SimpleNamespace(components=[root_a, root_b], components_relations=relations)
+            root = SimpleNamespace(components=[root_a, root_b], components_relations=relations, files={})
             return root, {
                 "1": SimpleNamespace(components=[child_a]),
                 "2": SimpleNamespace(components=[child_b]),
@@ -124,34 +132,13 @@ class TestDiff(unittest.TestCase):
             "output_generators": ModuleType("output_generators"),
             "output_generators.rendering": rendering,
         }
-        analysis = {
-            "components": [
-                {"name": "Root A", "component_id": "1", "components": [{"name": "Child A", "component_id": "1.1"}]},
-                {"name": "Root B", "component_id": "2", "components": [{"name": "Child B", "component_id": "2.1"}]},
-            ],
-            "components_relations": [],
-        }
+        relation = {"relation": "calls", "src_name": "Child A", "dst_name": "Child B", "src_id": "1.1", "dst_id": "2.1"}
 
         with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, modules):
             base_path = Path(tmp) / "base.json"
             head_path = Path(tmp) / "head.json"
-            base_path.write_text(json.dumps(analysis))
-            head_path.write_text(
-                json.dumps(
-                    {
-                        **analysis,
-                        "components_relations": [
-                            {
-                                "relation": "calls",
-                                "src_name": "Child A",
-                                "dst_name": "Child B",
-                                "src_id": "1.1",
-                                "dst_id": "2.1",
-                            }
-                        ],
-                    }
-                )
-            )
+            base_path.write_text(json.dumps({"components_relations": []}))
+            head_path.write_text(json.dumps({"components_relations": [relation]}))
             diff = dm.build_diff(dm.load_analysis(base_path), dm.load_analysis(head_path))
 
         text, meta = dm.render_mermaid(diff)
@@ -159,11 +146,11 @@ class TestDiff(unittest.TestCase):
         self.assertEqual(meta["n_edges"], 1)
         self.assertTrue(meta["changed"])
 
-    def test_projects_global_relations_at_every_component_level(self):
-        child = SimpleNamespace(component_id="1.1")
-        peer = SimpleNamespace(component_id="1.2")
-        root_a = SimpleNamespace(component_id="1")
-        root_b = SimpleNamespace(component_id="2")
+    def test_reads_members_hashes_and_relations_from_cores_objects(self):
+        child = core_component("1.1", "Child", {"a.py": ["a.run"]})
+        peer = core_component("1.2", "Peer", {"b.py": ["b.save"]})
+        root_a = core_component("1", "Root A", {"a.py": ["a.run"], "b.py": ["b.save"]})
+        root_b = core_component("2", "Root B")
         global_relation = SimpleNamespace(
             relation="calls",
             src_name="Child",
@@ -178,25 +165,20 @@ class TestDiff(unittest.TestCase):
             src_id="1.1",
             dst_id="1.2",
         )
+
+        def method(name, content_hash):
+            return SimpleNamespace(qualified_name=name, content_hash=content_hash)
+
         root_analysis = SimpleNamespace(
-            components=[root_a, root_b], components_relations=[global_relation, sibling_relation]
+            components=[root_a, root_b],
+            components_relations=[global_relation, sibling_relation],
+            files={
+                "a.py": SimpleNamespace(content_hash="fa", methods=[method("a.run", "ma")]),
+                "b.py": SimpleNamespace(content_hash="fb", methods=[method("b.save", "mb")]),
+                "": SimpleNamespace(content_hash="", methods=[method("loose", "ml")]),
+            },
         )
         sub_analysis = SimpleNamespace(components=[child, peer])
-        data = {
-            "components": [
-                {
-                    "name": "Root A",
-                    "component_id": "1",
-                    "components": [
-                        {"name": "Child", "component_id": "1.1"},
-                        {"name": "Peer", "component_id": "1.2"},
-                    ],
-                    "components_relations": [{"relation": "stale"}],
-                },
-                {"name": "Root B", "component_id": "2"},
-            ],
-            "components_relations": [],
-        }
 
         def projector(relations, level_ids, _id_to_name):
             self.assertEqual(relations, [global_relation, sibling_relation])
@@ -214,18 +196,35 @@ class TestDiff(unittest.TestCase):
                 return [sibling_relation]
             self.fail(f"unexpected component level: {level_ids}")
 
-        projected = dm._project_analysis(
-            data,
+        view = dm._diff_view(
             root_analysis,
             {"1": sub_analysis},
             {"1": "Root A", "2": "Root B", "1.1": "Child", "1.2": "Peer"},
             projector,
         )
 
-        self.assertEqual(projected["components_relations"][0]["src_id"], "1")
-        nested_relations = projected["components"][0]["components_relations"]
+        self.assertEqual(view["components_relations"][0]["src_id"], "1")
+        nested_relations = view["components"][0]["components_relations"]
         self.assertEqual(nested_relations[0]["src_id"], "1.1")
         self.assertEqual(nested_relations[0]["dst_id"], "1.2")
+        self.assertEqual(
+            view["components"][0]["file_methods"],
+            [{"file_path": "a.py", "methods": ["a.run"]}, {"file_path": "b.py", "methods": ["b.save"]}],
+        )
+        self.assertEqual(
+            view["components"][0]["components"][1]["file_methods"], [{"file_path": "b.py", "methods": ["b.save"]}]
+        )
+        self.assertNotIn("components", view["components"][1])
+        # files[""] holds pathless methods, which still count, but it is no file.
+        self.assertEqual(view["files"], {"a.py": {"content_hash": "fa"}, "b.py": {"content_hash": "fb"}})
+        self.assertEqual(
+            view["methods_index"],
+            {
+                "a.py|a.run": {"file_path": "a.py", "content_hash": "ma"},
+                "b.py|b.save": {"file_path": "b.py", "content_hash": "mb"},
+                "|loose": {"file_path": "", "content_hash": "ml"},
+            },
+        )
 
     def test_added_modified_deleted_unchanged(self):
         base = {"components": [comp("A", {"a.py": ["f"]}), comp("B"), comp("D")], "components_relations": []}
@@ -529,6 +528,90 @@ class TestRender(unittest.TestCase):
     def test_no_edge_labels(self):
         text, _ = dm.render_mermaid(self._diff(), render_depth=1, edge_labels=False)
         self.assertNotIn(' -- "', text)
+
+
+def _core_installed() -> bool:
+    try:
+        metadata.version("codeboarding")
+    except metadata.PackageNotFoundError:
+        return False
+    return True
+
+
+@unittest.skipUnless(_core_installed(), "the pinned CodeBoarding release is not installed")
+class InstalledCoreTests(unittest.TestCase):
+    """The loader against the release action.yml pins. It runs in the `core-compatibility` CI job.
+
+    tests/fixtures/analysis holds one analysis as two Core releases wrote it: core-0.15.5.json and
+    core-9cf50fb9.json (main after #571). Each release reads only its own, so the pinned one must read at
+    least one, and every one it reads must give the same view. A pin whose release reads none needs that
+    analysis written by it, which is the point: the diff has not been checked against its parser."""
+
+    def test_the_pinned_release_reads_an_analysis_it_wrote_into_the_diffs_view(self) -> None:
+        components_relations = [
+            {"relation": "uses", "src_name": "Core", "dst_name": "Also", "src_id": "1", "dst_id": "2"},
+            {"relation": "reads", "src_name": "Also", "dst_name": "Core", "src_id": "2", "dst_id": "1"},
+        ]
+        expected = {
+            "components": [
+                {
+                    "name": "Core",
+                    "component_id": "1",
+                    "file_methods": [
+                        {"file_path": "pkg/a.py", "methods": ["pkg.a.run", "pkg.a.helper"]},
+                        {"file_path": "pkg/b.py", "methods": ["pkg.b.save", "~Weird"]},
+                    ],
+                    "components": [
+                        {
+                            "name": "Run",
+                            "component_id": "1.1",
+                            "file_methods": [{"file_path": "pkg/a.py", "methods": ["pkg.a.run", "pkg.a.helper"]}],
+                        },
+                        {
+                            "name": "Store",
+                            "component_id": "1.2",
+                            "file_methods": [{"file_path": "pkg/b.py", "methods": ["pkg.b.save", "~Weird"]}],
+                        },
+                    ],
+                    "components_relations": [
+                        {"relation": "saves", "src_name": "Run", "dst_name": "Store", "src_id": "1.1", "dst_id": "1.2"}
+                    ],
+                },
+                {
+                    "name": "Also",
+                    "component_id": "2",
+                    "file_methods": [{"file_path": "pkg/c.py", "methods": ["pkg.c.load"]}],
+                },
+            ],
+            "components_relations": components_relations,
+            "files": {path: {"content_hash": ""} for path in ("pkg/a.py", "pkg/b.py", "pkg/c.py")},
+            "methods_index": {
+                f"{path}|{name}": {"file_path": path, "content_hash": content_hash}
+                for path, name, content_hash in (
+                    ("pkg/a.py", "pkg.a.run", "h1"),
+                    ("pkg/a.py", "pkg.a.helper", "h2"),
+                    ("pkg/b.py", "pkg.b.save", "h3"),
+                    ("pkg/b.py", "~Weird", "h4"),
+                    ("pkg/c.py", "pkg.c.load", "h5"),
+                )
+            },
+        }
+        read = []
+        for fixture in sorted((Path(__file__).parent / "fixtures" / "analysis").glob("*.json")):
+            try:
+                view = dm.load_analysis(fixture)
+            except SystemExit as refused:
+                if not str(refused.code).startswith("::error::Could not parse"):
+                    raise
+                continue  # another release's format
+            read.append(fixture.name)
+            with self.subTest(fixture=fixture.name):
+                self.assertEqual(view, expected)
+                diff = dm.build_diff(view, view)
+                self.assertFalse(dm.render_mermaid(diff)[1]["changed"])
+        self.assertTrue(
+            read, "the pinned release reads none of tests/fixtures/analysis; add the analysis as it writes it"
+        )
 
 
 if __name__ == "__main__":

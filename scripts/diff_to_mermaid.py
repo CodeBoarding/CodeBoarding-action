@@ -20,7 +20,9 @@ content hash the engine records for every file a component owns. Zero means no b
 analysed code changed, whatever the component diff says: a component can still read as
 changed when the analysis grouped the same code differently.
 
-Self-contained stdlib.
+Stdlib only, apart from the installed CodeBoarding release: both analyses are read through its parser
+and never as a document, so whatever format that release writes is read. The review analyses both
+commits with it, so both sides are always in that format.
 """
 
 from __future__ import annotations
@@ -63,23 +65,46 @@ def _relation_dict(relation) -> dict:
     }
 
 
-def _project_analysis(data: dict, root_analysis, sub_analyses: dict, id_to_name: dict, projector) -> dict:
-    """Attach Core's global-relation projection to every nested JSON level."""
+def _diff_view(root_analysis, sub_analyses: dict, id_to_name: dict, projector) -> dict:
+    """The dict the diff reads, built from Core's parsed analysis rather than the document: the component
+    tree with each component's methods by file, Core's projection of the global relations at every level,
+    and the content hash of every analysed file and method."""
     global_relations = list(root_analysis.components_relations)
 
-    def project_level(container: dict, analysis) -> None:
+    def level(analysis) -> dict:
         level_ids = {component.component_id for component in analysis.components}
-        container["components_relations"] = [
-            _relation_dict(relation) for relation in projector(global_relations, level_ids, id_to_name)
-        ]
-        for component in container.get("components") or []:
-            component_id = component.get("component_id", "")
-            sub_analysis = sub_analyses.get(component_id)
+        components = []
+        for component in analysis.components:
+            view = {
+                "name": component.name,
+                "component_id": component.component_id,
+                "file_methods": [
+                    {"file_path": group.file_path, "methods": [method.qualified_name for method in group.methods]}
+                    for group in component.file_methods
+                ],
+            }
+            sub_analysis = sub_analyses.get(component.component_id)
             if sub_analysis is not None:
-                project_level(component, sub_analysis)
+                view.update(level(sub_analysis))
+            components.append(view)
+        return {
+            "components": components,
+            "components_relations": [
+                _relation_dict(relation) for relation in projector(global_relations, level_ids, id_to_name)
+            ],
+        }
 
-    project_level(data, root_analysis)
-    return data
+    files = root_analysis.files
+    return {
+        **level(root_analysis),
+        # files[""] only holds pathless methods; it is no file.
+        "files": {path: {"content_hash": entry.content_hash} for path, entry in files.items() if path},
+        "methods_index": {
+            f"{path}|{method.qualified_name}": {"file_path": path, "content_hash": method.content_hash}
+            for path, entry in files.items()
+            for method in entry.methods
+        },
+    }
 
 
 def read_analysis_json(path: Path) -> dict:
@@ -101,8 +126,7 @@ def load_analysis(path: Path) -> dict:
         root_analysis, sub_analyses = parse_unified_analysis(data)
     except (KeyError, TypeError, ValueError) as exc:
         sys.exit(f"::error::Could not parse analysis JSON at {path}: {exc}")
-    return _project_analysis(
-        data,
+    return _diff_view(
         root_analysis,
         sub_analyses,
         build_id_to_name_map(root_analysis, sub_analyses),
