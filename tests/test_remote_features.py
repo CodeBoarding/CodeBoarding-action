@@ -9,9 +9,8 @@ import sys
 import tempfile
 import threading
 import unittest
-from importlib import metadata
-from contextlib import nullcontext
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -529,19 +528,27 @@ class EndpointTests(unittest.TestCase):
             post.assert_not_called()
         self.assertFalse((Path(self.env["ARTIFACT_DIR"]) / "closed").exists())
 
-    def test_source_toggle_and_read_failure_only_omit_architecture_source(self):
+    def run_counting(self, **patches):
+        """run_service with `patches` on remote_features, and how often it compressed."""
+        compress = mock.Mock(wraps=lzma.compress)
+        with mock.patch.object(lzma, "compress", compress), mock.patch.dict(remote_features.__dict__, patches):
+            service = self.run_service()
+        return {r["path"]: r["body"] for r in service.requests}, compress.call_count
+
+    def test_without_source_both_send_one_body_compressed_once(self):
         for failure in (False, True):
             self.env["CLOSED_FEATURES_SOURCE"] = "false"
-            with (
-                mock.patch.object(remote_features, "collect_source", side_effect=OSError())
-                if failure
-                else nullcontext()
-            ):
-                service = self.run_service()
-            for request in service.requests:
-                body = json.loads(lzma.decompress(request["body"]))
-                self.assertNotIn("source.json", body["files"])
-                self.assertEqual("omitted" in body, request["path"] == "/v1/architecture")
+            patches = {"collect_source": mock.Mock(side_effect=OSError())} if failure else {}
+            bodies, compressions = self.run_counting(**patches)
+            self.assertEqual((compressions, len(set(bodies.values()))), (1, 1))
+            body = json.loads(lzma.decompress(bodies["/v1/architecture"]))
+            self.assertNotIn("source.json", body["files"])
+            self.assertIn("reading it failed" if failure else "turned off", body["omitted"]["source.json"])
+
+    def test_source_is_compressed_once_more_and_only_for_architecture(self):
+        bodies, compressions = self.run_counting(collect_source=mock.Mock(return_value=("{}", None)))
+        self.assertEqual(compressions, 2)
+        self.assertNotEqual(bodies["/v1/architecture"], bodies["/v1/review-guide"])
 
     def test_either_limit_omits_source_then_skips_if_required_inputs_too_large(self):
         with mock.patch.object(remote_features, "collect_source", return_value=(None, "off")):
@@ -552,13 +559,13 @@ class EndpointTests(unittest.TestCase):
             ("MAX_COMPRESSED_BYTES", 1000, os.urandom(2000).hex()),
             ("MAX_FEATURE_JSON_BYTES", without_source + 1000, "x" * 100_000),
         ):
-            with (
-                mock.patch.object(remote_features, limit, room),
-                mock.patch.object(remote_features, "collect_source", return_value=(source, None)),
-            ):
-                service = self.run_service()
-            arch = next(r for r in service.requests if r["path"] == "/v1/architecture")
-            body = json.loads(lzma.decompress(arch["body"]))
+            bodies, compressions = self.run_counting(
+                **{limit: room, "collect_source": mock.Mock(return_value=(source, None))}
+            )
+            # Architecture sends the guide's body, which already says why source is missing.
+            self.assertEqual(bodies["/v1/architecture"], bodies["/v1/review-guide"])
+            self.assertEqual(compressions, 2 if limit == "MAX_COMPRESSED_BYTES" else 1)
+            body = json.loads(lzma.decompress(bodies["/v1/architecture"]))
             self.assertNotIn("source.json", body["files"])
             self.assertIn("too large", body["omitted"]["source.json"])
             with mock.patch.object(remote_features, limit, 1):

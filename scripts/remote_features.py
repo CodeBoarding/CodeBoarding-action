@@ -8,7 +8,8 @@ including partial, skipped and failed results.
 
 What a request sends
 --------------------
-One JSON object of named files, compressed with xz. Both requests send the same files:
+One JSON object of named files, compressed with xz. Both requests send the same files, and the same
+bytes unless architecture's carries source:
 
 - head.json and base.json: one side document per commit (see side_document). It holds what the
   service reads from that commit's analysis.json and call graph (static_analysis.pkl), each fact once:
@@ -35,8 +36,12 @@ Size limits
 -----------
 - The service sets two limits on every request, and _encode checks both before anything is sent: the
   JSON, measured first because that is cheap, against MAX_FEATURE_JSON_BYTES (MAX_BRIEFING_JSON_BYTES
-  for the problem history), then the xz once against MAX_COMPRESSED_BYTES. Past either a feature request
-  is skipped, after first dropping source.json if architecture carried it.
+  for the problem history), then the xz once against MAX_COMPRESSED_BYTES. The JSON limit is 62 times
+  the compressed one, so the cheap check already turns away whatever could only fit at better than 62:1.
+  These bundles compress about 10:1, but no tighter cut-off holds for every request.
+- xz at this preset takes about 700 MB and seconds per 10 MB, so a run compresses one body at a time and
+  each at most once: the body without source, which both features send, and architecture's with source
+  when there is source. When that one does not fit, architecture sends the shared one.
 - MAX_FILES: how many changed files have their contents sent; past it a feature reads diffs only.
 - MAX_FILE_BYTES: a larger file is sent neither in files.json nor in source.json.
 - MAX_SOURCE_BYTES: the most source.json holds; past it source is not sent.
@@ -634,12 +639,24 @@ def _encode(body: dict, max_json_bytes: int, what: str = "bundle") -> bytes:
     return data
 
 
-def _pack(ctx: dict, files: dict[str, str], omitted: dict[str, str]) -> bytes:
-    """A feature request: the named files, and why any optional one is missing."""
-    body = {"version": 1, "repo": ctx["repo"], "pr": ctx["pr"], "files": files}
-    if omitted:
-        body["omitted"] = omitted
-    return _encode(body, MAX_FEATURE_JSON_BYTES)
+def _requests(ctx: dict, inputs: dict[str, str], env: dict) -> tuple[bytes, bytes]:
+    """The review guide's request and architecture's, compressed one after the other. Both can send the
+    body without source, so it is compressed once; it says why source is missing, which only architecture
+    reads. Architecture's body with source is compressed only when there is source, and the shared one
+    stands in when it does not fit. TooLarge when not even the shared one fits."""
+    try:
+        source, why = collect_source(env)
+    except Exception as error:
+        source, why = None, f"reading it failed: {type(error).__name__}"
+    body = {"version": 1, "repo": ctx["repo"], "pr": ctx["pr"], "files": inputs}
+    missing = (why or "the source was not collected") if source is None else "the repository is too large to send"
+    shared = _encode({**body, "omitted": {"source.json": missing}}, MAX_FEATURE_JSON_BYTES)
+    if source is None:
+        return shared, shared
+    try:
+        return shared, _encode({**body, "files": {**inputs, "source.json": source}}, MAX_FEATURE_JSON_BYTES)
+    except TooLarge:
+        return shared, shared
 
 
 def _no_architecture(ctx: dict, status: str, reason: str) -> dict:
@@ -658,11 +675,10 @@ def _no_architecture(ctx: dict, status: str, reason: str) -> dict:
     }
 
 
-def run_review_guide(service_url: str, ctx: dict, inputs: dict, headers: dict, artifact: Path) -> None:
+def run_review_guide(service_url: str, data: bytes, headers: dict, artifact: Path) -> None:
     try:
         if "x-llm-provider" in headers and "x-llm-api-key" not in headers:
             raise Skip("the service cannot call this run's provider")
-        data = _pack(ctx, inputs, {})
         answer = _post(f"{service_url.rstrip('/')}/v1/review-guide", data, headers)
         guide = answer.get("guide")
         if not isinstance(guide, dict):
@@ -672,25 +688,8 @@ def run_review_guide(service_url: str, ctx: dict, inputs: dict, headers: dict, a
         print(f"::notice::review-guide {'skipped' if isinstance(error, Skip) else 'failed'}: {error}")
 
 
-def run_architecture(service_url: str, ctx: dict, inputs: dict, headers: dict, env: dict) -> dict:
+def run_architecture(service_url: str, ctx: dict, data: bytes, headers: dict) -> dict:
     try:
-        try:
-            source, why = collect_source(env)
-        except Exception as error:
-            source, why = None, f"reading it failed: {type(error).__name__}"
-        files, omitted = dict(inputs), {}
-        if source is None:
-            omitted["source.json"] = why or "the source was not collected"
-        else:
-            files["source.json"] = source
-        try:
-            data = _pack(ctx, files, omitted)
-        except TooLarge:
-            if "source.json" not in files:
-                raise
-            del files["source.json"]
-            omitted["source.json"] = "the repository is too large to send"
-            data = _pack(ctx, files, omitted)
         answer = _post(f"{service_url.rstrip('/')}/v1/architecture", data, headers)
         envelope = answer.get("envelope")
         if not isinstance(envelope, dict) or envelope.get("status") not in ("ok", "partial", "skipped", "failed"):
@@ -711,15 +710,18 @@ def main(env: dict | None = None) -> int:
             return 0
         try:
             headers = {**_bearer(env), **model_headers(env)}
-            inputs = collect(env)
+            guide_request, architecture_request = _requests(ctx, collect(env), env)
+        except TooLarge as error:
+            print(f"::notice::review-guide skipped: {error}")
+            architecture = _no_architecture(ctx, "skipped", str(error))
         except Exception as error:
             reason = f"collecting inputs or credentials failed: {type(error).__name__}: {error}"
             print(f"::notice::review-guide failed: {reason}")
             architecture = _no_architecture(ctx, "failed", reason)
         else:
             with ThreadPoolExecutor(max_workers=2) as pool:
-                guide = pool.submit(run_review_guide, service_url, ctx, inputs, headers, artifact)
-                result = pool.submit(run_architecture, service_url, ctx, inputs, headers, env)
+                guide = pool.submit(run_review_guide, service_url, guide_request, headers, artifact)
+                result = pool.submit(run_architecture, service_url, ctx, architecture_request, headers)
                 architecture = result.result()
                 guide.result()
         path = artifact / "closed" / "architecture.json"
