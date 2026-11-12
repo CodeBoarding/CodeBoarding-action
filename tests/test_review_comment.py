@@ -44,7 +44,7 @@ class ReviewCommentTests(unittest.TestCase):
             body = _build(Path(tmp))
             self.assertTrue(body.startswith("### CodeBoarding review\n\n**Status:** 3 changed components\n"))
             self.assertIn(
-                "See the full change in [CodeBoarding](https://app.codeboarding.org/owner/repo/pull/605?utm_source=github",
+                "See the full change in [CodeBoarding](https://app.codeboarding.org/owner/repo/pull/605/changes?utm_source=github&utm_medium=pr_comment&utm_campaign=gh_action)",
                 body,
             )
 
@@ -54,7 +54,7 @@ class ReviewCommentTests(unittest.TestCase):
             last = body.rstrip("\n").splitlines()[-1]
             self.assertEqual(
                 last,
-                "<!-- codeboarding: platform_url=https://app.codeboarding.org/owner/repo/pull/605 changed=3 analysed_files_changed=unknown head=abc123 -->",
+                "<!-- codeboarding: platform_url=https://app.codeboarding.org/owner/repo/pull/605/changes changed=3 analysed_files_changed=unknown head=abc123 -->",
             )
             # The status regex the web platform uses must still find the status line, not the marker.
             match = re.search(r"\*\*Status:\*\*\s*(\d+)\s+changed\s+components?", body)

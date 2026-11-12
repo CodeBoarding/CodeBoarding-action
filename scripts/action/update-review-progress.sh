@@ -36,7 +36,7 @@ else
   second="2. ⏳ Analysing this PR's changes"
 fi
 
-platform="https://app.codeboarding.org/$REPOSITORY/pull/$PR_NUMBER?utm_source=github&utm_medium=pr_comment&utm_campaign=gh_action"
+platform="https://app.codeboarding.org/$REPOSITORY/pull/$PR_NUMBER/changes?utm_source=github&utm_medium=pr_comment&utm_campaign=gh_action"
 run_url="${GITHUB_SERVER_URL:-https://github.com}/$REPOSITORY/actions/runs/${GITHUB_RUN_ID:-}"
 body="$(printf '%s\n\n%s\n   %s\n%s\n\n%s\n\n%s\n%s' \
   '### CodeBoarding review · analyzing…' \
