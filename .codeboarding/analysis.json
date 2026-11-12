@@ -1,17 +1,17 @@
 {
   "metadata": {
-    "generated_at": "2026-11-09T23:06:39.345418+00:00",
-    "source_tree_hash": "068728a7e41a65efb6d00044f34232e3f1de151f2c7221379567767cef2752dc",
+    "generated_at": "2026-11-12T21:20:20.278022+00:00",
+    "source_tree_hash": "5f4acc54aabf64502cb97b9bf8d207f202d054d805ac6b8638928678ecee4dc9",
     "repo_name": ".codeboarding-target",
     "depth_level": 1,
     "depth_cap": 2,
     "file_coverage_summary": {
-      "total_files": 67,
+      "total_files": 69,
       "analyzed": 6,
-      "not_analyzed": 61,
+      "not_analyzed": 63,
       "not_analyzed_by_reason": {
         "other": 39,
-        "codeboardingignore": 22
+        "codeboardingignore": 24
       }
     },
     "tree_spec": {
@@ -164,8 +164,8 @@
     "scripts/diff_to_mermaid.py": {
       "method_keys": [
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._relation_dict",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._project_analysis",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._project_analysis.project_level",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_view",
+        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_view.level",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.read_analysis_json",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.load_analysis",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_id",
@@ -202,8 +202,8 @@
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_level",
         "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main"
       ],
-      "content_hash": "896684e0327a679b",
-      "module_hash": "1fb1c9d1e28c030e"
+      "content_hash": "409269e5baccdba9",
+      "module_hash": "f7391bc4274c4ea8"
     },
     "scripts/oidc_relay.py": {
       "method_keys": [
@@ -225,34 +225,57 @@
       "content_hash": "5af0d8557c0af6e0",
       "module_hash": "581a285c4c8aad4a"
     },
-    "scripts/closed_features.py": {
+    "scripts/remote_features.py": {
       "method_keys": [
-        "scripts/closed_features.py|scripts.closed_features.Skip",
-        "scripts/closed_features.py|scripts.closed_features._github",
-        "scripts/closed_features.py|scripts.closed_features._error_message",
-        "scripts/closed_features.py|scripts.closed_features._github_json",
-        "scripts/closed_features.py|scripts.closed_features.call_graph",
-        "scripts/closed_features.py|scripts.closed_features._diff",
-        "scripts/closed_features.py|scripts.closed_features._contents",
-        "scripts/closed_features.py|scripts.closed_features.collect",
-        "scripts/closed_features.py|scripts.closed_features._load",
-        "scripts/closed_features.py|scripts.closed_features._relay",
-        "scripts/closed_features.py|scripts.closed_features._api_key",
-        "scripts/closed_features.py|scripts.closed_features.model_headers",
-        "scripts/closed_features.py|scripts.closed_features._bearer",
-        "scripts/closed_features.py|scripts.closed_features._checkout_file",
-        "scripts/closed_features.py|scripts.closed_features.collect_source",
-        "scripts/closed_features.py|scripts.closed_features._no_architecture",
-        "scripts/closed_features.py|scripts.closed_features._post",
-        "scripts/closed_features.py|scripts.closed_features._gzip",
-        "scripts/closed_features.py|scripts.closed_features._pack",
-        "scripts/closed_features.py|scripts.closed_features._check_size",
-        "scripts/closed_features.py|scripts.closed_features.run_review_guide",
-        "scripts/closed_features.py|scripts.closed_features.run_architecture",
-        "scripts/closed_features.py|scripts.closed_features.main"
+        "scripts/remote_features.py|scripts.remote_features.Skip",
+        "scripts/remote_features.py|scripts.remote_features.TooLarge",
+        "scripts/remote_features.py|scripts.remote_features.TooLarge.__init__",
+        "scripts/remote_features.py|scripts.remote_features._github",
+        "scripts/remote_features.py|scripts.remote_features._error_message",
+        "scripts/remote_features.py|scripts.remote_features._github_json",
+        "scripts/remote_features.py|scripts.remote_features._diff",
+        "scripts/remote_features.py|scripts.remote_features._contents",
+        "scripts/remote_features.py|scripts.remote_features.call_graph",
+        "scripts/remote_features.py|scripts.remote_features._site_lines",
+        "scripts/remote_features.py|scripts.remote_features._Row",
+        "scripts/remote_features.py|scripts.remote_features._Row.written",
+        "scripts/remote_features.py|scripts.remote_features._short_name",
+        "scripts/remote_features.py|scripts.remote_features._Table",
+        "scripts/remote_features.py|scripts.remote_features._Table.__init__",
+        "scripts/remote_features.py|scripts.remote_features._Table._add_method",
+        "scripts/remote_features.py|scripts.remote_features._Table.add_node",
+        "scripts/remote_features.py|scripts.remote_features._Table.number_rows",
+        "scripts/remote_features.py|scripts.remote_features._Table.member",
+        "scripts/remote_features.py|scripts.remote_features.side_document",
+        "scripts/remote_features.py|scripts.remote_features._calls",
+        "scripts/remote_features.py|scripts.remote_features._components",
+        "scripts/remote_features.py|scripts.remote_features._flatten",
+        "scripts/remote_features.py|scripts.remote_features._flatten.visit",
+        "scripts/remote_features.py|scripts.remote_features._relations",
+        "scripts/remote_features.py|scripts.remote_features._analysis_edges",
+        "scripts/remote_features.py|scripts.remote_features._method_key",
+        "scripts/remote_features.py|scripts.remote_features.collect",
+        "scripts/remote_features.py|scripts.remote_features._side",
+        "scripts/remote_features.py|scripts.remote_features.read_analysis",
+        "scripts/remote_features.py|scripts.remote_features._changed_contents",
+        "scripts/remote_features.py|scripts.remote_features._checkout_text",
+        "scripts/remote_features.py|scripts.remote_features._checkout_file",
+        "scripts/remote_features.py|scripts.remote_features.collect_source",
+        "scripts/remote_features.py|scripts.remote_features._load",
+        "scripts/remote_features.py|scripts.remote_features._relay",
+        "scripts/remote_features.py|scripts.remote_features._api_key",
+        "scripts/remote_features.py|scripts.remote_features.model_headers",
+        "scripts/remote_features.py|scripts.remote_features._bearer",
+        "scripts/remote_features.py|scripts.remote_features._post",
+        "scripts/remote_features.py|scripts.remote_features._encode",
+        "scripts/remote_features.py|scripts.remote_features._requests",
+        "scripts/remote_features.py|scripts.remote_features._no_architecture",
+        "scripts/remote_features.py|scripts.remote_features.run_review_guide",
+        "scripts/remote_features.py|scripts.remote_features.run_architecture",
+        "scripts/remote_features.py|scripts.remote_features.main"
       ],
-      "content_hash": "95725da8c2551918",
-      "module_hash": "370d8a10835901ef"
+      "content_hash": "8f2d02ed53c8b44a",
+      "module_hash": "0825e0da378f53c5"
     },
     "scripts/problem_history.py": {
       "method_keys": [
@@ -301,8 +324,8 @@
         "scripts/problem_history.py|scripts.problem_history._stop",
         "scripts/problem_history.py|scripts.problem_history.main"
       ],
-      "content_hash": "003974c1bb743d5a",
-      "module_hash": "de31a38f9a50b8fc"
+      "content_hash": "40f1fa151ce30122",
+      "module_hash": "f7d4ad983b087ce7"
     }
   },
   "methods_index": {
@@ -557,304 +580,304 @@
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._relation_dict": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._relation_dict",
-      "start_line": 55,
-      "end_line": 63,
+      "start_line": 57,
+      "end_line": 65,
       "type": "FUNCTION",
       "content_hash": "801e1bc47ec57702"
     },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._project_analysis": {
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_view": {
       "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._project_analysis",
-      "start_line": 66,
-      "end_line": 82,
+      "qualified_name": "scripts.diff_to_mermaid._diff_view",
+      "start_line": 68,
+      "end_line": 107,
       "type": "FUNCTION",
-      "content_hash": "d61d2932a460e6a6"
+      "content_hash": "a8473266180c9ca7"
     },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._project_analysis.project_level": {
+    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_view.level": {
       "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._project_analysis.project_level",
-      "start_line": 70,
-      "end_line": 79,
+      "qualified_name": "scripts.diff_to_mermaid._diff_view.level",
+      "start_line": 74,
+      "end_line": 95,
       "type": "FUNCTION",
-      "content_hash": "0026422919ed0eb4"
+      "content_hash": "ea47664f4403e0e3"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.read_analysis_json": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.read_analysis_json",
-      "start_line": 85,
-      "end_line": 89,
+      "start_line": 110,
+      "end_line": 114,
       "type": "FUNCTION",
       "content_hash": "47fd5e4824a8bbe9"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.load_analysis": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.load_analysis",
-      "start_line": 92,
-      "end_line": 110,
+      "start_line": 117,
+      "end_line": 134,
       "type": "FUNCTION",
-      "content_hash": "0ee6340a01cf0317"
+      "content_hash": "1884b94e63afc0d5"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_id": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._comp_id",
-      "start_line": 116,
-      "end_line": 117,
+      "start_line": 140,
+      "end_line": 141,
       "type": "FUNCTION",
       "content_hash": "0cb8d9398468a0e6"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_name": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._comp_name",
-      "start_line": 120,
-      "end_line": 121,
+      "start_line": 144,
+      "end_line": 145,
       "type": "FUNCTION",
       "content_hash": "399b6e3662e7ce1f"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._file_methods": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._file_methods",
-      "start_line": 124,
-      "end_line": 125,
+      "start_line": 148,
+      "end_line": 149,
       "type": "FUNCTION",
       "content_hash": "b54d71b9e1b80e63"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._methods_by_file": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._methods_by_file",
-      "start_line": 128,
-      "end_line": 135,
+      "start_line": 152,
+      "end_line": 159,
       "type": "FUNCTION",
       "content_hash": "4ba9b19ab0f246f2"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_structural_changes": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._has_structural_changes",
-      "start_line": 138,
-      "end_line": 141,
+      "start_line": 162,
+      "end_line": 165,
       "type": "FUNCTION",
       "content_hash": "d4511a8ccbf2073d"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_method_changes": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._has_method_changes",
-      "start_line": 144,
-      "end_line": 149,
+      "start_line": 168,
+      "end_line": 173,
       "type": "FUNCTION",
       "content_hash": "737fc9898cef0f98"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._content_changed": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._content_changed",
-      "start_line": 152,
-      "end_line": 155,
+      "start_line": 176,
+      "end_line": 179,
       "type": "FUNCTION",
       "content_hash": "85ed060789d16481"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._changed_files": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._changed_files",
-      "start_line": 158,
-      "end_line": 165,
+      "start_line": 182,
+      "end_line": 189,
       "type": "FUNCTION",
       "content_hash": "4985f13a96d808b6"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.analysed_files_changed": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.analysed_files_changed",
-      "start_line": 168,
-      "end_line": 180,
+      "start_line": 192,
+      "end_line": 204,
       "type": "FUNCTION",
       "content_hash": "06bc4749ffc8f5e6"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._analysis_changes": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._analysis_changes",
-      "start_line": 183,
-      "end_line": 197,
+      "start_line": 207,
+      "end_line": 221,
       "type": "FUNCTION",
       "content_hash": "97d732e3640c7811"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._owns_analysis_change": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._owns_analysis_change",
-      "start_line": 200,
-      "end_line": 215,
+      "start_line": 224,
+      "end_line": 239,
       "type": "FUNCTION",
       "content_hash": "2517e5dff08a1eac"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._rel_key": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._rel_key",
-      "start_line": 218,
-      "end_line": 221,
+      "start_line": 242,
+      "end_line": 245,
       "type": "FUNCTION",
       "content_hash": "e8de4cfb9ef31082"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_relations": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._diff_relations",
-      "start_line": 224,
-      "end_line": 270,
+      "start_line": 248,
+      "end_line": 294,
       "type": "FUNCTION",
       "content_hash": "652dc3832988ab8d"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changes": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._has_changes",
-      "start_line": 273,
-      "end_line": 281,
+      "start_line": 297,
+      "end_line": 305,
       "type": "FUNCTION",
       "content_hash": "785661b1b374b761"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_components": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._diff_components",
-      "start_line": 284,
-      "end_line": 329,
+      "start_line": 308,
+      "end_line": 353,
       "type": "FUNCTION",
       "content_hash": "7f3d3b547750caa7"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.build_diff": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.build_diff",
-      "start_line": 332,
-      "end_line": 355,
+      "start_line": 356,
+      "end_line": 379,
       "type": "FUNCTION",
       "content_hash": "03d7ac8c994d57db"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._sanitize": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._sanitize",
-      "start_line": 361,
-      "end_line": 363,
+      "start_line": 385,
+      "end_line": 387,
       "type": "FUNCTION",
       "content_hash": "0c4a83ab88d80bc0"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._esc": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._esc",
-      "start_line": 385,
-      "end_line": 391,
+      "start_line": 409,
+      "end_line": 415,
       "type": "FUNCTION",
       "content_hash": "e45c5105d8af2dc4"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._truncate": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._truncate",
-      "start_line": 394,
-      "end_line": 396,
+      "start_line": 418,
+      "end_line": 420,
       "type": "FUNCTION",
       "content_hash": "751d4ca80e5e5268"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._display_status": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._display_status",
-      "start_line": 399,
-      "end_line": 400,
+      "start_line": 423,
+      "end_line": 424,
       "type": "FUNCTION",
       "content_hash": "d5b585da051d6666"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._Scope",
-      "start_line": 403,
-      "end_line": 447,
+      "start_line": 427,
+      "end_line": 471,
       "type": "CLASS",
       "content_hash": "95389df8539e5091"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope.__init__": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._Scope.__init__",
-      "start_line": 414,
-      "end_line": 436,
+      "start_line": 438,
+      "end_line": 460,
       "type": "METHOD",
       "content_hash": "f1143a47440e417d"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope.resolve": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._Scope.resolve",
-      "start_line": 438,
-      "end_line": 447,
+      "start_line": 462,
+      "end_line": 471,
       "type": "METHOD",
       "content_hash": "5bfc527e15cdf1cd"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._filter_changed",
-      "start_line": 450,
-      "end_line": 492,
+      "start_line": 474,
+      "end_line": 516,
       "type": "FUNCTION",
       "content_hash": "91c6dccaa5a809e1"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed.touches": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._filter_changed.touches",
-      "start_line": 483,
-      "end_line": 485,
+      "start_line": 507,
+      "end_line": 509,
       "type": "FUNCTION",
       "content_hash": "e1a0c69dff6f9b3d"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._init_directive": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._init_directive",
-      "start_line": 495,
-      "end_line": 514,
+      "start_line": 519,
+      "end_line": 538,
       "type": "FUNCTION",
       "content_hash": "90d7c75c50f440b4"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._count_changed_components": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._count_changed_components",
-      "start_line": 517,
-      "end_line": 524,
+      "start_line": 541,
+      "end_line": 548,
       "type": "FUNCTION",
       "content_hash": "18a0b2e0cc0785cd"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changed_relations": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid._has_changed_relations",
-      "start_line": 527,
-      "end_line": 531,
+      "start_line": 551,
+      "end_line": 555,
       "type": "FUNCTION",
       "content_hash": "06ad82ce29818493"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.render_mermaid",
-      "start_line": 534,
-      "end_line": 661,
+      "start_line": 558,
+      "end_line": 685,
       "type": "FUNCTION",
       "content_hash": "8b7c6d2420ad9ae7"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build",
-      "start_line": 563,
-      "end_line": 636,
+      "start_line": 587,
+      "end_line": 660,
       "type": "FUNCTION",
       "content_hash": "938fa3c85e73367b"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_edges": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
-      "start_line": 574,
-      "end_line": 586,
+      "start_line": 598,
+      "end_line": 610,
       "type": "FUNCTION",
       "content_hash": "beb1d84227b5ecb3"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_level": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build.emit_level",
-      "start_line": 588,
-      "end_line": 605,
+      "start_line": 612,
+      "end_line": 629,
       "type": "FUNCTION",
       "content_hash": "bab2f4f0a975b7d6"
     },
     "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main": {
       "file_path": "scripts/diff_to_mermaid.py",
       "qualified_name": "scripts.diff_to_mermaid.main",
-      "start_line": 667,
-      "end_line": 710,
+      "start_line": 691,
+      "end_line": 734,
       "type": "FUNCTION",
       "content_hash": "92e0174d2c12d091"
     },
@@ -970,547 +993,731 @@
       "type": "FUNCTION",
       "content_hash": "32cb887f244d21dd"
     },
-    "scripts/closed_features.py|scripts.closed_features.Skip": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features.Skip",
-      "start_line": 66,
-      "end_line": 67,
+    "scripts/remote_features.py|scripts.remote_features.Skip": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features.Skip",
+      "start_line": 115,
+      "end_line": 116,
       "type": "CLASS",
       "content_hash": "2baab45c3c2e218f"
     },
-    "scripts/closed_features.py|scripts.closed_features._github": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._github",
-      "start_line": 70,
-      "end_line": 93,
-      "type": "FUNCTION",
-      "content_hash": "0b9d2214c875f8c8"
+    "scripts/remote_features.py|scripts.remote_features.TooLarge": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features.TooLarge",
+      "start_line": 119,
+      "end_line": 125,
+      "type": "CLASS",
+      "content_hash": "bf7eef5dd7cf3c5e"
     },
-    "scripts/closed_features.py|scripts.closed_features._error_message": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._error_message",
-      "start_line": 96,
-      "end_line": 101,
-      "type": "FUNCTION",
-      "content_hash": "4a6daeaa55a1b16d"
+    "scripts/remote_features.py|scripts.remote_features.TooLarge.__init__": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features.TooLarge.__init__",
+      "start_line": 123,
+      "end_line": 125,
+      "type": "METHOD",
+      "content_hash": "629f1508ec731d92"
     },
-    "scripts/closed_features.py|scripts.closed_features._github_json": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._github_json",
-      "start_line": 104,
-      "end_line": 105,
+    "scripts/remote_features.py|scripts.remote_features._github": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._github",
+      "start_line": 131,
+      "end_line": 154,
+      "type": "FUNCTION",
+      "content_hash": "72a387965555e379"
+    },
+    "scripts/remote_features.py|scripts.remote_features._error_message": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._error_message",
+      "start_line": 157,
+      "end_line": 162,
+      "type": "FUNCTION",
+      "content_hash": "6476bd2e882efd58"
+    },
+    "scripts/remote_features.py|scripts.remote_features._github_json": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._github_json",
+      "start_line": 165,
+      "end_line": 166,
       "type": "FUNCTION",
       "content_hash": "524f8b94439ea108"
     },
-    "scripts/closed_features.py|scripts.closed_features.call_graph": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features.call_graph",
-      "start_line": 108,
-      "end_line": 130,
+    "scripts/remote_features.py|scripts.remote_features._diff": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._diff",
+      "start_line": 169,
+      "end_line": 174,
       "type": "FUNCTION",
-      "content_hash": "cd6e687c016caa7f"
+      "content_hash": "037c0071e5708ca1"
     },
-    "scripts/closed_features.py|scripts.closed_features._diff": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._diff",
-      "start_line": 133,
-      "end_line": 144,
+    "scripts/remote_features.py|scripts.remote_features._contents": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._contents",
+      "start_line": 177,
+      "end_line": 186,
       "type": "FUNCTION",
-      "content_hash": "24c570588e951ef7"
+      "content_hash": "4f50a284659f5772"
     },
-    "scripts/closed_features.py|scripts.closed_features._contents": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._contents",
-      "start_line": 147,
-      "end_line": 155,
+    "scripts/remote_features.py|scripts.remote_features.call_graph": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features.call_graph",
+      "start_line": 192,
+      "end_line": 211,
       "type": "FUNCTION",
-      "content_hash": "30fdcf11bfee6226"
+      "content_hash": "cc4fb4cca624596d"
     },
-    "scripts/closed_features.py|scripts.closed_features.collect": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features.collect",
-      "start_line": 158,
-      "end_line": 207,
+    "scripts/remote_features.py|scripts.remote_features._site_lines": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._site_lines",
+      "start_line": 214,
+      "end_line": 217,
       "type": "FUNCTION",
-      "content_hash": "017b42984e091591"
+      "content_hash": "dfba3aad2c0d2da5"
     },
-    "scripts/closed_features.py|scripts.closed_features._load": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._load",
-      "start_line": 210,
-      "end_line": 216,
+    "scripts/remote_features.py|scripts.remote_features._Row": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._Row",
+      "start_line": 221,
+      "end_line": 236,
+      "type": "CLASS",
+      "content_hash": "148d08afe3ad045e"
+    },
+    "scripts/remote_features.py|scripts.remote_features._Row.written": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._Row.written",
+      "start_line": 232,
+      "end_line": 236,
+      "type": "METHOD",
+      "content_hash": "4e37a33757731648"
+    },
+    "scripts/remote_features.py|scripts.remote_features._short_name": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._short_name",
+      "start_line": 239,
+      "end_line": 245,
       "type": "FUNCTION",
-      "content_hash": "55d11ece37d3950c"
+      "content_hash": "d4a57ef09c114c6f"
     },
-    "scripts/closed_features.py|scripts.closed_features._relay": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._relay",
-      "start_line": 219,
-      "end_line": 220,
+    "scripts/remote_features.py|scripts.remote_features._Table": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._Table",
+      "start_line": 248,
+      "end_line": 297,
+      "type": "CLASS",
+      "content_hash": "d6fb9773c2b1d736"
+    },
+    "scripts/remote_features.py|scripts.remote_features._Table.__init__": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._Table.__init__",
+      "start_line": 252,
+      "end_line": 260,
+      "type": "METHOD",
+      "content_hash": "14e7b830e3c115dc"
+    },
+    "scripts/remote_features.py|scripts.remote_features._Table._add_method": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._Table._add_method",
+      "start_line": 262,
+      "end_line": 267,
+      "type": "METHOD",
+      "content_hash": "953bd374decb4dcf"
+    },
+    "scripts/remote_features.py|scripts.remote_features._Table.add_node": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._Table.add_node",
+      "start_line": 269,
+      "end_line": 279,
+      "type": "METHOD",
+      "content_hash": "8f9742dab83c497e"
+    },
+    "scripts/remote_features.py|scripts.remote_features._Table.number_rows": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._Table.number_rows",
+      "start_line": 281,
+      "end_line": 291,
+      "type": "METHOD",
+      "content_hash": "db570b3199c077c8"
+    },
+    "scripts/remote_features.py|scripts.remote_features._Table.member": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._Table.member",
+      "start_line": 293,
+      "end_line": 297,
+      "type": "METHOD",
+      "content_hash": "e65aff8a7dc60bc2"
+    },
+    "scripts/remote_features.py|scripts.remote_features.side_document": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features.side_document",
+      "start_line": 300,
+      "end_line": 335,
       "type": "FUNCTION",
-      "content_hash": "80f8d2e6ce1c62ab"
+      "content_hash": "23a7b9e5bb7361de"
     },
-    "scripts/closed_features.py|scripts.closed_features._api_key": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._api_key",
-      "start_line": 223,
-      "end_line": 228,
+    "scripts/remote_features.py|scripts.remote_features._calls": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._calls",
+      "start_line": 338,
+      "end_line": 350,
       "type": "FUNCTION",
-      "content_hash": "71192b42bce6b03c"
+      "content_hash": "c3c6e4a1c9397e57"
     },
-    "scripts/closed_features.py|scripts.closed_features.model_headers": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features.model_headers",
-      "start_line": 231,
-      "end_line": 253,
+    "scripts/remote_features.py|scripts.remote_features._components": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._components",
+      "start_line": 353,
+      "end_line": 383,
       "type": "FUNCTION",
-      "content_hash": "e0be777214763b5a"
+      "content_hash": "2c6dd037dd7231b1"
     },
-    "scripts/closed_features.py|scripts.closed_features._bearer": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._bearer",
-      "start_line": 256,
-      "end_line": 274,
+    "scripts/remote_features.py|scripts.remote_features._flatten": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._flatten",
+      "start_line": 386,
+      "end_line": 399,
       "type": "FUNCTION",
-      "content_hash": "fe3b076030da5de2"
+      "content_hash": "658316cfd435e26c"
     },
-    "scripts/closed_features.py|scripts.closed_features._checkout_file": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._checkout_file",
-      "start_line": 277,
-      "end_line": 287,
+    "scripts/remote_features.py|scripts.remote_features._flatten.visit": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._flatten.visit",
+      "start_line": 391,
+      "end_line": 396,
+      "type": "FUNCTION",
+      "content_hash": "82bcbaaff9a8b0bb"
+    },
+    "scripts/remote_features.py|scripts.remote_features._relations": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._relations",
+      "start_line": 402,
+      "end_line": 404,
+      "type": "FUNCTION",
+      "content_hash": "56ffd6ce5a35bffd"
+    },
+    "scripts/remote_features.py|scripts.remote_features._analysis_edges": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._analysis_edges",
+      "start_line": 407,
+      "end_line": 413,
+      "type": "FUNCTION",
+      "content_hash": "e510343a5e4af899"
+    },
+    "scripts/remote_features.py|scripts.remote_features._method_key": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._method_key",
+      "start_line": 416,
+      "end_line": 417,
+      "type": "FUNCTION",
+      "content_hash": "674c833b9e3b57aa"
+    },
+    "scripts/remote_features.py|scripts.remote_features.collect": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features.collect",
+      "start_line": 423,
+      "end_line": 454,
+      "type": "FUNCTION",
+      "content_hash": "3b23d3cd19bcfca6"
+    },
+    "scripts/remote_features.py|scripts.remote_features._side": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._side",
+      "start_line": 457,
+      "end_line": 461,
+      "type": "FUNCTION",
+      "content_hash": "11c29319f0a2d414"
+    },
+    "scripts/remote_features.py|scripts.remote_features.read_analysis": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features.read_analysis",
+      "start_line": 464,
+      "end_line": 469,
+      "type": "FUNCTION",
+      "content_hash": "261c2a9e0ec8d4eb"
+    },
+    "scripts/remote_features.py|scripts.remote_features._changed_contents": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._changed_contents",
+      "start_line": 472,
+      "end_line": 486,
+      "type": "FUNCTION",
+      "content_hash": "e9825c995a653684"
+    },
+    "scripts/remote_features.py|scripts.remote_features._checkout_text": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._checkout_text",
+      "start_line": 489,
+      "end_line": 497,
+      "type": "FUNCTION",
+      "content_hash": "64cf9de56f37b6c4"
+    },
+    "scripts/remote_features.py|scripts.remote_features._checkout_file": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._checkout_file",
+      "start_line": 500,
+      "end_line": 510,
       "type": "FUNCTION",
       "content_hash": "9bc86b2bfe606e15"
     },
-    "scripts/closed_features.py|scripts.closed_features.collect_source": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features.collect_source",
-      "start_line": 290,
-      "end_line": 312,
+    "scripts/remote_features.py|scripts.remote_features.collect_source": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features.collect_source",
+      "start_line": 513,
+      "end_line": 535,
       "type": "FUNCTION",
-      "content_hash": "2c6fab6ff4793d3e"
+      "content_hash": "9b7dcafec0833c58"
     },
-    "scripts/closed_features.py|scripts.closed_features._no_architecture": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._no_architecture",
-      "start_line": 315,
-      "end_line": 328,
+    "scripts/remote_features.py|scripts.remote_features._load": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._load",
+      "start_line": 541,
+      "end_line": 547,
+      "type": "FUNCTION",
+      "content_hash": "7f94f85ea88dea70"
+    },
+    "scripts/remote_features.py|scripts.remote_features._relay": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._relay",
+      "start_line": 550,
+      "end_line": 551,
+      "type": "FUNCTION",
+      "content_hash": "80f8d2e6ce1c62ab"
+    },
+    "scripts/remote_features.py|scripts.remote_features._api_key": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._api_key",
+      "start_line": 554,
+      "end_line": 559,
+      "type": "FUNCTION",
+      "content_hash": "71192b42bce6b03c"
+    },
+    "scripts/remote_features.py|scripts.remote_features.model_headers": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features.model_headers",
+      "start_line": 562,
+      "end_line": 585,
+      "type": "FUNCTION",
+      "content_hash": "2e323d8598fac230"
+    },
+    "scripts/remote_features.py|scripts.remote_features._bearer": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._bearer",
+      "start_line": 588,
+      "end_line": 606,
+      "type": "FUNCTION",
+      "content_hash": "fe3b076030da5de2"
+    },
+    "scripts/remote_features.py|scripts.remote_features._post": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._post",
+      "start_line": 612,
+      "end_line": 626,
+      "type": "FUNCTION",
+      "content_hash": "464142b335135a73"
+    },
+    "scripts/remote_features.py|scripts.remote_features._encode": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._encode",
+      "start_line": 629,
+      "end_line": 639,
+      "type": "FUNCTION",
+      "content_hash": "7f64e8566e02acb9"
+    },
+    "scripts/remote_features.py|scripts.remote_features._requests": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._requests",
+      "start_line": 642,
+      "end_line": 659,
+      "type": "FUNCTION",
+      "content_hash": "c539c85426c7b897"
+    },
+    "scripts/remote_features.py|scripts.remote_features._no_architecture": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features._no_architecture",
+      "start_line": 662,
+      "end_line": 675,
       "type": "FUNCTION",
       "content_hash": "29cc5f21db774bfa"
     },
-    "scripts/closed_features.py|scripts.closed_features._post": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._post",
-      "start_line": 331,
-      "end_line": 345,
+    "scripts/remote_features.py|scripts.remote_features.run_review_guide": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features.run_review_guide",
+      "start_line": 678,
+      "end_line": 688,
       "type": "FUNCTION",
-      "content_hash": "352be77db401cc42"
+      "content_hash": "6e11079efd96d2e3"
     },
-    "scripts/closed_features.py|scripts.closed_features._gzip": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._gzip",
-      "start_line": 348,
-      "end_line": 349,
+    "scripts/remote_features.py|scripts.remote_features.run_architecture": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features.run_architecture",
+      "start_line": 691,
+      "end_line": 699,
       "type": "FUNCTION",
-      "content_hash": "cddf7d01c4d8fd44"
+      "content_hash": "e9da9bccd6889845"
     },
-    "scripts/closed_features.py|scripts.closed_features._pack": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._pack",
-      "start_line": 352,
-      "end_line": 356,
+    "scripts/remote_features.py|scripts.remote_features.main": {
+      "file_path": "scripts/remote_features.py",
+      "qualified_name": "scripts.remote_features.main",
+      "start_line": 702,
+      "end_line": 734,
       "type": "FUNCTION",
-      "content_hash": "f2432f72e1595425"
-    },
-    "scripts/closed_features.py|scripts.closed_features._check_size": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features._check_size",
-      "start_line": 359,
-      "end_line": 361,
-      "type": "FUNCTION",
-      "content_hash": "b347d6caf8f2dd88"
-    },
-    "scripts/closed_features.py|scripts.closed_features.run_review_guide": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features.run_review_guide",
-      "start_line": 364,
-      "end_line": 376,
-      "type": "FUNCTION",
-      "content_hash": "d05dcc96abd11150"
-    },
-    "scripts/closed_features.py|scripts.closed_features.run_architecture": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features.run_architecture",
-      "start_line": 379,
-      "end_line": 402,
-      "type": "FUNCTION",
-      "content_hash": "d5a396e513b3ba15"
-    },
-    "scripts/closed_features.py|scripts.closed_features.main": {
-      "file_path": "scripts/closed_features.py",
-      "qualified_name": "scripts.closed_features.main",
-      "start_line": 405,
-      "end_line": 434,
-      "type": "FUNCTION",
-      "content_hash": "00953518e65887e5"
+      "content_hash": "a9e16ae092eefad9"
     },
     "scripts/problem_history.py|scripts.problem_history.GraphQLError": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.GraphQLError",
-      "start_line": 134,
-      "end_line": 140,
+      "start_line": 136,
+      "end_line": 142,
       "type": "CLASS",
       "content_hash": "27cb220e74cfd244"
     },
     "scripts/problem_history.py|scripts.problem_history.GraphQLError.__init__": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.GraphQLError.__init__",
-      "start_line": 137,
-      "end_line": 140,
+      "start_line": 139,
+      "end_line": 142,
       "type": "METHOD",
       "content_hash": "f03bf72ea27d81f7"
     },
     "scripts/problem_history.py|scripts.problem_history.Conflict": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.Conflict",
-      "start_line": 143,
-      "end_line": 144,
+      "start_line": 145,
+      "end_line": 146,
       "type": "CLASS",
       "content_hash": "90f24b695b97a620"
     },
     "scripts/problem_history.py|scripts.problem_history._NoRedirect": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._NoRedirect",
-      "start_line": 147,
-      "end_line": 149,
+      "start_line": 149,
+      "end_line": 151,
       "type": "CLASS",
       "content_hash": "3d9a90ba1963caee"
     },
     "scripts/problem_history.py|scripts.problem_history._NoRedirect.redirect_request": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._NoRedirect.redirect_request",
-      "start_line": 148,
-      "end_line": 149,
+      "start_line": 150,
+      "end_line": 151,
       "type": "METHOD",
       "content_hash": "d7e889d28538b228"
     },
     "scripts/problem_history.py|scripts.problem_history.GitHub": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.GitHub",
-      "start_line": 152,
-      "end_line": 190,
+      "start_line": 154,
+      "end_line": 192,
       "type": "CLASS",
       "content_hash": "aac216a1844a7609"
     },
     "scripts/problem_history.py|scripts.problem_history.GitHub.__init__": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.GitHub.__init__",
-      "start_line": 153,
-      "end_line": 156,
+      "start_line": 155,
+      "end_line": 158,
       "type": "METHOD",
       "content_hash": "9aae57642cf6d23c"
     },
     "scripts/problem_history.py|scripts.problem_history.GitHub._headers": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.GitHub._headers",
-      "start_line": 158,
-      "end_line": 159,
+      "start_line": 160,
+      "end_line": 161,
       "type": "METHOD",
       "content_hash": "f2b46aef37ff0ae8"
     },
     "scripts/problem_history.py|scripts.problem_history.GitHub.call": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.GitHub.call",
-      "start_line": 161,
-      "end_line": 162,
+      "start_line": 163,
+      "end_line": 164,
       "type": "METHOD",
       "content_hash": "89b6cd3db8905526"
     },
     "scripts/problem_history.py|scripts.problem_history.GitHub.json": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.GitHub.json",
-      "start_line": 164,
-      "end_line": 165,
+      "start_line": 166,
+      "end_line": 167,
       "type": "METHOD",
       "content_hash": "66873bad015ea20b"
     },
     "scripts/problem_history.py|scripts.problem_history.GitHub.graphql": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.GitHub.graphql",
-      "start_line": 167,
-      "end_line": 176,
+      "start_line": 169,
+      "end_line": 178,
       "type": "METHOD",
       "content_hash": "1207f83d49246b53"
     },
     "scripts/problem_history.py|scripts.problem_history.GitHub.download": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.GitHub.download",
-      "start_line": 178,
-      "end_line": 190,
+      "start_line": 180,
+      "end_line": 192,
       "type": "METHOD",
       "content_hash": "17a04f58cbaf12f6"
     },
     "scripts/problem_history.py|scripts.problem_history._iso": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._iso",
-      "start_line": 193,
-      "end_line": 194,
+      "start_line": 195,
+      "end_line": 196,
       "type": "FUNCTION",
       "content_hash": "838d3235376724fc"
     },
     "scripts/problem_history.py|scripts.problem_history._parse": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._parse",
-      "start_line": 197,
-      "end_line": 203,
+      "start_line": 199,
+      "end_line": 205,
       "type": "FUNCTION",
       "content_hash": "4b7efb7f4eb969bd"
     },
     "scripts/problem_history.py|scripts.problem_history._nodes": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._nodes",
-      "start_line": 210,
-      "end_line": 229,
+      "start_line": 212,
+      "end_line": 231,
       "type": "FUNCTION",
       "content_hash": "1806caa3f28dc76a"
     },
     "scripts/problem_history.py|scripts.problem_history._login": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._login",
-      "start_line": 232,
-      "end_line": 233,
+      "start_line": 234,
+      "end_line": 235,
       "type": "FUNCTION",
       "content_hash": "44ff57afcdcd98c8"
     },
     "scripts/problem_history.py|scripts.problem_history._author": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._author",
-      "start_line": 236,
-      "end_line": 239,
+      "start_line": 238,
+      "end_line": 241,
       "type": "FUNCTION",
       "content_hash": "e4f1d55e7d5cee11"
     },
     "scripts/problem_history.py|scripts.problem_history.linked_pull_requests": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.linked_pull_requests",
-      "start_line": 250,
-      "end_line": 286,
+      "start_line": 252,
+      "end_line": 288,
       "type": "FUNCTION",
       "content_hash": "3ddec4a46f138ae3"
     },
     "scripts/problem_history.py|scripts.problem_history.cut": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.cut",
-      "start_line": 289,
-      "end_line": 292,
+      "start_line": 291,
+      "end_line": 294,
       "type": "FUNCTION",
       "content_hash": "343875ed0744b06b"
     },
     "scripts/problem_history.py|scripts.problem_history.issue_facts": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.issue_facts",
-      "start_line": 295,
-      "end_line": 333,
+      "start_line": 297,
+      "end_line": 335,
       "type": "FUNCTION",
       "content_hash": "f6ae0b0fe554eb04"
     },
     "scripts/problem_history.py|scripts.problem_history.read_ledger": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.read_ledger",
-      "start_line": 336,
-      "end_line": 355,
+      "start_line": 338,
+      "end_line": 357,
       "type": "FUNCTION",
       "content_hash": "1c02d413eab1f274"
     },
     "scripts/problem_history.py|scripts.problem_history.open_issue_numbers": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.open_issue_numbers",
-      "start_line": 358,
-      "end_line": 367,
+      "start_line": 360,
+      "end_line": 369,
       "type": "FUNCTION",
       "content_hash": "6845e541e7130506"
     },
     "scripts/problem_history.py|scripts.problem_history._oldest_open": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._oldest_open",
-      "start_line": 370,
-      "end_line": 373,
+      "start_line": 372,
+      "end_line": 375,
       "type": "FUNCTION",
       "content_hash": "3a61c6bd1f91d542"
     },
     "scripts/problem_history.py|scripts.problem_history.collect_issues": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.collect_issues",
-      "start_line": 376,
-      "end_line": 419,
+      "start_line": 378,
+      "end_line": 421,
       "type": "FUNCTION",
       "content_hash": "5fd2923e2666cbd8"
     },
     "scripts/problem_history.py|scripts.problem_history.relinked": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.relinked",
-      "start_line": 422,
-      "end_line": 441,
+      "start_line": 424,
+      "end_line": 443,
       "type": "FUNCTION",
       "content_hash": "d18dfd1f8fccb35e"
     },
     "scripts/problem_history.py|scripts.problem_history._by_number": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._by_number",
-      "start_line": 444,
-      "end_line": 454,
+      "start_line": 446,
+      "end_line": 456,
       "type": "FUNCTION",
       "content_hash": "a820521dc15d1866"
     },
     "scripts/problem_history.py|scripts.problem_history.issues_by_number": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.issues_by_number",
-      "start_line": 457,
-      "end_line": 467,
+      "start_line": 459,
+      "end_line": 469,
       "type": "FUNCTION",
       "content_hash": "22ea50534555d327"
     },
     "scripts/problem_history.py|scripts.problem_history._merged_since": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._merged_since",
-      "start_line": 470,
-      "end_line": 475,
+      "start_line": 472,
+      "end_line": 477,
       "type": "FUNCTION",
       "content_hash": "5ed2ef4b10e652fd"
     },
     "scripts/problem_history.py|scripts.problem_history.collect_merged": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.collect_merged",
-      "start_line": 478,
-      "end_line": 524,
+      "start_line": 480,
+      "end_line": 526,
       "type": "FUNCTION",
       "content_hash": "5054d32f52b896c8"
     },
     "scripts/problem_history.py|scripts.problem_history._member": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._member",
-      "start_line": 527,
-      "end_line": 536,
+      "start_line": 529,
+      "end_line": 538,
       "type": "FUNCTION",
       "content_hash": "e6ec0156c12b8e16"
     },
     "scripts/problem_history.py|scripts.problem_history.read_architecture": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.read_architecture",
-      "start_line": 539,
-      "end_line": 549,
+      "start_line": 541,
+      "end_line": 551,
       "type": "FUNCTION",
       "content_hash": "f4ad7331531dbe53"
     },
     "scripts/problem_history.py|scripts.problem_history._own_review": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._own_review",
-      "start_line": 552,
-      "end_line": 556,
+      "start_line": 554,
+      "end_line": 558,
       "type": "FUNCTION",
       "content_hash": "257537c5aeb93652"
     },
     "scripts/problem_history.py|scripts.problem_history.review_findings": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.review_findings",
-      "start_line": 559,
-      "end_line": 578,
+      "start_line": 561,
+      "end_line": 580,
       "type": "FUNCTION",
       "content_hash": "09b3aab127a2f0ed"
     },
     "scripts/problem_history.py|scripts.problem_history._unread": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._unread",
-      "start_line": 581,
-      "end_line": 592,
+      "start_line": 583,
+      "end_line": 594,
       "type": "FUNCTION",
       "content_hash": "164539fef4985ed8"
     },
     "scripts/problem_history.py|scripts.problem_history.collect_findings": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.collect_findings",
-      "start_line": 595,
-      "end_line": 630,
+      "start_line": 597,
+      "end_line": 632,
       "type": "FUNCTION",
       "content_hash": "f358f3d320b701d5"
     },
     "scripts/problem_history.py|scripts.problem_history.collect_findings.newest": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.collect_findings.newest",
-      "start_line": 604,
-      "end_line": 605,
+      "start_line": 606,
+      "end_line": 607,
       "type": "FUNCTION",
       "content_hash": "680b872394ea3511"
     },
     "scripts/problem_history.py|scripts.problem_history.collect": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.collect",
-      "start_line": 633,
-      "end_line": 672,
+      "start_line": 635,
+      "end_line": 674,
       "type": "FUNCTION",
       "content_hash": "0ecc84433581b80a"
     },
     "scripts/problem_history.py|scripts.problem_history.build_request": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.build_request",
-      "start_line": 675,
-      "end_line": 684,
+      "start_line": 677,
+      "end_line": 686,
       "type": "FUNCTION",
       "content_hash": "5292a7a9d8641315"
     },
     "scripts/problem_history.py|scripts.problem_history.pack": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.pack",
-      "start_line": 687,
-      "end_line": 698,
+      "start_line": 689,
+      "end_line": 710,
       "type": "FUNCTION",
-      "content_hash": "56ef0e887228ae27"
+      "content_hash": "fa9b59d867bcfb77"
     },
     "scripts/problem_history.py|scripts.problem_history._newest_pr": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._newest_pr",
-      "start_line": 701,
-      "end_line": 703,
+      "start_line": 713,
+      "end_line": 715,
       "type": "FUNCTION",
       "content_hash": "3b47be9596a61540"
     },
     "scripts/problem_history.py|scripts.problem_history.commit_ledger": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.commit_ledger",
-      "start_line": 706,
-      "end_line": 730,
+      "start_line": 718,
+      "end_line": 742,
       "type": "FUNCTION",
       "content_hash": "ce78304be160633c"
     },
     "scripts/problem_history.py|scripts.problem_history.update": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.update",
-      "start_line": 733,
-      "end_line": 772,
+      "start_line": 745,
+      "end_line": 784,
       "type": "FUNCTION",
       "content_hash": "5e8d5c3ee0d83737"
     },
     "scripts/problem_history.py|scripts.problem_history._stop": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history._stop",
-      "start_line": 775,
-      "end_line": 777,
+      "start_line": 787,
+      "end_line": 789,
       "type": "FUNCTION",
       "content_hash": "7f68fd9a556d05a6"
     },
     "scripts/problem_history.py|scripts.problem_history.main": {
       "file_path": "scripts/problem_history.py",
       "qualified_name": "scripts.problem_history.main",
-      "start_line": 780,
-      "end_line": 798,
+      "start_line": 792,
+      "end_line": 810,
       "type": "FUNCTION",
       "content_hash": "038078e3498cfca2"
     }
   },
   "components": [
     {
-      "name": "Action Analysis and Authentication Tools",
-      "description": "Executes repository analyses, verifies provider credentials, manages local OIDC token relays, and renders architecture diff diagrams.",
+      "name": "Action Analysis and Integration Tools",
+      "description": "Executes repository analyses, verifies credentials, manages OIDC relays, renders diff diagrams, and prepares remote feature payloads.",
       "key_entities": [
         {
           "qualified_name": "scripts.analyze_repository.main",
@@ -1521,8 +1728,8 @@
         {
           "qualified_name": "scripts.diff_to_mermaid.load_analysis",
           "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 92,
-          "reference_end_line": 110
+          "reference_start_line": 117,
+          "reference_end_line": 134
         },
         {
           "qualified_name": "scripts.action.credential_check.resolve",
@@ -1535,6 +1742,12 @@
           "reference_file": "scripts/oidc_relay.py",
           "reference_start_line": 155,
           "reference_end_line": 161
+        },
+        {
+          "qualified_name": "scripts.remote_features.side_document",
+          "reference_file": "scripts/remote_features.py",
+          "reference_start_line": 300,
+          "reference_end_line": 335
         }
       ],
       "source_cluster_ids": [
@@ -1589,8 +1802,8 @@
           "file_path": "scripts/diff_to_mermaid.py",
           "methods": [
             "scripts.diff_to_mermaid._relation_dict",
-            "scripts.diff_to_mermaid._project_analysis",
-            "scripts.diff_to_mermaid._project_analysis.project_level",
+            "scripts.diff_to_mermaid._diff_view",
+            "scripts.diff_to_mermaid._diff_view.level",
             "scripts.diff_to_mermaid.read_analysis_json",
             "scripts.diff_to_mermaid.load_analysis",
             "scripts.diff_to_mermaid._comp_id",
@@ -1646,6 +1859,57 @@
             "scripts.oidc_relay.RelayServer.__init__",
             "scripts.oidc_relay.main"
           ]
+        },
+        {
+          "file_path": "scripts/remote_features.py",
+          "methods": [
+            "scripts.remote_features.Skip",
+            "scripts.remote_features.TooLarge",
+            "scripts.remote_features.TooLarge.__init__",
+            "scripts.remote_features._github",
+            "scripts.remote_features._error_message",
+            "scripts.remote_features._github_json",
+            "scripts.remote_features._diff",
+            "scripts.remote_features._contents",
+            "scripts.remote_features.call_graph",
+            "scripts.remote_features._site_lines",
+            "scripts.remote_features._Row",
+            "scripts.remote_features._Row.written",
+            "scripts.remote_features._short_name",
+            "scripts.remote_features._Table",
+            "scripts.remote_features._Table.__init__",
+            "scripts.remote_features._Table._add_method",
+            "scripts.remote_features._Table.add_node",
+            "scripts.remote_features._Table.number_rows",
+            "scripts.remote_features._Table.member",
+            "scripts.remote_features.side_document",
+            "scripts.remote_features._calls",
+            "scripts.remote_features._components",
+            "scripts.remote_features._flatten",
+            "scripts.remote_features._flatten.visit",
+            "scripts.remote_features._relations",
+            "scripts.remote_features._analysis_edges",
+            "scripts.remote_features._method_key",
+            "scripts.remote_features.collect",
+            "scripts.remote_features._side",
+            "scripts.remote_features.read_analysis",
+            "scripts.remote_features._changed_contents",
+            "scripts.remote_features._checkout_text",
+            "scripts.remote_features._checkout_file",
+            "scripts.remote_features.collect_source",
+            "scripts.remote_features._load",
+            "scripts.remote_features._relay",
+            "scripts.remote_features._api_key",
+            "scripts.remote_features.model_headers",
+            "scripts.remote_features._bearer",
+            "scripts.remote_features._post",
+            "scripts.remote_features._encode",
+            "scripts.remote_features._requests",
+            "scripts.remote_features._no_architecture",
+            "scripts.remote_features.run_review_guide",
+            "scripts.remote_features.run_architecture",
+            "scripts.remote_features.main"
+          ]
         }
       ],
       "component_id": "1",
@@ -1658,28 +1922,16 @@
       "description": "Integrates with remote CodeBoarding endpoints to submit review guides, capture architecture findings, and synchronize issue problem histories.",
       "key_entities": [
         {
-          "qualified_name": "scripts.closed_features.collect",
-          "reference_file": "scripts/closed_features.py",
-          "reference_start_line": 158,
-          "reference_end_line": 207
-        },
-        {
-          "qualified_name": "scripts.closed_features.model_headers",
-          "reference_file": "scripts/closed_features.py",
-          "reference_start_line": 231,
-          "reference_end_line": 253
-        },
-        {
           "qualified_name": "scripts.problem_history.GitHub",
           "reference_file": "scripts/problem_history.py",
-          "reference_start_line": 152,
-          "reference_end_line": 190
+          "reference_start_line": 154,
+          "reference_end_line": 192
         },
         {
           "qualified_name": "scripts.problem_history.linked_pull_requests",
           "reference_file": "scripts/problem_history.py",
-          "reference_start_line": 250,
-          "reference_end_line": 286
+          "reference_start_line": 252,
+          "reference_end_line": 288
         }
       ],
       "source_cluster_ids": [
@@ -1687,34 +1939,6 @@
         "5"
       ],
       "file_methods": [
-        {
-          "file_path": "scripts/closed_features.py",
-          "methods": [
-            "scripts.closed_features.Skip",
-            "scripts.closed_features._github",
-            "scripts.closed_features._error_message",
-            "scripts.closed_features._github_json",
-            "scripts.closed_features.call_graph",
-            "scripts.closed_features._diff",
-            "scripts.closed_features._contents",
-            "scripts.closed_features.collect",
-            "scripts.closed_features._load",
-            "scripts.closed_features._relay",
-            "scripts.closed_features._api_key",
-            "scripts.closed_features.model_headers",
-            "scripts.closed_features._bearer",
-            "scripts.closed_features._checkout_file",
-            "scripts.closed_features.collect_source",
-            "scripts.closed_features._no_architecture",
-            "scripts.closed_features._post",
-            "scripts.closed_features._gzip",
-            "scripts.closed_features._pack",
-            "scripts.closed_features._check_size",
-            "scripts.closed_features.run_review_guide",
-            "scripts.closed_features.run_architecture",
-            "scripts.closed_features.main"
-          ]
-        },
         {
           "file_path": "scripts/problem_history.py",
           "methods": [
@@ -1773,39 +1997,162 @@
   ],
   "components_relations": [
     {
-      "relation": "authenticates requests via",
+      "relation": "uses remote transport and payload utilities",
       "src_name": "Remote Review and Briefing Sync",
-      "dst_name": "Action Analysis and Authentication Tools",
-      "evidence": "scripts/closed_features.py dynamically loads scripts/oidc_relay.py to construct OIDC authorization tokens and scripts/action/credential_check.py to extract and sanitize provider API keys.",
+      "dst_name": "Action Analysis and Integration Tools",
+      "evidence": "",
       "key_edges": [
         {
-          "source": "scripts/closed_features.py|scripts.closed_features._bearer",
-          "target": "scripts/oidc_relay.py|scripts.oidc_relay._authorization",
-          "call_sites": [],
-          "description": "Generates bearer authentication header using relay helper functions"
+          "source": "scripts/problem_history.py|scripts.problem_history.GitHub.call",
+          "target": "scripts/remote_features.py|scripts.remote_features._github",
+          "call_sites": [
+            {
+              "line": 164,
+              "column": 16
+            }
+          ],
+          "description": "Dispatches HTTP requests to GitHub using the shared API transport helper."
         },
         {
-          "source": "scripts/closed_features.py|scripts.closed_features._api_key",
-          "target": "scripts/action/credential_check.py|scripts.action.credential_check._clean_key",
-          "call_sites": [],
-          "description": "Sanitizes configured LLM provider API credentials using credential check table parsing"
+          "source": "scripts/problem_history.py|scripts.problem_history.commit_ledger",
+          "target": "scripts/remote_features.py|scripts.remote_features._error_message",
+          "call_sites": [
+            {
+              "line": 734,
+              "column": 28
+            }
+          ],
+          "description": "Extracts error details from HTTP error responses during ledger synchronization."
+        },
+        {
+          "source": "scripts/problem_history.py|scripts.problem_history.pack",
+          "target": "scripts/remote_features.py|scripts.remote_features.TooLarge",
+          "call_sites": [
+            {
+              "line": 707,
+              "column": 16
+            }
+          ],
+          "description": "Signals when packed briefing data exceeds remote payload size limits."
         }
       ],
       "src_id": "2",
       "dst_id": "1",
-      "is_static": false,
+      "is_static": true,
       "all_edges": [
         {
-          "source": "scripts/closed_features.py|scripts.closed_features._bearer",
-          "target": "scripts/oidc_relay.py|scripts.oidc_relay._authorization",
-          "call_sites": [],
-          "description": "Generates bearer authentication header using relay helper functions"
+          "source": "scripts/problem_history.py|scripts.problem_history.GitHub.call",
+          "target": "scripts/remote_features.py|scripts.remote_features._github",
+          "call_sites": [
+            {
+              "line": 164,
+              "column": 16
+            }
+          ],
+          "description": ""
         },
         {
-          "source": "scripts/closed_features.py|scripts.closed_features._api_key",
-          "target": "scripts/action/credential_check.py|scripts.action.credential_check._clean_key",
-          "call_sites": [],
-          "description": "Sanitizes configured LLM provider API credentials using credential check table parsing"
+          "source": "scripts/problem_history.py|scripts.problem_history.commit_ledger",
+          "target": "scripts/remote_features.py|scripts.remote_features.Skip",
+          "call_sites": [
+            {
+              "line": 738,
+              "column": 15
+            }
+          ],
+          "description": ""
+        },
+        {
+          "source": "scripts/problem_history.py|scripts.problem_history.commit_ledger",
+          "target": "scripts/remote_features.py|scripts.remote_features._error_message",
+          "call_sites": [
+            {
+              "line": 734,
+              "column": 28
+            }
+          ],
+          "description": ""
+        },
+        {
+          "source": "scripts/problem_history.py|scripts.problem_history.main",
+          "target": "scripts/remote_features.py|scripts.remote_features.Skip",
+          "call_sites": [
+            {
+              "line": 801,
+              "column": 12
+            }
+          ],
+          "description": ""
+        },
+        {
+          "source": "scripts/problem_history.py|scripts.problem_history.pack",
+          "target": "scripts/remote_features.py|scripts.remote_features.TooLarge",
+          "call_sites": [
+            {
+              "line": 707,
+              "column": 16
+            }
+          ],
+          "description": ""
+        },
+        {
+          "source": "scripts/problem_history.py|scripts.problem_history.pack",
+          "target": "scripts/remote_features.py|scripts.remote_features._encode",
+          "call_sites": [
+            {
+              "line": 706,
+              "column": 20
+            }
+          ],
+          "description": ""
+        },
+        {
+          "source": "scripts/problem_history.py|scripts.problem_history.read_ledger",
+          "target": "scripts/remote_features.py|scripts.remote_features.Skip",
+          "call_sites": [
+            {
+              "line": 356,
+              "column": 15
+            }
+          ],
+          "description": ""
+        },
+        {
+          "source": "scripts/problem_history.py|scripts.problem_history.update",
+          "target": "scripts/remote_features.py|scripts.remote_features.Skip",
+          "call_sites": [
+            {
+              "line": 750,
+              "column": 15
+            },
+            {
+              "line": 771,
+              "column": 23
+            }
+          ],
+          "description": ""
+        },
+        {
+          "source": "scripts/problem_history.py|scripts.problem_history.update",
+          "target": "scripts/remote_features.py|scripts.remote_features._bearer",
+          "call_sites": [
+            {
+              "line": 759,
+              "column": 53
+            }
+          ],
+          "description": ""
+        },
+        {
+          "source": "scripts/problem_history.py|scripts.problem_history.update",
+          "target": "scripts/remote_features.py|scripts.remote_features._post",
+          "call_sites": [
+            {
+              "line": 759,
+              "column": 18
+            }
+          ],
+          "description": ""
         }
       ]
     }
