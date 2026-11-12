@@ -1,9 +1,9 @@
 """Problem history: the facts a sync run collects, the request it sends, and the ledger commit it makes."""
 
-import gzip
 import importlib.util
 import io
 import json
+import lzma
 import random
 import re
 import sys
@@ -218,7 +218,7 @@ def _patched(**names):
 
 def _service(seen, problems=3):
     def post(url, data, headers, timeout=None):
-        body = json.loads(gzip.decompress(data))
+        body = json.loads(lzma.decompress(data))
         seen.append({"url": url, "body": body, "headers": headers, "timeout": timeout})
         merged = (body["ledger"] or {}).get("merged", []) + body["merged"]
         answer = {"schema": 1, "repo": body["repo"], "merged": merged, "problems": [{}] * problems}
@@ -391,8 +391,11 @@ class RequestTests(_Patched):
         gh.issue_pages[(("OPEN",), "DESC")] = [[issue_node(1, body="x" * 5000), issue_node(2)]]
         self.run_update(gh)
         self.assertEqual([i["body"] for i in self.body["issues"]], ["x" * 2000, "It breaks when saving."])
-        with mock.patch.dict(ph._check_size.__globals__, {"MAX_BUNDLE_BYTES": 10}):
-            with self.assertRaisesRegex(problem_history.Skip, "its request is"):
+        with mock.patch.dict(ph._encode.__globals__, {"MAX_COMPRESSED_BYTES": 10}):
+            with self.assertRaisesRegex(problem_history.Skip, "its request is .* compressed"):
+                problem_history.pack({"issues": []})
+        with mock.patch.object(ph, "MAX_BRIEFING_JSON_BYTES", 10):
+            with self.assertRaisesRegex(problem_history.Skip, "its request is .* of JSON"):
                 problem_history.pack({"issues": []})
 
     def test_a_cut_counts_utf16_units_and_never_splits_a_surrogate_pair(self):
@@ -784,22 +787,49 @@ class ArtifactTests(_Patched):
         retention = re.search(r"retention-days: (\d+)", upload).group(1)
         self.assertEqual(int(retention), ph.REVIEW_RETENTION_DAYS)
 
-    def test_findings_that_would_overflow_the_request_are_left_out(self):
+    def pack_counting(self, body, **limits):
+        """pack(body) under `limits` (MAX_BRIEFING_JSON_BYTES, MAX_COMPRESSED_BYTES), and how often it compressed."""
+        compress = mock.Mock(wraps=lzma.compress)
+        with (
+            mock.patch.object(
+                ph, "MAX_BRIEFING_JSON_BYTES", limits.get("MAX_BRIEFING_JSON_BYTES", ph.MAX_BRIEFING_JSON_BYTES)
+            ),
+            mock.patch.dict(ph._encode.__globals__, limits),
+            mock.patch.object(lzma, "compress", compress),
+        ):
+            data, dropped = ph.pack(body)
+        return json.loads(lzma.decompress(data))["findings"], dropped, compress.call_count
+
+    def test_findings_over_the_services_json_limit_are_left_out_before_compressing(self):
+        # xz takes these to almost nothing, so only their JSON is over the service's limit.
+        small, big = {**ENVELOPE, "data": {"findings": ["a"]}}, {**ENVELOPE, "data": {"findings": ["b" * 3000]}}
+        body = {"issues": [], "findings": {"41": small, "42": big, "43": small}}
+        limit = len(json.dumps({**body, "findings": {"41": small, "43": small}}))
+        kept, dropped, compressions = self.pack_counting(body, MAX_BRIEFING_JSON_BYTES=limit)
+        self.assertEqual((kept, dropped, compressions), ({"41": small, "43": small}, ["42"], 1))
+
+    def test_findings_over_the_compressed_limit_are_left_out_in_a_few_compressions(self):
+        rnd = random.Random(1)
+        findings = {
+            str(pr): {**ENVELOPE, "data": {"findings": [rnd.randbytes(100 + 20 * pr).hex()]}} for pr in range(60)
+        }
+        kept, dropped, compressions = self.pack_counting(
+            {"issues": [], "findings": findings}, MAX_COMPRESSED_BYTES=20_000
+        )
+        self.assertLessEqual(compressions, ph.MAX_COMPRESSIONS)
+        self.assertTrue(dropped and kept)
+        self.assertEqual(list(kept), [pr for pr in findings if pr not in dropped])
+        self.assertLess(max(map(int, kept)), min(map(int, dropped)))
+
         small, big = {**ENVELOPE, "data": {"findings": ["a"]}}, {
             **ENVELOPE,
             "data": {"findings": [random.Random(1).randbytes(3000).hex()]},
         }
-        body = {"issues": [], "findings": {"41": small, "42": big}}
-        with mock.patch.dict(ph._check_size.__globals__, {"MAX_BUNDLE_BYTES": 1000}):
-            with mock.patch.object(ph, "MAX_BUNDLE_BYTES", 1000):
-                data, dropped = ph.pack(body)
-        self.assertEqual((json.loads(gzip.decompress(data))["findings"], dropped), ({"41": small}, ["42"]))
-
         gh = FakeGitHub()
         gh.merged_pages = [[pr_node(41, "2026-11-06T00:00:00Z"), pr_node(42, "2026-11-05T00:00:00Z")]]
         gh.add_review(41, 41, small)
         gh.add_review(42, 42, big)
-        with mock.patch.object(ph, "MAX_BUNDLE_BYTES", 1200):
+        with mock.patch.dict(ph._encode.__globals__, {"MAX_COMPRESSED_BYTES": 1200}):
             notice = self.run_update(gh)
         self.assertEqual(list(self.body["findings"]), ["41"])
         self.assertIn("left out the findings of #42 to stay under the request limit", notice)
@@ -1007,9 +1037,9 @@ class WiringTests(unittest.TestCase):
         self.assertLessEqual(keys, allowed)
         self.assertIn("continue-on-error", keys)
 
-    def test_shares_the_closed_features_transport(self):
-        for shared in (ph._bearer, ph._post, ph._github, ph._gzip, ph._check_size, ph._error_message):
-            self.assertEqual(shared.__module__, "closed_features")
+    def test_shares_the_remote_features_transport(self):
+        for shared in (ph._bearer, ph._post, ph._github, ph._encode, ph._error_message):
+            self.assertEqual(shared.__module__, "remote_features")
 
 
 if __name__ == "__main__":
