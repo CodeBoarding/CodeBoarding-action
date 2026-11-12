@@ -32,13 +32,13 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from remote_features import (
-    MAX_BUNDLE_BYTES,
+    MAX_BRIEFING_JSON_BYTES,
     Skip,
+    TooLarge,
     _bearer,
-    _check_size,
+    _encode,
     _error_message,
     _github,
-    _compress,
     _post,
 )  # noqa: E402
 
@@ -71,6 +71,8 @@ MAX_MEMBER_BYTES = 1024 * 1024
 # The review artifact's retention-days in action.yml; an unread merge older than this has nothing left to find.
 REVIEW_RETENTION_DAYS = 14
 MAX_BODY_CHARS = 2000
+# Compressions of one request at most: the first, and retries aimed by the ratio the one before measured.
+MAX_COMPRESSIONS = 3
 SERVICE_TIMEOUT = 300
 # A composite action's step cannot set timeout-minutes, so the script stops itself at the step's budget.
 STEP_LIMIT_SECONDS = 600
@@ -685,17 +687,27 @@ def build_request(env: dict, ledger: dict | None, facts: dict) -> dict:
 
 
 def pack(body: dict) -> tuple[bytes, list[str]]:
-    """The compressed request and the pull requests whose findings were left out of it: the largest
-    envelopes go first while it is over the service's limit, and their merges stay unread for a later run."""
-    findings, dropped = dict(body.get("findings") or {}), []
-    while True:
-        data = _compress({**body, "findings": findings})
-        if len(data) <= MAX_BUNDLE_BYTES or not findings:
-            _check_size(data, "request")
-            return data, dropped
-        largest = max(findings, key=lambda pr: len(json.dumps(findings[pr])))
-        del findings[largest]
-        dropped.append(largest)
+    """The compressed request and the pull requests whose findings were left out of it, largest first;
+    their merges stay unread for a later run. Findings are left out until the JSON is under the service's
+    limit, counted per entry rather than serialised again, and then it is compressed once. Only when that
+    is over the limit on what is sent is it compressed again, down to a little under what the ratio just
+    measured says fits, at most MAX_COMPRESSIONS times in all."""
+    findings = body.get("findings") or {}
+    # An entry's bytes in the request: `"pr": {...}` and its separator, exact while one entry is left.
+    cost = {pr: len(json.dumps({pr: envelope})) for pr, envelope in findings.items()}
+    kept, dropped = sorted(findings, key=cost.get), []
+    size, budget = len(json.dumps({**body, "findings": findings})), MAX_BRIEFING_JSON_BYTES
+    for compressions in range(1, MAX_COMPRESSIONS + 1):
+        while kept and size > budget:
+            dropped.append(kept.pop())
+            size -= cost[dropped[-1]]
+        request = {**body, "findings": {pr: findings[pr] for pr in findings if pr not in dropped}}
+        try:
+            return _encode(request, MAX_BRIEFING_JSON_BYTES, "request"), dropped
+        except TooLarge as e:
+            if not kept or e.fits is None or compressions == MAX_COMPRESSIONS:
+                raise
+            budget = e.fits * 9 // 10
 
 
 def _newest_pr(*lists) -> int | None:

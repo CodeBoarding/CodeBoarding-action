@@ -134,7 +134,7 @@ class BundleTests(unittest.TestCase):
             self.assertEqual(set(bundle), INPUTS)
             self.assertEqual(json.loads(bundle["head.json"])["version"], 1)
 
-    def test_a_changed_file_over_the_size_limit_is_sent_at_neither_commit(self):
+    def test_a_changed_file_over_the_size_limit_is_left_out_only_at_that_commit(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = _workspace(Path(tmp))
             with (
@@ -543,19 +543,27 @@ class EndpointTests(unittest.TestCase):
                 self.assertNotIn("source.json", body["files"])
                 self.assertEqual("omitted" in body, request["path"] == "/v1/architecture")
 
-    def test_bundle_limit_omits_source_then_skips_if_required_inputs_too_large(self):
-        with (
-            mock.patch.object(remote_features, "MAX_BUNDLE_BYTES", 1000),
-            mock.patch.object(remote_features, "collect_source", return_value=(os.urandom(2000).hex(), None)),
+    def test_either_limit_omits_source_then_skips_if_required_inputs_too_large(self):
+        with mock.patch.object(remote_features, "collect_source", return_value=(None, "off")):
+            without_source = max(len(lzma.decompress(r["body"])) for r in self.run_service().requests)
+        # Random source is over the compressed limit; repeated source compresses to almost nothing and is
+        # over the JSON limit only.
+        for limit, room, source in (
+            ("MAX_COMPRESSED_BYTES", 1000, os.urandom(2000).hex()),
+            ("MAX_FEATURE_JSON_BYTES", without_source + 1000, "x" * 100_000),
         ):
-            service = self.run_service()
-        arch = next(r for r in service.requests if r["path"] == "/v1/architecture")
-        body = json.loads(lzma.decompress(arch["body"]))
-        self.assertNotIn("source.json", body["files"])
-        self.assertIn("too large", body["omitted"]["source.json"])
-        with mock.patch.object(remote_features, "MAX_BUNDLE_BYTES", 1):
-            self.assertEqual(self.run_service().requests, [])
-        self.assertEqual(_read(self.env, "closed/architecture.json")["status"], "skipped")
+            with (
+                mock.patch.object(remote_features, limit, room),
+                mock.patch.object(remote_features, "collect_source", return_value=(source, None)),
+            ):
+                service = self.run_service()
+            arch = next(r for r in service.requests if r["path"] == "/v1/architecture")
+            body = json.loads(lzma.decompress(arch["body"]))
+            self.assertNotIn("source.json", body["files"])
+            self.assertIn("too large", body["omitted"]["source.json"])
+            with mock.patch.object(remote_features, limit, 1):
+                self.assertEqual(self.run_service().requests, [])
+            self.assertEqual(_read(self.env, "closed/architecture.json")["status"], "skipped")
 
 
 class SourceTests(unittest.TestCase):

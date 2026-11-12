@@ -33,8 +33,10 @@ crate's whole request is 1.4 MB.
 
 Size limits
 -----------
-- MAX_BUNDLE_BYTES (4.3 MB compressed): the most a request may carry. Past it the request is skipped,
-  after first dropping source.json if architecture carried it.
+- The service sets two limits on every request, and _encode checks both before anything is sent: the
+  JSON, measured first because that is cheap, against MAX_FEATURE_JSON_BYTES (MAX_BRIEFING_JSON_BYTES
+  for the problem history), then the xz once against MAX_COMPRESSED_BYTES. Past either a feature request
+  is skipped, after first dropping source.json if architecture carried it.
 - MAX_FILES: how many changed files have their contents sent; past it a feature reads diffs only.
 - MAX_FILE_BYTES: a larger file is sent neither in files.json nor in source.json.
 - MAX_SOURCE_BYTES: the most source.json holds; past it source is not sent.
@@ -71,9 +73,14 @@ from urllib.error import HTTPError
 from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
-# A Function URL takes 6 MB, measured after base64, and a compressed body goes through base64 on the
-# way in: 4.5 MB of bundle arrives, and 5 MB is refused with a 413.
-MAX_BUNDLE_BYTES = 4_300_000
+# The service's limits on a request, which move with it. A Function URL takes 6 MB, measured after
+# base64, and a compressed body goes through base64 on the way in: 4.5 MB of it arrives, and 5 MB is
+# refused with a 413. Decompressed, the service refuses a feature request over 256 MiB and a problem
+# history request over 32 MiB: MAX_BUNDLE_BYTES and MAX_BRIEFING_BYTES in licensing-aws
+# closed_functions/handler.py.
+MAX_COMPRESSED_BYTES = 4_300_000
+MAX_FEATURE_JSON_BYTES = 256 * 1024 * 1024
+MAX_BRIEFING_JSON_BYTES = 32 * 1024 * 1024
 # Changed files whose contents are sent at both commits; past this a feature reads diffs only.
 MAX_FILES = 300
 # A file larger than this is sent neither as a changed file's contents nor as source.
@@ -102,6 +109,15 @@ MAX_SOURCE_BYTES = 16_000_000
 
 class Skip(Exception):
     """A step that did not happen, for a reason worth one line in the log."""
+
+
+class TooLarge(Skip):
+    """A request over one of the service's limits. Over the compressed one, `fits` is how much JSON the
+    compression ratio just measured would bring under it."""
+
+    def __init__(self, message: str, fits: int | None = None):
+        super().__init__(message)
+        self.fits = fits
 
 
 # --- GitHub ---------------------------------------------------------------------------------------
@@ -605,21 +621,25 @@ def _post(url: str, body: bytes, headers: dict[str, str], timeout: int = 600) ->
         raise RuntimeError(reason) from error
 
 
-def _compress(body: dict) -> bytes:
-    return lzma.compress(json.dumps(body).encode(), preset=9 | lzma.PRESET_EXTREME)
+def _encode(body: dict, max_json_bytes: int, what: str = "bundle") -> bytes:
+    """The request as sent, xz-compressed JSON, or TooLarge when it is over either of the service's
+    limits. The JSON is measured before compressing it, which is the slow part, and it is compressed once."""
+    text = json.dumps(body).encode()
+    if len(text) > max_json_bytes:
+        raise TooLarge(f"its {what} is {len(text) / 1e6:.0f} MB of JSON, over the service's limit")
+    data = lzma.compress(text, preset=9 | lzma.PRESET_EXTREME)
+    if len(data) > MAX_COMPRESSED_BYTES:
+        message = f"its {what} is {len(data) / 1e6:.1f} MB compressed, over the service's limit"
+        raise TooLarge(message, fits=len(text) * MAX_COMPRESSED_BYTES // len(data))
+    return data
 
 
 def _pack(ctx: dict, files: dict[str, str], omitted: dict[str, str]) -> bytes:
-    """A request body: the named files, and why any optional one is missing."""
+    """A feature request: the named files, and why any optional one is missing."""
     body = {"version": 1, "repo": ctx["repo"], "pr": ctx["pr"], "files": files}
     if omitted:
         body["omitted"] = omitted
-    return _compress(body)
-
-
-def _check_size(data: bytes, what: str = "bundle") -> None:
-    if len(data) > MAX_BUNDLE_BYTES:
-        raise Skip(f"its {what} is {len(data) / 1e6:.1f} MB, over the service's limit")
+    return _encode(body, MAX_FEATURE_JSON_BYTES)
 
 
 def _no_architecture(ctx: dict, status: str, reason: str) -> dict:
@@ -643,7 +663,6 @@ def run_review_guide(service_url: str, ctx: dict, inputs: dict, headers: dict, a
         if "x-llm-provider" in headers and "x-llm-api-key" not in headers:
             raise Skip("the service cannot call this run's provider")
         data = _pack(ctx, inputs, {})
-        _check_size(data)
         answer = _post(f"{service_url.rstrip('/')}/v1/review-guide", data, headers)
         guide = answer.get("guide")
         if not isinstance(guide, dict):
@@ -664,12 +683,14 @@ def run_architecture(service_url: str, ctx: dict, inputs: dict, headers: dict, e
             omitted["source.json"] = why or "the source was not collected"
         else:
             files["source.json"] = source
-        data = _pack(ctx, files, omitted)
-        if "source.json" in files and len(data) > MAX_BUNDLE_BYTES:
+        try:
+            data = _pack(ctx, files, omitted)
+        except TooLarge:
+            if "source.json" not in files:
+                raise
             del files["source.json"]
             omitted["source.json"] = "the repository is too large to send"
             data = _pack(ctx, files, omitted)
-        _check_size(data)
         answer = _post(f"{service_url.rstrip('/')}/v1/architecture", data, headers)
         envelope = answer.get("envelope")
         if not isinstance(envelope, dict) or envelope.get("status") not in ("ok", "partial", "skipped", "failed"):
