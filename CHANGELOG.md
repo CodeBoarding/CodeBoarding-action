@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.20.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.19.1...v1.20.0) (2026-11-12)
+
+
+### Features
+
+* send the flow bundle as one xz document per side ([#171](https://github.com/CodeBoarding/CodeBoarding-action/issues/171)) ([aa56857](https://github.com/CodeBoarding/CodeBoarding-action/commit/aa5685747a89ba1baf094ef04b4be75c19f2f5ed))
+
+
+### Bug Fixes
+
+* build the review diff from Core's parsed analysis, not the document ([#174](https://github.com/CodeBoarding/CodeBoarding-action/issues/174)) ([5334187](https://github.com/CodeBoarding/CodeBoarding-action/commit/5334187c589bbc03f7adc27185315645dbbcc879))
+
 ## [1.19.1](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.19.0...v1.19.1) (2026-11-09)
 
 
