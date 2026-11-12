@@ -6,6 +6,11 @@ if [[ ! "$DEPTH_CAP" =~ ^[1-9][0-9]*$ ]]; then
   echo "::error::depth_cap must be a positive integer."
   exit 1
 fi
+FRESH_ANALYSIS="${FRESH_ANALYSIS:-false}"
+if [[ ! "$FRESH_ANALYSIS" =~ ^(true|false)$ ]]; then
+  echo "::error::fresh_analysis must be true or false."
+  exit 1
+fi
 
 # Metadata is only a compatibility check, never the source of configuration.
 # Legacy baselines without a configured cap are rebuilt at the requested depth.

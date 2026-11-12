@@ -3,12 +3,20 @@
 # under this configuration and downloads it into DEST, so a run without an exact
 # base can catch up from it instead of analyzing from scratch. Best effort.
 #
+# With STATIC_ONLY=true a base saved under any configuration will do, and only
+# its static-analysis cache is required, since that is all the caller takes.
+#
 # Prints ancestor_sha=<the commit whose analysis is now in DEST, or empty> on
 # stdout and everything else on stderr.
 #
 # Needs the tip's first-parent history in CHECKOUT_DIR, at least CATCHUP_BOUND deep.
 set -euo pipefail
-: "${REPOSITORY:?}" "${CFG_HASH:?}" "${TIP_SHA:?}" "${CHECKOUT_DIR:?}" "${DEST:?}"
+: "${REPOSITORY:?}" "${TIP_SHA:?}" "${CHECKOUT_DIR:?}" "${DEST:?}"
+if [ "${STATIC_ONLY:-false}" = true ]; then
+  pattern='codeboarding-base-[0-9a-f]{16}-' needs=(static_analysis.pkl static_analysis.sha)
+else
+  pattern="codeboarding-base-${CFG_HASH:?}-" needs=(analysis.json)
+fi
 BOUND="${CATCHUP_BOUND:-100}"
 rm -rf "$DEST"
 
@@ -21,18 +29,18 @@ report() { echo "ancestor_sha=$ancestor"; }
 trap report EXIT
 
 # The merge base's first-parent history, nearest first. Distance 0 is the tip
-# itself, which a review already looked up by its exact name; sync has no such
-# lookup and passes INCLUDE_TIP=true.
+# itself, which a review already looked up by its exact name under this
+# configuration. Sync and STATIC_ONLY lookups pass INCLUDE_TIP=true: nothing
+# looked the tip up for them.
 walk="$(git -C "$CHECKOUT_DIR" rev-list --first-parent --max-count=$(( BOUND + 1 )) "$TIP_SHA" 2>/dev/null || true)"
 [ "${INCLUDE_TIP:-false}" = true ] || walk="$(tail -n +2 <<< "$walk")"
+# Prints the newest saved name for the nearest commit.
 nearest() {
   local commit
   for commit in $walk; do
-    if grep -qx "$commit" <<< "$saved"; then
-      echo "$commit"
-      return 0
-    fi
+    grep -m1 -E "^$pattern$commit\$" <<< "$saved" && return 0
   done
+  return 0
 }
 
 # The artifact listing, newest first. Its name filter is exact, so a prefix needs
@@ -50,26 +58,26 @@ trusted='.artifacts[]?
   | select(.workflow_run.head_repository_id == .workflow_run.repository_id)
   | select(.name | startswith("codeboarding-base-"))
   | .name'
-prefix="codeboarding-base-$CFG_HASH-"
-saved="" page=1
+saved="" name="" page=1
 while [ "$page" -le "${MAX_PAGES:-50}" ]; do
   if ! listing="$(api "repos/$REPOSITORY/actions/artifacts?per_page=100&page=$page" 2>/dev/null)"; then
     echo "::warning::Could not list artifacts in $REPOSITORY; not looking for an older saved analysis." >&2
     exit 0
   fi
   names="$(jq -r "$trusted" <<< "$listing" 2>/dev/null || true)"
-  saved="$saved$(grep "^$prefix" <<< "$names" | cut -c$(( ${#prefix} + 1 ))- || true)"$'\n'
-  ancestor="$(nearest)"
-  [ -z "$ancestor" ] || break
+  saved="$saved$names"$'\n'
+  name="$(nearest)"
+  [ -z "$name" ] || break
   returned="$(jq -r '.artifacts | length' <<< "$listing" 2>/dev/null || echo 0)"
   [ "${returned:-0}" -eq 100 ] || break
   page=$(( page + 1 ))
 done
 
-[ -n "$ancestor" ] || exit 0
+[ -n "$name" ] || exit 0
 
 # Downloaded by its exact name, through the same checks as every other lookup.
-if ! GITHUB_OUTPUT="" ARTIFACT_NAME="$prefix$ancestor" DEST="$DEST" \
-  "$(dirname "$0")/fetch-state.sh" >&2 || [ ! -f "$DEST/analysis.json" ]; then
-  ancestor=""
-fi
+GITHUB_OUTPUT="" ARTIFACT_NAME="$name" DEST="$DEST" "$(dirname "$0")/fetch-state.sh" >&2 || exit 0
+for file in "${needs[@]}"; do
+  [ -f "$DEST/$file" ] || exit 0
+done
+ancestor="${name##*-}"

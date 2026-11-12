@@ -65,6 +65,8 @@ with open(os.environ["CB_ENGINE_LOG"], "a") as log:
         "checkout": argv[argv.index("--local") + 1],
         "depth": argv[argv.index("--depth-cap") + 1] if "--depth-cap" in argv else None,
         "run_id": os.environ.get("CODEBOARDING_RUN_ID", ""),
+        "force": "--force" in argv,
+        "files": sorted(os.listdir(output)),
     }) + "\\n")
 analysis = os.path.join(output, "analysis.json")
 metadata = json.load(open(analysis))["metadata"] if os.path.isfile(analysis) else {}
@@ -367,6 +369,52 @@ class ReviewChainTests(unittest.TestCase):
         calls = self._engine_calls()
         self.assertEqual([c["mode"] for c in calls], ["incremental", "full", "incremental", "full"])
         self.assertEqual([c["depth"] for c in calls if c["mode"] == "full"], ["4", "4"])
+
+    def test_a_fresh_review_starts_from_nothing_saved(self) -> None:
+        # action.yml fetches no published base or warm start; the committed baseline is skipped here.
+        sha = self._commit_base(cap=2)
+
+        values = self._analyze(REVIEW_BASE_SHA=sha, FRESH_ANALYSIS="true")
+
+        calls = self._engine_calls()
+        self.assertEqual([c["mode"] for c in calls], ["full", "incremental"])
+        self.assertTrue(calls[0]["force"], "the base must not reuse the static-analysis cache")
+        self.assertEqual(calls[0]["files"], [], "the committed baseline seeded a fresh base")
+        # The head still grows from the base built here, or the diff would compare unrelated names.
+        self.assertFalse(calls[1]["force"])
+        # Published, it replaces the base other reviews were reusing.
+        self.assertEqual(values["publish_base"], "true")
+
+    def test_an_invalid_fresh_analysis_fails_before_analysis(self) -> None:
+        result = subprocess.run(
+            [str(STEPS["review"][0])],
+            env={"PATH": os.environ["PATH"], "FRESH_ANALYSIS": "yes"},
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("fresh_analysis must be true or false", result.stdout)
+        self.assertEqual(self._engine_calls(), [])
+
+    def test_a_fresh_sync_skips_the_incremental_attempt(self) -> None:
+        self._commit_base(cap=2)
+
+        self._analyze(ANALYSIS_KIND="sync", FRESH_ANALYSIS="true")
+
+        calls = self._engine_calls()
+        self.assertEqual([c["mode"] for c in calls], ["full"])
+        self.assertTrue(calls[0]["force"])
+        self.assertEqual(calls[0]["files"], [], "a committed baseline seeded a fresh run")
+
+    def test_a_full_run_keeps_the_static_analysis_cache(self) -> None:
+        sha = self._commit_base(cap=2)
+
+        self._analyze(REVIEW_BASE_SHA=sha, CB_REQUIRE_FULL="true")
+
+        full = [c for c in self._engine_calls() if c["mode"] == "full"][0]
+        self.assertFalse(full["force"])
+        self.assertIn("static_analysis.pkl", full["files"])
+        self.assertNotIn("analysis.json", full["files"])
 
     # How the base was obtained is reported, not just used: the review comment and
     # the webview explain a slow run by it.
@@ -852,6 +900,145 @@ class AncestorSeedTests(unittest.TestCase):
 
         self.assertEqual(self._modes(), ["incremental"])
 
+    # With no analysis to continue from, the static-analysis cache of a base saved
+    # under any configuration still spares the language servers' pass: Core
+    # refuses one from another cache version itself.
+
+    OTHER_CFG = "0123456789abcdef"
+
+    def _add_static_sha(self) -> None:
+        import zipfile
+
+        with zipfile.ZipFile(self.bundle, "a") as archive:
+            archive.writestr("static_analysis.sha", "a" * 40)
+            archive.writestr("fingerprint.json", "{}")
+
+    def _reuse_static(self, tip: str, ignore: str | None = None) -> Path:
+        """Runs the static-analysis lookup on its own and returns the state it filled.
+
+        `ignore` is the analysed commit's .codeboardingignore, as keep_user_config leaves it."""
+        state = Path(tempfile.mkdtemp(dir=self.root))
+        if ignore is not None:
+            (state / ".codeboardingignore").write_text(ignore, encoding="utf-8")
+        result = subprocess.run(
+            [
+                "bash",
+                "-c",
+                'source "$1" && reuse_static_analysis origin "$2" "$3"',
+                "_",
+                str(SCRIPTS / "seed-sources.sh"),
+                tip,
+                str(state),
+            ],
+            env={
+                "PATH": f"{self.bin_dir}:{os.environ['PATH']}",
+                "RUNNER_TEMP": str(self.runner_temp),
+                "CB_GH_CONFIG": str(self.gh_config),
+                "CB_GH_LOG": str(self.gh_log),
+                "CHECKOUT_DIR": str(self.origin),
+                "REPOSITORY": "owner/repo",
+                "GITHUB_SERVER_URL": f"file://{self.root}",
+                "ANCESTOR_LOOKUP": "true",
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.log = result.stdout + result.stderr
+        return state
+
+    def test_a_base_built_from_scratch_reuses_any_configurations_static_analysis(self) -> None:
+        shas = self._history(4)
+        self._add_static_sha()
+        self._serve([self._artifact(f"codeboarding-base-{self.OTHER_CFG}-{shas[1]}")])
+
+        self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1])
+
+        self.assertIn(f"Reusing the saved static analysis of {shas[1][:7]}.", self.log)
+        base = [json.loads(line) for line in self.engine_log.read_text().splitlines()][0]
+        self.assertEqual((base["mode"], base["force"]), ("full", False))
+        self.assertEqual(base["files"], ["static_analysis.pkl", "static_analysis.sha"])
+
+    def test_only_the_static_analysis_cache_is_taken_from_another_configuration(self) -> None:
+        shas = self._history(2)
+        self._add_static_sha()
+        # The commit itself counts: no lookup by its exact name covered other configurations.
+        self._serve([self._artifact(f"codeboarding-base-{self.OTHER_CFG}-{shas[-1]}")])
+
+        state = self._reuse_static(shas[-1])
+
+        self.assertEqual(sorted(p.name for p in state.iterdir()), ["static_analysis.pkl", "static_analysis.sha"])
+        self.assertEqual((state / "static_analysis.pkl").read_text(), "pickle")
+
+    def test_a_bundle_without_both_static_analysis_files_is_not_used(self) -> None:
+        shas = self._history(2)
+        self._serve([self._artifact(f"codeboarding-base-{self.OTHER_CFG}-{shas[-1]}")])
+
+        state = self._reuse_static(shas[-1])
+
+        self.assertEqual(list(state.iterdir()), [])
+        self.assertNotIn("Reusing", self.log)
+
+    def test_static_analysis_made_with_other_ignore_rules_is_not_used(self) -> None:
+        # Core keeps cached files whatever the current rules say, so a mismatch would persist.
+        import zipfile
+
+        shas = self._history(2)
+        self._add_static_sha()
+        with zipfile.ZipFile(self.bundle, "a") as archive:
+            archive.writestr(".codeboardingignore", "docs/\n")
+        self._serve([self._artifact(f"codeboarding-base-{self.OTHER_CFG}-{shas[-1]}")])
+
+        for ignore in (None, "tests/\n"):
+            with self.subTest(ignore=ignore):
+                state = self._reuse_static(shas[-1], ignore)
+                self.assertFalse((state / "static_analysis.pkl").exists())
+                self.assertIn("made with another .codeboardingignore", self.log)
+
+        state = self._reuse_static(shas[-1], "docs/\n")
+        self.assertTrue((state / "static_analysis.pkl").exists(), "the same rules must not block reuse")
+
+    def test_a_nearer_base_under_another_configuration_is_no_analysis_to_continue_from(self) -> None:
+        shas = self._history(4)
+        self._serve(
+            [
+                self._artifact(f"codeboarding-base-{self.OTHER_CFG}-{shas[2]}"),
+                self._artifact(f"codeboarding-base-cfg-{shas[0]}"),
+            ]
+        )
+
+        self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1])
+
+        self.assertIn(f"Starting from the saved analysis of {shas[0][:7]}.", self.log)
+
+    def test_static_analysis_saved_by_a_run_on_forked_code_is_never_read(self) -> None:
+        shas = self._history(3)
+        self._add_static_sha()
+        self._serve([self._artifact(f"codeboarding-base-{self.OTHER_CFG}-{shas[0]}", fork=True)])
+
+        self._analyze(self.origin, REVIEW_BASE_SHA=shas[-1])
+
+        self.assertNotIn("/zip", self.gh_log.read_text(), "a fork's bundle was downloaded")
+        self.assertNotIn("Reusing", self.log)
+
+    def test_a_fresh_run_reads_no_saved_analysis(self) -> None:
+        shas = self._history(3)
+        self._add_static_sha()
+        self._serve(
+            [
+                self._artifact(f"codeboarding-base-cfg-{shas[0]}"),
+                self._artifact(f"codeboarding-base-{self.OTHER_CFG}-{shas[1]}"),
+            ]
+        )
+
+        for kind in ("review", "sync"):
+            with self.subTest(kind=kind):
+                self._analyze(self.origin, ANALYSIS_KIND=kind, REVIEW_BASE_SHA=shas[-1], FRESH_ANALYSIS="true")
+                self.assertEqual(self.gh_log.read_text(), "")
+        modes = [(c["mode"], c["force"]) for c in map(json.loads, self.engine_log.read_text().splitlines())]
+        self.assertEqual(modes, [("full", True), ("incremental", False), ("full", True)])
+
 
 class ReviewArtifactTests(unittest.TestCase):
     """The artifact is the only channel a reader outside the run can use: cache
@@ -988,6 +1175,14 @@ class PublishedStateTests(unittest.TestCase):
             if "cb-state/out" not in path:
                 continue
             self.assertIn(path.rsplit("/", 1)[-1], staged, f"{step['name']} publishes an unstaged path")
+
+    def test_a_fresh_run_fetches_no_saved_analysis(self) -> None:
+        # A fetched base's id would otherwise reach the review artifact whenever this
+        # run's own base is not published, pairing two independently built graphs.
+        fetches = [s for s in self._steps() if s.get("run", "").endswith('fetch-state.sh"')]
+        self.assertEqual(len(fetches), 2)
+        for step in fetches:
+            self.assertIn("inputs.fresh_analysis != 'true'", step["if"], step["name"])
 
     def test_a_fork_publishes_nothing_another_run_would_read(self) -> None:
         # A base graph is named for a commit, so every pull request forking there
