@@ -235,6 +235,20 @@ class AnalyzeRepositoryTests(unittest.TestCase):
             self.assertIn(f"analysis_path={out_dir / 'analysis.json'}", stdout.getvalue())
             self.assertFalse(stale_artifact.exists())
 
+    def test_a_full_run_that_leaves_the_previous_analysis_in_place_fails(self) -> None:
+        # The previous analysis stays for Core to carry names from, so the file being
+        # there proves nothing: publishing it would pass an old analysis off as this run's.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            checkout, out_dir = root / "repo", root / "out"
+            checkout.mkdir()
+            out_dir.mkdir()
+            (out_dir / "analysis.json").write_text("previous", encoding="utf-8")
+
+            with patch("sys.stdout", io.StringIO()), patch.object(ar, "_run_command", return_value=""):
+                with self.assertRaisesRegex(ar.AnalysisError, "did not produce"):
+                    ar.main(["full", "--checkout", str(checkout), "--output-dir", str(out_dir), "--depth-cap", "2"])
+
     def _full_over_saved_state(self, *extra: str) -> tuple[list[str], list[str]]:
         """Runs mode full over a state holding a previous analysis and other output.
 

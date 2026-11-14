@@ -486,11 +486,12 @@ runs:
 
     # Both lookups are best effort. Without them the run derives the base from
     # the committed baseline and the head from the base, which is what every run
-    # did before any of this existed. A fresh run skips them, so no old base id
-    # reaches the review artifact either.
+    # did before any of this existed. A fresh run passes no name, so no old base
+    # id reaches the review artifact either, while fetch-state.sh still clears
+    # what an earlier use of the action in this job left there.
     - name: Fetch published base analysis
       id: fetch_base
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.base_name != '' && github.server_url == 'https://github.com' && inputs.fresh_analysis != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.base_name != '' && github.server_url == 'https://github.com'
       continue-on-error: true
       shell: bash
       env:
@@ -498,7 +499,7 @@ runs:
         GH_ENTERPRISE_TOKEN: ${{ inputs.github_token }}
         GH_HOST: ${{ github.server_url }}
         REPOSITORY: ${{ github.repository }}
-        ARTIFACT_NAME: ${{ steps.state.outputs.base_name }}
+        ARTIFACT_NAME: ${{ inputs.fresh_analysis != 'true' && steps.state.outputs.base_name || '' }}
         DEST: ${{ runner.temp }}/cb-state/${{ github.action }}/base
         # Must match the review retention below: a review references a base by
         # id for its whole life, so a base with less than that left is renewed.
@@ -506,7 +507,7 @@ runs:
       run: "$GITHUB_ACTION_PATH/scripts/action/fetch-state.sh"
 
     - name: Fetch this pull request's last analysis
-      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.warmstart_name != '' && github.server_url == 'https://github.com' && inputs.fresh_analysis != 'true'
+      if: steps.guard.outputs.skip != 'true' && steps.guard.outputs.mode == 'review' && steps.state.outputs.warmstart_name != '' && github.server_url == 'https://github.com'
       continue-on-error: true
       shell: bash
       env:
@@ -514,7 +515,7 @@ runs:
         GH_ENTERPRISE_TOKEN: ${{ inputs.github_token }}
         GH_HOST: ${{ github.server_url }}
         REPOSITORY: ${{ github.repository }}
-        ARTIFACT_NAME: ${{ steps.state.outputs.warmstart_name }}
+        ARTIFACT_NAME: ${{ inputs.fresh_analysis != 'true' && steps.state.outputs.warmstart_name || '' }}
         DEST: ${{ runner.temp }}/cb-state/${{ github.action }}/warmstart
       run: "$GITHUB_ACTION_PATH/scripts/action/fetch-state.sh"
 

@@ -93,10 +93,11 @@ reuse_other_configuration() {
     SEED_NAMES_ONLY=true
     echo "::notice::Component names carry over from the analysis of ${source:0:7}, saved under another configuration."
   fi
-  # Core keeps a cached file whatever today's ignore rules say, so a cache made
-  # under other rules would keep newly ignored files and miss newly analysed ones.
-  if { [ -e "$seed/.codeboardingignore" ] || [ -e "$state/.codeboardingignore" ]; } &&
-    ! cmp -s "$seed/.codeboardingignore" "$state/.codeboardingignore"; then
+  # Core reads the ignore rules from the checkout and keeps a cached file whatever
+  # they say later, so a cache made under other rules would keep newly ignored
+  # files and miss newly analysed ones. The two commits say which rules applied;
+  # the bundle cannot, since uploads drop dotfiles.
+  if ! git -C "$CHECKOUT_DIR" diff --quiet "$source" "$tip" -- .codeboarding/.codeboardingignore; then
     echo "::notice::The saved static analysis of ${source:0:7} was made with another .codeboardingignore; not reusing it."
     return 0
   fi

@@ -444,6 +444,31 @@ class BaselineBranchReadTests(unittest.TestCase):
         self.assertEqual(base["files"], ["analysis.json", "static_analysis.pkl", "static_analysis.sha"])
         self.assertIn("Component names carry over", self.log)
 
+    def _break_extraction(self) -> None:
+        tar = self.bin_dir / "tar"
+        tar.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+        tar.chmod(0o755)
+
+    def test_an_entry_from_another_configuration_that_cannot_be_read_is_passed_over(self) -> None:
+        # It would only lend names and static analysis, so failing to read it is no
+        # reason to fail the run.
+        self._break_extraction()
+
+        self._analyze(REVIEW_BASE_SHA=self.shas[3], CFG_HASH="othercfg")
+
+        [base] = [json.loads(line) for line in self.engine_log.read_text().splitlines() if '-base"' in line]
+        self.assertEqual((base["mode"], base["seed"]), ("full", None))
+        self.assertIn("Could not extract the analysis", self.log)
+        self.assertNotIn("failure_reason", self._outputs())
+
+    def test_an_entry_of_this_configuration_that_cannot_be_read_fails_the_run(self) -> None:
+        self._break_extraction()
+
+        self._analyze(False, REVIEW_BASE_SHA=self.shas[3])
+
+        self.assertIn("Could not extract the analysis", self._outputs().get("failure_reason", ""))
+        self.assertEqual(self._modes(), [])
+
     def test_without_a_configuration_hash_no_entry_is_trusted(self) -> None:
         self._analyze(REVIEW_BASE_SHA=self.shas[3], CFG_HASH="")
 
