@@ -980,24 +980,58 @@ class AncestorSeedTests(unittest.TestCase):
         self.assertEqual(list(state.iterdir()), [])
         self.assertNotIn("Reusing", self.log)
 
-    def test_static_analysis_made_with_other_ignore_rules_is_not_used(self) -> None:
-        # Core keeps cached files whatever the current rules say, so a mismatch would persist.
+    def _publish(self, staged: Path) -> None:
+        """Writes the bundle as action.yml's base uploads publish a staged state:
+        upload-artifact leaves dotfiles out unless the step sets include-hidden-files."""
         import zipfile
 
-        shas = self._history(2)
-        self._add_static_sha()
-        with zipfile.ZipFile(self.bundle, "a") as archive:
-            archive.writestr(".codeboardingignore", "docs/\n")
-        self._serve([self._artifact(f"codeboarding-base-{self.OTHER_CFG}-{shas[-1]}")])
+        steps = (ROOT / "action.yml").read_text(encoding="utf-8").split("\n    - name:")
+        uploads = [s for s in steps if "actions/upload-artifact@" in s and "/out/base" in s]
+        self.assertTrue(uploads)
+        hidden = all("include-hidden-files: true" in s for s in uploads)
+        with zipfile.ZipFile(self.bundle, "w") as archive:
+            for path in sorted(staged.rglob("*")):
+                relative = path.relative_to(staged)
+                if path.is_file() and (hidden or not any(part.startswith(".") for part in relative.parts)):
+                    archive.write(path, relative.as_posix())
 
-        for ignore in (None, "tests/\n"):
-            with self.subTest(ignore=ignore):
-                state = self._reuse_static(shas[-1], ignore)
-                self.assertFalse((state / "static_analysis.pkl").exists())
-                self.assertIn("made with another .codeboardingignore", self.log)
+    def test_static_analysis_is_reused_only_under_the_ignore_rules_it_was_made_with(self) -> None:
+        # Core keeps cached files whatever the current rules say, so a mismatch would persist.
+        git = ["git", "-C", str(self.origin), "-c", "user.name=T", "-c", "user.email=t@example.com"]
+        ignore_file = self.origin / ".codeboarding" / ".codeboardingignore"
 
-        state = self._reuse_static(shas[-1], "docs/\n")
+        def commit(ignore: str | None) -> str:
+            ignore_file.parent.mkdir(exist_ok=True)
+            if ignore is None:
+                ignore_file.unlink()
+            else:
+                ignore_file.write_text(ignore, encoding="utf-8")
+            subprocess.run([*git, "add", "-A"], check=True)
+            subprocess.run([*git, "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "c"], check=True)
+            return subprocess.check_output([*git, "rev-parse", "HEAD"], text=True).strip()
+
+        self._history(1)
+        saved, same_rules, rules_removed = commit("docs/\n"), commit("docs/\n"), commit(None)
+        # The base saved for `saved`, staged as keep_user_config and the analysis left it.
+        staged = self.root / "staged"
+        staged.mkdir()
+        for name, content in (
+            ("analysis.json", json.dumps({"metadata": {"depth_cap": 2}, "components": []})),
+            ("static_analysis.pkl", "pickle"),
+            ("static_analysis.sha", "a" * 40),
+            ("metadata.json", json.dumps({"kind": "base"})),
+            (".codeboardingignore", "docs/\n"),
+        ):
+            (staged / name).write_text(content, encoding="utf-8")
+        self._publish(staged)
+        self._serve([self._artifact(f"codeboarding-base-{self.OTHER_CFG}-{saved}")])
+
+        state = self._reuse_static(same_rules, "docs/\n")
         self.assertTrue((state / "static_analysis.pkl").exists(), "the same rules must not block reuse")
+
+        state = self._reuse_static(rules_removed)
+        self.assertFalse((state / "static_analysis.pkl").exists())
+        self.assertIn(f"The saved static analysis of {saved[:7]} was made with another .codeboardingignore", self.log)
 
     def test_a_nearer_base_under_another_configuration_is_no_analysis_to_continue_from(self) -> None:
         shas = self._history(4)
@@ -1179,10 +1213,32 @@ class PublishedStateTests(unittest.TestCase):
     def test_a_fresh_run_fetches_no_saved_analysis(self) -> None:
         # A fetched base's id would otherwise reach the review artifact whenever this
         # run's own base is not published, pairing two independently built graphs.
-        fetches = [s for s in self._steps() if s.get("run", "").endswith('fetch-state.sh"')]
+        # The steps still run, so what an earlier use of the action in this job
+        # fetched is cleared rather than continued from.
+        steps = (ROOT / "action.yml").read_text(encoding="utf-8").split("\n    - name:")
+        fetches = [s for s in steps if 'fetch-state.sh"' in s]
         self.assertEqual(len(fetches), 2)
         for step in fetches:
-            self.assertIn("inputs.fresh_analysis != 'true'", step["if"], step["name"])
+            condition = next(line for line in step.splitlines() if line.strip().startswith("if:"))
+            self.assertNotIn("fresh_analysis", condition)
+            self.assertIn("ARTIFACT_NAME: ${{ inputs.fresh_analysis != 'true' && steps.state.outputs.", step)
+
+    def test_fetching_no_name_still_clears_the_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "base"
+            dest.mkdir()
+            (dest / "analysis.json").write_text("{}", encoding="utf-8")
+
+            result = subprocess.run(
+                [str(SCRIPTS / "fetch-state.sh")],
+                env={"PATH": os.environ["PATH"], "ARTIFACT_NAME": "", "DEST": str(dest)},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(dest.exists(), "an earlier invocation's state survived")
 
     def test_a_fork_publishes_nothing_another_run_would_read(self) -> None:
         # A base graph is named for a commit, so every pull request forking there

@@ -80,10 +80,11 @@ reuse_static_analysis() {
     "$HERE/find-ancestor-base.sh" || true)"
   ancestor="$(awk -F= '$1 == "ancestor_sha" {print $2; exit}' <<< "$found")"
   [ -n "$ancestor" ] || return 0
-  # Core keeps a cached file whatever today's ignore rules say, so a cache made
-  # under other rules would keep newly ignored files and miss newly analysed ones.
-  if { [ -e "$dest/.codeboardingignore" ] || [ -e "$state/.codeboardingignore" ]; } &&
-    ! cmp -s "$dest/.codeboardingignore" "$state/.codeboardingignore"; then
+  # Core reads the ignore rules from the checkout and keeps a cached file whatever
+  # they say later, so a cache made under other rules would keep newly ignored
+  # files and miss newly analysed ones. The two commits say which rules applied;
+  # the bundle cannot, since uploads drop dotfiles.
+  if ! git -C "$CHECKOUT_DIR" diff --quiet "$ancestor" "$tip" -- .codeboarding/.codeboardingignore; then
     echo "::notice::The saved static analysis of ${ancestor:0:7} was made with another .codeboardingignore; not reusing it."
     return 0
   fi

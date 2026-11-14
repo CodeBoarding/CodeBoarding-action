@@ -3,12 +3,13 @@
 # Best effort: a miss, an expired bundle or a token without actions:read all
 # leave the directory absent, and the caller derives from the base instead.
 set -euo pipefail
-[ -n "${ARTIFACT_NAME:-}" ] || exit 0
 
-# Clear first, on every path. These destinations are fixed, so a second use of
-# the action in one job would otherwise inherit the first one's files and treat
-# them as this configuration's state.
+# Clear first, on every path, a fresh run's empty name included. These
+# destinations are fixed, so a second use of the action in one job would
+# otherwise inherit the first one's files and treat them as this configuration's
+# state.
 rm -rf "${DEST:?}"
+[ -n "${ARTIFACT_NAME:-}" ] || exit 0
 
 api() { gh api -H 'Accept: application/vnd.github+json' "$@"; }
 export GH_HOST="${GH_HOST#*://}"
