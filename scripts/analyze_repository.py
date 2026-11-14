@@ -13,6 +13,7 @@ from pathlib import Path
 from threading import Thread
 
 PROG = "codeboarding"
+STATIC_CACHE = {"static_analysis.pkl", "static_analysis.sha"}
 # Shared with CodeBoarding/codeboarding_cli/main.py; keep the prefix in sync.
 ENGINE_ERROR_PREFIX = "CodeBoarding: "
 
@@ -133,6 +134,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--checkout", required=True, help="Path to repository checkout")
     parser.add_argument("--output-dir", required=True, help="Action-owned output directory")
     parser.add_argument("--depth-cap", help="Maximum hierarchy depth allowed for full analyses")
+    parser.add_argument(
+        "--fresh", action="store_true", help="Full analysis from nothing, not even the static-analysis cache"
+    )
 
     args = parser.parse_args(argv)
     checkout = Path(args.checkout)
@@ -151,19 +155,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.depth_cap:
         raise SystemExit("--depth-cap is required for mode=full")
-    shutil.rmtree(output_dir)
-    output_dir.mkdir(parents=True)
-    command = [
-        PROG,
-        "full",
-        "--local",
-        str(checkout),
-        "--output-dir",
-        str(output_dir),
-        "--depth-cap",
-        args.depth_cap,
-        "--force",
-    ]
+    # Core validates the static-analysis cache itself: one from another cache
+    # version is refused and rebuilt, so it survives every full run but a fresh one.
+    for entry in output_dir.iterdir():
+        if not args.fresh and entry.name in STATIC_CACHE:
+            continue
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
+    command = [PROG, "full", "--local", str(checkout), "--output-dir", str(output_dir), "--depth-cap", args.depth_cap]
+    if args.fresh:
+        command.append("--force")
     _run_command(command, output_dir)
     analysis_path = output_dir / "analysis.json"
     if not analysis_path.is_file():

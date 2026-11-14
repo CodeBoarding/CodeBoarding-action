@@ -117,6 +117,8 @@ Everything here is best-effort. A missing artifact, an expired one, or a token w
 
 Because artifacts are readable and writable from every trigger, all paths behave the same: an automatic run, a `/codeboarding` command and a manual dispatch each reuse the previous analysis and publish their own. A stored analysis is discarded, and the head re-derived from the base, whenever the pinned CodeBoarding version, `.codeboardingignore`, the model selection, the analysis depth or the merge base changes — or when the base graph it grew from is not the one this run compares against.
 
+With no analysis to continue from, a run still reuses the static analysis (the language servers' call graph, `static_analysis.pkl`) saved with the nearest base for the commit analysed or one of its last 100 first-parent ancestors, whatever configuration made it, and the engine brings it up to date. The engine checks that file itself and rebuilds one from another engine cache version, so a new CodeBoarding release or a changed model or depth costs the language-server pass only when it has to. Set `fresh_analysis: 'true'` to rebuild everything, static analysis included.
+
 Fork pull requests never carry an analysis forward. They are reviewed on request, each review starts from the base, and nothing they produce is read by a run on this repository's own code: untrusted code must not shape state that a later run loads. The action also accepts `pull_request_target`, which runs on the base branch ref and lets both share one chain; that trigger has its own trade-offs (a PR that adds this workflow will not run it until merged, and the fork gate becomes load-bearing), so `pull_request` remains the recommended default.
 
 ### Pull requests that change nothing analysed
@@ -403,6 +405,7 @@ The update runs after the baseline is saved, stops itself after 10 minutes and n
 | `agent_model` | both | empty | Analysis-only override for `model`. |
 | `parsing_model` | both | empty | Parsing-only override for `model`. |
 | `depth_cap` | both | `2` | Positive integer maximum analysis depth, including full-analysis fallbacks. Changing it rebuilds incompatible state. |
+| `fresh_analysis` | both | `false` | With `'true'`, the run reuses nothing saved: every analysis is built from scratch, static analysis included. A fresh review republishes only the base analysis at its merge base; later syncs still continue from what the analysis branch holds. See [Reused analysis](#reused-analysis). |
 | `github_token` | both | `${{ github.token }}` | Token for comments and sync delivery. |
 | `codeboarding_analysis_location` | both | `codeboarding_branch` | Where the synced branch's analysis is stored: `codeboarding_branch` (on `codeboarding/baseline`, for the default branch; the code is never written) or `in_place` (committed as `.codeboarding/` on the synced branch). Sync saves it there and review reads it from there. |
 | `warmstart_retention_days` | review | `1` | Days to keep the reusable analysis. Only the next run reads it. |

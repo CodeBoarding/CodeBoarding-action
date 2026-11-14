@@ -8,6 +8,11 @@
 #   4. the saved analysis of the nearest ancestor                             /
 #   5. nothing                                                                  built from scratch
 #
+# Built from scratch, it still reuses the static analysis of the nearest saved
+# base, made under any configuration. With FRESH_ANALYSIS=true nothing saved is
+# read (action.yml does not fetch source 1), and the base this run publishes
+# replaces the one reviews forking there reused so far.
+#
 # Outputs base_analysis_path, and publish_base when this run produced a base
 # other pull requests forking there should reuse.
 set -euo pipefail
@@ -34,13 +39,18 @@ if compatible_state "${BASE_DIR:-}"; then
 else
   fetch_commit "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA"
   git -C "$CHECKOUT_DIR" worktree add --detach "$checkout" "$REVIEW_BASE_SHA" >/dev/null
-  if from_codeboarding_baseline "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA" "$state" "$checkout" ||
+  seeded=false
+  if [ "$FRESH_ANALYSIS" = true ]; then
+    echo "::notice::fresh_analysis is set; analyzing ${REVIEW_BASE_SHA:0:7} from scratch."
+    keep_user_config "$checkout" "$state"
+  elif from_codeboarding_baseline "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA" "$state" "$checkout" ||
     from_committed_baseline "$checkout" "$state" ||
     from_ancestor_artifact "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA" "$state" false "$checkout"; then
     seeded=true
   else
-    seeded=false
+    echo "::notice::No saved analysis to start from; analyzing ${REVIEW_BASE_SHA:0:7} from scratch."
     keep_user_config "$checkout" "$state"
+    reuse_static_analysis "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA" "$state"
   fi
   # Core never sees the token.
   unset GIT_TOKEN
@@ -49,7 +59,6 @@ else
   elif [ "$seeded" = true ]; then
     "$ACTION_PATH/scripts/action/analyze.sh" base "$checkout" "$state" >/dev/null
   else
-    echo "::notice::No saved analysis to start from; analyzing ${REVIEW_BASE_SHA:0:7} from scratch."
     progress base
     "$ACTION_PATH/scripts/action/analyze.sh" base "$checkout" "$state" >/dev/null
     progress head
