@@ -54,7 +54,7 @@ def run_steps(env: dict[str, str], output: Path) -> tuple[int, str, dict[str, st
 
 ENGINE_STUB = '''#!/usr/bin/env python3
 """CodeBoarding CLI stand-in: records each call and writes a minimal analysis."""
-import json, os, sys
+import datetime, json, os, sys
 
 argv = sys.argv[1:]
 output = argv[argv.index("--output-dir") + 1]
@@ -67,6 +67,8 @@ with open(os.environ["CB_ENGINE_LOG"], "a") as log:
         "run_id": os.environ.get("CODEBOARDING_RUN_ID", ""),
         "force": "--force" in argv,
         "files": sorted(os.listdir(output)),
+        "seed": json.load(open(os.path.join(output, "analysis.json"))).get("components")
+        if os.path.isfile(os.path.join(output, "analysis.json")) else None,
     }) + "\\n")
 analysis = os.path.join(output, "analysis.json")
 metadata = json.load(open(analysis))["metadata"] if os.path.isfile(analysis) else {}
@@ -75,6 +77,8 @@ if argv[0] == "incremental" and os.environ.get("CB_REQUIRE_FULL") == "true":
     sys.exit(0)
 if argv[0] == "full":
     metadata = {"depth_cap": int(argv[argv.index("--depth-cap") + 1])}
+# Like Core, so no two analyses it writes are alike.
+metadata["generated_at"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
 with open(analysis, "w") as handle:
     json.dump({"metadata": metadata, "components": [], "components_relations": []}, handle)
 print(json.dumps({"requiresFullAnalysis": False, "analysis_path": analysis}))
@@ -414,7 +418,7 @@ class ReviewChainTests(unittest.TestCase):
         full = [c for c in self._engine_calls() if c["mode"] == "full"][0]
         self.assertFalse(full["force"])
         self.assertIn("static_analysis.pkl", full["files"])
-        self.assertNotIn("analysis.json", full["files"])
+        self.assertIn("analysis.json", full["files"], "the full run lost the names it continues")
 
     # How the base was obtained is reported, not just used: the review comment and
     # the webview explain a slow run by it.
@@ -900,9 +904,9 @@ class AncestorSeedTests(unittest.TestCase):
 
         self.assertEqual(self._modes(), ["incremental"])
 
-    # With no analysis to continue from, the static-analysis cache of a base saved
-    # under any configuration still spares the language servers' pass: Core
-    # refuses one from another cache version itself.
+    # With no analysis to continue from, a base saved under any configuration still
+    # lends its component names and its static-analysis cache, which spares the
+    # language servers' pass: Core refuses one from another cache version itself.
 
     OTHER_CFG = "0123456789abcdef"
 
@@ -914,7 +918,7 @@ class AncestorSeedTests(unittest.TestCase):
             archive.writestr("fingerprint.json", "{}")
 
     def _reuse_static(self, tip: str, ignore: str | None = None) -> Path:
-        """Runs the static-analysis lookup on its own and returns the state it filled.
+        """Runs the lookup under any configuration on its own and returns the state it filled.
 
         `ignore` is the analysed commit's .codeboardingignore, as keep_user_config leaves it."""
         state = Path(tempfile.mkdtemp(dir=self.root))
@@ -924,7 +928,7 @@ class AncestorSeedTests(unittest.TestCase):
             [
                 "bash",
                 "-c",
-                'source "$1" && reuse_static_analysis origin "$2" "$3"',
+                'source "$1" && reuse_other_configuration origin "$2" "$3"',
                 "_",
                 str(SCRIPTS / "seed-sources.sh"),
                 tip,
@@ -958,9 +962,10 @@ class AncestorSeedTests(unittest.TestCase):
         self.assertIn(f"Reusing the saved static analysis of {shas[1][:7]}.", self.log)
         base = [json.loads(line) for line in self.engine_log.read_text().splitlines()][0]
         self.assertEqual((base["mode"], base["force"]), ("full", False))
-        self.assertEqual(base["files"], ["static_analysis.pkl", "static_analysis.sha"])
+        self.assertEqual(base["files"], ["analysis.json", "static_analysis.pkl", "static_analysis.sha"])
+        self.assertIn(f"Component names carry over from the analysis of {shas[1][:7]}", self.log)
 
-    def test_only_the_static_analysis_cache_is_taken_from_another_configuration(self) -> None:
+    def test_only_the_names_and_the_static_analysis_cache_are_taken_from_another_configuration(self) -> None:
         shas = self._history(2)
         self._add_static_sha()
         # The commit itself counts: no lookup by its exact name covered other configurations.
@@ -968,7 +973,9 @@ class AncestorSeedTests(unittest.TestCase):
 
         state = self._reuse_static(shas[-1])
 
-        self.assertEqual(sorted(p.name for p in state.iterdir()), ["static_analysis.pkl", "static_analysis.sha"])
+        self.assertEqual(
+            sorted(p.name for p in state.iterdir()), ["analysis.json", "static_analysis.pkl", "static_analysis.sha"]
+        )
         self.assertEqual((state / "static_analysis.pkl").read_text(), "pickle")
 
     def test_a_bundle_without_both_static_analysis_files_is_not_used(self) -> None:
@@ -977,7 +984,7 @@ class AncestorSeedTests(unittest.TestCase):
 
         state = self._reuse_static(shas[-1])
 
-        self.assertEqual(list(state.iterdir()), [])
+        self.assertEqual([p.name for p in state.iterdir()], ["analysis.json"])
         self.assertNotIn("Reusing", self.log)
 
     def _publish(self, staged: Path) -> None:

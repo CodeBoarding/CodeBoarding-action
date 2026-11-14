@@ -5,8 +5,8 @@
 #   1. an entry on the baseline branch for this commit or an ancestor
 #   2. the analysis committed on the branch, or on the parent of a commit that removed it
 #   3. the saved analysis of this commit or the nearest ancestor
-#   4. nothing: analyzed from scratch, reusing the static analysis of the
-#      nearest saved base, made under any configuration
+#   4. nothing: analyzed in full, taking the component names and the static
+#      analysis of the nearest base saved under any configuration
 #
 # With FRESH_ANALYSIS=true nothing saved is read.
 set -euo pipefail
@@ -32,7 +32,7 @@ elif ! from_codeboarding_baseline "${REPOSITORY:-}" "$head_sha" "$state" "$CHECK
   ! from_parent_committed_baseline "${REPOSITORY:-}" "$head_sha" "$state" "$CHECKOUT_DIR" &&
   ! from_ancestor_artifact "${REPOSITORY:-}" "$head_sha" "$state" true "$CHECKOUT_DIR"; then
   keep_user_config "$CHECKOUT_DIR" "$state"
-  reuse_static_analysis "${REPOSITORY:-}" "$head_sha" "$state"
+  reuse_other_configuration "${REPOSITORY:-}" "$head_sha" "$state"
 fi
 
 # Core never sees the token.

@@ -69,7 +69,7 @@ else:
 
 ENGINE_STUB = '''#!/usr/bin/env python3
 """Minimal CodeBoarding CLI stand-in recording which tree it was given."""
-import json, os, subprocess, sys
+import datetime, json, os, subprocess, sys
 
 argv = sys.argv[1:]
 checkout = argv[argv.index("--local") + 1]
@@ -84,7 +84,9 @@ with open(os.environ["CB_ENGINE_LOG"], "a") as log:
     }) + "\\n")
 analysis = os.path.join(output, "analysis.json")
 with open(analysis, "w") as handle:
-    json.dump({"metadata": {"depth_level": 2}, "components": [], "components_relations": []}, handle)
+    # Like Core, so no two analyses it writes are alike.
+    metadata = {"depth_level": 2, "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat()}
+    json.dump({"metadata": metadata, "components": [], "components_relations": []}, handle)
 print(json.dumps({"requiresFullAnalysis": False, "analysis_path": analysis}))
 '''
 

@@ -314,6 +314,7 @@ class BaselineBranchReadTests(unittest.TestCase):
                 json.dumps({"metadata": {"depth_cap": 2}, "components": [source]}), encoding="utf-8"
             )
             (board / "static_analysis.pkl").write_text("pickle", encoding="utf-8")
+            (board / "static_analysis.sha").write_text("a" * 40, encoding="utf-8")
             (board / "source.json").write_text(json.dumps({"schema": 1, "source_sha": source}), encoding="utf-8")
             git(work, "add", "-A")
             git(
@@ -434,6 +435,40 @@ class BaselineBranchReadTests(unittest.TestCase):
 
         self.assertEqual(self._modes(), ["full", "incremental"])
 
+    def test_after_a_release_the_full_analysis_keeps_the_names_of_the_old_configuration(self) -> None:
+        # Its names and static analysis carry over; the rest of its engine state does not.
+        self._analyze(REVIEW_BASE_SHA=self.shas[3], CFG_HASH="othercfg")
+
+        [base] = [json.loads(line) for line in self.engine_log.read_text().splitlines() if '-base"' in line]
+        self.assertEqual((base["mode"], base["seed"]), ("full", [self.shas[3]]))
+        self.assertEqual(base["files"], ["analysis.json", "static_analysis.pkl", "static_analysis.sha"])
+        self.assertIn("Component names carry over", self.log)
+
+    def _break_extraction(self) -> None:
+        tar = self.bin_dir / "tar"
+        tar.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+        tar.chmod(0o755)
+
+    def test_an_entry_from_another_configuration_that_cannot_be_read_is_passed_over(self) -> None:
+        # It would only lend names and static analysis, so failing to read it is no
+        # reason to fail the run.
+        self._break_extraction()
+
+        self._analyze(REVIEW_BASE_SHA=self.shas[3], CFG_HASH="othercfg")
+
+        [base] = [json.loads(line) for line in self.engine_log.read_text().splitlines() if '-base"' in line]
+        self.assertEqual((base["mode"], base["seed"]), ("full", None))
+        self.assertIn("Could not extract the analysis", self.log)
+        self.assertNotIn("failure_reason", self._outputs())
+
+    def test_an_entry_of_this_configuration_that_cannot_be_read_fails_the_run(self) -> None:
+        self._break_extraction()
+
+        self._analyze(False, REVIEW_BASE_SHA=self.shas[3])
+
+        self.assertIn("Could not extract the analysis", self._outputs().get("failure_reason", ""))
+        self.assertEqual(self._modes(), [])
+
     def test_without_a_configuration_hash_no_entry_is_trusted(self) -> None:
         self._analyze(REVIEW_BASE_SHA=self.shas[3], CFG_HASH="")
 
@@ -495,7 +530,9 @@ class BaselineBranchReadTests(unittest.TestCase):
 
         state = Path(values["analysis_dir"])
         self.assertEqual((state / "static_analysis.pkl").read_text(), "pickle", "the tip's engine state")
-        self.assertFalse((state / "static_analysis.sha").exists(), "a generated file from the old baseline")
+        self.assertEqual(
+            (state / "static_analysis.sha").read_text(), "a" * 40, "a generated file from the old baseline"
+        )
         self.assertFalse((state / "source.json").exists())
         self.assertEqual((state / ".codeboardingignore").read_text(), "docs/\n")
 
@@ -503,6 +540,13 @@ class BaselineBranchReadTests(unittest.TestCase):
         self._analyze(ANALYSIS_KIND="sync", CFG_HASH="othercfg")
 
         self.assertEqual(self._modes(), ["full"])
+
+    def test_sync_after_a_release_keeps_the_names_of_the_old_configuration(self) -> None:
+        self._analyze(ANALYSIS_KIND="sync", CFG_HASH="othercfg")
+
+        [call] = [json.loads(line) for line in self.engine_log.read_text().splitlines()]
+        self.assertEqual((call["mode"], call["seed"]), ("full", [self.shas[3]]))
+        self.assertEqual(call["files"], ["analysis.json", "static_analysis.pkl", "static_analysis.sha"])
 
     def test_sync_refuses_to_run_on_the_analysis_branch(self) -> None:
         # Committing an analysis onto it, code-branch style, would make it unreadable as one.

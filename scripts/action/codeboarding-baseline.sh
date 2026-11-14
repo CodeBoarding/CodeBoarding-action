@@ -16,9 +16,18 @@ baseline_fail() {
   exit 1
 }
 
+# Reading an entry made under any configuration (CFG_HASH='*') is best effort: it
+# only lends names and static analysis, so a failure falls through to the next
+# source the way a missing artifact does. Under this run's configuration it fails
+# the run. Callers return 1 after it.
+baseline_read_fail() {
+  [ "${CFG_HASH:-}" = "*" ] || baseline_fail "$1"
+  echo "::warning::$1 Not taking anything from it."
+}
+
 # Returns 0 when branch $2 (BASELINE_BRANCH by default) exists in repository $1 and
 # 2 when it does not. Any other failure is retried once, so one network blip does
-# not fail the run.
+# not fail the run, and then returns 1 if baseline_read_fail lets it.
 baseline_branch_exists() {
   local repository="$1" branch="${2:-$BASELINE_BRANCH}" auth status
   auth="$(printf 'x-access-token:%s' "${GIT_TOKEN:-}" | base64 -w0)"
@@ -31,7 +40,8 @@ baseline_branch_exists() {
     esac
     [ "$attempt" = 2 ] || sleep "${BASELINE_RETRY_DELAY:-2}"
   done
-  baseline_fail "Could not read $branch from $repository. Check that github_token can read the repository."
+  baseline_read_fail "Could not read $branch from $repository. Check that github_token can read the repository."
+  return 1
 }
 
 # ---- Reading ----
@@ -51,13 +61,13 @@ codeboarding_baseline_index() {
     awk 'NF >= 2 {print $1, $2, (NF >= 3 ? $3 : "-")}'
 }
 
-# Seeds $3 from the branch's entry for $2, or for its nearest first-parent
-# ancestor, made under this run's configuration: the trailer pins it the way the
-# name pins a saved artifact, and without a configuration hash no entry is
-# trusted. Keeps checkout $4's user configuration. Sets SEED_SHA to the commit
-# the seed describes.
-from_codeboarding_baseline() {
-  local repository="$1" tip="$2" state="$3" config_from="$4" index commit entry="" scratch="$RUNNER_TEMP/codeboarding-baseline-restore"
+# Extracts into $3/.codeboarding the branch's entry for $2, or for its nearest
+# first-parent ancestor, made under this run's configuration: the trailer pins it
+# the way the name pins a saved artifact, and without a configuration hash no entry
+# is trusted. CFG_HASH='*' takes an entry made under any configuration. Sets
+# BASELINE_SOURCE to the commit the entry describes.
+restore_codeboarding_baseline() {
+  local repository="$1" tip="$2" dest="$3" index commit entry=""
   local status=0
   [ -n "${BASELINE_BRANCH:-}" ] || return 1
   [ -n "${CFG_HASH:-}" ] || return 1
@@ -68,37 +78,48 @@ from_codeboarding_baseline() {
     echo "::notice::$BASELINE_BRANCH does not exist yet; the first sync creates it."
     return 1
   fi
+  [ "$status" = 0 ] || return 1
   index="$(codeboarding_baseline_index "$repository")" ||
-    baseline_fail "Could not fetch $BASELINE_BRANCH from $repository."
+    { baseline_read_fail "Could not fetch $BASELINE_BRANCH from $repository."; return 1; }
   if [ -z "$index" ]; then
     # A code branch, as when a review into another branch names the one that holds the analysis.
     echo "::warning::$BASELINE_BRANCH is not a CodeBoarding analysis branch, so its analysis is not read here."
     return 1
   fi
   fetch_commit "$repository" "$tip" "$(( CATCHUP_BOUND + 1 ))" ||
-    baseline_fail "Could not fetch the history of ${tip:0:7} to look for its analysis."
+    { baseline_read_fail "Could not fetch the history of ${tip:0:7} to look for its analysis."; return 1; }
   for commit in $(git -C "$CHECKOUT_DIR" rev-list --first-parent --max-count=$(( CATCHUP_BOUND + 1 )) "$tip" 2>/dev/null); do
-    entry="$(awk -v source="$commit" -v cfg="$CFG_HASH" '$2 == source && $3 == cfg {print $1; exit}' <<< "$index")"
+    entry="$(awk -v source="$commit" -v cfg="$CFG_HASH" '$2 == source && (cfg == "*" || $3 == cfg) {print $1; exit}' <<< "$index")"
     [ -z "$entry" ] || break
   done
   if [ -z "$entry" ]; then
-    echo "::notice::$BASELINE_BRANCH has no analysis of ${tip:0:7} or its last $CATCHUP_BOUND ancestors made with this configuration."
+    [ "$CFG_HASH" = "*" ] ||
+      echo "::notice::$BASELINE_BRANCH has no analysis of ${tip:0:7} or its last $CATCHUP_BOUND ancestors made with this configuration."
     return 1
   fi
   # The entry is known to exist from here on, so failing to read it is an error.
   fetch_commit "$repository" "$entry" ||
-    baseline_fail "Could not fetch the analysis ${entry:0:7} from $BASELINE_BRANCH."
-  rm -rf "$scratch"
-  mkdir -p "$scratch"
-  git -C "$CHECKOUT_DIR" archive "$entry" .codeboarding | tar -x -C "$scratch" ||
-    baseline_fail "Could not extract the analysis ${entry:0:7} from $BASELINE_BRANCH."
+    { baseline_read_fail "Could not fetch the analysis ${entry:0:7} from $BASELINE_BRANCH."; return 1; }
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  git -C "$CHECKOUT_DIR" archive "$entry" .codeboarding | tar -x -C "$dest" ||
+    { baseline_read_fail "Could not extract the analysis ${entry:0:7} from $BASELINE_BRANCH."; return 1; }
   # source.json is provenance, not engine state.
-  rm -f "$scratch/.codeboarding/source.json"
+  rm -f "$dest/.codeboarding/source.json"
+  BASELINE_SOURCE="$commit"
+}
+
+# Seeds $3 from the branch's entry for $2 or its nearest ancestor (see
+# restore_codeboarding_baseline). Keeps checkout $4's user configuration. Sets
+# SEED_SHA to the commit the seed describes.
+from_codeboarding_baseline() {
+  local repository="$1" tip="$2" state="$3" config_from="$4" scratch="$RUNNER_TEMP/codeboarding-baseline-restore"
+  restore_codeboarding_baseline "$repository" "$tip" "$scratch" || return 1
   compatible_state "$scratch/.codeboarding" || return 1
   replace_state "$scratch/.codeboarding" "$state" "$config_from"
   # shellcheck disable=SC2034 # read by the scripts that source this file
-  SEED_SHA="$commit"
-  echo "::notice::Starting from the analysis of ${commit:0:7} saved on $BASELINE_BRANCH."
+  SEED_SHA="$BASELINE_SOURCE"
+  echo "::notice::Starting from the analysis of ${BASELINE_SOURCE:0:7} saved on $BASELINE_BRANCH."
 }
 
 # ---- Writing ----

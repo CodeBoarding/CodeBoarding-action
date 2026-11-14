@@ -35,7 +35,9 @@ fresh=""
 if [ "${FRESH_ANALYSIS:-false}" = true ] && [ "$role" != head ]; then fresh=--fresh; fi
 
 mkdir -p "$state"
-if [ -z "$fresh" ] && compatible_state "$state"; then
+# A seed from another configuration only lends names and static analysis; it
+# holds no engine state to continue from.
+if [ -z "$fresh" ] && [ "${SEED_NAMES_ONLY:-false}" != true ] && compatible_state "$state"; then
   run_core incremental
   if [ "$ANALYSIS_MODE" != incremental ] || { [ "$REQUIRES_FULL" != true ] && [ ! -f "$ANALYSIS_PATH" ]; }; then
     fail "Core returned an invalid incremental-analysis result."

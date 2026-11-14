@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -13,7 +14,7 @@ from pathlib import Path
 from threading import Thread
 
 PROG = "codeboarding"
-STATIC_CACHE = {"static_analysis.pkl", "static_analysis.sha"}
+KEPT_BY_FULL_RUN = {"analysis.json", "static_analysis.pkl", "static_analysis.sha"}
 # Shared with CodeBoarding/codeboarding_cli/main.py; keep the prefix in sync.
 ENGINE_ERROR_PREFIX = "CodeBoarding: "
 
@@ -155,10 +156,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.depth_cap:
         raise SystemExit("--depth-cap is required for mode=full")
-    # Core validates the static-analysis cache itself: one from another cache
-    # version is refused and rebuilt, so it survives every full run but a fresh one.
+    # What a full run continues from, every one but a fresh one: Core keeps the names
+    # of the components the new analysis continues, and refuses and rebuilds a
+    # static-analysis cache from another cache version itself.
     for entry in output_dir.iterdir():
-        if not args.fresh and entry.name in STATIC_CACHE:
+        if not args.fresh and entry.name in KEPT_BY_FULL_RUN:
             continue
         if entry.is_dir() and not entry.is_symlink():
             shutil.rmtree(entry)
@@ -167,9 +169,14 @@ def main(argv: list[str] | None = None) -> int:
     command = [PROG, "full", "--local", str(checkout), "--output-dir", str(output_dir), "--depth-cap", args.depth_cap]
     if args.fresh:
         command.append("--force")
-    _run_command(command, output_dir)
     analysis_path = output_dir / "analysis.json"
-    if not analysis_path.is_file():
+    # Core reads the previous analysis from where it writes the new one, so the file
+    # being there proves nothing; its content changing does, since every analysis
+    # Core writes carries its own generated_at. An untouched one would publish the
+    # previous analysis, maybe another configuration's, as this run's.
+    previous = hashlib.sha256(analysis_path.read_bytes()).digest() if analysis_path.is_file() else None
+    _run_command(command, output_dir)
+    if not analysis_path.is_file() or hashlib.sha256(analysis_path.read_bytes()).digest() == previous:
         raise AnalysisError(f"Full analysis did not produce: {analysis_path}")
     print(f"analysis_mode=full")
     print("requires_full_analysis=false")

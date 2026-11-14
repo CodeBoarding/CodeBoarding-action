@@ -8,10 +8,10 @@
 #   4. the saved analysis of the nearest ancestor                             /
 #   5. nothing                                                                  built from scratch
 #
-# Built from scratch, it still reuses the static analysis of the nearest saved
-# base, made under any configuration. With FRESH_ANALYSIS=true nothing saved is
-# read (action.yml does not fetch source 1), and the base this run publishes
-# replaces the one reviews forking there reused so far.
+# Built in full, it still takes the component names and the static analysis of
+# the nearest base saved under any configuration. With FRESH_ANALYSIS=true
+# nothing saved is read (action.yml does not fetch source 1), and the base this
+# run publishes replaces the one reviews forking there reused so far.
 #
 # Outputs base_analysis_path, and publish_base when this run produced a base
 # other pull requests forking there should reuse.
@@ -50,7 +50,7 @@ else
   else
     echo "::notice::No saved analysis to start from; analyzing ${REVIEW_BASE_SHA:0:7} from scratch."
     keep_user_config "$checkout" "$state"
-    reuse_static_analysis "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA" "$state"
+    reuse_other_configuration "$REVIEW_BASE_REPO" "$REVIEW_BASE_SHA" "$state"
   fi
   # Core never sees the token.
   unset GIT_TOKEN
