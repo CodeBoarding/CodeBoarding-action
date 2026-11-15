@@ -58,10 +58,14 @@ class ActionWiringTests(unittest.TestCase):
             for step in steps[:-1]:
                 # The head analysis keeps them only on a setup PR's run, which goes on to preview
                 # other pull requests; elsewhere it is the last analysis and removes them.
-                keeps = "KEEP_AUTH: 'true'" in step or (
-                    step.startswith("Analyze pull request")
-                    and "KEEP_AUTH: ${{ github.event_name == 'pull_request' && github.head_ref == 'codeboarding/setup-action' }}"
-                    in step
+                keeps = (
+                    "KEEP_AUTH: 'true'" in step
+                    or "run: 'KEEP_AUTH=true " in step
+                    or (
+                        step.startswith("Analyze pull request")
+                        and "KEEP_AUTH: ${{ github.event_name == 'pull_request' && github.head_ref == 'codeboarding/setup-action' }}"
+                        in step
+                    )
                 )
                 self.assertTrue(keeps, f"{mode}: {step.splitlines()[0]} consumes the credentials")
             self.assertNotIn("KEEP_AUTH", steps[-1], f"{mode}: the last analysis step must remove them")
