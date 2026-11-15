@@ -1,2160 +1,489 @@
 {
-  "metadata": {
-    "generated_at": "2026-11-12T21:21:32.264039+00:00",
-    "source_tree_hash": "5f4acc54aabf64502cb97b9bf8d207f202d054d805ac6b8638928678ecee4dc9",
-    "repo_name": ".codeboarding-target",
-    "depth_level": 1,
-    "depth_cap": 2,
-    "file_coverage_summary": {
-      "total_files": 69,
-      "analyzed": 6,
-      "not_analyzed": 63,
-      "not_analyzed_by_reason": {
-        "other": 39,
-        "codeboardingignore": 24
+ "metadata":{
+  "generated_at":"2026-11-15T03:25:57.286058+00:00",
+  "source_tree_hash":"7082bcd731d5df1a1b4a5dd0afbde491f26f294b76a32b6e3eed32c1c7905618",
+  "repo_name":".codeboarding-target",
+  "depth_level":1,
+  "depth_cap":2,
+  "file_coverage_summary":{"total_files":69,"analyzed":6,"not_analyzed":63,"not_analyzed_by_reason":{"other":39,"codeboardingignore":24}},
+  "tree_spec":{
+   "version":4,
+   "grouper":"affinity",
+   "machinery":[],
+   "scopes":{
+    "root":{
+     "axis":"island",
+     "rung":"island",
+     "leaf_reason":"",
+     "last_id":2,
+     "rules":[
+      {
+       "id":"1",
+       "name":"Other files",
+       "origin":"island",
+       "prefixes":[["scripts","action","credential_check.py"],["scripts","analyze_repository.py"],["scripts","diff_to_mermaid.py"],["scripts","oidc_relay.py"]],
+       "fallback_prefixes":[["scripts"]]
+      },
+      {
+       "id":"2",
+       "name":"problem_history",
+       "origin":"grouped",
+       "prefixes":[["scripts","problem_history.py"],["scripts","remote_features.py"]],
+       "terms":["problem","remote"],
+       "parts":[
+        {"id":"","name":"problem_history","origin":"file","prefixes":[["scripts","problem_history.py"]]},
+        {"id":"","name":"remote_features","origin":"file","prefixes":[["scripts","remote_features.py"]]}
+       ]
       }
+     ]
     },
-    "tree_spec": {
-      "version": 4,
-      "grouper": "affinity",
-      "machinery": [],
-      "scopes": {
-        "root": {
-          "axis": "island",
-          "rung": "island",
-          "leaf_reason": "",
-          "last_id": 2,
-          "rules": [
-            {
-              "id": "1",
-              "name": "Other files",
-              "origin": "island",
-              "prefixes": [
-                [
-                  "scripts",
-                  "action",
-                  "credential_check.py"
-                ],
-                [
-                  "scripts",
-                  "analyze_repository.py"
-                ],
-                [
-                  "scripts",
-                  "diff_to_mermaid.py"
-                ],
-                [
-                  "scripts",
-                  "oidc_relay.py"
-                ]
-              ],
-              "fallback_prefixes": [
-                [
-                  "scripts"
-                ]
-              ]
-            },
-            {
-              "id": "2",
-              "name": "closed_features",
-              "origin": "grouped",
-              "prefixes": [
-                [
-                  "scripts",
-                  "problem_history.py"
-                ],
-                [
-                  "scripts",
-                  "closed_features.py"
-                ]
-              ],
-              "terms": [
-                "problem",
-                "clo"
-              ],
-              "parts": [
-                {
-                  "id": "",
-                  "name": "problem_history",
-                  "origin": "file",
-                  "prefixes": [
-                    [
-                      "scripts",
-                      "problem_history.py"
-                    ]
-                  ]
-                },
-                {
-                  "id": "",
-                  "name": "closed_features",
-                  "origin": "file",
-                  "prefixes": [
-                    [
-                      "scripts",
-                      "closed_features.py"
-                    ]
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        "1": {
-          "axis": "",
-          "rung": "leaf",
-          "leaf_reason": "small: 4 units, at most 7; nothing to un-merge",
-          "last_id": 0,
-          "rules": []
-        },
-        "2": {
-          "axis": "",
-          "rung": "leaf",
-          "leaf_reason": "small: 2 units, at most 7; un-merge failed the guard",
-          "last_id": 0,
-          "rules": []
-        }
-      }
-    }
+    "1":{"axis":"","rung":"leaf","leaf_reason":"small: 4 units, at most 7; nothing to un-merge","last_id":0,"rules":[]},
+    "2":{"axis":"","rung":"leaf","leaf_reason":"small: 2 units, at most 7; un-merge failed the guard","last_id":0,"rules":[]}
+   }
   },
-  "description": "This scope provides automation and integration scripts supporting the CodeBoarding GitHub Action workflow. It coordinates CLI repository analysis, credential validation, OIDC loopback relaying, and Mermaid diagram diff generation, while submitting review artifacts and issue histories to external endpoints.",
-  "files": {
-    "scripts/action/credential_check.py": {
-      "method_keys": [
-        "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError",
-        "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError.__init__",
-        "scripts/action/credential_check.py|scripts.action.credential_check.secrets_url",
-        "scripts/action/credential_check.py|scripts.action.credential_check.workflow_path",
-        "scripts/action/credential_check.py|scripts.action.credential_check._add_secret",
-        "scripts/action/credential_check.py|scripts.action.credential_check._wire_it",
-        "scripts/action/credential_check.py|scripts.action.credential_check.load_table",
-        "scripts/action/credential_check.py|scripts.action.credential_check._unquote",
-        "scripts/action/credential_check.py|scripts.action.credential_check._clean_key",
-        "scripts/action/credential_check.py|scripts.action.credential_check.read_inputs",
-        "scripts/action/credential_check.py|scripts.action.credential_check.owner_of",
-        "scripts/action/credential_check.py|scripts.action.credential_check._provider_list",
-        "scripts/action/credential_check.py|scripts.action.credential_check._reject_provider_inputs",
-        "scripts/action/credential_check.py|scripts.action.credential_check._reject_model",
-        "scripts/action/credential_check.py|scripts.action.credential_check._require_id_token",
-        "scripts/action/credential_check.py|scripts.action.credential_check._resolve_byok",
-        "scripts/action/credential_check.py|scripts.action.credential_check.resolve",
-        "scripts/action/credential_check.py|scripts.action.credential_check._is_endpoint",
-        "scripts/action/credential_check.py|scripts.action.credential_check._safe_endpoint",
-        "scripts/action/credential_check.py|scripts.action.credential_check._pays",
-        "scripts/action/credential_check.py|scripts.action.credential_check.reported_provider",
-        "scripts/action/credential_check.py|scripts.action.credential_check.plan_headline",
-        "scripts/action/credential_check.py|scripts.action.credential_check.plan_summary",
-        "scripts/action/credential_check.py|scripts.action.credential_check.write_auth_dir",
-        "scripts/action/credential_check.py|scripts.action.credential_check.main"
-      ],
-      "content_hash": "26bf0dbf16311140",
-      "module_hash": "571f030b01ce8e80"
-    },
-    "scripts/analyze_repository.py": {
-      "method_keys": [
-        "scripts/analyze_repository.py|scripts.analyze_repository.AnalysisError",
-        "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool",
-        "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response",
-        "scripts/analyze_repository.py|scripts.analyze_repository._run_command",
-        "scripts/analyze_repository.py|scripts.analyze_repository._run_command.forward_stderr",
-        "scripts/analyze_repository.py|scripts.analyze_repository.main"
-      ],
-      "content_hash": "2c3eccb47daa8aac",
-      "module_hash": "3e1e441902075cb9"
-    },
-    "scripts/diff_to_mermaid.py": {
-      "method_keys": [
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._relation_dict",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_view",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_view.level",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.read_analysis_json",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.load_analysis",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_id",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_name",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._file_methods",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._methods_by_file",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_structural_changes",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_method_changes",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._content_changed",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._changed_files",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.analysed_files_changed",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._analysis_changes",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._owns_analysis_change",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._rel_key",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_relations",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changes",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_components",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.build_diff",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._sanitize",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._esc",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._truncate",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._display_status",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope.__init__",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope.resolve",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed.touches",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._init_directive",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._count_changed_components",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changed_relations",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_level",
-        "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main"
-      ],
-      "content_hash": "409269e5baccdba9",
-      "module_hash": "f7391bc4274c4ea8"
-    },
-    "scripts/oidc_relay.py": {
-      "method_keys": [
-        "scripts/oidc_relay.py|scripts.oidc_relay.RelayConfig",
-        "scripts/oidc_relay.py|scripts.oidc_relay._with_audience",
-        "scripts/oidc_relay.py|scripts.oidc_relay._mint_oidc_token",
-        "scripts/oidc_relay.py|scripts.oidc_relay._authorization",
-        "scripts/oidc_relay.py|scripts.oidc_relay._upstream_url",
-        "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler",
-        "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler.log_message",
-        "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler.config",
-        "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler._request_body",
-        "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler._send",
-        "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler._handle",
-        "scripts/oidc_relay.py|scripts.oidc_relay.RelayServer",
-        "scripts/oidc_relay.py|scripts.oidc_relay.RelayServer.__init__",
-        "scripts/oidc_relay.py|scripts.oidc_relay.main"
-      ],
-      "content_hash": "5af0d8557c0af6e0",
-      "module_hash": "581a285c4c8aad4a"
-    },
-    "scripts/remote_features.py": {
-      "method_keys": [
-        "scripts/remote_features.py|scripts.remote_features.Skip",
-        "scripts/remote_features.py|scripts.remote_features.TooLarge",
-        "scripts/remote_features.py|scripts.remote_features.TooLarge.__init__",
-        "scripts/remote_features.py|scripts.remote_features._github",
-        "scripts/remote_features.py|scripts.remote_features._error_message",
-        "scripts/remote_features.py|scripts.remote_features._github_json",
-        "scripts/remote_features.py|scripts.remote_features._diff",
-        "scripts/remote_features.py|scripts.remote_features._contents",
-        "scripts/remote_features.py|scripts.remote_features.call_graph",
-        "scripts/remote_features.py|scripts.remote_features._site_lines",
-        "scripts/remote_features.py|scripts.remote_features._Row",
-        "scripts/remote_features.py|scripts.remote_features._Row.written",
-        "scripts/remote_features.py|scripts.remote_features._short_name",
-        "scripts/remote_features.py|scripts.remote_features._Table",
-        "scripts/remote_features.py|scripts.remote_features._Table.__init__",
-        "scripts/remote_features.py|scripts.remote_features._Table._add_method",
-        "scripts/remote_features.py|scripts.remote_features._Table.add_node",
-        "scripts/remote_features.py|scripts.remote_features._Table.number_rows",
-        "scripts/remote_features.py|scripts.remote_features._Table.member",
-        "scripts/remote_features.py|scripts.remote_features.side_document",
-        "scripts/remote_features.py|scripts.remote_features._calls",
-        "scripts/remote_features.py|scripts.remote_features._components",
-        "scripts/remote_features.py|scripts.remote_features._flatten",
-        "scripts/remote_features.py|scripts.remote_features._flatten.visit",
-        "scripts/remote_features.py|scripts.remote_features._relations",
-        "scripts/remote_features.py|scripts.remote_features._analysis_edges",
-        "scripts/remote_features.py|scripts.remote_features._method_key",
-        "scripts/remote_features.py|scripts.remote_features.collect",
-        "scripts/remote_features.py|scripts.remote_features._side",
-        "scripts/remote_features.py|scripts.remote_features.read_analysis",
-        "scripts/remote_features.py|scripts.remote_features._changed_contents",
-        "scripts/remote_features.py|scripts.remote_features._checkout_text",
-        "scripts/remote_features.py|scripts.remote_features._checkout_file",
-        "scripts/remote_features.py|scripts.remote_features.collect_source",
-        "scripts/remote_features.py|scripts.remote_features._load",
-        "scripts/remote_features.py|scripts.remote_features._relay",
-        "scripts/remote_features.py|scripts.remote_features._api_key",
-        "scripts/remote_features.py|scripts.remote_features.model_headers",
-        "scripts/remote_features.py|scripts.remote_features._bearer",
-        "scripts/remote_features.py|scripts.remote_features._post",
-        "scripts/remote_features.py|scripts.remote_features._encode",
-        "scripts/remote_features.py|scripts.remote_features._requests",
-        "scripts/remote_features.py|scripts.remote_features._no_architecture",
-        "scripts/remote_features.py|scripts.remote_features.run_review_guide",
-        "scripts/remote_features.py|scripts.remote_features.run_architecture",
-        "scripts/remote_features.py|scripts.remote_features.main"
-      ],
-      "content_hash": "8f2d02ed53c8b44a",
-      "module_hash": "0825e0da378f53c5"
-    },
-    "scripts/problem_history.py": {
-      "method_keys": [
-        "scripts/problem_history.py|scripts.problem_history.GraphQLError",
-        "scripts/problem_history.py|scripts.problem_history.GraphQLError.__init__",
-        "scripts/problem_history.py|scripts.problem_history.Conflict",
-        "scripts/problem_history.py|scripts.problem_history._NoRedirect",
-        "scripts/problem_history.py|scripts.problem_history._NoRedirect.redirect_request",
-        "scripts/problem_history.py|scripts.problem_history.GitHub",
-        "scripts/problem_history.py|scripts.problem_history.GitHub.__init__",
-        "scripts/problem_history.py|scripts.problem_history.GitHub._headers",
-        "scripts/problem_history.py|scripts.problem_history.GitHub.call",
-        "scripts/problem_history.py|scripts.problem_history.GitHub.json",
-        "scripts/problem_history.py|scripts.problem_history.GitHub.graphql",
-        "scripts/problem_history.py|scripts.problem_history.GitHub.download",
-        "scripts/problem_history.py|scripts.problem_history._iso",
-        "scripts/problem_history.py|scripts.problem_history._parse",
-        "scripts/problem_history.py|scripts.problem_history._nodes",
-        "scripts/problem_history.py|scripts.problem_history._login",
-        "scripts/problem_history.py|scripts.problem_history._author",
-        "scripts/problem_history.py|scripts.problem_history.linked_pull_requests",
-        "scripts/problem_history.py|scripts.problem_history.cut",
-        "scripts/problem_history.py|scripts.problem_history.issue_facts",
-        "scripts/problem_history.py|scripts.problem_history.read_ledger",
-        "scripts/problem_history.py|scripts.problem_history.open_issue_numbers",
-        "scripts/problem_history.py|scripts.problem_history._oldest_open",
-        "scripts/problem_history.py|scripts.problem_history.collect_issues",
-        "scripts/problem_history.py|scripts.problem_history.relinked",
-        "scripts/problem_history.py|scripts.problem_history._by_number",
-        "scripts/problem_history.py|scripts.problem_history.issues_by_number",
-        "scripts/problem_history.py|scripts.problem_history._merged_since",
-        "scripts/problem_history.py|scripts.problem_history.collect_merged",
-        "scripts/problem_history.py|scripts.problem_history._member",
-        "scripts/problem_history.py|scripts.problem_history.read_architecture",
-        "scripts/problem_history.py|scripts.problem_history._own_review",
-        "scripts/problem_history.py|scripts.problem_history.review_findings",
-        "scripts/problem_history.py|scripts.problem_history._unread",
-        "scripts/problem_history.py|scripts.problem_history.collect_findings",
-        "scripts/problem_history.py|scripts.problem_history.collect_findings.newest",
-        "scripts/problem_history.py|scripts.problem_history.collect",
-        "scripts/problem_history.py|scripts.problem_history.build_request",
-        "scripts/problem_history.py|scripts.problem_history.pack",
-        "scripts/problem_history.py|scripts.problem_history._newest_pr",
-        "scripts/problem_history.py|scripts.problem_history.commit_ledger",
-        "scripts/problem_history.py|scripts.problem_history.update",
-        "scripts/problem_history.py|scripts.problem_history._stop",
-        "scripts/problem_history.py|scripts.problem_history.main"
-      ],
-      "content_hash": "40f1fa151ce30122",
-      "module_hash": "f7d4ad983b087ce7"
-    }
+  "format_version":"v1"
+ },
+ "description":"Top-level action automation scripts split into local workflow orchestration (credential validation, CLI execution, OIDC token relaying, and diagram generation) and remote CodeBoarding service integrations (problem history tracking and pull request review analysis).",
+ "files":{
+  "scripts/action/credential_check.py":{
+   "content_hash":"26bf0dbf16311140",
+   "module_hash":"571f030b01ce8e80",
+   "methods":{
+    "scripts.action.credential_check.ConfigError":[59,73,"CLASS","426011d5d2230adc","BL_Hn5EW47i7"],
+    "scripts.action.credential_check.ConfigError.__init__":[68,73,"METHOD","f81c95d089278b17","y_N3ypbETHzC"],
+    "scripts.action.credential_check.secrets_url":[76,82,"FUNCTION","1fc04b1cfa8fc297","tFPBfoUxxUsu"],
+    "scripts.action.credential_check.workflow_path":[85,96,"FUNCTION","f324e18326d069a1","D5LaxkcDXFeV"],
+    "scripts.action.credential_check._add_secret":[99,103,"FUNCTION","492b070772034e92","RNdQbdLXbW3n"],
+    "scripts.action.credential_check._wire_it":[106,112,"FUNCTION","47d7f21707b95795","Vl0R2cnnvk0e"],
+    "scripts.action.credential_check.load_table":[115,116,"FUNCTION","883b027dcd4a1f81","2rvMt_gaDgiz"],
+    "scripts.action.credential_check._unquote":[119,123,"FUNCTION","d76d75a01207b5c3","U0CkDBmVrllf"],
+    "scripts.action.credential_check._clean_key":[126,138,"FUNCTION","7022f1f27f479e9a","g2FHQLMnyKhY"],
+    "scripts.action.credential_check.read_inputs":[141,151,"FUNCTION","63027aa36242eaee","zAR_FZBjWECc"],
+    "scripts.action.credential_check.owner_of":[154,158,"FUNCTION","642022ffe104707b","oFQJMZ9xlbj0"],
+    "scripts.action.credential_check._provider_list":[161,162,"FUNCTION","dc5cdf89617abb12","3pU9zl_iEGKl"],
+    "scripts.action.credential_check._reject_provider_inputs":[165,176,"FUNCTION","74b7a440fc4d6a4f","l7W5IYftD5Oh"],
+    "scripts.action.credential_check._reject_model":[179,189,"FUNCTION","aa6dea0b8de5a54f","SvuVsYx2NrZh"],
+    "scripts.action.credential_check._require_id_token":[192,211,"FUNCTION","d851b0187fc2ff80","oHu1A0-S46bB"],
+    "scripts.action.credential_check._resolve_byok":[214,258,"FUNCTION","450353451688c808","cWsopUD-iZ8S"],
+    "scripts.action.credential_check.resolve":[261,328,"FUNCTION","c43ce3700fc188c3","VuV_4yoUGynV"],
+    "scripts.action.credential_check._is_endpoint":[331,333,"FUNCTION","d2e340c8c4019c62","taVlCvGumFk0"],
+    "scripts.action.credential_check._safe_endpoint":[336,354,"FUNCTION","fe29000746501ef5","xHNzt6EHt-eW"],
+    "scripts.action.credential_check._pays":[357,375,"FUNCTION","5b05786790186cee","iEmwAAoDRfPB"],
+    "scripts.action.credential_check.reported_provider":[378,389,"FUNCTION","74017705ae0828bb","apoHxnGZbrn2"],
+    "scripts.action.credential_check.plan_headline":[392,397,"FUNCTION","524ee91b9da8fbdf","yos07msCdqbU"],
+    "scripts.action.credential_check.plan_summary":[400,426,"FUNCTION","e651d73f54fb8285","SzWnQY-8ZS9Y"],
+    "scripts.action.credential_check.write_auth_dir":[429,469,"FUNCTION","35b0b557c638ebea","1opxbdaqW8io"],
+    "scripts.action.credential_check.main":[472,509,"FUNCTION","1d67aac61f0b0b91","2uAQUkmqMJfC"]
+   }
   },
-  "methods_index": {
-    "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.ConfigError",
-      "start_line": 59,
-      "end_line": 73,
-      "type": "CLASS",
-      "content_hash": "426011d5d2230adc"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.ConfigError.__init__": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.ConfigError.__init__",
-      "start_line": 68,
-      "end_line": 73,
-      "type": "METHOD",
-      "content_hash": "f81c95d089278b17"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.secrets_url": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.secrets_url",
-      "start_line": 76,
-      "end_line": 82,
-      "type": "FUNCTION",
-      "content_hash": "1fc04b1cfa8fc297"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.workflow_path": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.workflow_path",
-      "start_line": 85,
-      "end_line": 96,
-      "type": "FUNCTION",
-      "content_hash": "f324e18326d069a1"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._add_secret": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._add_secret",
-      "start_line": 99,
-      "end_line": 103,
-      "type": "FUNCTION",
-      "content_hash": "492b070772034e92"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._wire_it": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._wire_it",
-      "start_line": 106,
-      "end_line": 112,
-      "type": "FUNCTION",
-      "content_hash": "47d7f21707b95795"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.load_table": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.load_table",
-      "start_line": 115,
-      "end_line": 116,
-      "type": "FUNCTION",
-      "content_hash": "883b027dcd4a1f81"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._unquote": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._unquote",
-      "start_line": 119,
-      "end_line": 123,
-      "type": "FUNCTION",
-      "content_hash": "d76d75a01207b5c3"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._clean_key": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._clean_key",
-      "start_line": 126,
-      "end_line": 138,
-      "type": "FUNCTION",
-      "content_hash": "7022f1f27f479e9a"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.read_inputs": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.read_inputs",
-      "start_line": 141,
-      "end_line": 151,
-      "type": "FUNCTION",
-      "content_hash": "63027aa36242eaee"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.owner_of": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.owner_of",
-      "start_line": 154,
-      "end_line": 158,
-      "type": "FUNCTION",
-      "content_hash": "642022ffe104707b"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._provider_list": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._provider_list",
-      "start_line": 161,
-      "end_line": 162,
-      "type": "FUNCTION",
-      "content_hash": "dc5cdf89617abb12"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._reject_provider_inputs": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._reject_provider_inputs",
-      "start_line": 165,
-      "end_line": 176,
-      "type": "FUNCTION",
-      "content_hash": "74b7a440fc4d6a4f"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._reject_model": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._reject_model",
-      "start_line": 179,
-      "end_line": 189,
-      "type": "FUNCTION",
-      "content_hash": "aa6dea0b8de5a54f"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._require_id_token": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._require_id_token",
-      "start_line": 192,
-      "end_line": 211,
-      "type": "FUNCTION",
-      "content_hash": "d851b0187fc2ff80"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._resolve_byok": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._resolve_byok",
-      "start_line": 214,
-      "end_line": 258,
-      "type": "FUNCTION",
-      "content_hash": "450353451688c808"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.resolve": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.resolve",
-      "start_line": 261,
-      "end_line": 328,
-      "type": "FUNCTION",
-      "content_hash": "c43ce3700fc188c3"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._is_endpoint": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._is_endpoint",
-      "start_line": 331,
-      "end_line": 333,
-      "type": "FUNCTION",
-      "content_hash": "d2e340c8c4019c62"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._safe_endpoint": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._safe_endpoint",
-      "start_line": 336,
-      "end_line": 354,
-      "type": "FUNCTION",
-      "content_hash": "fe29000746501ef5"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check._pays": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check._pays",
-      "start_line": 357,
-      "end_line": 375,
-      "type": "FUNCTION",
-      "content_hash": "5b05786790186cee"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.reported_provider": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.reported_provider",
-      "start_line": 378,
-      "end_line": 389,
-      "type": "FUNCTION",
-      "content_hash": "74017705ae0828bb"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.plan_headline": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.plan_headline",
-      "start_line": 392,
-      "end_line": 397,
-      "type": "FUNCTION",
-      "content_hash": "524ee91b9da8fbdf"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.plan_summary": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.plan_summary",
-      "start_line": 400,
-      "end_line": 426,
-      "type": "FUNCTION",
-      "content_hash": "e651d73f54fb8285"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.write_auth_dir": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.write_auth_dir",
-      "start_line": 429,
-      "end_line": 469,
-      "type": "FUNCTION",
-      "content_hash": "35b0b557c638ebea"
-    },
-    "scripts/action/credential_check.py|scripts.action.credential_check.main": {
-      "file_path": "scripts/action/credential_check.py",
-      "qualified_name": "scripts.action.credential_check.main",
-      "start_line": 472,
-      "end_line": 509,
-      "type": "FUNCTION",
-      "content_hash": "1d67aac61f0b0b91"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository.AnalysisError": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository.AnalysisError",
-      "start_line": 26,
-      "end_line": 27,
-      "type": "CLASS",
-      "content_hash": "e23f18bc0d32e21b"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository._parse_bool": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository._parse_bool",
-      "start_line": 30,
-      "end_line": 39,
-      "type": "FUNCTION",
-      "content_hash": "3de011b556fa2edb"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository._parse_cli_response": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository._parse_cli_response",
-      "start_line": 42,
-      "end_line": 76,
-      "type": "FUNCTION",
-      "content_hash": "064ec779cc59420b"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository._run_command": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository._run_command",
-      "start_line": 79,
-      "end_line": 127,
-      "type": "FUNCTION",
-      "content_hash": "3a7842daff8c7a61"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository._run_command.forward_stderr": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository._run_command.forward_stderr",
-      "start_line": 90,
-      "end_line": 93,
-      "type": "FUNCTION",
-      "content_hash": "43cce328a40b7d19"
-    },
-    "scripts/analyze_repository.py|scripts.analyze_repository.main": {
-      "file_path": "scripts/analyze_repository.py",
-      "qualified_name": "scripts.analyze_repository.main",
-      "start_line": 130,
-      "end_line": 174,
-      "type": "FUNCTION",
-      "content_hash": "884750cb5fd6b713"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._relation_dict": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._relation_dict",
-      "start_line": 57,
-      "end_line": 65,
-      "type": "FUNCTION",
-      "content_hash": "801e1bc47ec57702"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_view": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._diff_view",
-      "start_line": 68,
-      "end_line": 107,
-      "type": "FUNCTION",
-      "content_hash": "a8473266180c9ca7"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_view.level": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._diff_view.level",
-      "start_line": 74,
-      "end_line": 95,
-      "type": "FUNCTION",
-      "content_hash": "ea47664f4403e0e3"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.read_analysis_json": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid.read_analysis_json",
-      "start_line": 110,
-      "end_line": 114,
-      "type": "FUNCTION",
-      "content_hash": "47fd5e4824a8bbe9"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.load_analysis": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid.load_analysis",
-      "start_line": 117,
-      "end_line": 134,
-      "type": "FUNCTION",
-      "content_hash": "1884b94e63afc0d5"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_id": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._comp_id",
-      "start_line": 140,
-      "end_line": 141,
-      "type": "FUNCTION",
-      "content_hash": "0cb8d9398468a0e6"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._comp_name": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._comp_name",
-      "start_line": 144,
-      "end_line": 145,
-      "type": "FUNCTION",
-      "content_hash": "399b6e3662e7ce1f"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._file_methods": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._file_methods",
-      "start_line": 148,
-      "end_line": 149,
-      "type": "FUNCTION",
-      "content_hash": "b54d71b9e1b80e63"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._methods_by_file": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._methods_by_file",
-      "start_line": 152,
-      "end_line": 159,
-      "type": "FUNCTION",
-      "content_hash": "4ba9b19ab0f246f2"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_structural_changes": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._has_structural_changes",
-      "start_line": 162,
-      "end_line": 165,
-      "type": "FUNCTION",
-      "content_hash": "d4511a8ccbf2073d"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_method_changes": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._has_method_changes",
-      "start_line": 168,
-      "end_line": 173,
-      "type": "FUNCTION",
-      "content_hash": "737fc9898cef0f98"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._content_changed": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._content_changed",
-      "start_line": 176,
-      "end_line": 179,
-      "type": "FUNCTION",
-      "content_hash": "85ed060789d16481"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._changed_files": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._changed_files",
-      "start_line": 182,
-      "end_line": 189,
-      "type": "FUNCTION",
-      "content_hash": "4985f13a96d808b6"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.analysed_files_changed": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid.analysed_files_changed",
-      "start_line": 192,
-      "end_line": 204,
-      "type": "FUNCTION",
-      "content_hash": "06bc4749ffc8f5e6"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._analysis_changes": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._analysis_changes",
-      "start_line": 207,
-      "end_line": 221,
-      "type": "FUNCTION",
-      "content_hash": "97d732e3640c7811"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._owns_analysis_change": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._owns_analysis_change",
-      "start_line": 224,
-      "end_line": 239,
-      "type": "FUNCTION",
-      "content_hash": "2517e5dff08a1eac"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._rel_key": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._rel_key",
-      "start_line": 242,
-      "end_line": 245,
-      "type": "FUNCTION",
-      "content_hash": "e8de4cfb9ef31082"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_relations": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._diff_relations",
-      "start_line": 248,
-      "end_line": 294,
-      "type": "FUNCTION",
-      "content_hash": "652dc3832988ab8d"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changes": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._has_changes",
-      "start_line": 297,
-      "end_line": 305,
-      "type": "FUNCTION",
-      "content_hash": "785661b1b374b761"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._diff_components": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._diff_components",
-      "start_line": 308,
-      "end_line": 353,
-      "type": "FUNCTION",
-      "content_hash": "7f3d3b547750caa7"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.build_diff": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid.build_diff",
-      "start_line": 356,
-      "end_line": 379,
-      "type": "FUNCTION",
-      "content_hash": "03d7ac8c994d57db"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._sanitize": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._sanitize",
-      "start_line": 385,
-      "end_line": 387,
-      "type": "FUNCTION",
-      "content_hash": "0c4a83ab88d80bc0"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._esc": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._esc",
-      "start_line": 409,
-      "end_line": 415,
-      "type": "FUNCTION",
-      "content_hash": "e45c5105d8af2dc4"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._truncate": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._truncate",
-      "start_line": 418,
-      "end_line": 420,
-      "type": "FUNCTION",
-      "content_hash": "751d4ca80e5e5268"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._display_status": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._display_status",
-      "start_line": 423,
-      "end_line": 424,
-      "type": "FUNCTION",
-      "content_hash": "d5b585da051d6666"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._Scope",
-      "start_line": 427,
-      "end_line": 471,
-      "type": "CLASS",
-      "content_hash": "95389df8539e5091"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope.__init__": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._Scope.__init__",
-      "start_line": 438,
-      "end_line": 460,
-      "type": "METHOD",
-      "content_hash": "f1143a47440e417d"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._Scope.resolve": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._Scope.resolve",
-      "start_line": 462,
-      "end_line": 471,
-      "type": "METHOD",
-      "content_hash": "5bfc527e15cdf1cd"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._filter_changed",
-      "start_line": 474,
-      "end_line": 516,
-      "type": "FUNCTION",
-      "content_hash": "91c6dccaa5a809e1"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._filter_changed.touches": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._filter_changed.touches",
-      "start_line": 507,
-      "end_line": 509,
-      "type": "FUNCTION",
-      "content_hash": "e1a0c69dff6f9b3d"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._init_directive": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._init_directive",
-      "start_line": 519,
-      "end_line": 538,
-      "type": "FUNCTION",
-      "content_hash": "90d7c75c50f440b4"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._count_changed_components": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._count_changed_components",
-      "start_line": 541,
-      "end_line": 548,
-      "type": "FUNCTION",
-      "content_hash": "18a0b2e0cc0785cd"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid._has_changed_relations": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid._has_changed_relations",
-      "start_line": 551,
-      "end_line": 555,
-      "type": "FUNCTION",
-      "content_hash": "06ad82ce29818493"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid.render_mermaid",
-      "start_line": 558,
-      "end_line": 685,
-      "type": "FUNCTION",
-      "content_hash": "8b7c6d2420ad9ae7"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build",
-      "start_line": 587,
-      "end_line": 660,
-      "type": "FUNCTION",
-      "content_hash": "938fa3c85e73367b"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_edges": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
-      "start_line": 598,
-      "end_line": 610,
-      "type": "FUNCTION",
-      "content_hash": "beb1d84227b5ecb3"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.render_mermaid.build.emit_level": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid.render_mermaid.build.emit_level",
-      "start_line": 612,
-      "end_line": 629,
-      "type": "FUNCTION",
-      "content_hash": "bab2f4f0a975b7d6"
-    },
-    "scripts/diff_to_mermaid.py|scripts.diff_to_mermaid.main": {
-      "file_path": "scripts/diff_to_mermaid.py",
-      "qualified_name": "scripts.diff_to_mermaid.main",
-      "start_line": 691,
-      "end_line": 734,
-      "type": "FUNCTION",
-      "content_hash": "92e0174d2c12d091"
-    },
-    "scripts/oidc_relay.py|scripts.oidc_relay.RelayConfig": {
-      "file_path": "scripts/oidc_relay.py",
-      "qualified_name": "scripts.oidc_relay.RelayConfig",
-      "start_line": 46,
-      "end_line": 50,
-      "type": "CLASS",
-      "content_hash": "3632668559c52e65"
-    },
-    "scripts/oidc_relay.py|scripts.oidc_relay._with_audience": {
-      "file_path": "scripts/oidc_relay.py",
-      "qualified_name": "scripts.oidc_relay._with_audience",
-      "start_line": 53,
-      "end_line": 58,
-      "type": "FUNCTION",
-      "content_hash": "971a5179aa4ad7f2"
-    },
-    "scripts/oidc_relay.py|scripts.oidc_relay._mint_oidc_token": {
-      "file_path": "scripts/oidc_relay.py",
-      "qualified_name": "scripts.oidc_relay._mint_oidc_token",
-      "start_line": 61,
-      "end_line": 76,
-      "type": "FUNCTION",
-      "content_hash": "0e565e1dbadd52a8"
-    },
-    "scripts/oidc_relay.py|scripts.oidc_relay._authorization": {
-      "file_path": "scripts/oidc_relay.py",
-      "qualified_name": "scripts.oidc_relay._authorization",
-      "start_line": 79,
-      "end_line": 89,
-      "type": "FUNCTION",
-      "content_hash": "4813e4016de16e56"
-    },
-    "scripts/oidc_relay.py|scripts.oidc_relay._upstream_url": {
-      "file_path": "scripts/oidc_relay.py",
-      "qualified_name": "scripts.oidc_relay._upstream_url",
-      "start_line": 92,
-      "end_line": 93,
-      "type": "FUNCTION",
-      "content_hash": "cc1da2077840b7da"
-    },
-    "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler": {
-      "file_path": "scripts/oidc_relay.py",
-      "qualified_name": "scripts.oidc_relay._RelayHandler",
-      "start_line": 96,
-      "end_line": 152,
-      "type": "CLASS",
-      "content_hash": "7b7f0a8029fdbbfb"
-    },
-    "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler.log_message": {
-      "file_path": "scripts/oidc_relay.py",
-      "qualified_name": "scripts.oidc_relay._RelayHandler.log_message",
-      "start_line": 99,
-      "end_line": 101,
-      "type": "METHOD",
-      "content_hash": "5582f5e792c4f233"
-    },
-    "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler.config": {
-      "file_path": "scripts/oidc_relay.py",
-      "qualified_name": "scripts.oidc_relay._RelayHandler.config",
-      "start_line": 104,
-      "end_line": 105,
-      "type": "METHOD",
-      "content_hash": "3e013376a8b08e9e"
-    },
-    "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler._request_body": {
-      "file_path": "scripts/oidc_relay.py",
-      "qualified_name": "scripts.oidc_relay._RelayHandler._request_body",
-      "start_line": 107,
-      "end_line": 112,
-      "type": "METHOD",
-      "content_hash": "241957adb1e5b9e1"
-    },
-    "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler._send": {
-      "file_path": "scripts/oidc_relay.py",
-      "qualified_name": "scripts.oidc_relay._RelayHandler._send",
-      "start_line": 114,
-      "end_line": 122,
-      "type": "METHOD",
-      "content_hash": "9053ff5f576377c8"
-    },
-    "scripts/oidc_relay.py|scripts.oidc_relay._RelayHandler._handle": {
-      "file_path": "scripts/oidc_relay.py",
-      "qualified_name": "scripts.oidc_relay._RelayHandler._handle",
-      "start_line": 124,
-      "end_line": 146,
-      "type": "METHOD",
-      "content_hash": "3fca0973865e684e"
-    },
-    "scripts/oidc_relay.py|scripts.oidc_relay.RelayServer": {
-      "file_path": "scripts/oidc_relay.py",
-      "qualified_name": "scripts.oidc_relay.RelayServer",
-      "start_line": 155,
-      "end_line": 161,
-      "type": "CLASS",
-      "content_hash": "4109cd854afbdd28"
-    },
-    "scripts/oidc_relay.py|scripts.oidc_relay.RelayServer.__init__": {
-      "file_path": "scripts/oidc_relay.py",
-      "qualified_name": "scripts.oidc_relay.RelayServer.__init__",
-      "start_line": 159,
-      "end_line": 161,
-      "type": "METHOD",
-      "content_hash": "f203daaca01af199"
-    },
-    "scripts/oidc_relay.py|scripts.oidc_relay.main": {
-      "file_path": "scripts/oidc_relay.py",
-      "qualified_name": "scripts.oidc_relay.main",
-      "start_line": 164,
-      "end_line": 183,
-      "type": "FUNCTION",
-      "content_hash": "32cb887f244d21dd"
-    },
-    "scripts/remote_features.py|scripts.remote_features.Skip": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features.Skip",
-      "start_line": 115,
-      "end_line": 116,
-      "type": "CLASS",
-      "content_hash": "2baab45c3c2e218f"
-    },
-    "scripts/remote_features.py|scripts.remote_features.TooLarge": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features.TooLarge",
-      "start_line": 119,
-      "end_line": 125,
-      "type": "CLASS",
-      "content_hash": "bf7eef5dd7cf3c5e"
-    },
-    "scripts/remote_features.py|scripts.remote_features.TooLarge.__init__": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features.TooLarge.__init__",
-      "start_line": 123,
-      "end_line": 125,
-      "type": "METHOD",
-      "content_hash": "629f1508ec731d92"
-    },
-    "scripts/remote_features.py|scripts.remote_features._github": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._github",
-      "start_line": 131,
-      "end_line": 154,
-      "type": "FUNCTION",
-      "content_hash": "72a387965555e379"
-    },
-    "scripts/remote_features.py|scripts.remote_features._error_message": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._error_message",
-      "start_line": 157,
-      "end_line": 162,
-      "type": "FUNCTION",
-      "content_hash": "6476bd2e882efd58"
-    },
-    "scripts/remote_features.py|scripts.remote_features._github_json": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._github_json",
-      "start_line": 165,
-      "end_line": 166,
-      "type": "FUNCTION",
-      "content_hash": "524f8b94439ea108"
-    },
-    "scripts/remote_features.py|scripts.remote_features._diff": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._diff",
-      "start_line": 169,
-      "end_line": 174,
-      "type": "FUNCTION",
-      "content_hash": "037c0071e5708ca1"
-    },
-    "scripts/remote_features.py|scripts.remote_features._contents": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._contents",
-      "start_line": 177,
-      "end_line": 186,
-      "type": "FUNCTION",
-      "content_hash": "4f50a284659f5772"
-    },
-    "scripts/remote_features.py|scripts.remote_features.call_graph": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features.call_graph",
-      "start_line": 192,
-      "end_line": 211,
-      "type": "FUNCTION",
-      "content_hash": "cc4fb4cca624596d"
-    },
-    "scripts/remote_features.py|scripts.remote_features._site_lines": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._site_lines",
-      "start_line": 214,
-      "end_line": 217,
-      "type": "FUNCTION",
-      "content_hash": "dfba3aad2c0d2da5"
-    },
-    "scripts/remote_features.py|scripts.remote_features._Row": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._Row",
-      "start_line": 221,
-      "end_line": 236,
-      "type": "CLASS",
-      "content_hash": "148d08afe3ad045e"
-    },
-    "scripts/remote_features.py|scripts.remote_features._Row.written": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._Row.written",
-      "start_line": 232,
-      "end_line": 236,
-      "type": "METHOD",
-      "content_hash": "4e37a33757731648"
-    },
-    "scripts/remote_features.py|scripts.remote_features._short_name": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._short_name",
-      "start_line": 239,
-      "end_line": 245,
-      "type": "FUNCTION",
-      "content_hash": "d4a57ef09c114c6f"
-    },
-    "scripts/remote_features.py|scripts.remote_features._Table": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._Table",
-      "start_line": 248,
-      "end_line": 297,
-      "type": "CLASS",
-      "content_hash": "d6fb9773c2b1d736"
-    },
-    "scripts/remote_features.py|scripts.remote_features._Table.__init__": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._Table.__init__",
-      "start_line": 252,
-      "end_line": 260,
-      "type": "METHOD",
-      "content_hash": "14e7b830e3c115dc"
-    },
-    "scripts/remote_features.py|scripts.remote_features._Table._add_method": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._Table._add_method",
-      "start_line": 262,
-      "end_line": 267,
-      "type": "METHOD",
-      "content_hash": "953bd374decb4dcf"
-    },
-    "scripts/remote_features.py|scripts.remote_features._Table.add_node": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._Table.add_node",
-      "start_line": 269,
-      "end_line": 279,
-      "type": "METHOD",
-      "content_hash": "8f9742dab83c497e"
-    },
-    "scripts/remote_features.py|scripts.remote_features._Table.number_rows": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._Table.number_rows",
-      "start_line": 281,
-      "end_line": 291,
-      "type": "METHOD",
-      "content_hash": "db570b3199c077c8"
-    },
-    "scripts/remote_features.py|scripts.remote_features._Table.member": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._Table.member",
-      "start_line": 293,
-      "end_line": 297,
-      "type": "METHOD",
-      "content_hash": "e65aff8a7dc60bc2"
-    },
-    "scripts/remote_features.py|scripts.remote_features.side_document": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features.side_document",
-      "start_line": 300,
-      "end_line": 335,
-      "type": "FUNCTION",
-      "content_hash": "23a7b9e5bb7361de"
-    },
-    "scripts/remote_features.py|scripts.remote_features._calls": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._calls",
-      "start_line": 338,
-      "end_line": 350,
-      "type": "FUNCTION",
-      "content_hash": "c3c6e4a1c9397e57"
-    },
-    "scripts/remote_features.py|scripts.remote_features._components": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._components",
-      "start_line": 353,
-      "end_line": 383,
-      "type": "FUNCTION",
-      "content_hash": "2c6dd037dd7231b1"
-    },
-    "scripts/remote_features.py|scripts.remote_features._flatten": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._flatten",
-      "start_line": 386,
-      "end_line": 399,
-      "type": "FUNCTION",
-      "content_hash": "658316cfd435e26c"
-    },
-    "scripts/remote_features.py|scripts.remote_features._flatten.visit": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._flatten.visit",
-      "start_line": 391,
-      "end_line": 396,
-      "type": "FUNCTION",
-      "content_hash": "82bcbaaff9a8b0bb"
-    },
-    "scripts/remote_features.py|scripts.remote_features._relations": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._relations",
-      "start_line": 402,
-      "end_line": 404,
-      "type": "FUNCTION",
-      "content_hash": "56ffd6ce5a35bffd"
-    },
-    "scripts/remote_features.py|scripts.remote_features._analysis_edges": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._analysis_edges",
-      "start_line": 407,
-      "end_line": 413,
-      "type": "FUNCTION",
-      "content_hash": "e510343a5e4af899"
-    },
-    "scripts/remote_features.py|scripts.remote_features._method_key": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._method_key",
-      "start_line": 416,
-      "end_line": 417,
-      "type": "FUNCTION",
-      "content_hash": "674c833b9e3b57aa"
-    },
-    "scripts/remote_features.py|scripts.remote_features.collect": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features.collect",
-      "start_line": 423,
-      "end_line": 454,
-      "type": "FUNCTION",
-      "content_hash": "3b23d3cd19bcfca6"
-    },
-    "scripts/remote_features.py|scripts.remote_features._side": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._side",
-      "start_line": 457,
-      "end_line": 461,
-      "type": "FUNCTION",
-      "content_hash": "11c29319f0a2d414"
-    },
-    "scripts/remote_features.py|scripts.remote_features.read_analysis": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features.read_analysis",
-      "start_line": 464,
-      "end_line": 469,
-      "type": "FUNCTION",
-      "content_hash": "261c2a9e0ec8d4eb"
-    },
-    "scripts/remote_features.py|scripts.remote_features._changed_contents": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._changed_contents",
-      "start_line": 472,
-      "end_line": 486,
-      "type": "FUNCTION",
-      "content_hash": "e9825c995a653684"
-    },
-    "scripts/remote_features.py|scripts.remote_features._checkout_text": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._checkout_text",
-      "start_line": 489,
-      "end_line": 497,
-      "type": "FUNCTION",
-      "content_hash": "64cf9de56f37b6c4"
-    },
-    "scripts/remote_features.py|scripts.remote_features._checkout_file": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._checkout_file",
-      "start_line": 500,
-      "end_line": 510,
-      "type": "FUNCTION",
-      "content_hash": "9bc86b2bfe606e15"
-    },
-    "scripts/remote_features.py|scripts.remote_features.collect_source": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features.collect_source",
-      "start_line": 513,
-      "end_line": 535,
-      "type": "FUNCTION",
-      "content_hash": "9b7dcafec0833c58"
-    },
-    "scripts/remote_features.py|scripts.remote_features._load": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._load",
-      "start_line": 541,
-      "end_line": 547,
-      "type": "FUNCTION",
-      "content_hash": "7f94f85ea88dea70"
-    },
-    "scripts/remote_features.py|scripts.remote_features._relay": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._relay",
-      "start_line": 550,
-      "end_line": 551,
-      "type": "FUNCTION",
-      "content_hash": "80f8d2e6ce1c62ab"
-    },
-    "scripts/remote_features.py|scripts.remote_features._api_key": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._api_key",
-      "start_line": 554,
-      "end_line": 559,
-      "type": "FUNCTION",
-      "content_hash": "71192b42bce6b03c"
-    },
-    "scripts/remote_features.py|scripts.remote_features.model_headers": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features.model_headers",
-      "start_line": 562,
-      "end_line": 585,
-      "type": "FUNCTION",
-      "content_hash": "2e323d8598fac230"
-    },
-    "scripts/remote_features.py|scripts.remote_features._bearer": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._bearer",
-      "start_line": 588,
-      "end_line": 606,
-      "type": "FUNCTION",
-      "content_hash": "fe3b076030da5de2"
-    },
-    "scripts/remote_features.py|scripts.remote_features._post": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._post",
-      "start_line": 612,
-      "end_line": 626,
-      "type": "FUNCTION",
-      "content_hash": "464142b335135a73"
-    },
-    "scripts/remote_features.py|scripts.remote_features._encode": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._encode",
-      "start_line": 629,
-      "end_line": 639,
-      "type": "FUNCTION",
-      "content_hash": "7f64e8566e02acb9"
-    },
-    "scripts/remote_features.py|scripts.remote_features._requests": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._requests",
-      "start_line": 642,
-      "end_line": 659,
-      "type": "FUNCTION",
-      "content_hash": "c539c85426c7b897"
-    },
-    "scripts/remote_features.py|scripts.remote_features._no_architecture": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features._no_architecture",
-      "start_line": 662,
-      "end_line": 675,
-      "type": "FUNCTION",
-      "content_hash": "29cc5f21db774bfa"
-    },
-    "scripts/remote_features.py|scripts.remote_features.run_review_guide": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features.run_review_guide",
-      "start_line": 678,
-      "end_line": 688,
-      "type": "FUNCTION",
-      "content_hash": "6e11079efd96d2e3"
-    },
-    "scripts/remote_features.py|scripts.remote_features.run_architecture": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features.run_architecture",
-      "start_line": 691,
-      "end_line": 699,
-      "type": "FUNCTION",
-      "content_hash": "e9da9bccd6889845"
-    },
-    "scripts/remote_features.py|scripts.remote_features.main": {
-      "file_path": "scripts/remote_features.py",
-      "qualified_name": "scripts.remote_features.main",
-      "start_line": 702,
-      "end_line": 734,
-      "type": "FUNCTION",
-      "content_hash": "a9e16ae092eefad9"
-    },
-    "scripts/problem_history.py|scripts.problem_history.GraphQLError": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.GraphQLError",
-      "start_line": 136,
-      "end_line": 142,
-      "type": "CLASS",
-      "content_hash": "27cb220e74cfd244"
-    },
-    "scripts/problem_history.py|scripts.problem_history.GraphQLError.__init__": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.GraphQLError.__init__",
-      "start_line": 139,
-      "end_line": 142,
-      "type": "METHOD",
-      "content_hash": "f03bf72ea27d81f7"
-    },
-    "scripts/problem_history.py|scripts.problem_history.Conflict": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.Conflict",
-      "start_line": 145,
-      "end_line": 146,
-      "type": "CLASS",
-      "content_hash": "90f24b695b97a620"
-    },
-    "scripts/problem_history.py|scripts.problem_history._NoRedirect": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._NoRedirect",
-      "start_line": 149,
-      "end_line": 151,
-      "type": "CLASS",
-      "content_hash": "3d9a90ba1963caee"
-    },
-    "scripts/problem_history.py|scripts.problem_history._NoRedirect.redirect_request": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._NoRedirect.redirect_request",
-      "start_line": 150,
-      "end_line": 151,
-      "type": "METHOD",
-      "content_hash": "d7e889d28538b228"
-    },
-    "scripts/problem_history.py|scripts.problem_history.GitHub": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.GitHub",
-      "start_line": 154,
-      "end_line": 192,
-      "type": "CLASS",
-      "content_hash": "aac216a1844a7609"
-    },
-    "scripts/problem_history.py|scripts.problem_history.GitHub.__init__": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.GitHub.__init__",
-      "start_line": 155,
-      "end_line": 158,
-      "type": "METHOD",
-      "content_hash": "9aae57642cf6d23c"
-    },
-    "scripts/problem_history.py|scripts.problem_history.GitHub._headers": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.GitHub._headers",
-      "start_line": 160,
-      "end_line": 161,
-      "type": "METHOD",
-      "content_hash": "f2b46aef37ff0ae8"
-    },
-    "scripts/problem_history.py|scripts.problem_history.GitHub.call": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.GitHub.call",
-      "start_line": 163,
-      "end_line": 164,
-      "type": "METHOD",
-      "content_hash": "89b6cd3db8905526"
-    },
-    "scripts/problem_history.py|scripts.problem_history.GitHub.json": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.GitHub.json",
-      "start_line": 166,
-      "end_line": 167,
-      "type": "METHOD",
-      "content_hash": "66873bad015ea20b"
-    },
-    "scripts/problem_history.py|scripts.problem_history.GitHub.graphql": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.GitHub.graphql",
-      "start_line": 169,
-      "end_line": 178,
-      "type": "METHOD",
-      "content_hash": "1207f83d49246b53"
-    },
-    "scripts/problem_history.py|scripts.problem_history.GitHub.download": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.GitHub.download",
-      "start_line": 180,
-      "end_line": 192,
-      "type": "METHOD",
-      "content_hash": "17a04f58cbaf12f6"
-    },
-    "scripts/problem_history.py|scripts.problem_history._iso": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._iso",
-      "start_line": 195,
-      "end_line": 196,
-      "type": "FUNCTION",
-      "content_hash": "838d3235376724fc"
-    },
-    "scripts/problem_history.py|scripts.problem_history._parse": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._parse",
-      "start_line": 199,
-      "end_line": 205,
-      "type": "FUNCTION",
-      "content_hash": "4b7efb7f4eb969bd"
-    },
-    "scripts/problem_history.py|scripts.problem_history._nodes": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._nodes",
-      "start_line": 212,
-      "end_line": 231,
-      "type": "FUNCTION",
-      "content_hash": "1806caa3f28dc76a"
-    },
-    "scripts/problem_history.py|scripts.problem_history._login": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._login",
-      "start_line": 234,
-      "end_line": 235,
-      "type": "FUNCTION",
-      "content_hash": "44ff57afcdcd98c8"
-    },
-    "scripts/problem_history.py|scripts.problem_history._author": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._author",
-      "start_line": 238,
-      "end_line": 241,
-      "type": "FUNCTION",
-      "content_hash": "e4f1d55e7d5cee11"
-    },
-    "scripts/problem_history.py|scripts.problem_history.linked_pull_requests": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.linked_pull_requests",
-      "start_line": 252,
-      "end_line": 288,
-      "type": "FUNCTION",
-      "content_hash": "3ddec4a46f138ae3"
-    },
-    "scripts/problem_history.py|scripts.problem_history.cut": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.cut",
-      "start_line": 291,
-      "end_line": 294,
-      "type": "FUNCTION",
-      "content_hash": "343875ed0744b06b"
-    },
-    "scripts/problem_history.py|scripts.problem_history.issue_facts": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.issue_facts",
-      "start_line": 297,
-      "end_line": 335,
-      "type": "FUNCTION",
-      "content_hash": "f6ae0b0fe554eb04"
-    },
-    "scripts/problem_history.py|scripts.problem_history.read_ledger": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.read_ledger",
-      "start_line": 338,
-      "end_line": 357,
-      "type": "FUNCTION",
-      "content_hash": "1c02d413eab1f274"
-    },
-    "scripts/problem_history.py|scripts.problem_history.open_issue_numbers": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.open_issue_numbers",
-      "start_line": 360,
-      "end_line": 369,
-      "type": "FUNCTION",
-      "content_hash": "6845e541e7130506"
-    },
-    "scripts/problem_history.py|scripts.problem_history._oldest_open": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._oldest_open",
-      "start_line": 372,
-      "end_line": 375,
-      "type": "FUNCTION",
-      "content_hash": "3a61c6bd1f91d542"
-    },
-    "scripts/problem_history.py|scripts.problem_history.collect_issues": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.collect_issues",
-      "start_line": 378,
-      "end_line": 421,
-      "type": "FUNCTION",
-      "content_hash": "5fd2923e2666cbd8"
-    },
-    "scripts/problem_history.py|scripts.problem_history.relinked": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.relinked",
-      "start_line": 424,
-      "end_line": 443,
-      "type": "FUNCTION",
-      "content_hash": "d18dfd1f8fccb35e"
-    },
-    "scripts/problem_history.py|scripts.problem_history._by_number": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._by_number",
-      "start_line": 446,
-      "end_line": 456,
-      "type": "FUNCTION",
-      "content_hash": "a820521dc15d1866"
-    },
-    "scripts/problem_history.py|scripts.problem_history.issues_by_number": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.issues_by_number",
-      "start_line": 459,
-      "end_line": 469,
-      "type": "FUNCTION",
-      "content_hash": "22ea50534555d327"
-    },
-    "scripts/problem_history.py|scripts.problem_history._merged_since": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._merged_since",
-      "start_line": 472,
-      "end_line": 477,
-      "type": "FUNCTION",
-      "content_hash": "5ed2ef4b10e652fd"
-    },
-    "scripts/problem_history.py|scripts.problem_history.collect_merged": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.collect_merged",
-      "start_line": 480,
-      "end_line": 526,
-      "type": "FUNCTION",
-      "content_hash": "5054d32f52b896c8"
-    },
-    "scripts/problem_history.py|scripts.problem_history._member": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._member",
-      "start_line": 529,
-      "end_line": 538,
-      "type": "FUNCTION",
-      "content_hash": "e6ec0156c12b8e16"
-    },
-    "scripts/problem_history.py|scripts.problem_history.read_architecture": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.read_architecture",
-      "start_line": 541,
-      "end_line": 551,
-      "type": "FUNCTION",
-      "content_hash": "f4ad7331531dbe53"
-    },
-    "scripts/problem_history.py|scripts.problem_history._own_review": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._own_review",
-      "start_line": 554,
-      "end_line": 558,
-      "type": "FUNCTION",
-      "content_hash": "257537c5aeb93652"
-    },
-    "scripts/problem_history.py|scripts.problem_history.review_findings": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.review_findings",
-      "start_line": 561,
-      "end_line": 580,
-      "type": "FUNCTION",
-      "content_hash": "09b3aab127a2f0ed"
-    },
-    "scripts/problem_history.py|scripts.problem_history._unread": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._unread",
-      "start_line": 583,
-      "end_line": 594,
-      "type": "FUNCTION",
-      "content_hash": "164539fef4985ed8"
-    },
-    "scripts/problem_history.py|scripts.problem_history.collect_findings": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.collect_findings",
-      "start_line": 597,
-      "end_line": 632,
-      "type": "FUNCTION",
-      "content_hash": "f358f3d320b701d5"
-    },
-    "scripts/problem_history.py|scripts.problem_history.collect_findings.newest": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.collect_findings.newest",
-      "start_line": 606,
-      "end_line": 607,
-      "type": "FUNCTION",
-      "content_hash": "680b872394ea3511"
-    },
-    "scripts/problem_history.py|scripts.problem_history.collect": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.collect",
-      "start_line": 635,
-      "end_line": 674,
-      "type": "FUNCTION",
-      "content_hash": "0ecc84433581b80a"
-    },
-    "scripts/problem_history.py|scripts.problem_history.build_request": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.build_request",
-      "start_line": 677,
-      "end_line": 686,
-      "type": "FUNCTION",
-      "content_hash": "5292a7a9d8641315"
-    },
-    "scripts/problem_history.py|scripts.problem_history.pack": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.pack",
-      "start_line": 689,
-      "end_line": 710,
-      "type": "FUNCTION",
-      "content_hash": "fa9b59d867bcfb77"
-    },
-    "scripts/problem_history.py|scripts.problem_history._newest_pr": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._newest_pr",
-      "start_line": 713,
-      "end_line": 715,
-      "type": "FUNCTION",
-      "content_hash": "3b47be9596a61540"
-    },
-    "scripts/problem_history.py|scripts.problem_history.commit_ledger": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.commit_ledger",
-      "start_line": 718,
-      "end_line": 742,
-      "type": "FUNCTION",
-      "content_hash": "ce78304be160633c"
-    },
-    "scripts/problem_history.py|scripts.problem_history.update": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.update",
-      "start_line": 745,
-      "end_line": 784,
-      "type": "FUNCTION",
-      "content_hash": "5e8d5c3ee0d83737"
-    },
-    "scripts/problem_history.py|scripts.problem_history._stop": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history._stop",
-      "start_line": 787,
-      "end_line": 789,
-      "type": "FUNCTION",
-      "content_hash": "7f68fd9a556d05a6"
-    },
-    "scripts/problem_history.py|scripts.problem_history.main": {
-      "file_path": "scripts/problem_history.py",
-      "qualified_name": "scripts.problem_history.main",
-      "start_line": 792,
-      "end_line": 810,
-      "type": "FUNCTION",
-      "content_hash": "038078e3498cfca2"
-    }
+  "scripts/analyze_repository.py":{
+   "content_hash":"2c3eccb47daa8aac",
+   "module_hash":"3e1e441902075cb9",
+   "methods":{
+    "scripts.analyze_repository.AnalysisError":[26,27,"CLASS","e23f18bc0d32e21b","a21wnclUp8t_"],
+    "scripts.analyze_repository._parse_bool":[30,39,"FUNCTION","3de011b556fa2edb","2THeQc6hkC5N"],
+    "scripts.analyze_repository._parse_cli_response":[42,76,"FUNCTION","064ec779cc59420b","JUp5i965PowD"],
+    "scripts.analyze_repository._run_command":[79,127,"FUNCTION","3a7842daff8c7a61","QF7natXhZpOl"],
+    "scripts.analyze_repository._run_command.forward_stderr":[90,93,"FUNCTION","43cce328a40b7d19","5YiL4EKRncao"],
+    "scripts.analyze_repository.main":[130,174,"FUNCTION","884750cb5fd6b713","3gSPNw-6ZPK9"]
+   }
   },
-  "components": [
+  "scripts/diff_to_mermaid.py":{
+   "content_hash":"409269e5baccdba9",
+   "module_hash":"f7391bc4274c4ea8",
+   "methods":{
+    "scripts.diff_to_mermaid._relation_dict":[57,65,"FUNCTION","801e1bc47ec57702","Sk4lnS3SYwCY"],
+    "scripts.diff_to_mermaid._diff_view":[68,107,"FUNCTION","a8473266180c9ca7","0q-7Vy1F7BLp"],
+    "scripts.diff_to_mermaid._diff_view.level":[74,95,"FUNCTION","ea47664f4403e0e3","ylg7oxy3IOnY"],
+    "scripts.diff_to_mermaid.read_analysis_json":[110,114,"FUNCTION","47fd5e4824a8bbe9","887R0djEiCUD"],
+    "scripts.diff_to_mermaid.load_analysis":[117,134,"FUNCTION","1884b94e63afc0d5","Mv6S6gLHcLQw"],
+    "scripts.diff_to_mermaid._comp_id":[140,141,"FUNCTION","0cb8d9398468a0e6","5S_Dtq8NKTqd"],
+    "scripts.diff_to_mermaid._comp_name":[144,145,"FUNCTION","399b6e3662e7ce1f","_jro0LT923le"],
+    "scripts.diff_to_mermaid._file_methods":[148,149,"FUNCTION","b54d71b9e1b80e63","H7sykVUe3Tlf"],
+    "scripts.diff_to_mermaid._methods_by_file":[152,159,"FUNCTION","4ba9b19ab0f246f2","F-wUteD5Q0M6"],
+    "scripts.diff_to_mermaid._has_structural_changes":[162,165,"FUNCTION","d4511a8ccbf2073d","jB6kejQQzLes"],
+    "scripts.diff_to_mermaid._has_method_changes":[168,173,"FUNCTION","737fc9898cef0f98","PaT4a6cHtXNj"],
+    "scripts.diff_to_mermaid._content_changed":[176,179,"FUNCTION","85ed060789d16481","g3TrlhJs-Cyp"],
+    "scripts.diff_to_mermaid._changed_files":[182,189,"FUNCTION","4985f13a96d808b6","lfInwtQPvpEg"],
+    "scripts.diff_to_mermaid.analysed_files_changed":[192,204,"FUNCTION","06bc4749ffc8f5e6","iMxUKF80BnSM"],
+    "scripts.diff_to_mermaid._analysis_changes":[207,221,"FUNCTION","97d732e3640c7811","UfCtVx5AIvqr"],
+    "scripts.diff_to_mermaid._owns_analysis_change":[224,239,"FUNCTION","2517e5dff08a1eac","4qzjTNsbYK1J"],
+    "scripts.diff_to_mermaid._rel_key":[242,245,"FUNCTION","e8de4cfb9ef31082","TSXuYdJ72bs9"],
+    "scripts.diff_to_mermaid._diff_relations":[248,294,"FUNCTION","652dc3832988ab8d","V8WKe0nEn-6U"],
+    "scripts.diff_to_mermaid._has_changes":[297,305,"FUNCTION","785661b1b374b761","tYsFWEYK5uRI"],
+    "scripts.diff_to_mermaid._diff_components":[308,353,"FUNCTION","7f3d3b547750caa7","q5WyyKjE5fFH"],
+    "scripts.diff_to_mermaid.build_diff":[356,379,"FUNCTION","03d7ac8c994d57db","F0NkbDvZ8VGk"],
+    "scripts.diff_to_mermaid._sanitize":[385,387,"FUNCTION","0c4a83ab88d80bc0","CwtbfpWnheiC"],
+    "scripts.diff_to_mermaid._esc":[409,415,"FUNCTION","e45c5105d8af2dc4","HE1L1j0jzVeQ"],
+    "scripts.diff_to_mermaid._truncate":[418,420,"FUNCTION","751d4ca80e5e5268","tdijfpjDV15S"],
+    "scripts.diff_to_mermaid._display_status":[423,424,"FUNCTION","d5b585da051d6666","OXffzR9V7TEA"],
+    "scripts.diff_to_mermaid._Scope":[427,471,"CLASS","95389df8539e5091","XUL4Y3xipOx3"],
+    "scripts.diff_to_mermaid._Scope.__init__":[438,460,"METHOD","f1143a47440e417d","cqoXYvkFPQFL"],
+    "scripts.diff_to_mermaid._Scope.resolve":[462,471,"METHOD","5bfc527e15cdf1cd","98qsHCFEQtcr"],
+    "scripts.diff_to_mermaid._filter_changed":[474,516,"FUNCTION","91c6dccaa5a809e1","thQmRJ19faeL"],
+    "scripts.diff_to_mermaid._filter_changed.touches":[507,509,"FUNCTION","e1a0c69dff6f9b3d","qKgmwBWTdUUH"],
+    "scripts.diff_to_mermaid._init_directive":[519,538,"FUNCTION","90d7c75c50f440b4","Rdz4hLImeF3G"],
+    "scripts.diff_to_mermaid._count_changed_components":[541,548,"FUNCTION","18a0b2e0cc0785cd","q_HngE29q6de"],
+    "scripts.diff_to_mermaid._has_changed_relations":[551,555,"FUNCTION","06ad82ce29818493","a_NHTYPuQQiF"],
+    "scripts.diff_to_mermaid.render_mermaid":[558,685,"FUNCTION","8b7c6d2420ad9ae7","wY93imwZKbY9"],
+    "scripts.diff_to_mermaid.render_mermaid.build":[587,660,"FUNCTION","938fa3c85e73367b","pFxw4A2IGdPF"],
+    "scripts.diff_to_mermaid.render_mermaid.build.emit_edges":[598,610,"FUNCTION","beb1d84227b5ecb3","33tEmEKMIixO"],
+    "scripts.diff_to_mermaid.render_mermaid.build.emit_level":[612,629,"FUNCTION","bab2f4f0a975b7d6","aFEHIVfpNJT1"],
+    "scripts.diff_to_mermaid.main":[691,734,"FUNCTION","92e0174d2c12d091","JQQ_ZmE7FWra"]
+   }
+  },
+  "scripts/oidc_relay.py":{
+   "content_hash":"5af0d8557c0af6e0",
+   "module_hash":"581a285c4c8aad4a",
+   "methods":{
+    "scripts.oidc_relay.RelayConfig":[46,50,"CLASS","3632668559c52e65","PiNaoAFpJDU4"],
+    "scripts.oidc_relay._with_audience":[53,58,"FUNCTION","971a5179aa4ad7f2","M_BQ8Nu2u0aM"],
+    "scripts.oidc_relay._mint_oidc_token":[61,76,"FUNCTION","0e565e1dbadd52a8","Xm65ppcxyOv5"],
+    "scripts.oidc_relay._authorization":[79,89,"FUNCTION","4813e4016de16e56","zPFHzNpio7sP"],
+    "scripts.oidc_relay._upstream_url":[92,93,"FUNCTION","cc1da2077840b7da","yrCX3PdyuseD"],
+    "scripts.oidc_relay._RelayHandler":[96,152,"CLASS","7b7f0a8029fdbbfb","KeaK25428nBw"],
+    "scripts.oidc_relay._RelayHandler.log_message":[99,101,"METHOD","5582f5e792c4f233","i5jSZj_XIV0U"],
+    "scripts.oidc_relay._RelayHandler.config":[104,105,"METHOD","3e013376a8b08e9e","r3HfSGtnf40k"],
+    "scripts.oidc_relay._RelayHandler._request_body":[107,112,"METHOD","241957adb1e5b9e1","ia7kvQMfsdiN"],
+    "scripts.oidc_relay._RelayHandler._send":[114,122,"METHOD","9053ff5f576377c8","0iUdorVMCiCX"],
+    "scripts.oidc_relay._RelayHandler._handle":[124,146,"METHOD","3fca0973865e684e","Gxb9ZJCNDVzT"],
+    "scripts.oidc_relay.RelayServer":[155,161,"CLASS","4109cd854afbdd28","iHTyMFL6cvGF"],
+    "scripts.oidc_relay.RelayServer.__init__":[159,161,"METHOD","f203daaca01af199","JItZfWAgwt2C"],
+    "scripts.oidc_relay.main":[164,183,"FUNCTION","32cb887f244d21dd","Lb_LPCpOaj33"]
+   }
+  },
+  "scripts/problem_history.py":{
+   "content_hash":"40f1fa151ce30122",
+   "module_hash":"f7d4ad983b087ce7",
+   "methods":{
+    "scripts.problem_history.GraphQLError":[136,142,"CLASS","27cb220e74cfd244","b7gOxGaiOpxG"],
+    "scripts.problem_history.GraphQLError.__init__":[139,142,"METHOD","f03bf72ea27d81f7","gBXG4zsu5S5C"],
+    "scripts.problem_history.Conflict":[145,146,"CLASS","90f24b695b97a620","RX9oFvN0jGlv"],
+    "scripts.problem_history._NoRedirect":[149,151,"CLASS","3d9a90ba1963caee","CIVxtrFRDPH-"],
+    "scripts.problem_history._NoRedirect.redirect_request":[150,151,"METHOD","d7e889d28538b228","6TftVUnomJjs"],
+    "scripts.problem_history.GitHub":[154,192,"CLASS","aac216a1844a7609","sK-26o1UtyDh"],
+    "scripts.problem_history.GitHub.__init__":[155,158,"METHOD","9aae57642cf6d23c","YsSR0vQJTFQs"],
+    "scripts.problem_history.GitHub._headers":[160,161,"METHOD","f2b46aef37ff0ae8","FWvhD8PXr-0O"],
+    "scripts.problem_history.GitHub.call":[163,164,"METHOD","89b6cd3db8905526","jmdby3m60Pb5"],
+    "scripts.problem_history.GitHub.json":[166,167,"METHOD","66873bad015ea20b","UJG9oW5kafhP"],
+    "scripts.problem_history.GitHub.graphql":[169,178,"METHOD","1207f83d49246b53","9QJnXoDVC2qc"],
+    "scripts.problem_history.GitHub.download":[180,192,"METHOD","17a04f58cbaf12f6","J52St5_1BPVV"],
+    "scripts.problem_history._iso":[195,196,"FUNCTION","838d3235376724fc","B4-zYysE9xv2"],
+    "scripts.problem_history._parse":[199,205,"FUNCTION","4b7efb7f4eb969bd","lfnxAbODS3eA"],
+    "scripts.problem_history._nodes":[212,231,"FUNCTION","1806caa3f28dc76a","-sm7d1TUFJiv"],
+    "scripts.problem_history._login":[234,235,"FUNCTION","44ff57afcdcd98c8","-F-m6yxx6OZh"],
+    "scripts.problem_history._author":[238,241,"FUNCTION","e4f1d55e7d5cee11","fY_9exjK8tlJ"],
+    "scripts.problem_history.linked_pull_requests":[252,288,"FUNCTION","3ddec4a46f138ae3","9lSnNaUftpM2"],
+    "scripts.problem_history.cut":[291,294,"FUNCTION","343875ed0744b06b","ihd61Y4nu_Dq"],
+    "scripts.problem_history.issue_facts":[297,335,"FUNCTION","f6ae0b0fe554eb04","rJTzt3JB8X65"],
+    "scripts.problem_history.read_ledger":[338,357,"FUNCTION","1c02d413eab1f274","LDMCaZHt5nLC"],
+    "scripts.problem_history.open_issue_numbers":[360,369,"FUNCTION","6845e541e7130506","th4CSRGfw3bh"],
+    "scripts.problem_history._oldest_open":[372,375,"FUNCTION","3a61c6bd1f91d542","zXefI_UzdxFH"],
+    "scripts.problem_history.collect_issues":[378,421,"FUNCTION","5fd2923e2666cbd8","-jKNVhmnmXDz"],
+    "scripts.problem_history.relinked":[424,443,"FUNCTION","d18dfd1f8fccb35e","NYRuXlkaP_wM"],
+    "scripts.problem_history._by_number":[446,456,"FUNCTION","a820521dc15d1866","kiTwFIJfkKAB"],
+    "scripts.problem_history.issues_by_number":[459,469,"FUNCTION","22ea50534555d327","omEXscozJDYy"],
+    "scripts.problem_history._merged_since":[472,477,"FUNCTION","5ed2ef4b10e652fd","0v0VcK1MKexY"],
+    "scripts.problem_history.collect_merged":[480,526,"FUNCTION","5054d32f52b896c8","L6RCyEll0vtT"],
+    "scripts.problem_history._member":[529,538,"FUNCTION","e6ec0156c12b8e16","IsDuZQnqkAdT"],
+    "scripts.problem_history.read_architecture":[541,551,"FUNCTION","f4ad7331531dbe53","TyHapxddWteu"],
+    "scripts.problem_history._own_review":[554,558,"FUNCTION","257537c5aeb93652","A6V4fHS2NSVL"],
+    "scripts.problem_history.review_findings":[561,580,"FUNCTION","09b3aab127a2f0ed","km8B1qRTKOT8"],
+    "scripts.problem_history._unread":[583,594,"FUNCTION","164539fef4985ed8","2cMcRum43iA_"],
+    "scripts.problem_history.collect_findings":[597,632,"FUNCTION","f358f3d320b701d5","8RX5SL45ZQlK"],
+    "scripts.problem_history.collect_findings.newest":[606,607,"FUNCTION","680b872394ea3511","1Z4Io7My0YZ5"],
+    "scripts.problem_history.collect":[635,674,"FUNCTION","0ecc84433581b80a","K6yUkTTJR_yJ"],
+    "scripts.problem_history.build_request":[677,686,"FUNCTION","5292a7a9d8641315","UvxqoNw94TFX"],
+    "scripts.problem_history.pack":[689,710,"FUNCTION","fa9b59d867bcfb77","TeGl97LXHeSY"],
+    "scripts.problem_history._newest_pr":[713,715,"FUNCTION","3b47be9596a61540","Md1UuzF2TNdD"],
+    "scripts.problem_history.commit_ledger":[718,742,"FUNCTION","ce78304be160633c","4AK3cjbQpHiy"],
+    "scripts.problem_history.update":[745,784,"FUNCTION","5e8d5c3ee0d83737","WyefEClNyX3S"],
+    "scripts.problem_history._stop":[787,789,"FUNCTION","7f68fd9a556d05a6","m7ld85cTNKdk"],
+    "scripts.problem_history.main":[792,810,"FUNCTION","038078e3498cfca2","hmrPm3Y1qe1W"]
+   }
+  },
+  "scripts/remote_features.py":{
+   "content_hash":"8f2d02ed53c8b44a",
+   "module_hash":"0825e0da378f53c5",
+   "methods":{
+    "scripts.remote_features.Skip":[115,116,"CLASS","2baab45c3c2e218f","V25eXCxxJMKn"],
+    "scripts.remote_features.TooLarge":[119,125,"CLASS","bf7eef5dd7cf3c5e","fIPVHCF2Wlk3"],
+    "scripts.remote_features.TooLarge.__init__":[123,125,"METHOD","629f1508ec731d92","5JOu6-SWPi_9"],
+    "scripts.remote_features._github":[131,154,"FUNCTION","72a387965555e379","-QXzTzNeWT9b"],
+    "scripts.remote_features._error_message":[157,162,"FUNCTION","6476bd2e882efd58","Lov83R-z_beo"],
+    "scripts.remote_features._github_json":[165,166,"FUNCTION","524f8b94439ea108","grGjInWUjXyO"],
+    "scripts.remote_features._diff":[169,174,"FUNCTION","037c0071e5708ca1","0gL0HhD4ZrS1"],
+    "scripts.remote_features._contents":[177,186,"FUNCTION","4f50a284659f5772","LJDzYfOGSt6O"],
+    "scripts.remote_features.call_graph":[192,211,"FUNCTION","cc4fb4cca624596d","Z90I749Ka27j"],
+    "scripts.remote_features._site_lines":[214,217,"FUNCTION","dfba3aad2c0d2da5","5TUtvpbgwEZr"],
+    "scripts.remote_features._Row":[221,236,"CLASS","148d08afe3ad045e","9uOuf4B2fa5N"],
+    "scripts.remote_features._Row.written":[232,236,"METHOD","4e37a33757731648","907vxbZ_HhsZ"],
+    "scripts.remote_features._short_name":[239,245,"FUNCTION","d4a57ef09c114c6f","CxE26Jd1ZWc1"],
+    "scripts.remote_features._Table":[248,297,"CLASS","d6fb9773c2b1d736","GH5KxIIT_Tom"],
+    "scripts.remote_features._Table.__init__":[252,260,"METHOD","14e7b830e3c115dc","VjwAAMvFp_TC"],
+    "scripts.remote_features._Table._add_method":[262,267,"METHOD","953bd374decb4dcf","LeEP8hz-yfgA"],
+    "scripts.remote_features._Table.add_node":[269,279,"METHOD","8f9742dab83c497e","Tp85GDCg1cCW"],
+    "scripts.remote_features._Table.number_rows":[281,291,"METHOD","db570b3199c077c8","aLuoupLJsnea"],
+    "scripts.remote_features._Table.member":[293,297,"METHOD","e65aff8a7dc60bc2","fw_BJUgqoq01"],
+    "scripts.remote_features.side_document":[300,335,"FUNCTION","23a7b9e5bb7361de","Ii0eAaZfLgxv"],
+    "scripts.remote_features._calls":[338,350,"FUNCTION","c3c6e4a1c9397e57","3nqNU2q3Opk4"],
+    "scripts.remote_features._components":[353,383,"FUNCTION","2c6dd037dd7231b1","zHw7o7vbvPu7"],
+    "scripts.remote_features._flatten":[386,399,"FUNCTION","658316cfd435e26c","ytuOf9fmARng"],
+    "scripts.remote_features._flatten.visit":[391,396,"FUNCTION","82bcbaaff9a8b0bb","W61Bf_B1XF6c"],
+    "scripts.remote_features._relations":[402,404,"FUNCTION","56ffd6ce5a35bffd","vfs5kIKOeBOq"],
+    "scripts.remote_features._analysis_edges":[407,413,"FUNCTION","e510343a5e4af899","jvpYw-m8CGsE"],
+    "scripts.remote_features._method_key":[416,417,"FUNCTION","674c833b9e3b57aa","DCbMde20BJCv"],
+    "scripts.remote_features.collect":[423,454,"FUNCTION","3b23d3cd19bcfca6","Pm5P2QAxO-6R"],
+    "scripts.remote_features._side":[457,461,"FUNCTION","11c29319f0a2d414","8c1dN40KT84v"],
+    "scripts.remote_features.read_analysis":[464,469,"FUNCTION","261c2a9e0ec8d4eb","hQemAW3QRQXy"],
+    "scripts.remote_features._changed_contents":[472,486,"FUNCTION","e9825c995a653684","99f2JeYqY2jN"],
+    "scripts.remote_features._checkout_text":[489,497,"FUNCTION","64cf9de56f37b6c4","rDz1IPKbIaFe"],
+    "scripts.remote_features._checkout_file":[500,510,"FUNCTION","9bc86b2bfe606e15","fu-u2CcHjdl4"],
+    "scripts.remote_features.collect_source":[513,535,"FUNCTION","9b7dcafec0833c58","wMMWiHmogueY"],
+    "scripts.remote_features._load":[541,547,"FUNCTION","7f94f85ea88dea70","0o_MybgSgKkO"],
+    "scripts.remote_features._relay":[550,551,"FUNCTION","80f8d2e6ce1c62ab","yx0duZjrGBDJ"],
+    "scripts.remote_features._api_key":[554,559,"FUNCTION","71192b42bce6b03c","ZKitDoEo4A4C"],
+    "scripts.remote_features.model_headers":[562,585,"FUNCTION","2e323d8598fac230","PtckmjhB2bwE"],
+    "scripts.remote_features._bearer":[588,606,"FUNCTION","fe3b076030da5de2","51DMIys4UKvu"],
+    "scripts.remote_features._post":[612,626,"FUNCTION","464142b335135a73","gr_vxJF1uloy"],
+    "scripts.remote_features._encode":[629,639,"FUNCTION","7f64e8566e02acb9","fhZ2wB_f0Jor"],
+    "scripts.remote_features._requests":[642,659,"FUNCTION","c539c85426c7b897","8OBn8D4k3KzD"],
+    "scripts.remote_features._no_architecture":[662,675,"FUNCTION","29cc5f21db774bfa","V1cB6pv7U62Y"],
+    "scripts.remote_features.run_review_guide":[678,688,"FUNCTION","6e11079efd96d2e3","PsEv0vuZn1A5"],
+    "scripts.remote_features.run_architecture":[691,699,"FUNCTION","e9da9bccd6889845","UgRMptwlsTfH"],
+    "scripts.remote_features.main":[702,734,"FUNCTION","a9e16ae092eefad9","2gC5kZNJFnTp"]
+   }
+  }
+ },
+ "components":[
+  {
+   "name":"Action Workflow and Analysis Execution",
+   "component_id":"1",
+   "description":"Validates action inputs, authenticates LLM provider credentials, runs repository analyses, and renders visual architecture diffs.",
+   "key_entities":[
     {
-      "name": "Action Analysis and Integration Tools",
-      "description": "Executes repository analyses, verifies credentials, manages OIDC relays, renders diff diagrams, and prepares remote feature payloads.",
-      "key_entities": [
-        {
-          "qualified_name": "scripts.analyze_repository.main",
-          "reference_file": "scripts/analyze_repository.py",
-          "reference_start_line": 130,
-          "reference_end_line": 174
-        },
-        {
-          "qualified_name": "scripts.diff_to_mermaid.load_analysis",
-          "reference_file": "scripts/diff_to_mermaid.py",
-          "reference_start_line": 117,
-          "reference_end_line": 134
-        },
-        {
-          "qualified_name": "scripts.action.credential_check.resolve",
-          "reference_file": "scripts/action/credential_check.py",
-          "reference_start_line": 261,
-          "reference_end_line": 328
-        },
-        {
-          "qualified_name": "scripts.oidc_relay.RelayServer",
-          "reference_file": "scripts/oidc_relay.py",
-          "reference_start_line": 155,
-          "reference_end_line": 161
-        },
-        {
-          "qualified_name": "scripts.remote_features.side_document",
-          "reference_file": "scripts/remote_features.py",
-          "reference_start_line": 300,
-          "reference_end_line": 335
-        }
-      ],
-      "source_cluster_ids": [
-        "0",
-        "1",
-        "3",
-        "4"
-      ],
-      "file_methods": [
-        {
-          "file_path": "scripts/action/credential_check.py",
-          "methods": [
-            "scripts.action.credential_check.ConfigError",
-            "scripts.action.credential_check.ConfigError.__init__",
-            "scripts.action.credential_check.secrets_url",
-            "scripts.action.credential_check.workflow_path",
-            "scripts.action.credential_check._add_secret",
-            "scripts.action.credential_check._wire_it",
-            "scripts.action.credential_check.load_table",
-            "scripts.action.credential_check._unquote",
-            "scripts.action.credential_check._clean_key",
-            "scripts.action.credential_check.read_inputs",
-            "scripts.action.credential_check.owner_of",
-            "scripts.action.credential_check._provider_list",
-            "scripts.action.credential_check._reject_provider_inputs",
-            "scripts.action.credential_check._reject_model",
-            "scripts.action.credential_check._require_id_token",
-            "scripts.action.credential_check._resolve_byok",
-            "scripts.action.credential_check.resolve",
-            "scripts.action.credential_check._is_endpoint",
-            "scripts.action.credential_check._safe_endpoint",
-            "scripts.action.credential_check._pays",
-            "scripts.action.credential_check.reported_provider",
-            "scripts.action.credential_check.plan_headline",
-            "scripts.action.credential_check.plan_summary",
-            "scripts.action.credential_check.write_auth_dir",
-            "scripts.action.credential_check.main"
-          ]
-        },
-        {
-          "file_path": "scripts/analyze_repository.py",
-          "methods": [
-            "scripts.analyze_repository.AnalysisError",
-            "scripts.analyze_repository._parse_bool",
-            "scripts.analyze_repository._parse_cli_response",
-            "scripts.analyze_repository._run_command",
-            "scripts.analyze_repository._run_command.forward_stderr",
-            "scripts.analyze_repository.main"
-          ]
-        },
-        {
-          "file_path": "scripts/diff_to_mermaid.py",
-          "methods": [
-            "scripts.diff_to_mermaid._relation_dict",
-            "scripts.diff_to_mermaid._diff_view",
-            "scripts.diff_to_mermaid._diff_view.level",
-            "scripts.diff_to_mermaid.read_analysis_json",
-            "scripts.diff_to_mermaid.load_analysis",
-            "scripts.diff_to_mermaid._comp_id",
-            "scripts.diff_to_mermaid._comp_name",
-            "scripts.diff_to_mermaid._file_methods",
-            "scripts.diff_to_mermaid._methods_by_file",
-            "scripts.diff_to_mermaid._has_structural_changes",
-            "scripts.diff_to_mermaid._has_method_changes",
-            "scripts.diff_to_mermaid._content_changed",
-            "scripts.diff_to_mermaid._changed_files",
-            "scripts.diff_to_mermaid.analysed_files_changed",
-            "scripts.diff_to_mermaid._analysis_changes",
-            "scripts.diff_to_mermaid._owns_analysis_change",
-            "scripts.diff_to_mermaid._rel_key",
-            "scripts.diff_to_mermaid._diff_relations",
-            "scripts.diff_to_mermaid._has_changes",
-            "scripts.diff_to_mermaid._diff_components",
-            "scripts.diff_to_mermaid.build_diff",
-            "scripts.diff_to_mermaid._sanitize",
-            "scripts.diff_to_mermaid._esc",
-            "scripts.diff_to_mermaid._truncate",
-            "scripts.diff_to_mermaid._display_status",
-            "scripts.diff_to_mermaid._Scope",
-            "scripts.diff_to_mermaid._Scope.__init__",
-            "scripts.diff_to_mermaid._Scope.resolve",
-            "scripts.diff_to_mermaid._filter_changed",
-            "scripts.diff_to_mermaid._filter_changed.touches",
-            "scripts.diff_to_mermaid._init_directive",
-            "scripts.diff_to_mermaid._count_changed_components",
-            "scripts.diff_to_mermaid._has_changed_relations",
-            "scripts.diff_to_mermaid.render_mermaid",
-            "scripts.diff_to_mermaid.render_mermaid.build",
-            "scripts.diff_to_mermaid.render_mermaid.build.emit_edges",
-            "scripts.diff_to_mermaid.render_mermaid.build.emit_level",
-            "scripts.diff_to_mermaid.main"
-          ]
-        },
-        {
-          "file_path": "scripts/oidc_relay.py",
-          "methods": [
-            "scripts.oidc_relay.RelayConfig",
-            "scripts.oidc_relay._with_audience",
-            "scripts.oidc_relay._mint_oidc_token",
-            "scripts.oidc_relay._authorization",
-            "scripts.oidc_relay._upstream_url",
-            "scripts.oidc_relay._RelayHandler",
-            "scripts.oidc_relay._RelayHandler.log_message",
-            "scripts.oidc_relay._RelayHandler.config",
-            "scripts.oidc_relay._RelayHandler._request_body",
-            "scripts.oidc_relay._RelayHandler._send",
-            "scripts.oidc_relay._RelayHandler._handle",
-            "scripts.oidc_relay.RelayServer",
-            "scripts.oidc_relay.RelayServer.__init__",
-            "scripts.oidc_relay.main"
-          ]
-        },
-        {
-          "file_path": "scripts/remote_features.py",
-          "methods": [
-            "scripts.remote_features.Skip",
-            "scripts.remote_features.TooLarge",
-            "scripts.remote_features.TooLarge.__init__",
-            "scripts.remote_features._github",
-            "scripts.remote_features._error_message",
-            "scripts.remote_features._github_json",
-            "scripts.remote_features._diff",
-            "scripts.remote_features._contents",
-            "scripts.remote_features.call_graph",
-            "scripts.remote_features._site_lines",
-            "scripts.remote_features._Row",
-            "scripts.remote_features._Row.written",
-            "scripts.remote_features._short_name",
-            "scripts.remote_features._Table",
-            "scripts.remote_features._Table.__init__",
-            "scripts.remote_features._Table._add_method",
-            "scripts.remote_features._Table.add_node",
-            "scripts.remote_features._Table.number_rows",
-            "scripts.remote_features._Table.member",
-            "scripts.remote_features.side_document",
-            "scripts.remote_features._calls",
-            "scripts.remote_features._components",
-            "scripts.remote_features._flatten",
-            "scripts.remote_features._flatten.visit",
-            "scripts.remote_features._relations",
-            "scripts.remote_features._analysis_edges",
-            "scripts.remote_features._method_key",
-            "scripts.remote_features.collect",
-            "scripts.remote_features._side",
-            "scripts.remote_features.read_analysis",
-            "scripts.remote_features._changed_contents",
-            "scripts.remote_features._checkout_text",
-            "scripts.remote_features._checkout_file",
-            "scripts.remote_features.collect_source",
-            "scripts.remote_features._load",
-            "scripts.remote_features._relay",
-            "scripts.remote_features._api_key",
-            "scripts.remote_features.model_headers",
-            "scripts.remote_features._bearer",
-            "scripts.remote_features._post",
-            "scripts.remote_features._encode",
-            "scripts.remote_features._requests",
-            "scripts.remote_features._no_architecture",
-            "scripts.remote_features.run_review_guide",
-            "scripts.remote_features.run_architecture",
-            "scripts.remote_features.main"
-          ]
-        }
-      ],
-      "component_id": "1",
-      "can_expand": false,
-      "components": [],
-      "components_relations": []
+     "qualified_name":"scripts.action.credential_check.resolve",
+     "reference_file":"scripts/action/credential_check.py",
+     "reference_start_line":261,
+     "reference_end_line":328
+    },
+    {"qualified_name":"scripts.analyze_repository.main","reference_file":"scripts/analyze_repository.py","reference_start_line":130,"reference_end_line":174},
+    {
+     "qualified_name":"scripts.diff_to_mermaid.load_analysis",
+     "reference_file":"scripts/diff_to_mermaid.py",
+     "reference_start_line":117,
+     "reference_end_line":134
+    },
+    {"qualified_name":"scripts.oidc_relay.RelayServer","reference_file":"scripts/oidc_relay.py","reference_start_line":155,"reference_end_line":161}
+   ],
+   "source_cluster_ids":["0","1","2","3"],
+   "can_expand":false,
+   "file_methods":[
+    "BL_Hn5EW47i7",
+    "y_N3ypbETHzC",
+    "tFPBfoUxxUsu",
+    "D5LaxkcDXFeV",
+    "RNdQbdLXbW3n",
+    "Vl0R2cnnvk0e",
+    "2rvMt_gaDgiz",
+    "U0CkDBmVrllf",
+    "g2FHQLMnyKhY",
+    "zAR_FZBjWECc",
+    "oFQJMZ9xlbj0",
+    "3pU9zl_iEGKl",
+    "l7W5IYftD5Oh",
+    "SvuVsYx2NrZh",
+    "oHu1A0-S46bB",
+    "cWsopUD-iZ8S",
+    "VuV_4yoUGynV",
+    "taVlCvGumFk0",
+    "xHNzt6EHt-eW",
+    "iEmwAAoDRfPB",
+    "apoHxnGZbrn2",
+    "yos07msCdqbU",
+    "SzWnQY-8ZS9Y",
+    "1opxbdaqW8io",
+    "2uAQUkmqMJfC",
+    "a21wnclUp8t_",
+    "2THeQc6hkC5N",
+    "JUp5i965PowD",
+    "QF7natXhZpOl",
+    "5YiL4EKRncao",
+    "3gSPNw-6ZPK9",
+    "Sk4lnS3SYwCY",
+    "0q-7Vy1F7BLp",
+    "ylg7oxy3IOnY",
+    "887R0djEiCUD",
+    "Mv6S6gLHcLQw",
+    "5S_Dtq8NKTqd",
+    "_jro0LT923le",
+    "H7sykVUe3Tlf",
+    "F-wUteD5Q0M6",
+    "jB6kejQQzLes",
+    "PaT4a6cHtXNj",
+    "g3TrlhJs-Cyp",
+    "lfInwtQPvpEg",
+    "iMxUKF80BnSM",
+    "UfCtVx5AIvqr",
+    "4qzjTNsbYK1J",
+    "TSXuYdJ72bs9",
+    "V8WKe0nEn-6U",
+    "tYsFWEYK5uRI",
+    "q5WyyKjE5fFH",
+    "F0NkbDvZ8VGk",
+    "CwtbfpWnheiC",
+    "HE1L1j0jzVeQ",
+    "tdijfpjDV15S",
+    "OXffzR9V7TEA",
+    "XUL4Y3xipOx3",
+    "cqoXYvkFPQFL",
+    "98qsHCFEQtcr",
+    "thQmRJ19faeL",
+    "qKgmwBWTdUUH",
+    "Rdz4hLImeF3G",
+    "q_HngE29q6de",
+    "a_NHTYPuQQiF",
+    "wY93imwZKbY9",
+    "pFxw4A2IGdPF",
+    "33tEmEKMIixO",
+    "aFEHIVfpNJT1",
+    "JQQ_ZmE7FWra",
+    "PiNaoAFpJDU4",
+    "M_BQ8Nu2u0aM",
+    "Xm65ppcxyOv5",
+    "zPFHzNpio7sP",
+    "yrCX3PdyuseD",
+    "KeaK25428nBw",
+    "i5jSZj_XIV0U",
+    "r3HfSGtnf40k",
+    "ia7kvQMfsdiN",
+    "0iUdorVMCiCX",
+    "Gxb9ZJCNDVzT",
+    "iHTyMFL6cvGF",
+    "JItZfWAgwt2C",
+    "Lb_LPCpOaj33"
+   ],
+   "components":[],
+   "components_relations":[]
+  },
+  {
+   "name":"Remote Review and Problem Ledger",
+   "component_id":"2",
+   "description":"Manages remote architecture review services and syncs issue and pull request problem ledgers with GitHub and CodeBoarding APIs.",
+   "key_entities":[
+    {"qualified_name":"scripts.problem_history.GitHub","reference_file":"scripts/problem_history.py","reference_start_line":154,"reference_end_line":192},
+    {
+     "qualified_name":"scripts.problem_history.linked_pull_requests",
+     "reference_file":"scripts/problem_history.py",
+     "reference_start_line":252,
+     "reference_end_line":288
     },
     {
-      "name": "Remote Review and Briefing Sync",
-      "description": "Integrates with remote CodeBoarding endpoints to submit review guides, capture architecture findings, and synchronize issue problem histories.",
-      "key_entities": [
-        {
-          "qualified_name": "scripts.problem_history.GitHub",
-          "reference_file": "scripts/problem_history.py",
-          "reference_start_line": 154,
-          "reference_end_line": 192
-        },
-        {
-          "qualified_name": "scripts.problem_history.linked_pull_requests",
-          "reference_file": "scripts/problem_history.py",
-          "reference_start_line": 252,
-          "reference_end_line": 288
-        }
-      ],
-      "source_cluster_ids": [
-        "2",
-        "5"
-      ],
-      "file_methods": [
-        {
-          "file_path": "scripts/problem_history.py",
-          "methods": [
-            "scripts.problem_history.GraphQLError",
-            "scripts.problem_history.GraphQLError.__init__",
-            "scripts.problem_history.Conflict",
-            "scripts.problem_history._NoRedirect",
-            "scripts.problem_history._NoRedirect.redirect_request",
-            "scripts.problem_history.GitHub",
-            "scripts.problem_history.GitHub.__init__",
-            "scripts.problem_history.GitHub._headers",
-            "scripts.problem_history.GitHub.call",
-            "scripts.problem_history.GitHub.json",
-            "scripts.problem_history.GitHub.graphql",
-            "scripts.problem_history.GitHub.download",
-            "scripts.problem_history._iso",
-            "scripts.problem_history._parse",
-            "scripts.problem_history._nodes",
-            "scripts.problem_history._login",
-            "scripts.problem_history._author",
-            "scripts.problem_history.linked_pull_requests",
-            "scripts.problem_history.cut",
-            "scripts.problem_history.issue_facts",
-            "scripts.problem_history.read_ledger",
-            "scripts.problem_history.open_issue_numbers",
-            "scripts.problem_history._oldest_open",
-            "scripts.problem_history.collect_issues",
-            "scripts.problem_history.relinked",
-            "scripts.problem_history._by_number",
-            "scripts.problem_history.issues_by_number",
-            "scripts.problem_history._merged_since",
-            "scripts.problem_history.collect_merged",
-            "scripts.problem_history._member",
-            "scripts.problem_history.read_architecture",
-            "scripts.problem_history._own_review",
-            "scripts.problem_history.review_findings",
-            "scripts.problem_history._unread",
-            "scripts.problem_history.collect_findings",
-            "scripts.problem_history.collect_findings.newest",
-            "scripts.problem_history.collect",
-            "scripts.problem_history.build_request",
-            "scripts.problem_history.pack",
-            "scripts.problem_history._newest_pr",
-            "scripts.problem_history.commit_ledger",
-            "scripts.problem_history.update",
-            "scripts.problem_history._stop",
-            "scripts.problem_history.main"
-          ]
-        }
-      ],
-      "component_id": "2",
-      "can_expand": false,
-      "components": [],
-      "components_relations": []
-    }
-  ],
-  "components_relations": [
-    {
-      "relation": "uses remote transport and payload utilities",
-      "src_name": "Remote Review and Briefing Sync",
-      "dst_name": "Action Analysis and Integration Tools",
-      "evidence": "",
-      "key_edges": [
-        {
-          "source": "scripts/problem_history.py|scripts.problem_history.GitHub.call",
-          "target": "scripts/remote_features.py|scripts.remote_features._github",
-          "call_sites": [
-            {
-              "line": 164,
-              "column": 16
-            }
-          ],
-          "description": "Dispatches HTTP requests to GitHub using the shared API transport helper."
-        },
-        {
-          "source": "scripts/problem_history.py|scripts.problem_history.commit_ledger",
-          "target": "scripts/remote_features.py|scripts.remote_features._error_message",
-          "call_sites": [
-            {
-              "line": 734,
-              "column": 28
-            }
-          ],
-          "description": "Extracts error details from HTTP error responses during ledger synchronization."
-        },
-        {
-          "source": "scripts/problem_history.py|scripts.problem_history.pack",
-          "target": "scripts/remote_features.py|scripts.remote_features.TooLarge",
-          "call_sites": [
-            {
-              "line": 707,
-              "column": 16
-            }
-          ],
-          "description": "Signals when packed briefing data exceeds remote payload size limits."
-        }
-      ],
-      "src_id": "2",
-      "dst_id": "1",
-      "is_static": true,
-      "all_edges": [
-        {
-          "source": "scripts/problem_history.py|scripts.problem_history.GitHub.call",
-          "target": "scripts/remote_features.py|scripts.remote_features._github",
-          "call_sites": [
-            {
-              "line": 164,
-              "column": 16
-            }
-          ],
-          "description": ""
-        },
-        {
-          "source": "scripts/problem_history.py|scripts.problem_history.commit_ledger",
-          "target": "scripts/remote_features.py|scripts.remote_features.Skip",
-          "call_sites": [
-            {
-              "line": 738,
-              "column": 15
-            }
-          ],
-          "description": ""
-        },
-        {
-          "source": "scripts/problem_history.py|scripts.problem_history.commit_ledger",
-          "target": "scripts/remote_features.py|scripts.remote_features._error_message",
-          "call_sites": [
-            {
-              "line": 734,
-              "column": 28
-            }
-          ],
-          "description": ""
-        },
-        {
-          "source": "scripts/problem_history.py|scripts.problem_history.main",
-          "target": "scripts/remote_features.py|scripts.remote_features.Skip",
-          "call_sites": [
-            {
-              "line": 801,
-              "column": 12
-            }
-          ],
-          "description": ""
-        },
-        {
-          "source": "scripts/problem_history.py|scripts.problem_history.pack",
-          "target": "scripts/remote_features.py|scripts.remote_features.TooLarge",
-          "call_sites": [
-            {
-              "line": 707,
-              "column": 16
-            }
-          ],
-          "description": ""
-        },
-        {
-          "source": "scripts/problem_history.py|scripts.problem_history.pack",
-          "target": "scripts/remote_features.py|scripts.remote_features._encode",
-          "call_sites": [
-            {
-              "line": 706,
-              "column": 20
-            }
-          ],
-          "description": ""
-        },
-        {
-          "source": "scripts/problem_history.py|scripts.problem_history.read_ledger",
-          "target": "scripts/remote_features.py|scripts.remote_features.Skip",
-          "call_sites": [
-            {
-              "line": 356,
-              "column": 15
-            }
-          ],
-          "description": ""
-        },
-        {
-          "source": "scripts/problem_history.py|scripts.problem_history.update",
-          "target": "scripts/remote_features.py|scripts.remote_features.Skip",
-          "call_sites": [
-            {
-              "line": 750,
-              "column": 15
-            },
-            {
-              "line": 771,
-              "column": 23
-            }
-          ],
-          "description": ""
-        },
-        {
-          "source": "scripts/problem_history.py|scripts.problem_history.update",
-          "target": "scripts/remote_features.py|scripts.remote_features._bearer",
-          "call_sites": [
-            {
-              "line": 759,
-              "column": 53
-            }
-          ],
-          "description": ""
-        },
-        {
-          "source": "scripts/problem_history.py|scripts.problem_history.update",
-          "target": "scripts/remote_features.py|scripts.remote_features._post",
-          "call_sites": [
-            {
-              "line": 759,
-              "column": 18
-            }
-          ],
-          "description": ""
-        }
-      ]
-    }
-  ]
+     "qualified_name":"scripts.remote_features.side_document",
+     "reference_file":"scripts/remote_features.py",
+     "reference_start_line":300,
+     "reference_end_line":335
+    },
+    {"qualified_name":"scripts.remote_features.call_graph","reference_file":"scripts/remote_features.py","reference_start_line":192,"reference_end_line":211}
+   ],
+   "source_cluster_ids":["4","5"],
+   "can_expand":false,
+   "file_methods":[
+    "b7gOxGaiOpxG",
+    "gBXG4zsu5S5C",
+    "RX9oFvN0jGlv",
+    "CIVxtrFRDPH-",
+    "6TftVUnomJjs",
+    "sK-26o1UtyDh",
+    "YsSR0vQJTFQs",
+    "FWvhD8PXr-0O",
+    "jmdby3m60Pb5",
+    "UJG9oW5kafhP",
+    "9QJnXoDVC2qc",
+    "J52St5_1BPVV",
+    "B4-zYysE9xv2",
+    "lfnxAbODS3eA",
+    "-sm7d1TUFJiv",
+    "-F-m6yxx6OZh",
+    "fY_9exjK8tlJ",
+    "9lSnNaUftpM2",
+    "ihd61Y4nu_Dq",
+    "rJTzt3JB8X65",
+    "LDMCaZHt5nLC",
+    "th4CSRGfw3bh",
+    "zXefI_UzdxFH",
+    "-jKNVhmnmXDz",
+    "NYRuXlkaP_wM",
+    "kiTwFIJfkKAB",
+    "omEXscozJDYy",
+    "0v0VcK1MKexY",
+    "L6RCyEll0vtT",
+    "IsDuZQnqkAdT",
+    "TyHapxddWteu",
+    "A6V4fHS2NSVL",
+    "km8B1qRTKOT8",
+    "2cMcRum43iA_",
+    "8RX5SL45ZQlK",
+    "1Z4Io7My0YZ5",
+    "K6yUkTTJR_yJ",
+    "UvxqoNw94TFX",
+    "TeGl97LXHeSY",
+    "Md1UuzF2TNdD",
+    "4AK3cjbQpHiy",
+    "WyefEClNyX3S",
+    "m7ld85cTNKdk",
+    "hmrPm3Y1qe1W",
+    "V25eXCxxJMKn",
+    "fIPVHCF2Wlk3",
+    "5JOu6-SWPi_9",
+    "-QXzTzNeWT9b",
+    "Lov83R-z_beo",
+    "grGjInWUjXyO",
+    "0gL0HhD4ZrS1",
+    "LJDzYfOGSt6O",
+    "Z90I749Ka27j",
+    "5TUtvpbgwEZr",
+    "9uOuf4B2fa5N",
+    "907vxbZ_HhsZ",
+    "CxE26Jd1ZWc1",
+    "GH5KxIIT_Tom",
+    "VjwAAMvFp_TC",
+    "LeEP8hz-yfgA",
+    "Tp85GDCg1cCW",
+    "aLuoupLJsnea",
+    "fw_BJUgqoq01",
+    "Ii0eAaZfLgxv",
+    "3nqNU2q3Opk4",
+    "zHw7o7vbvPu7",
+    "ytuOf9fmARng",
+    "W61Bf_B1XF6c",
+    "vfs5kIKOeBOq",
+    "jvpYw-m8CGsE",
+    "DCbMde20BJCv",
+    "Pm5P2QAxO-6R",
+    "8c1dN40KT84v",
+    "hQemAW3QRQXy",
+    "99f2JeYqY2jN",
+    "rDz1IPKbIaFe",
+    "fu-u2CcHjdl4",
+    "wMMWiHmogueY",
+    "0o_MybgSgKkO",
+    "yx0duZjrGBDJ",
+    "ZKitDoEo4A4C",
+    "PtckmjhB2bwE",
+    "51DMIys4UKvu",
+    "gr_vxJF1uloy",
+    "fhZ2wB_f0Jor",
+    "8OBn8D4k3KzD",
+    "V1cB6pv7U62Y",
+    "PsEv0vuZn1A5",
+    "UgRMptwlsTfH",
+    "2gC5kZNJFnTp"
+   ],
+   "components":[],
+   "components_relations":[]
+  }
+ ],
+ "components_relations":[],
+ "edges":[]
 }
