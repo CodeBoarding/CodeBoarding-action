@@ -147,7 +147,8 @@ inputs:
     description: >-
       Experimental. Service base URL for POST /v1/review-guide and POST /v1/architecture.
       Defaults to production. Both receive this run's analysis independently; results are stored
-      as review_guide.json and closed/architecture.json. Set to an empty string to disable both.
+      as review_guide.json and closed/architecture.json, and the guide's request as sent as
+      closed/bundle.json.xz. Set to an empty string to disable both.
       Sync's opt-in problem_history calls POST /v1/briefing on the same URL.
     required: false
     default: 'https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/'

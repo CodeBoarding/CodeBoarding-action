@@ -4,7 +4,8 @@
 Runs after the review analysis. The two requests go out in parallel and independently: either one
 failing leaves the other alone, and nothing here fails the run. The guide is stored as
 review_guide.json and the architecture envelope as closed/architecture.json in the review artifact,
-including partial, skipped and failed results.
+including partial, skipped and failed results. The guide's request, exactly as sent, is stored as
+closed/bundle.json.xz, so a guide can be generated again from the same inputs.
 
 What a request sends
 --------------------
@@ -110,6 +111,8 @@ PROVIDER_HOSTS = {
 SOURCE_EXTENSIONS = (".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".cs", ".csproj")
 SOURCE_EXCLUDE = re.compile(r"(^|/)(node_modules|dist|build|vendor|__fixtures__|docs|public)/|\.min\.js$|\.d\.ts$")
 MAX_SOURCE_BYTES = 16_000_000
+# The review guide's request as sent, kept in the review artifact's closed/ directory (see keep_bundle).
+BUNDLE_NAME = "bundle.json.xz"
 
 
 class Skip(Exception):
@@ -675,10 +678,27 @@ def _no_architecture(ctx: dict, status: str, reason: str) -> dict:
     }
 
 
+def keep_bundle(artifact: Path, data: bytes | None) -> None:
+    """Save the review guide's request, the very bytes sent, as closed/bundle.json.xz, so the guide can
+    be generated again later from the same inputs. A missing or oversized body is left out with one
+    line in the log; this never fails the run or changes the guide."""
+    try:
+        if not data:
+            raise Skip("no request body")
+        if len(data) > MAX_COMPRESSED_BYTES:
+            raise Skip(f"{len(data) / 1e6:.1f} MB is over the service's limit")
+        path = artifact / "closed" / BUNDLE_NAME
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    except Exception as error:
+        print(f"::notice::review-guide bundle not saved: {error}")
+
+
 def run_review_guide(service_url: str, data: bytes, headers: dict, artifact: Path) -> None:
     try:
         if "x-llm-provider" in headers and "x-llm-api-key" not in headers:
             raise Skip("the service cannot call this run's provider")
+        keep_bundle(artifact, data)
         answer = _post(f"{service_url.rstrip('/')}/v1/review-guide", data, headers)
         guide = answer.get("guide")
         if not isinstance(guide, dict):

@@ -188,6 +188,9 @@ required analysis inputs. The guide endpoint returns `{guide, usage, timingsMs}`
 saves the bare guide as `review_guide.json`. Architecture returns `{envelope, usage}`; its
 envelope is saved unchanged as `closed/architecture.json`, including partial, skipped and
 failed results. Failure of either request does not prevent the other or fail the review.
+The guide's request body, the same xz-compressed bytes the service receives, is saved as
+`closed/bundle.json.xz`, so the guide can be generated again later from the same inputs. It
+never carries `source.json`, and it is left out when no guide request goes out.
 
 Only architecture receives optional `source.json`: tracked Python, JavaScript/TypeScript
 and C# files (`.py`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.cs`, `.csproj`), excluding
@@ -406,7 +409,7 @@ The update runs after the baseline is saved, stops itself after 10 minutes and n
 | `github_token` | both | `${{ github.token }}` | Token for comments and sync delivery. |
 | `codeboarding_analysis_location` | both | `codeboarding_branch` | Where the synced branch's analysis is stored: `codeboarding_branch` (on `codeboarding/baseline`, for the default branch; the code is never written) or `in_place` (committed as `.codeboarding/` on the synced branch). Sync saves it there and review reads it from there. |
 | `warmstart_retention_days` | review | `1` | Days to keep the reusable analysis. Only the next run reads it. |
-| `review_guide_url` | both | `https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/` | Experimental. Shared base URL for `/v1/review-guide` and `/v1/architecture`, and for sync's `/v1/briefing` when `problem_history` is on. Saves `review_guide.json` and `closed/architecture.json` in the review artifact. Set to `''` to disable all three. Never fails the run. |
+| `review_guide_url` | both | `https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/` | Experimental. Shared base URL for `/v1/review-guide` and `/v1/architecture`, and for sync's `/v1/briefing` when `problem_history` is on. Saves `review_guide.json`, `closed/architecture.json` and the guide's request (`closed/bundle.json.xz`) in the review artifact. Set to `''` to disable all three. Never fails the run. |
 | `closed_features_source` | review | `true` | Whether architecture checks may read this repository's source. Only the architecture request carries it, capped in size, and the service keeps nothing. The model sees code around a finding, never the tree. With `false`, source-dependent checks and model review do not run, and the result says so. |
 | `problem_history` | sync | `false` | Opt-in. With `'true'`, each sync sends this repository's issues and merged pull requests to `review_guide_url` and commits the returned problem list as `problems.json` on the orphan branch `codeboarding/briefing`. Needs `contents: write`, `issues: read`, `pull-requests: read`, `actions: read` and `id-token: write` on the sync job. See [Problem history](#problem-history). Never fails the run. |
 

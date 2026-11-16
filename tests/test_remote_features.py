@@ -416,7 +416,9 @@ class CredentialTests(unittest.TestCase):
             self.assertEqual(remote_features.model_headers(env), {"x-llm-provider": env["LLM"]})
 
 
-class EndpointTests(unittest.TestCase):
+class _ServiceCase(unittest.TestCase):
+    """A workspace whose inputs are stubbed, and main run against a local service."""
+
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -451,12 +453,15 @@ class EndpointTests(unittest.TestCase):
             self.assertEqual(remote_features.main(self.env), 0)
         return service
 
+
+class EndpointTests(_ServiceCase):
     def test_exactly_two_posts_shared_inputs_and_fixed_outputs(self):
         service = self.run_service()
         self.assertEqual(_read(self.env, "review_guide.json"), GUIDE)
         self.assertEqual(_read(self.env, "closed/architecture.json"), ENVELOPE)
         self.assertEqual(
-            sorted(p.name for p in (Path(self.env["ARTIFACT_DIR"]) / "closed").iterdir()), ["architecture.json"]
+            sorted(p.name for p in (Path(self.env["ARTIFACT_DIR"]) / "closed").iterdir()),
+            ["architecture.json", "bundle.json.xz"],
         )
         self.assertEqual(sorted(r["path"] for r in service.requests), ["/v1/architecture", "/v1/review-guide"])
         bodies = {}
@@ -571,6 +576,79 @@ class EndpointTests(unittest.TestCase):
             with mock.patch.object(remote_features, limit, 1):
                 self.assertEqual(self.run_service().requests, [])
             self.assertEqual(_read(self.env, "closed/architecture.json")["status"], "skipped")
+
+
+class KeptBundleTests(_ServiceCase):
+    """The review guide's request is kept in the review artifact as closed/bundle.json.xz, byte for byte,
+    so a guide can be generated again from the same inputs. Keeping it never fails or changes the run."""
+
+    def bundle(self) -> Path:
+        return Path(self.env["ARTIFACT_DIR"]) / "closed" / "bundle.json.xz"
+
+    def test_written_as_the_exact_bytes_the_guide_sent(self):
+        service = self.run_service()
+        sent = next(r["body"] for r in service.requests if r["path"] == "/v1/review-guide")
+        self.assertEqual(self.bundle().read_bytes(), sent)
+        self.assertEqual(set(json.loads(lzma.decompress(sent))["files"]), INPUTS)
+
+    def test_kept_without_architectures_source(self):
+        with mock.patch.object(remote_features, "collect_source", return_value=('{"a.py": "x"}', None)):
+            service = self.run_service()
+        architecture = next(r["body"] for r in service.requests if r["path"] == "/v1/architecture")
+        self.assertNotEqual(self.bundle().read_bytes(), architecture)
+        self.assertNotIn("source.json", json.loads(lzma.decompress(self.bundle().read_bytes()))["files"])
+
+    def test_kept_when_the_guide_request_went_out_but_failed(self):
+        self.run_service(lambda p, b: (500, {}) if p.endswith("review-guide") else (200, {"envelope": ENVELOPE}))
+        self.assertTrue(self.bundle().is_file())
+        self.assertFalse((Path(self.env["ARTIFACT_DIR"]) / "review_guide.json").exists())
+
+    def assert_not_kept(self):
+        self.assertFalse(self.bundle().exists())
+        self.assertTrue((Path(self.env["ARTIFACT_DIR"]) / "closed" / "architecture.json").is_file())
+
+    def test_not_written_when_inputs_are_missing(self):
+        (Path(self.env["HEAD_ANALYSIS_PATH"]).parent / "static_analysis.pkl").unlink()
+        self.assertEqual(self.run_service().requests, [])
+        self.assert_not_kept()
+
+    def test_not_written_when_the_guide_cannot_call_the_provider(self):
+        self.env.update(LLM="litellm", LITELLM_API_KEY="secret")
+        self.assertEqual([r["path"] for r in self.run_service().requests], ["/v1/architecture"])
+        self.assert_not_kept()
+
+    def test_not_written_over_the_service_limit(self):
+        with mock.patch.object(remote_features, "MAX_COMPRESSED_BYTES", 1):
+            self.assertEqual(self.run_service().requests, [])
+        self.assert_not_kept()
+
+    def test_missing_or_oversized_body_is_skipped_with_one_line(self):
+        artifact = Path(self.env["ARTIFACT_DIR"])
+        for data in (None, b"", b"x" * (remote_features.MAX_COMPRESSED_BYTES + 1)):
+            with mock.patch("builtins.print") as printed:
+                remote_features.keep_bundle(artifact, data)
+            self.assertEqual(printed.call_count, 1)
+            self.assertIn("bundle not saved", printed.call_args.args[0])
+            self.assertFalse(self.bundle().exists())
+
+    def test_a_failed_write_changes_nothing_else(self):
+        with mock.patch.object(Path, "write_bytes", side_effect=OSError("disk full")):
+            self.run_service()
+        self.assertFalse(self.bundle().exists())
+        self.assertEqual(_read(self.env, "review_guide.json"), GUIDE)
+        self.assertEqual(_read(self.env, "closed/architecture.json"), ENVELOPE)
+
+    def test_never_in_sync_mode(self):
+        # Only the review-mode step runs this script; sync's one remote call is the problem history, which
+        # writes no artifact at all.
+        action = (_SCRIPT.parent.parent / "action.yml").read_text(encoding="utf-8")
+        steps = [step for step in action.split("\n    - name: ") if "scripts/remote_features.py" in step]
+        self.assertEqual(len(steps), 1)
+        self.assertIn("steps.guard.outputs.mode == 'review'", steps[0])
+        self.assertNotIn("'sync'", steps[0])
+        problem_history = (_SCRIPT.parent / "problem_history.py").read_text(encoding="utf-8")
+        for writes in ("bundle.json", "keep_bundle", "run_review_guide", "write_bytes"):
+            self.assertNotIn(writes, problem_history)
 
 
 class SourceTests(unittest.TestCase):
