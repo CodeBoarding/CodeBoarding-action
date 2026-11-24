@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.20.0](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.19.2...v1.20.0) (2026-11-24)
+
+
+### Features
+
+* keep the review guide's request in the review artifact ([#177](https://github.com/CodeBoarding/CodeBoarding-action/issues/177)) ([af787db](https://github.com/CodeBoarding/CodeBoarding-action/commit/af787dbfc2596b0680f0295497b8b55709268f64))
+
 ## [1.19.2](https://github.com/CodeBoarding/CodeBoarding-action/compare/v1.19.1...v1.19.2) (2026-11-15)
 
 
