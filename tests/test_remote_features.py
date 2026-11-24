@@ -460,7 +460,7 @@ class EndpointTests(_ServiceCase):
         self.assertEqual(_read(self.env, "review_guide.json"), GUIDE)
         self.assertEqual(_read(self.env, "closed/architecture.json"), ENVELOPE)
         self.assertEqual(
-            sorted(p.name for p in (Path(self.env["ARTIFACT_DIR"]) / "closed").iterdir()),
+            sorted(written.name for written in (Path(self.env["ARTIFACT_DIR"]) / "closed").iterdir()),
             ["architecture.json", "bundle.json.xz"],
         )
         self.assertEqual(sorted(r["path"] for r in service.requests), ["/v1/architecture", "/v1/review-guide"])
@@ -587,19 +587,21 @@ class KeptBundleTests(_ServiceCase):
 
     def test_written_as_the_exact_bytes_the_guide_sent(self):
         service = self.run_service()
-        sent = next(r["body"] for r in service.requests if r["path"] == "/v1/review-guide")
+        sent = next(request["body"] for request in service.requests if request["path"] == "/v1/review-guide")
         self.assertEqual(self.bundle().read_bytes(), sent)
         self.assertEqual(set(json.loads(lzma.decompress(sent))["files"]), INPUTS)
 
     def test_kept_without_architectures_source(self):
         with mock.patch.object(remote_features, "collect_source", return_value=('{"a.py": "x"}', None)):
             service = self.run_service()
-        architecture = next(r["body"] for r in service.requests if r["path"] == "/v1/architecture")
+        architecture = next(request["body"] for request in service.requests if request["path"] == "/v1/architecture")
         self.assertNotEqual(self.bundle().read_bytes(), architecture)
         self.assertNotIn("source.json", json.loads(lzma.decompress(self.bundle().read_bytes()))["files"])
 
     def test_kept_when_the_guide_request_went_out_but_failed(self):
-        self.run_service(lambda p, b: (500, {}) if p.endswith("review-guide") else (200, {"envelope": ENVELOPE}))
+        self.run_service(
+            lambda path, body: (500, {}) if path.endswith("review-guide") else (200, {"envelope": ENVELOPE})
+        )
         self.assertTrue(self.bundle().is_file())
         self.assertFalse((Path(self.env["ARTIFACT_DIR"]) / "review_guide.json").exists())
 
@@ -614,7 +616,7 @@ class KeptBundleTests(_ServiceCase):
 
     def test_not_written_when_the_guide_cannot_call_the_provider(self):
         self.env.update(LLM="litellm", LITELLM_API_KEY="secret")
-        self.assertEqual([r["path"] for r in self.run_service().requests], ["/v1/architecture"])
+        self.assertEqual([request["path"] for request in self.run_service().requests], ["/v1/architecture"])
         self.assert_not_kept()
 
     def test_not_written_over_the_service_limit(self):
