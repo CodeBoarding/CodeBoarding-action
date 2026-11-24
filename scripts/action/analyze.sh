@@ -28,8 +28,14 @@ run_core() {
   ANALYSIS_PATH="$(awk -F= '$1 == "analysis_path" {print substr($0, index($0, "=") + 1); exit}' <<< "$output")"
 }
 
+# fresh_analysis builds from nothing, the static-analysis cache included. Not the
+# head: it still grows from the base this run built, since a head analyzed apart
+# from its base need not name components alike and would diff as changes.
+fresh=""
+if [ "${FRESH_ANALYSIS:-false}" = true ] && [ "$role" != head ]; then fresh=--fresh; fi
+
 mkdir -p "$state"
-if compatible_state "$state"; then
+if [ -z "$fresh" ] && compatible_state "$state"; then
   run_core incremental
   if [ "$ANALYSIS_MODE" != incremental ] || { [ "$REQUIRES_FULL" != true ] && [ ! -f "$ANALYSIS_PATH" ]; }; then
     fail "Core returned an invalid incremental-analysis result."
@@ -37,7 +43,7 @@ if compatible_state "$state"; then
   [ "$REQUIRES_FULL" != true ] || echo "::notice::Core cannot update the $role analysis incrementally; analyzing in full." >&2
 fi
 if [ "$ANALYSIS_MODE" != incremental ] || [ "$REQUIRES_FULL" = true ]; then
-  run_core full --depth-cap "$DEPTH_CAP"
+  run_core full --depth-cap "$DEPTH_CAP" ${fresh:+"$fresh"}
   if [ "$ANALYSIS_MODE" != full ] || [ ! -f "$ANALYSIS_PATH" ]; then
     fail "Core returned an invalid full-analysis result."
   fi
