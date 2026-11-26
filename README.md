@@ -193,13 +193,12 @@ The guide's request body, the same xz-compressed bytes the service receives, is 
 never carries `source.json`, and it is left out when no guide request goes out.
 
 A third request, `POST /v1/merge-risk`, goes to the same base URL at the same time and sends
-no analysis: only the files changed between the merge base and the head, with their patches,
-read with `git diff` in the checkout (the merge base is fetched by sha, one commit deep). A
-patch over 300 KB is left out. The answer, the diff's merge-risk facts and the reasons they
-give, is saved as `closed/merge_risk.json` with the head and base it describes, and summed up
-in one hidden line of the review comment, `<!-- codeboarding:merge_risk {json} -->`, which
-the web platform's dashboard reads. When the request fails, neither is written and the run
-logs one notice.
+no analysis: only the pull request's changed files with their patches, as GitHub lists them.
+The answer, the diff's merge-risk facts and the reasons they give, is saved as
+`closed/merge_risk.json` with the head it describes, and summed up in one hidden line of the
+review comment, `<!-- codeboarding:merge_risk {json} -->`, which the web platform's dashboard
+reads. When the request fails, or the pull request moved on to a newer head during the run,
+neither is written and the run logs one notice.
 
 Only architecture receives optional `source.json`: tracked Python, JavaScript/TypeScript
 and C# files (`.py`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.cs`, `.csproj`), excluding

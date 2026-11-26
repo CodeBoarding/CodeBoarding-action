@@ -4,6 +4,7 @@ import importlib.util
 import json
 import lzma
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -428,8 +429,8 @@ class _ServiceCase(unittest.TestCase):
             ("_contents", {"return_value": "base"}),
             ("call_graph", {"return_value": {"nodes": {}, "edges": []}}),
             ("read_analysis", {"return_value": (_analysis([]), {})}),
-            # The stub checkout has no commits; MergeRiskTests gives it some.
-            ("merge_risk_files", {"side_effect": remote_features.Skip("no commits in this checkout")}),
+            # MergeRiskTests gives the pull request some files.
+            ("merge_risk_files", {"side_effect": remote_features.Skip("no files in this stub")}),
         ):
             patch = mock.patch.object(remote_features, name, **kwargs)
             patch.start()
@@ -595,124 +596,123 @@ def _answer(path, body):
 
 
 class MergeRiskTests(_ServiceCase):
-    """Merge risk is a third request beside the guide and architecture, from git rather than the
-    analysis, and no failure of one reaches another."""
+    """Merge risk is a third request beside the guide and architecture, from the pull request's files
+    rather than the analysis, and no failure of one reaches another."""
 
     def setUp(self):
         super().setUp()
         patch = mock.patch.object(remote_features, "merge_risk_files", return_value=RISK_FILES)
         self.files = patch.start()
         self.addCleanup(patch.stop)
+        self.env["GITHUB_OUTPUT"] = str(Path(self.env["ARTIFACT_DIR"]).parent / "github_output")
 
     def result(self):
         path = Path(self.env["ARTIFACT_DIR"]) / "closed" / "merge_risk.json"
         return json.loads(path.read_text()) if path.exists() else None
 
-    def test_sends_the_file_list_and_keeps_the_answer_with_the_commits_it_describes(self):
+    def output(self):
+        path = Path(self.env["GITHUB_OUTPUT"])
+        return path.read_text() if path.exists() else ""
+
+    def test_sends_the_file_list_and_keeps_the_answer_with_the_head_it_describes(self):
         service = self.run_service(_answer)
-        self.files.assert_called_once_with(self.env, "B", "H")
-        [request] = [r for r in service.requests if r["path"] == "/v1/merge-risk"]
+        self.files.assert_called_once_with({"repo": "o/r", "pr": 7, "head": "H"})
+        [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
         self.assertEqual(request["headers"]["Authorization"], "Bearer ghs_run")
         self.assertEqual(
             json.loads(lzma.decompress(request["body"])), {"version": 1, "repo": "o/r", "pr": 7, "files": RISK_FILES}
         )
-        self.assertEqual(
-            self.result(),
-            {
-                "feature": "merge-risk",
-                "schema": 1,
-                "repo": "o/r",
-                "pr": 7,
-                "headSha": "H",
-                "baseSha": "B",
-                **RISK_ANSWER,
-            },
-        )
+        expected = {"feature": "merge-risk", "schema": 1, "repo": "o/r", "pr": 7, "headSha": "H", **RISK_ANSWER}
+        self.assertEqual(self.result(), expected)
+        self.assertEqual(self.output(), f"merge_risk_line={remote_features.merge_risk_line(expected)}\n")
         self.assertEqual(_read(self.env, "review_guide.json"), GUIDE)
         self.assertEqual(_read(self.env, "closed/architecture.json"), ENVELOPE)
 
     def test_a_failed_merge_risk_writes_nothing_and_leaves_the_others_alone(self):
-        self.run_service(lambda p, b: (500, {}) if p == "/v1/merge-risk" else _answer(p, b))
+        self.run_service(lambda path, body: (500, {}) if path == "/v1/merge-risk" else _answer(path, body))
         self.assertIsNone(self.result())
+        self.assertEqual(self.output(), "")
         self.assertEqual(_read(self.env, "review_guide.json"), GUIDE)
         self.assertEqual(_read(self.env, "closed/architecture.json"), ENVELOPE)
-        self.files.side_effect = RuntimeError("git fetch failed")
+        self.files.side_effect = remote_features.Skip("the pull request moved on to a newer head")
         self.run_service(_answer)
         self.assertIsNone(self.result())
 
     def test_merge_risk_does_not_need_the_analysis_or_the_guide(self):
         (Path(self.env["HEAD_ANALYSIS_PATH"]).parent / "static_analysis.pkl").unlink()
         service = self.run_service(_answer)
-        self.assertEqual([r["path"] for r in service.requests], ["/v1/merge-risk"])
+        self.assertEqual([sent["path"] for sent in service.requests], ["/v1/merge-risk"])
         self.assertEqual(self.result()["reasons"], RISK_ANSWER["reasons"])
         self.assertEqual(_read(self.env, "closed/architecture.json")["status"], "failed")
 
     def test_without_room_for_patches_it_sends_the_files_without_them(self):
-        big = [{**RISK_FILES[0], "patch": os.urandom(3000).hex()}]
+        self.files.return_value = [{**RISK_FILES[0], "patch": os.urandom(3000).hex()}]
         with mock.patch.object(remote_features, "MAX_COMPRESSED_BYTES", 2000):
-            body = json.loads(lzma.decompress(remote_features._merge_risk_request({"repo": "o/r", "pr": 7}, big)))
-            self.assertEqual(body["files"], [{**RISK_FILES[0], "patch": None}])
-            with mock.patch.object(remote_features, "MAX_MERGE_RISK_JSON_BYTES", 10):
-                with self.assertRaises(remote_features.TooLarge):
-                    remote_features._merge_risk_request({"repo": "o/r", "pr": 7}, big)
-
-
-def _commit(repo: Path, message: str) -> str:
-    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", message], check=True
-    )
-    return subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+            service = self.run_service(_answer)
+        [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
+        self.assertEqual(json.loads(lzma.decompress(request["body"]))["files"], [{**RISK_FILES[0], "patch": None}])
 
 
 class MergeRiskFilesTests(unittest.TestCase):
-    """The file list comes from git in a checkout one commit deep, with the merge base fetched by sha."""
+    """The file list is the pull request's, page by page, and only while its head is the run's."""
 
-    def test_every_change_between_the_commits_in_the_shape_github_gives(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            origin = root / "server" / "o" / "r.git"
-            work = root / "work"
-            subprocess.run(["git", "init", "-q", "-b", "main", str(work)], check=True)
-            (work / "app.py").write_text("one\ntwo\n")
-            (work / "old name.py").write_text("".join(f"line {n}\n" for n in range(20)))
-            (work / "gone.py").write_text("bye\n")
-            (work / "logo.png").write_bytes(b"\x89PNG\x00\x01")
-            base = _commit(work, "base")
-            (work / "app.py").write_text("one\n2\nthree\n")
-            (work / "old name.py").rename(work / "new name.py")
-            (work / "gone.py").unlink()
-            (work / "logo.png").write_bytes(b"\x89PNG\x00\x02")
-            (work / "package.json").write_text('{\n  "zod": "^3"\n}\n')
-            head = _commit(work, "head")
-            subprocess.run(["git", "clone", "-q", "--bare", str(work), str(origin)], check=True)
-            checkout = root / "checkout"
-            subprocess.run(["git", "clone", "-q", "--depth=1", f"file://{origin}", str(checkout)], check=True)
-            env = {
-                "CHECKOUT_DIR": str(checkout),
-                "REPOSITORY": "o/r",
-                "GITHUB_SERVER_URL": f"file://{root / 'server'}",
-                "GITHUB_TOKEN": "ghs_run",
-            }
-            files = {f["filename"]: f for f in remote_features.merge_risk_files(env, base, head)}
-            self.assertEqual(set(files), {"app.py", "new name.py", "gone.py", "logo.png", "package.json"})
-            self.assertEqual((files["app.py"]["additions"], files["app.py"]["deletions"]), (2, 1))
-            self.assertTrue(files["app.py"]["patch"].startswith("@@ "))
-            self.assertIn("+three", files["app.py"]["patch"])
-            self.assertNotIn("+++", files["app.py"]["patch"])
-            self.assertEqual((files["new name.py"]["additions"], files["new name.py"]["deletions"]), (0, 0))
-            self.assertEqual(files["gone.py"]["deletions"], 1)
-            self.assertEqual((files["logo.png"]["additions"], files["logo.png"]["patch"]), (0, None))
-            self.assertIn('+  "zod": "^3"', files["package.json"]["patch"])
+    def test_reads_every_page_and_keeps_the_fields_the_service_reads(self):
+        changed = [
+            {"filename": f"f{index}.py", "status": "added", "additions": index, "deletions": 0} for index in range(130)
+        ]
+        pages = {"page=1": changed[:100], "page=2": changed[100:]}
 
-    def test_a_failed_fetch_never_shows_the_token(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            subprocess.run(["git", "init", "-q", tmp], check=True)
-            env = {"CHECKOUT_DIR": tmp, "REPOSITORY": "o/r", "GITHUB_SERVER_URL": f"file://{tmp}/none"}
-            with self.assertRaises(RuntimeError) as raised:
-                remote_features.merge_risk_files({**env, "GITHUB_TOKEN": "ghs_secret"}, "a" * 40, "b" * 40)
-            self.assertNotIn("ghs_secret", str(raised.exception))
-            self.assertNotIn("Z2hz", str(raised.exception))  # nor its base64
+        def github(path):
+            if path.endswith("/pulls/7"):
+                return {"head": {"sha": "H"}}
+            return pages[path.rsplit("&", 1)[1]]
+
+        with mock.patch.object(remote_features, "_github_json", side_effect=github):
+            files = remote_features.merge_risk_files({"repo": "o/r", "pr": 7, "head": "H"})
+        self.assertEqual(len(files), 130)
+        self.assertEqual(files[129], {"filename": "f129.py", "additions": 129, "deletions": 0, "patch": None})
+
+    def test_a_head_that_moved_on_is_skipped(self):
+        def github(path):
+            return {"head": {"sha": "newer"}} if path.endswith("/pulls/7") else []
+
+        with mock.patch.object(remote_features, "_github_json", side_effect=github):
+            with self.assertRaises(remote_features.Skip):
+                remote_features.merge_risk_files({"repo": "o/r", "pr": 7, "head": "H"})
+
+
+class MergeRiskLineTests(unittest.TestCase):
+    def test_nothing_in_the_line_can_end_the_comment_and_json_reads_it_back(self):
+        reason = {"level": "medium", "code": "area_changed", "params": {"files": ["a-->b<c>=.ts"]}, "file": "x"}
+        result = {
+            "headSha": "abc123",
+            "sensitive": True,
+            "facts": {
+                "srcLines": 1815,
+                "sourceFiles": 31,
+                "tests": 0,
+                "deps": ["zod"],
+                "areas": [{"name": "Sign-in and access", "critical": True}, {"name": "Review", "critical": False}],
+            },
+            "reasons": [reason],
+        }
+        match = re.fullmatch(r"<!-- codeboarding:merge_risk (\{.*\}) -->", remote_features.merge_risk_line(result))
+        payload = match.group(1) if match else ""
+        for char in "<>-=":
+            self.assertNotIn(char, payload)
+        self.assertEqual(
+            json.loads(payload),
+            {
+                "v": 1,
+                "head": "abc123",
+                "sensitive": True,
+                "areas": ["Sign-in and access"],
+                "deps": ["zod"],
+                "srcLines": 1815,
+                "sourceFiles": 31,
+                "reasons": [{"level": "medium", "code": "area_changed", "params": reason["params"]}],
+            },
+        )
 
 
 class KeptBundleTests(_ServiceCase):

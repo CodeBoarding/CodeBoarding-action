@@ -6,11 +6,8 @@ failing leaves the others alone, and nothing here fails the run. The guide is st
 review_guide.json and the architecture envelope as closed/architecture.json in the review artifact,
 including partial, skipped and failed results. The guide's request, exactly as sent, is stored as
 closed/bundle.json.xz, so a guide can be generated again from the same inputs. Merge risk is stored as
-closed/merge_risk.json when the service answered, and nothing is written when it did not.
-
-Merge risk sends only the changed files with their patches, read with git between the merge base and
-the head (see merge_risk_files), never the analysis. The compare API stops at 300 files, so it is not
-used here.
+closed/merge_risk.json when the service answered, and nothing is written when it did not. It sends
+only the pull request's changed files with their patches, never the analysis.
 
 What a request sends
 --------------------
@@ -62,14 +59,13 @@ caller is this repository's run: a fresh GitHub Actions OIDC token (plus the lic
 hosted proxy gets), or the run's GITHUB_TOKEN when the workflow cannot mint one.
 
 Environment: CLOSED_FUNCTIONS_URL, REPOSITORY, PR_NUMBER, ARTIFACT_DIR, HEAD_ANALYSIS_PATH,
-BASE_ANALYSIS_PATH, CHECKOUT_DIR, GITHUB_TOKEN, GITHUB_API_URL, GITHUB_SERVER_URL, and optionally LICENSE_KEY,
+BASE_ANALYSIS_PATH, CHECKOUT_DIR, GITHUB_TOKEN, GITHUB_API_URL, GITHUB_OUTPUT, and optionally LICENSE_KEY,
 CLOSED_FEATURES_SOURCE, LLM, MODEL, AGENT_MODEL, <PROVIDER>_API_KEY, <PROVIDER>_BASE_URL,
 ACTIONS_ID_TOKEN_REQUEST_URL/_TOKEN.
 """
 
 from __future__ import annotations
 
-import base64
 import importlib.util
 import json
 import lzma
@@ -78,7 +74,6 @@ import pickle
 import re
 import subprocess
 import sys
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -121,10 +116,12 @@ MAX_SOURCE_BYTES = 16_000_000
 # The review guide's request as sent, kept in the review artifact's closed/ directory (see keep_bundle).
 BUNDLE_NAME = "bundle.json.xz"
 # The service refuses a merge-risk request over 64 MiB of JSON: MAX_MERGE_RISK_BYTES in licensing-aws
-# remote_analysis/handler.py. A file's patch over MAX_FILE_BYTES is left out, as GitHub leaves out the
-# patch of a very large file.
+# remote_analysis/handler.py.
 MAX_MERGE_RISK_JSON_BYTES = 64 * 1024 * 1024
 MERGE_RISK_NAME = "merge_risk.json"
+MERGE_RISK_FIELDS = ("filename", "additions", "deletions", "patch")
+# The most dependency names the review comment's merge-risk line carries; the dashboard shows four.
+MAX_MARKER_DEPS = 20
 
 
 class Skip(Exception):
@@ -550,81 +547,6 @@ def collect_source(env: dict) -> tuple[str | None, str | None]:
     return json.dumps(files), None
 
 
-# --- Merge risk's file list -----------------------------------------------------------------------
-
-
-def _git(checkout: Path, *args: str, token: str | None = None) -> bytes:
-    """git in the checkout. A token goes in through the environment, never the arguments, so a failure's
-    message cannot carry it; the message is the command's first word and git's own error."""
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
-    if token:
-        auth = base64.b64encode(f"x-access-token:{token}".encode()).decode()
-        env.update(GIT_CONFIG_COUNT="1", GIT_CONFIG_KEY_0="http.extraheader")
-        env["GIT_CONFIG_VALUE_0"] = f"AUTHORIZATION: basic {auth}"
-    done = subprocess.run(["git", "-C", str(checkout), *args], capture_output=True, env=env)
-    if done.returncode != 0:
-        error = done.stderr.decode("utf-8", "replace").strip().splitlines()
-        raise RuntimeError(f"git {args[0]} failed: {error[-1] if error else done.returncode}")
-    return done.stdout
-
-
-def _ensure_commit(env: dict, checkout: Path, sha: str) -> None:
-    """The commit in the checkout, fetched by sha from the repository when the shallow checkout lacks it.
-    The checkout keeps no credentials, so the run's token is passed for this one fetch."""
-    try:
-        _git(checkout, "cat-file", "-e", f"{sha}^{{commit}}")
-        return
-    except RuntimeError:
-        pass
-    server = env.get("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
-    url = f"{server}/{env['REPOSITORY']}.git"
-    _git(checkout, "fetch", "-q", "--no-tags", "--depth=1", url, sha, token=env.get("GITHUB_TOKEN"))
-
-
-def _numstat(raw: bytes) -> list[tuple[str, int, int]]:
-    """`git diff --numstat -z` as (path, additions, deletions); a rename by its new path, a binary file
-    as no lines, as GitHub counts it."""
-    fields = raw.decode("utf-8", "replace").split("\0")
-    out: list[tuple[str, int, int]] = []
-    position = 0
-    while position < len(fields) and fields[position]:
-        added, deleted, path = fields[position].split("\t", 2)
-        position += 1
-        if not path:  # a rename: the old path and the new one follow as their own fields
-            path = fields[position + 1]
-            position += 2
-        out.append((path, int(added) if added.isdigit() else 0, int(deleted) if deleted.isdigit() else 0))
-    return out
-
-
-def _patches(raw: bytes) -> list[str | None]:
-    """The patch of each file in a `git diff`, in its order: the hunks alone, as GitHub gives them, or
-    None for a file with no hunk (binary, a mode change) or a patch over MAX_FILE_BYTES."""
-    out: list[str | None] = []
-    for section in re.split(rb"^diff --git ", raw, flags=re.M)[1:]:
-        hunk = re.search(rb"^@@", section, flags=re.M)
-        patch = section[hunk.start() :].decode("utf-8", "replace").rstrip("\n") if hunk else None
-        out.append(patch if patch is None or len(patch.encode()) <= MAX_FILE_BYTES else None)
-    return out
-
-
-def merge_risk_files(env: dict, base_sha: str, head_sha: str) -> list[dict]:
-    """Every file changed between the merge base and the head as {filename, additions, deletions,
-    patch}, read with git in the checkout, which is fetched one commit deep."""
-    checkout = Path(env["CHECKOUT_DIR"])
-    for sha in (head_sha, base_sha):
-        _ensure_commit(env, checkout, sha)
-    options = ("--no-color", "--no-ext-diff", "-M", base_sha, head_sha)
-    stats = _numstat(_git(checkout, "diff", "--numstat", "-z", *options))
-    patches = _patches(_git(checkout, "diff", "--no-textconv", *options))
-    if len(patches) != len(stats):  # both list the files in one order; if not, send no patch at all
-        patches = [None] * len(stats)
-    return [
-        {"filename": path, "additions": added, "deletions": deleted, "patch": patch}
-        for (path, added, deleted), patch in zip(stats, patches)
-    ]
-
-
 # --- Credentials ----------------------------------------------------------------------------------
 
 
@@ -675,16 +597,7 @@ def model_headers(env: dict) -> dict[str, str]:
     return headers
 
 
-# Merge risk asks for its own bearer while the guide asks for one; both write the license to one file.
-_BEARER_LOCK = threading.Lock()
-
-
 def _bearer(env: dict) -> dict[str, str]:
-    with _BEARER_LOCK:
-        return _bearer_unlocked(env)
-
-
-def _bearer_unlocked(env: dict) -> dict[str, str]:
     url, token = env.get("ACTIONS_ID_TOKEN_REQUEST_URL", ""), env.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN", "")
     if not url or not token:
         # Without `id-token: write` the run's own token proves the same thing: it can read this
@@ -815,30 +728,55 @@ def run_architecture(service_url: str, ctx: dict, data: bytes, headers: dict) ->
         return _no_architecture(ctx, "skipped" if isinstance(error, Skip) else "failed", str(error))
 
 
-def _merge_risk_request(ctx: dict, files: list[dict]) -> bytes:
-    """The merge-risk request, xz-compressed. Without patches when it is over a limit with them, so the
-    sizes and paths still count; TooLarge when not even that fits."""
-    body = {"version": 1, "repo": ctx["repo"], "pr": ctx["pr"], "files": files}
-    for attempt in (body, {**body, "files": [{**f, "patch": None} for f in files]}):
-        text = json.dumps(attempt).encode()
-        if len(text) > MAX_MERGE_RISK_JSON_BYTES:
-            continue
-        data = lzma.compress(text)
-        if len(data) <= MAX_COMPRESSED_BYTES:
-            return data
-    raise TooLarge(f"its {len(files)} changed files are over the service's limit even without patches")
+def merge_risk_files(ctx: dict) -> list[dict]:
+    """The pull request's changed files as GitHub lists them (at most 3,000, a very large file without
+    its patch), or Skip when the head moved on, since a newer run answers for that head."""
+    files: list[dict] = []
+    for page in range(1, 31):
+        listed = _github_json(f"/repos/{ctx['repo']}/pulls/{ctx['pr']}/files?per_page=100&page={page}")
+        files += [{field: changed.get(field) for field in MERGE_RISK_FIELDS} for changed in listed]
+        if len(listed) < 100:
+            break
+    if _github_json(f"/repos/{ctx['repo']}/pulls/{ctx['pr']}")["head"]["sha"] != ctx["head"]:
+        raise Skip("the pull request moved on to a newer head")
+    return files
 
 
-def run_merge_risk(service_url: str, ctx: dict, env: dict, artifact: Path) -> None:
-    """Merge risk at this head, written to closed/merge_risk.json. It needs neither the analysis nor the
-    guide, so it runs whatever happens to them, and a failure is one line in the log."""
+def merge_risk_line(result: dict) -> str:
+    """The review comment's hidden merge-risk line, for the web platform's dashboard. Compact JSON with
+    `<`, `>`, `-` and `=` escaped, so nothing in it can end the comment or match the status line's
+    `key=value` reader; a JSON parser reads the escapes back."""
+    compact = {
+        "v": 1,
+        "head": result["headSha"],
+        "sensitive": result["sensitive"],
+        "areas": [area["name"] for area in result["facts"].get("areas") or [] if area.get("critical")],
+        "deps": (result["facts"].get("deps") or [])[:MAX_MARKER_DEPS],
+        "srcLines": result["facts"].get("srcLines", 0),
+        "sourceFiles": result["facts"].get("sourceFiles", 0),
+        "reasons": [
+            {"level": reason["level"], "code": reason["code"], "params": reason.get("params") or {}}
+            for reason in result["reasons"]
+        ],
+    }
+    text = json.dumps(compact, separators=(",", ":"))
+    for char in "<>-=":
+        text = text.replace(char, f"\\u{ord(char):04x}")
+    return f"<!-- codeboarding:merge_risk {text} -->"
+
+
+def run_merge_risk(service_url: str, ctx: dict, headers: dict, env: dict, artifact: Path) -> None:
+    """Merge risk at this head, written to closed/merge_risk.json and handed to the review comment as
+    the step's `merge_risk_line` output. It needs neither the analysis nor the guide, so it runs whatever
+    happens to them, and a failure is one line in the log."""
     try:
-        metadata = json.loads((artifact / "metadata.json").read_text())
-        base_sha = metadata.get("merge_base_sha") or metadata.get("base_sha")
-        if not base_sha or not ctx["head"]:
-            raise Skip("the analysed commits are unknown")
-        data = _merge_risk_request(ctx, merge_risk_files(env, base_sha, ctx["head"]))
-        answer = _post(f"{service_url.rstrip('/')}/v1/merge-risk", data, _bearer(env), timeout=120)
+        files = merge_risk_files(ctx)
+        body = {"version": 1, "repo": ctx["repo"], "pr": ctx["pr"], "files": files}
+        try:
+            data = _encode(body, MAX_MERGE_RISK_JSON_BYTES, "file list")
+        except TooLarge:  # the sizes and paths still count without the patches
+            data = _encode({**body, "files": [{**file, "patch": None} for file in files]}, MAX_MERGE_RISK_JSON_BYTES)
+        answer = _post(f"{service_url.rstrip('/')}/v1/merge-risk", data, headers, timeout=120)
         if not isinstance(answer, dict) or not isinstance(answer.get("facts"), dict):
             raise ValueError("the service returned no merge-risk facts")
         result = {
@@ -847,7 +785,6 @@ def run_merge_risk(service_url: str, ctx: dict, env: dict, artifact: Path) -> No
             "repo": ctx["repo"],
             "pr": ctx["pr"],
             "headSha": ctx["head"],
-            "baseSha": base_sha,
             "facts": answer["facts"],
             "reasons": answer.get("reasons") if isinstance(answer.get("reasons"), list) else [],
             "sensitive": bool(answer.get("sensitive")),
@@ -855,6 +792,9 @@ def run_merge_risk(service_url: str, ctx: dict, env: dict, artifact: Path) -> No
         path = artifact / "closed" / MERGE_RISK_NAME
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(result, ensure_ascii=False, indent=1))
+        if env.get("GITHUB_OUTPUT"):
+            with open(env["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+                output.write(f"merge_risk_line={merge_risk_line(result)}\n")
     except Exception as error:
         print(f"::notice::merge-risk {'skipped' if isinstance(error, Skip) else 'failed'}: {error}")
 
@@ -869,10 +809,11 @@ def main(env: dict | None = None) -> int:
         if not service_url.strip():
             return 0
         with ThreadPoolExecutor(max_workers=3) as pool:
-            # First and on its own: it reads only git, so collecting the analysis cannot hold it up.
-            merge_risk = pool.submit(run_merge_risk, service_url, ctx, env, artifact)
             try:
-                headers = {**_bearer(env), **model_headers(env)}
+                bearer = _bearer(env)
+                # Before collecting the analysis, which merge risk does not need.
+                pool.submit(run_merge_risk, service_url, ctx, bearer, env, artifact)
+                headers = {**bearer, **model_headers(env)}
                 guide_request, architecture_request = _requests(ctx, collect(env), env)
             except TooLarge as error:
                 print(f"::notice::review-guide skipped: {error}")
@@ -886,7 +827,6 @@ def main(env: dict | None = None) -> int:
                 result = pool.submit(run_architecture, service_url, ctx, architecture_request, headers)
                 architecture = result.result()
                 guide.result()
-            merge_risk.result()
         path = artifact / "closed" / "architecture.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(architecture, ensure_ascii=False, indent=1))

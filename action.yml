@@ -811,8 +811,8 @@ runs:
         HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
         # Analysed files whose content hash differs between base and head, from the render step.
         ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
-        # Written by the remote features step when the service answered; absent otherwise.
-        MERGE_RISK_FILE: ${{ steps.review_artifact.outputs.artifact_dir }}/closed/merge_risk.json
+        # Set by the remote features step when the service answered merge risk; empty otherwise.
+        MERGE_RISK_LINE: ${{ steps.remote_features.outputs.merge_risk_line }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-comment.sh"
 
     - name: Post review comment

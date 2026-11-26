@@ -1,6 +1,5 @@
 """The review comment's shape: the status line the web platform reads, and the machine-readable line."""
 
-import json
 import os
 import re
 import subprocess
@@ -82,66 +81,16 @@ class ReviewCommentTests(unittest.TestCase):
             self.assertIn("**Status:** 0 changed components\n", body)
             self.assertIn("changed=0 analysed_files_changed=2 head=abc123", body)
 
-    def test_merge_risk_rides_on_its_own_hidden_line_that_nothing_in_it_can_end(self) -> None:
+    def test_merge_risk_rides_on_its_own_hidden_line_before_the_last(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            result = {
-                "headSha": "abc123",
-                "sensitive": True,
-                "facts": {
-                    "srcLines": 1815,
-                    "sourceFiles": 31,
-                    "tests": 0,
-                    "dirs": 2,
-                    "deps": ["zod"],
-                    "areas": [
-                        {"id": "signin", "name": "Sign-in and access", "critical": True},
-                        {"id": "review", "name": "Review", "critical": False},
-                    ],
-                },
-                "reasons": [
-                    {
-                        "level": "medium",
-                        "code": "area_changed",
-                        "params": {
-                            "area": "signin",
-                            "name": "Sign-in and access",
-                            "files": ["a-->b<c>=.ts"],
-                            "count": 1,
-                        },
-                        "file": "a-->b<c>=.ts",
-                    }
-                ],
-            }
-            (root / "merge_risk.json").write_text(json.dumps(result), encoding="utf-8")
-            lines = _build(root, MERGE_RISK_FILE=str(root / "merge_risk.json")).rstrip("\n").splitlines()
+            line = '<!-- codeboarding:merge_risk {"v":1} -->'
+            lines = _build(Path(tmp), MERGE_RISK_LINE=line).rstrip("\n").splitlines()
+            self.assertEqual(lines[-2], line)
             self.assertTrue(lines[-1].startswith("<!-- codeboarding: platform_url="))
-            line = lines[-2]
-            match = re.fullmatch(r"<!-- codeboarding:merge_risk (\{.*\}) -->", line)
-            self.assertIsNotNone(match)
-            payload = match.group(1) if match else ""
-            for char in "<>-=":
-                self.assertNotIn(char, payload)
-            self.assertEqual(
-                json.loads(payload),
-                {
-                    "v": 1,
-                    "head": "abc123",
-                    "sensitive": True,
-                    "areas": ["Sign-in and access"],
-                    "deps": ["zod"],
-                    "srcLines": 1815,
-                    "sourceFiles": 31,
-                    "tests": 0,
-                    "dirs": 2,
-                    "reasons": [{"level": "medium", "code": "area_changed", "params": result["reasons"][0]["params"]}],
-                },
-            )
 
     def test_no_merge_risk_answer_means_no_line(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            body = _build(Path(tmp), MERGE_RISK_FILE=str(Path(tmp) / "missing.json"))
-            self.assertNotIn("merge_risk", body)
+            self.assertNotIn("merge_risk", _build(Path(tmp), MERGE_RISK_LINE=""))
 
 
 if __name__ == "__main__":
