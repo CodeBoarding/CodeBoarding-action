@@ -145,10 +145,12 @@ inputs:
     default: '2'
   review_guide_url:
     description: >-
-      Experimental. Service base URL for POST /v1/review-guide and POST /v1/architecture.
-      Defaults to production. Both receive this run's analysis independently; results are stored
-      as review_guide.json and closed/architecture.json, and the guide's request as sent as
-      closed/bundle.json.xz. Set to an empty string to disable both.
+      Experimental. Service base URL for POST /v1/review-guide, POST /v1/architecture and
+      POST /v1/merge-risk. Defaults to production. The first two receive this run's analysis and
+      the third its changed files, independently; results are stored as review_guide.json,
+      closed/architecture.json and closed/merge_risk.json, and the guide's request as sent as
+      closed/bundle.json.xz. Merge risk is also summed up in a hidden line of the review comment.
+      Set to an empty string to disable all three.
       Sync's opt-in problem_history calls POST /v1/briefing on the same URL.
     required: false
     default: 'https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/'
@@ -809,6 +811,8 @@ runs:
         HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
         # Analysed files whose content hash differs between base and head, from the render step.
         ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
+        # Written by the remote features step when the service answered; absent otherwise.
+        MERGE_RISK_FILE: ${{ steps.review_artifact.outputs.artifact_dir }}/closed/merge_risk.json
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-comment.sh"
 
     - name: Post review comment
