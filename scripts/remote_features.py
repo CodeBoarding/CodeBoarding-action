@@ -695,9 +695,9 @@ def keep_bundle(artifact: Path, data: bytes | None) -> None:
 
 
 def run_review_guide(service_url: str, data: bytes, headers: dict, artifact: Path) -> None:
+    """The guide as the service returned it. A run the service has no model for, or whose model step
+    failed, still gets the guide's structure, marked by `words` with what is missing and why."""
     try:
-        if "x-llm-provider" in headers and "x-llm-api-key" not in headers:
-            raise Skip("the service cannot call this run's provider")
         keep_bundle(artifact, data)
         answer = _post(f"{service_url.rstrip('/')}/v1/review-guide", data, headers)
         guide = answer.get("guide")
