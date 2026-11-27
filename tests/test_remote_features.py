@@ -663,6 +663,19 @@ class MergeRiskTests(_ServiceCase):
         self.assertEqual(_read(self.env, "review_guide.json"), GUIDE)
         self.assertEqual(_read(self.env, "closed/architecture.json"), ENVELOPE)
 
+    def test_merge_risk_carries_the_runs_own_provider_as_the_guide_does(self):
+        self.env.update({"LLM": "openai", "OPENAI_API_KEY": "sk-their", "AGENT_MODEL": "gpt-5.5"})
+        service = self.run_service(_answer)
+        [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
+        sent = {name.lower(): value for name, value in request["headers"].items()}
+        self.assertEqual(
+            (sent.get("x-llm-provider"), sent.get("x-llm-api-key"), sent.get("x-llm-model")),
+            ("openai", "sk-their", "gpt-5.5"),
+        )
+        self.env["LLM"] = "hosted"
+        [request] = [sent for sent in self.run_service(_answer).requests if sent["path"] == "/v1/merge-risk"]
+        self.assertNotIn("x-llm-provider", {name.lower() for name in request["headers"]})
+
     def test_a_failed_merge_risk_writes_nothing_and_leaves_the_others_alone(self):
         self.run_service(lambda path, body: (500, {}) if path == "/v1/merge-risk" else _answer(path, body))
         self.assertIsNone(self.result())

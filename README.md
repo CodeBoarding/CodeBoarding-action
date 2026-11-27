@@ -197,7 +197,9 @@ no analysis: only the pull request's title, description and changed files with t
 GitHub lists them. The service counts size and tests itself, asks a fixed nine-question checklist
 about the diff (sign-in and access, billing, stored data, releases, dependency and platform versions,
 public interfaces, calls to other services), has a model decide each answer and a second pass drop
-the false alarms, with a sentence and the changed line behind each risk it keeps. With
+the false alarms, with a sentence and the changed line behind each risk it keeps. With your own
+provider key it sends the same provider headers as the guide: your model makes the decision and the
+review, and the checklist's classifier, which only CodeBoarding's key can reach, is skipped. With
 `closed_features_source: false` it sends neither patches nor the description, only each file's
 path, additions and deletions; a diff too large to send with its patches goes the same way. Without patches the
 checklist cannot run: the answer comes back `partial` with size and tests only, the run logs a

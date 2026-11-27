@@ -813,7 +813,9 @@ def run_merge_risk(service_url: str, ctx: dict, headers: dict, env: dict, artifa
         title, description, files = merge_risk_files(ctx)
         # With source off the description stays on the runner too: it can quote code.
         data = merge_risk_request(ctx, title, description if source_allowed(env) else "", files, source_allowed(env))
-        answer = _post(f"{service_url.rstrip('/')}/v1/merge-risk", data, headers, timeout=120)
+        # The run's own provider, as for the guide: its model decides, and its code reaches no other
+        # model. Headers that cannot be built fail merge risk rather than fall back to ours.
+        answer = _post(f"{service_url.rstrip('/')}/v1/merge-risk", data, {**headers, **model_headers(env)}, timeout=120)
         if not isinstance(answer, dict) or not isinstance(answer.get("facts"), dict):
             raise ValueError("the service returned no merge-risk facts")
         checklist = answer.get("checklist")
