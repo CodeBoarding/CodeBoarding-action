@@ -7,8 +7,9 @@ review_guide.json and the architecture envelope as closed/architecture.json in t
 including partial, skipped and failed results. The guide's request, exactly as sent, is stored as
 closed/bundle.json.xz, so a guide can be generated again from the same inputs. Merge risk is stored as
 closed/merge_risk.json when the service answered, and nothing is written when it did not. It sends
-only the pull request's changed files with their patches, never the analysis, and no patches when the
-workflow turns source off.
+only the pull request's title, description and changed files with their patches, never the
+analysis, and neither patches nor description when the workflow turns source off, in which case the service answers with size and tests
+alone and says its checklist did not run.
 
 What a request sends
 --------------------
@@ -127,9 +128,6 @@ MERGE_RISK_FIELDS = ("filename", "additions", "deletions", "patch")
 # preset, so its patches go before compressing rather than after.
 MERGE_RISK_PRESET = 1
 MERGE_RISK_PATCH_RATIO = 10
-# The most dependency names the review comment's merge-risk line carries. The dashboard reads only
-# whether there are any; the four it names come from the reason's own params.
-MAX_MARKER_DEPS = 20
 # The most the hidden line may take of the review comment, whose body GitHub caps at 65,536 characters.
 MAX_MARKER_CHARS = 8_000
 
@@ -743,31 +741,33 @@ def run_architecture(service_url: str, ctx: dict, data: bytes, headers: dict) ->
         return _no_architecture(ctx, "skipped" if isinstance(error, Skip) else "failed", str(error))
 
 
-def merge_risk_files(ctx: dict) -> list[dict]:
-    """The pull request's changed files as GitHub lists them (at most 3,000, a very large file without
-    its patch), or Skip when the head moved on, since a newer run answers for that head."""
+def merge_risk_files(ctx: dict) -> tuple[str, str, list[dict]]:
+    """The pull request's title, description and changed files as GitHub lists them (at most 3,000, a very large
+    file without its patch), or Skip when the head moved on, since a newer run answers for that head."""
     files: list[dict] = []
     for page in range(1, 31):
         listed = _github_json(f"/repos/{ctx['repo']}/pulls/{ctx['pr']}/files?per_page=100&page={page}")
         files += [{field: changed.get(field) for field in MERGE_RISK_FIELDS} for changed in listed]
         if len(listed) < 100:
             break
-    if _github_json(f"/repos/{ctx['repo']}/pulls/{ctx['pr']}")["head"]["sha"] != ctx["head"]:
+    pull = _github_json(f"/repos/{ctx['repo']}/pulls/{ctx['pr']}")
+    if pull["head"]["sha"] != ctx["head"]:
         raise Skip("the pull request moved on to a newer head")
-    return files
+    return pull.get("title") or "", pull.get("body") or "", files
 
 
 def merge_risk_line(result: dict) -> str | None:
     """The review comment's hidden merge-risk line, for the web platform's dashboard. Compact JSON with
     `<`, `>` and `=` escaped, so nothing in it can end the comment (no `>`, so no `-->`) or match the
-    status line's `key=value` reader; a JSON parser reads the escapes back. None when it would be over
-    MAX_MARKER_CHARS, since a comment has room for 65,536 characters in all."""
+    status line's `key=value` reader; a JSON parser reads the escapes back. It carries what the level
+    needs (the checklist's sensitive yeses, size, the reasons' codes) and leaves the explanations to
+    the artifact. None when it would be over MAX_MARKER_CHARS, since a comment has room for 65,536
+    characters in all."""
     compact = {
-        "v": 1,
+        "v": 2,
         "head": result["headSha"],
+        "checked": result["checklist"] is not None,
         "sensitive": result["sensitive"],
-        "areas": [area["name"] for area in result["facts"].get("areas") or [] if area.get("critical")],
-        "deps": (result["facts"].get("deps") or [])[:MAX_MARKER_DEPS],
         "srcLines": result["facts"].get("srcLines", 0),
         "sourceFiles": result["facts"].get("sourceFiles", 0),
         "patches": result["facts"].get("patches", "all"),
@@ -783,11 +783,18 @@ def merge_risk_line(result: dict) -> str | None:
     return line if len(line) <= MAX_MARKER_CHARS else None
 
 
-def merge_risk_request(ctx: dict, files: list[dict], with_patches: bool) -> bytes:
+def merge_risk_request(ctx: dict, title: str, description: str, files: list[dict], with_patches: bool) -> bytes:
     """The merge-risk request, compressed at MERGE_RISK_PRESET. Its patches go when the workflow turns
     source off, or when the file list is over either limit with them: before compressing when the JSON
     alone is over MERGE_RISK_PATCH_RATIO times the compressed limit. Sizes and paths count without them."""
-    body = {"version": 1, "repo": ctx["repo"], "pr": ctx["pr"], "files": files}
+    body = {
+        "version": 1,
+        "repo": ctx["repo"],
+        "pr": ctx["pr"],
+        "title": title,
+        "description": description,
+        "files": files,
+    }
     if with_patches:
         clearly_over = MERGE_RISK_PATCH_RATIO * MAX_COMPRESSED_BYTES
         try:
@@ -803,30 +810,35 @@ def run_merge_risk(service_url: str, ctx: dict, headers: dict, env: dict, artifa
     the step's `merge_risk_line` output. It needs neither the analysis nor the guide, so it runs whatever
     happens to them, and a failure is one line in the log."""
     try:
-        data = merge_risk_request(ctx, merge_risk_files(ctx), source_allowed(env))
-        answer = _post(f"{service_url.rstrip('/')}/v1/merge-risk", data, headers, timeout=120)
+        title, description, files = merge_risk_files(ctx)
+        # With source off the description stays on the runner too: it can quote code.
+        data = merge_risk_request(ctx, title, description if source_allowed(env) else "", files, source_allowed(env))
+        # The run's own provider, as for the guide: its model decides, and its code reaches no other
+        # model. Headers that cannot be built fail merge risk rather than fall back to ours.
+        answer = _post(f"{service_url.rstrip('/')}/v1/merge-risk", data, {**headers, **model_headers(env)}, timeout=120)
         if not isinstance(answer, dict) or not isinstance(answer.get("facts"), dict):
             raise ValueError("the service returned no merge-risk facts")
+        checklist = answer.get("checklist")
         result = {
             "feature": "merge-risk",
-            "schema": 1,
+            "schema": 2,
             "repo": ctx["repo"],
             "pr": ctx["pr"],
             "headSha": ctx["head"],
+            "status": answer.get("status") or "ok",
             "facts": answer["facts"],
+            "checklist": checklist if isinstance(checklist, dict) else None,
             "reasons": answer.get("reasons") if isinstance(answer.get("reasons"), list) else [],
-            "sensitive": bool(answer.get("sensitive")),
+            "sensitive": [str(question) for question in answer.get("sensitive") or [] if isinstance(question, str)],
         }
-        patches = answer["facts"].get("patches", "all")
-        if patches != "all":
-            why = (
-                "source is off for this workflow"
-                if not source_allowed(env)
-                else "the diff was too large" if patches == "none" else "GitHub left some out"
-            )
-            print(
-                f"::notice::merge-risk read {patches} of the patches ({why}): mentions and new dependencies not checked"
-            )
+        for step in ("unchecked", "unhinted", "undecided", "unreviewed"):
+            if isinstance(answer.get(step), str):
+                result[step] = answer[step]
+        if "unchecked" in result:
+            why = "source is off for this workflow" if not source_allowed(env) else result["unchecked"]
+            print(f"::notice::merge-risk checklist did not run ({why}): the level reads as not assessed")
+        elif result["facts"].get("patches", "all") != "all":
+            print("::notice::merge-risk read some of the patches: GitHub or the size limit left some out")
         # Both are built before either is written, so the artifact and the comment never disagree.
         line, stored = merge_risk_line(result), json.dumps(result, ensure_ascii=False, indent=1)
         path = artifact / "closed" / MERGE_RISK_NAME

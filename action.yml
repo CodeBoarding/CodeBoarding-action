@@ -147,7 +147,7 @@ inputs:
     description: >-
       Experimental. Service base URL for POST /v1/review-guide, POST /v1/architecture and
       POST /v1/merge-risk. Defaults to production. The first two receive this run's analysis and
-      the third its changed files, independently; results are stored as review_guide.json,
+      the third its title, description and changed files, independently; results are stored as review_guide.json,
       closed/architecture.json and closed/merge_risk.json, and the guide's request as sent as
       closed/bundle.json.xz. Merge risk is also summed up in a hidden line of the review comment.
       Set to an empty string to disable all three.

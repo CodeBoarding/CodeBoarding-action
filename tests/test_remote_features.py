@@ -582,10 +582,33 @@ class EndpointTests(_ServiceCase):
             self.assertEqual(_read(self.env, "closed/architecture.json")["status"], "skipped")
 
 
+RISK_CHECKLIST = {
+    "model": "typesafe/jev-1.14-20261014",
+    "version": 1,
+    "probabilities": {"signin": 0.1, "contract": 0.95},
+    "cut": False,
+    "yes": ["contract"],
+    "decided": True,
+    "reviewed": True,
+}
 RISK_ANSWER = {
-    "facts": {"files": 1, "sourceFiles": 1, "srcLines": 60, "tests": 0, "dirs": 1, "areas": [], "deps": []},
-    "reasons": [{"level": "low", "code": "no_tests", "params": {"srcLines": 60}}],
-    "sensitive": False,
+    "status": "ok",
+    "facts": {"files": 1, "sourceFiles": 1, "srcLines": 60, "tests": 0, "patches": "all"},
+    "checklist": RISK_CHECKLIST,
+    "reasons": [
+        {
+            "level": "medium",
+            "code": "checklist",
+            "params": {"question": "contract"},
+            "file": "app.py",
+            "line": 1,
+            "side": "RIGHT",
+            "explanation": "Adds a public route.",
+        },
+        {"level": "low", "code": "no_tests", "params": {"srcLines": 60}},
+    ],
+    "sensitive": [],
+    "usage": {"checklist": {"inputTokens": 900, "cost": 0.00004}},
 }
 RISK_FILES = [{"filename": "app.py", "additions": 60, "deletions": 0, "patch": "@@ -0,0 +1 @@\n+x"}]
 
@@ -602,7 +625,9 @@ class MergeRiskTests(_ServiceCase):
 
     def setUp(self):
         super().setUp()
-        patch = mock.patch.object(remote_features, "merge_risk_files", return_value=RISK_FILES)
+        patch = mock.patch.object(
+            remote_features, "merge_risk_files", return_value=("Add a route", "Adds GET /items.", RISK_FILES)
+        )
         self.files = patch.start()
         self.addCleanup(patch.stop)
         self.env["GITHUB_OUTPUT"] = str(Path(self.env["ARTIFACT_DIR"]).parent / "github_output")
@@ -621,13 +646,35 @@ class MergeRiskTests(_ServiceCase):
         [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
         self.assertEqual(request["headers"]["Authorization"], "Bearer ghs_run")
         self.assertEqual(
-            json.loads(lzma.decompress(request["body"])), {"version": 1, "repo": "o/r", "pr": 7, "files": RISK_FILES}
+            json.loads(lzma.decompress(request["body"])),
+            {
+                "version": 1,
+                "repo": "o/r",
+                "pr": 7,
+                "title": "Add a route",
+                "description": "Adds GET /items.",
+                "files": RISK_FILES,
+            },
         )
-        expected = {"feature": "merge-risk", "schema": 1, "repo": "o/r", "pr": 7, "headSha": "H", **RISK_ANSWER}
+        stored = {key: value for key, value in RISK_ANSWER.items() if key != "usage"}
+        expected = {"feature": "merge-risk", "schema": 2, "repo": "o/r", "pr": 7, "headSha": "H", **stored}
         self.assertEqual(self.result(), expected)
         self.assertEqual(self.output(), f"merge_risk_line={remote_features.merge_risk_line(expected)}\n")
         self.assertEqual(_read(self.env, "review_guide.json"), GUIDE)
         self.assertEqual(_read(self.env, "closed/architecture.json"), ENVELOPE)
+
+    def test_merge_risk_carries_the_runs_own_provider_as_the_guide_does(self):
+        self.env.update({"LLM": "openai", "OPENAI_API_KEY": "sk-their", "AGENT_MODEL": "gpt-5.5"})
+        service = self.run_service(_answer)
+        [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
+        sent = {name.lower(): value for name, value in request["headers"].items()}
+        self.assertEqual(
+            (sent.get("x-llm-provider"), sent.get("x-llm-api-key"), sent.get("x-llm-model")),
+            ("openai", "sk-their", "gpt-5.5"),
+        )
+        self.env["LLM"] = "hosted"
+        [request] = [sent for sent in self.run_service(_answer).requests if sent["path"] == "/v1/merge-risk"]
+        self.assertNotIn("x-llm-provider", {name.lower() for name in request["headers"]})
 
     def test_a_failed_merge_risk_writes_nothing_and_leaves_the_others_alone(self):
         self.run_service(lambda path, body: (500, {}) if path == "/v1/merge-risk" else _answer(path, body))
@@ -647,11 +694,15 @@ class MergeRiskTests(_ServiceCase):
         self.assertEqual(_read(self.env, "closed/architecture.json")["status"], "failed")
 
     def test_without_room_for_patches_it_sends_the_files_without_them(self):
-        self.files.return_value = [{**RISK_FILES[0], "patch": os.urandom(3000).hex()}]
+        self.files.return_value = ("Add a route", "", [{**RISK_FILES[0], "patch": os.urandom(3000).hex()}])
         with mock.patch.object(remote_features, "MAX_COMPRESSED_BYTES", 2000):
             service = self.run_service(_answer)
         [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
         self.assertEqual(json.loads(lzma.decompress(request["body"]))["files"], [{**RISK_FILES[0], "patch": None}])
+
+    def sent_description(self, service):
+        [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
+        return json.loads(lzma.decompress(request["body"]))["description"]
 
     def sent_files(self, service):
         [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
@@ -662,6 +713,7 @@ class MergeRiskTests(_ServiceCase):
             self.env["CLOSED_FEATURES_SOURCE"] = setting
             service = self.run_service(_answer)
             self.assertEqual(self.sent_files(service), [{**RISK_FILES[0], "patch": None}])
+            self.assertEqual(self.sent_description(service), "")
             self.assertEqual(self.result()["facts"], RISK_ANSWER["facts"])
         self.env["CLOSED_FEATURES_SOURCE"] = "true"
         self.assertEqual(self.sent_files(self.run_service(_answer)), RISK_FILES)
@@ -675,21 +727,29 @@ class MergeRiskTests(_ServiceCase):
             self.assertEqual(remote_features.main(self.env), 0)
         return service, [call.args[0] for call in log.call_args_list]
 
-    def test_withheld_patches_are_logged_and_ride_on_the_line(self):
-        withheld = {**RISK_ANSWER, "facts": {**RISK_ANSWER["facts"], "patches": "none"}}
+    def test_a_checklist_that_did_not_run_is_logged_stored_and_rides_on_the_line(self):
+        unchecked = {
+            **RISK_ANSWER,
+            "status": "partial",
+            "unchecked": "no_patches",
+            "checklist": None,
+            "facts": {**RISK_ANSWER["facts"], "patches": "none"},
+            "reasons": [RISK_ANSWER["reasons"][1]],
+        }
         self.env["CLOSED_FEATURES_SOURCE"] = "false"
         _, printed = self.run_logged(
-            lambda path, body: (200, withheld) if path == "/v1/merge-risk" else _answer(path, body)
+            lambda path, body: (200, unchecked) if path == "/v1/merge-risk" else _answer(path, body)
         )
         self.assertIn(
-            "::notice::merge-risk read none of the patches (source is off for this workflow): "
-            "mentions and new dependencies not checked",
+            "::notice::merge-risk checklist did not run (source is off for this workflow): "
+            "the level reads as not assessed",
             printed,
         )
-        self.assertIn('"patches":"none"', self.output())
+        self.assertEqual((self.result()["status"], self.result()["unchecked"]), ("partial", "no_patches"))
+        self.assertIn('"checked":false', self.output())
         self.env["CLOSED_FEATURES_SOURCE"] = "true"
         _, printed = self.run_logged(_answer)
-        self.assertFalse([line for line in printed if "read none" in line or "read some" in line])
+        self.assertFalse([line for line in printed if "merge-risk" in line])
 
     def test_a_credentials_failure_is_logged_for_merge_risk_too(self):
         with mock.patch.object(remote_features, "_bearer", side_effect=RuntimeError("no OIDC token")):
@@ -739,7 +799,7 @@ class MergeRiskTests(_ServiceCase):
 
         started = time.monotonic()
         with mock.patch.object(lzma, "compress", side_effect=recording):
-            data = remote_features.merge_risk_request({"repo": "o/r", "pr": 7}, files, with_patches=True)
+            data = remote_features.merge_risk_request({"repo": "o/r", "pr": 7}, "t", "", files, with_patches=True)
         elapsed = time.monotonic() - started
         sent = json.loads(lzma.decompress(data))["files"]
         self.assertEqual(sent, [{**file, "patch": None} for file in files])
@@ -759,12 +819,12 @@ class MergeRiskFilesTests(unittest.TestCase):
 
         def github(path):
             if path.endswith("/pulls/7"):
-                return {"head": {"sha": "H"}}
+                return {"head": {"sha": "H"}, "title": "Add files", "body": "Why."}
             return pages[path.rsplit("&", 1)[1]]
 
         with mock.patch.object(remote_features, "_github_json", side_effect=github):
-            files = remote_features.merge_risk_files({"repo": "o/r", "pr": 7, "head": "H"})
-        self.assertEqual(len(files), 130)
+            title, description, files = remote_features.merge_risk_files({"repo": "o/r", "pr": 7, "head": "H"})
+        self.assertEqual((title, description, len(files)), ("Add files", "Why.", 130))
         self.assertEqual(files[129], {"filename": "f129.py", "additions": 129, "deletions": 0, "patch": None})
 
     def test_a_head_that_moved_on_is_skipped(self):
@@ -780,8 +840,9 @@ class MergeRiskLineTests(unittest.TestCase):
     def test_a_negative_number_reads_back_and_an_oversized_line_is_left_out(self):
         result = {
             "headSha": "abc123",
-            "sensitive": False,
-            "facts": {"srcLines": 3, "sourceFiles": 1, "deps": [], "areas": []},
+            "sensitive": [],
+            "checklist": None,
+            "facts": {"srcLines": 3, "sourceFiles": 1},
             "reasons": [{"level": "low", "code": "future_rule", "params": {"delta": -4}}],
         }
         line = remote_features.merge_risk_line(result)
@@ -791,17 +852,19 @@ class MergeRiskLineTests(unittest.TestCase):
         self.assertIsNone(remote_features.merge_risk_line(huge))
 
     def test_nothing_in_the_line_can_end_the_comment_and_json_reads_it_back(self):
-        reason = {"level": "medium", "code": "area_changed", "params": {"files": ["a-->b<c>=.ts"]}, "file": "x"}
+        reason = {
+            "level": "medium",
+            "code": "checklist",
+            "params": {"question": "a-->b<c>=d"},
+            "file": "x",
+            "line": 3,
+            "explanation": "Calls --> the <billing> service.",
+        }
         result = {
             "headSha": "abc123",
-            "sensitive": True,
-            "facts": {
-                "srcLines": 1815,
-                "sourceFiles": 31,
-                "tests": 0,
-                "deps": ["zod"],
-                "areas": [{"name": "Sign-in and access", "critical": True}, {"name": "Review", "critical": False}],
-            },
+            "sensitive": ["signin"],
+            "checklist": RISK_CHECKLIST,
+            "facts": {"srcLines": 1815, "sourceFiles": 31, "tests": 0},
             "reasons": [reason],
         }
         match = re.fullmatch(r"<!-- codeboarding:merge_risk (\{.*\}) -->", remote_features.merge_risk_line(result))
@@ -811,15 +874,14 @@ class MergeRiskLineTests(unittest.TestCase):
         self.assertEqual(
             json.loads(payload),
             {
-                "v": 1,
+                "v": 2,
                 "head": "abc123",
-                "sensitive": True,
-                "areas": ["Sign-in and access"],
-                "deps": ["zod"],
+                "checked": True,
+                "sensitive": ["signin"],
                 "srcLines": 1815,
                 "sourceFiles": 31,
                 "patches": "all",
-                "reasons": [{"level": "medium", "code": "area_changed", "params": reason["params"]}],
+                "reasons": [{"level": "medium", "code": "checklist", "params": reason["params"]}],
             },
         )
 
