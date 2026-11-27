@@ -585,9 +585,11 @@ class EndpointTests(_ServiceCase):
 RISK_CHECKLIST = {
     "model": "typesafe/jev-1.14-20261014",
     "version": 1,
-    "answers": {"signin": 0.1, "contract": 0.95},
+    "probabilities": {"signin": 0.1, "contract": 0.95},
+    "cut": False,
     "yes": ["contract"],
-    "partial": False,
+    "decided": True,
+    "reviewed": True,
 }
 RISK_ANSWER = {
     "status": "ok",
@@ -623,7 +625,9 @@ class MergeRiskTests(_ServiceCase):
 
     def setUp(self):
         super().setUp()
-        patch = mock.patch.object(remote_features, "merge_risk_files", return_value=("Add a route", RISK_FILES))
+        patch = mock.patch.object(
+            remote_features, "merge_risk_files", return_value=("Add a route", "Adds GET /items.", RISK_FILES)
+        )
         self.files = patch.start()
         self.addCleanup(patch.stop)
         self.env["GITHUB_OUTPUT"] = str(Path(self.env["ARTIFACT_DIR"]).parent / "github_output")
@@ -643,7 +647,14 @@ class MergeRiskTests(_ServiceCase):
         self.assertEqual(request["headers"]["Authorization"], "Bearer ghs_run")
         self.assertEqual(
             json.loads(lzma.decompress(request["body"])),
-            {"version": 1, "repo": "o/r", "pr": 7, "title": "Add a route", "files": RISK_FILES},
+            {
+                "version": 1,
+                "repo": "o/r",
+                "pr": 7,
+                "title": "Add a route",
+                "description": "Adds GET /items.",
+                "files": RISK_FILES,
+            },
         )
         stored = {key: value for key, value in RISK_ANSWER.items() if key != "usage"}
         expected = {"feature": "merge-risk", "schema": 2, "repo": "o/r", "pr": 7, "headSha": "H", **stored}
@@ -670,11 +681,15 @@ class MergeRiskTests(_ServiceCase):
         self.assertEqual(_read(self.env, "closed/architecture.json")["status"], "failed")
 
     def test_without_room_for_patches_it_sends_the_files_without_them(self):
-        self.files.return_value = ("Add a route", [{**RISK_FILES[0], "patch": os.urandom(3000).hex()}])
+        self.files.return_value = ("Add a route", "", [{**RISK_FILES[0], "patch": os.urandom(3000).hex()}])
         with mock.patch.object(remote_features, "MAX_COMPRESSED_BYTES", 2000):
             service = self.run_service(_answer)
         [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
         self.assertEqual(json.loads(lzma.decompress(request["body"]))["files"], [{**RISK_FILES[0], "patch": None}])
+
+    def sent_description(self, service):
+        [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
+        return json.loads(lzma.decompress(request["body"]))["description"]
 
     def sent_files(self, service):
         [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
@@ -685,6 +700,7 @@ class MergeRiskTests(_ServiceCase):
             self.env["CLOSED_FEATURES_SOURCE"] = setting
             service = self.run_service(_answer)
             self.assertEqual(self.sent_files(service), [{**RISK_FILES[0], "patch": None}])
+            self.assertEqual(self.sent_description(service), "")
             self.assertEqual(self.result()["facts"], RISK_ANSWER["facts"])
         self.env["CLOSED_FEATURES_SOURCE"] = "true"
         self.assertEqual(self.sent_files(self.run_service(_answer)), RISK_FILES)
@@ -770,7 +786,7 @@ class MergeRiskTests(_ServiceCase):
 
         started = time.monotonic()
         with mock.patch.object(lzma, "compress", side_effect=recording):
-            data = remote_features.merge_risk_request({"repo": "o/r", "pr": 7}, "t", files, with_patches=True)
+            data = remote_features.merge_risk_request({"repo": "o/r", "pr": 7}, "t", "", files, with_patches=True)
         elapsed = time.monotonic() - started
         sent = json.loads(lzma.decompress(data))["files"]
         self.assertEqual(sent, [{**file, "patch": None} for file in files])
@@ -790,12 +806,12 @@ class MergeRiskFilesTests(unittest.TestCase):
 
         def github(path):
             if path.endswith("/pulls/7"):
-                return {"head": {"sha": "H"}, "title": "Add files"}
+                return {"head": {"sha": "H"}, "title": "Add files", "body": "Why."}
             return pages[path.rsplit("&", 1)[1]]
 
         with mock.patch.object(remote_features, "_github_json", side_effect=github):
-            title, files = remote_features.merge_risk_files({"repo": "o/r", "pr": 7, "head": "H"})
-        self.assertEqual((title, len(files)), ("Add files", 130))
+            title, description, files = remote_features.merge_risk_files({"repo": "o/r", "pr": 7, "head": "H"})
+        self.assertEqual((title, description, len(files)), ("Add files", "Why.", 130))
         self.assertEqual(files[129], {"filename": "f129.py", "additions": 129, "deletions": 0, "patch": None})
 
     def test_a_head_that_moved_on_is_skipped(self):

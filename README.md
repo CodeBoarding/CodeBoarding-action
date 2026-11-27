@@ -193,12 +193,13 @@ The guide's request body, the same xz-compressed bytes the service receives, is 
 never carries `source.json`, and it is left out when no guide request goes out.
 
 A third request, `POST /v1/merge-risk`, goes to the same base URL at the same time and sends
-no analysis: only the pull request's title and changed files with their patches, as GitHub lists
-them. The service counts size and tests itself and asks a fixed nine-question checklist about the
-diff (sign-in and access, billing, stored data, releases, dependency and platform versions, public
-interfaces, calls to other services), with a sentence and the changed line behind each yes. With
-`closed_features_source: false` it sends no patches, only each file's path, additions and
-deletions; a diff too large to send with its patches goes the same way. Without patches the
+no analysis: only the pull request's title, description and changed files with their patches, as
+GitHub lists them. The service counts size and tests itself, asks a fixed nine-question checklist
+about the diff (sign-in and access, billing, stored data, releases, dependency and platform versions,
+public interfaces, calls to other services), has a model decide each answer and a second pass drop
+the false alarms, with a sentence and the changed line behind each risk it keeps. With
+`closed_features_source: false` it sends neither patches nor the description, only each file's
+path, additions and deletions; a diff too large to send with its patches goes the same way. Without patches the
 checklist cannot run: the answer comes back `partial` with size and tests only, the run logs a
 notice, and the web platform shows the level as not assessed rather than reading the silence as
 clean. This input does not keep code from the review guide, whose request carries the changed files

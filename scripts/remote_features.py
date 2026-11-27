@@ -7,8 +7,8 @@ review_guide.json and the architecture envelope as closed/architecture.json in t
 including partial, skipped and failed results. The guide's request, exactly as sent, is stored as
 closed/bundle.json.xz, so a guide can be generated again from the same inputs. Merge risk is stored as
 closed/merge_risk.json when the service answered, and nothing is written when it did not. It sends
-only the pull request's title and changed files with their patches, never the analysis, and no
-patches when the workflow turns source off, in which case the service answers with size and tests
+only the pull request's title, description and changed files with their patches, never the
+analysis, and neither patches nor description when the workflow turns source off, in which case the service answers with size and tests
 alone and says its checklist did not run.
 
 What a request sends
@@ -741,8 +741,8 @@ def run_architecture(service_url: str, ctx: dict, data: bytes, headers: dict) ->
         return _no_architecture(ctx, "skipped" if isinstance(error, Skip) else "failed", str(error))
 
 
-def merge_risk_files(ctx: dict) -> tuple[str, list[dict]]:
-    """The pull request's title and its changed files as GitHub lists them (at most 3,000, a very large
+def merge_risk_files(ctx: dict) -> tuple[str, str, list[dict]]:
+    """The pull request's title, description and changed files as GitHub lists them (at most 3,000, a very large
     file without its patch), or Skip when the head moved on, since a newer run answers for that head."""
     files: list[dict] = []
     for page in range(1, 31):
@@ -753,7 +753,7 @@ def merge_risk_files(ctx: dict) -> tuple[str, list[dict]]:
     pull = _github_json(f"/repos/{ctx['repo']}/pulls/{ctx['pr']}")
     if pull["head"]["sha"] != ctx["head"]:
         raise Skip("the pull request moved on to a newer head")
-    return pull.get("title") or "", files
+    return pull.get("title") or "", pull.get("body") or "", files
 
 
 def merge_risk_line(result: dict) -> str | None:
@@ -783,11 +783,18 @@ def merge_risk_line(result: dict) -> str | None:
     return line if len(line) <= MAX_MARKER_CHARS else None
 
 
-def merge_risk_request(ctx: dict, title: str, files: list[dict], with_patches: bool) -> bytes:
+def merge_risk_request(ctx: dict, title: str, description: str, files: list[dict], with_patches: bool) -> bytes:
     """The merge-risk request, compressed at MERGE_RISK_PRESET. Its patches go when the workflow turns
     source off, or when the file list is over either limit with them: before compressing when the JSON
     alone is over MERGE_RISK_PATCH_RATIO times the compressed limit. Sizes and paths count without them."""
-    body = {"version": 1, "repo": ctx["repo"], "pr": ctx["pr"], "title": title, "files": files}
+    body = {
+        "version": 1,
+        "repo": ctx["repo"],
+        "pr": ctx["pr"],
+        "title": title,
+        "description": description,
+        "files": files,
+    }
     if with_patches:
         clearly_over = MERGE_RISK_PATCH_RATIO * MAX_COMPRESSED_BYTES
         try:
@@ -803,8 +810,9 @@ def run_merge_risk(service_url: str, ctx: dict, headers: dict, env: dict, artifa
     the step's `merge_risk_line` output. It needs neither the analysis nor the guide, so it runs whatever
     happens to them, and a failure is one line in the log."""
     try:
-        title, files = merge_risk_files(ctx)
-        data = merge_risk_request(ctx, title, files, source_allowed(env))
+        title, description, files = merge_risk_files(ctx)
+        # With source off the description stays on the runner too: it can quote code.
+        data = merge_risk_request(ctx, title, description if source_allowed(env) else "", files, source_allowed(env))
         answer = _post(f"{service_url.rstrip('/')}/v1/merge-risk", data, headers, timeout=120)
         if not isinstance(answer, dict) or not isinstance(answer.get("facts"), dict):
             raise ValueError("the service returned no merge-risk facts")
@@ -821,7 +829,7 @@ def run_merge_risk(service_url: str, ctx: dict, headers: dict, env: dict, artifa
             "reasons": answer.get("reasons") if isinstance(answer.get("reasons"), list) else [],
             "sensitive": [str(question) for question in answer.get("sensitive") or [] if isinstance(question, str)],
         }
-        for step in ("unchecked", "unexplained"):
+        for step in ("unchecked", "unhinted", "undecided", "unreviewed"):
             if isinstance(answer.get(step), str):
                 result[step] = answer[step]
         if "unchecked" in result:
