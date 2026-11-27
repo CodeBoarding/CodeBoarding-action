@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import metadata
@@ -651,6 +652,84 @@ class MergeRiskTests(_ServiceCase):
             service = self.run_service(_answer)
         [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
         self.assertEqual(json.loads(lzma.decompress(request["body"]))["files"], [{**RISK_FILES[0], "patch": None}])
+
+    def sent_files(self, service):
+        [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
+        return json.loads(lzma.decompress(request["body"]))["files"]
+
+    def test_with_source_turned_off_it_sends_the_files_without_patches(self):
+        for setting in ("false", " False\n"):
+            self.env["CLOSED_FEATURES_SOURCE"] = setting
+            service = self.run_service(_answer)
+            self.assertEqual(self.sent_files(service), [{**RISK_FILES[0], "patch": None}])
+            self.assertEqual(self.result()["facts"], RISK_ANSWER["facts"])
+        self.env["CLOSED_FEATURES_SOURCE"] = "true"
+        self.assertEqual(self.sent_files(self.run_service(_answer)), RISK_FILES)
+
+    def run_logged(self, respond):
+        """run_service, and the lines it printed."""
+        service = _Server(respond)
+        self.addCleanup(service.close)
+        self.env["CLOSED_FUNCTIONS_URL"] = service.url
+        with mock.patch("builtins.print") as log:
+            self.assertEqual(remote_features.main(self.env), 0)
+        return service, [call.args[0] for call in log.call_args_list]
+
+    def test_a_credentials_failure_is_logged_for_merge_risk_too(self):
+        with mock.patch.object(remote_features, "_bearer", side_effect=RuntimeError("no OIDC token")):
+            service, printed = self.run_logged(_answer)
+        reason = "getting credentials failed: RuntimeError: no OIDC token"
+        self.assertIn(f"::notice::merge-risk failed: {reason}", printed)
+        self.assertIn(f"::notice::review-guide failed: {reason}", printed)
+        self.assertEqual(service.requests, [])
+        self.assertIsNone(self.result())
+        self.assertEqual(_read(self.env, "closed/architecture.json")["status"], "failed")
+
+    def test_an_answer_the_line_cannot_carry_writes_neither_file_nor_line(self):
+        unreadable = {**RISK_ANSWER, "reasons": [{"code": "no_tests"}]}  # no level
+        _, printed = self.run_logged(
+            lambda path, body: (200, unreadable) if path == "/v1/merge-risk" else _answer(path, body)
+        )
+        self.assertIsNone(self.result())
+        self.assertEqual(self.output(), "")
+        self.assertIn("::notice::merge-risk failed: 'level'", printed)
+
+    def test_merge_risk_compresses_fast_and_the_guide_as_before(self):
+        presets = {}
+        compress = lzma.compress
+
+        def recording(data, preset):
+            presets[json.loads(data).get("files").__class__.__name__] = preset
+            return compress(data, preset=preset)
+
+        with mock.patch.object(lzma, "compress", side_effect=recording):
+            self.run_service(_answer)
+        # Merge risk sends a list of files; the guide and architecture a dict of named files.
+        self.assertEqual(presets, {"list": remote_features.MERGE_RISK_PRESET, "dict": 9 | lzma.PRESET_EXTREME})
+
+    def test_a_huge_diff_goes_without_patches_compressed_once_and_quickly(self):
+        clearly_over = remote_features.MERGE_RISK_PATCH_RATIO * remote_features.MAX_COMPRESSED_BYTES
+        patch_bytes = 1_000_000
+        files = [
+            {"filename": f"gen/f{index}.py", "additions": 20_000, "deletions": 0, "patch": "+" * patch_bytes}
+            for index in range(clearly_over // patch_bytes + 1)
+        ]
+        compressed = []
+        compress = lzma.compress
+
+        def recording(data, preset):
+            compressed.append(len(data))
+            return compress(data, preset=preset)
+
+        started = time.monotonic()
+        with mock.patch.object(lzma, "compress", side_effect=recording):
+            data = remote_features.merge_risk_request({"repo": "o/r", "pr": 7}, files, with_patches=True)
+        elapsed = time.monotonic() - started
+        sent = json.loads(lzma.decompress(data))["files"]
+        self.assertEqual(sent, [{**file, "patch": None} for file in files])
+        self.assertEqual(len(compressed), 1)  # only the list without patches
+        self.assertLess(compressed[0], 10_000)
+        self.assertLess(elapsed, 5)
 
 
 class MergeRiskFilesTests(unittest.TestCase):

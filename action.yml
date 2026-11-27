@@ -159,7 +159,8 @@ inputs:
       Whether architecture checks may read this repository's source, for checks that
       need the whole tree and to verify a finding. Only the architecture request carries it, capped in
       size, and the service keeps nothing. The model sees the code around a finding, never the tree.
-      With 'false' those checks and the model review do not run, and the result says so.
+      With 'false' those checks and the model review do not run, and the result says so. Merge
+      risk then sends the changed files' paths and line counts without their patches.
     required: false
     default: 'true'
   problem_history:

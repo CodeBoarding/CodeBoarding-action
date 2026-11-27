@@ -7,7 +7,8 @@ review_guide.json and the architecture envelope as closed/architecture.json in t
 including partial, skipped and failed results. The guide's request, exactly as sent, is stored as
 closed/bundle.json.xz, so a guide can be generated again from the same inputs. Merge risk is stored as
 closed/merge_risk.json when the service answered, and nothing is written when it did not. It sends
-only the pull request's changed files with their patches, never the analysis.
+only the pull request's changed files with their patches, never the analysis, and no patches when the
+workflow turns source off.
 
 What a request sends
 --------------------
@@ -44,7 +45,8 @@ Size limits
   These bundles compress about 10:1, but no tighter cut-off holds for every request.
 - xz at this preset takes about 700 MB and seconds per 10 MB, so a run compresses one body at a time and
   each at most once: the body without source, which both features send, and architecture's with source
-  when there is source. When that one does not fit, architecture sends the shared one.
+  when there is source. When that one does not fit, architecture sends the shared one. Merge risk's
+  request compresses beside them at MERGE_RISK_PRESET, which needs a few MB of memory.
 - MAX_FILES: how many changed files have their contents sent; past it a feature reads diffs only.
 - MAX_FILE_BYTES: a larger file is sent neither in files.json nor in source.json.
 - MAX_SOURCE_BYTES: the most source.json holds; past it source is not sent.
@@ -120,6 +122,11 @@ BUNDLE_NAME = "bundle.json.xz"
 MAX_MERGE_RISK_JSON_BYTES = 64 * 1024 * 1024
 MERGE_RISK_NAME = "merge_risk.json"
 MERGE_RISK_FIELDS = ("filename", "additions", "deletions", "patch")
+# Merge risk keeps no request, so it compresses at xz's fast preset (about 60 MB/s, where 9e is 3 MB/s).
+# A file list over this many times the compressed limit needs a better ratio than patches get at that
+# preset, so its patches go before compressing rather than after.
+MERGE_RISK_PRESET = 1
+MERGE_RISK_PATCH_RATIO = 10
 # The most dependency names the review comment's merge-risk line carries; the dashboard shows four.
 MAX_MARKER_DEPS = 20
 
@@ -522,9 +529,14 @@ def _checkout_file(checkout: Path, name: str) -> Path:
     return path
 
 
+def source_allowed(env: dict) -> bool:
+    """Whether the workflow lets the service read this repository's source (`closed_features_source`)."""
+    return env.get("CLOSED_FEATURES_SOURCE", "true").strip().lower() != "false"
+
+
 def collect_source(env: dict) -> tuple[str | None, str | None]:
     """Tracked architecture source, within fixed size and extension limits, or an omission reason."""
-    if env.get("CLOSED_FEATURES_SOURCE", "true").strip().lower() == "false":
+    if not source_allowed(env):
         return None, "turned off by the workflow"
     checkout = Path(env["CHECKOUT_DIR"])
     listed = subprocess.run(["git", "-C", str(checkout), "ls-files", "-z"], capture_output=True, check=True).stdout
@@ -638,13 +650,13 @@ def _post(url: str, body: bytes, headers: dict[str, str], timeout: int = 600) ->
         raise RuntimeError(reason) from error
 
 
-def _encode(body: dict, max_json_bytes: int, what: str = "bundle") -> bytes:
+def _encode(body: dict, max_json_bytes: int, what: str = "bundle", preset: int = 9 | lzma.PRESET_EXTREME) -> bytes:
     """The request as sent, xz-compressed JSON, or TooLarge when it is over either of the service's
     limits. The JSON is measured before compressing it, which is the slow part, and it is compressed once."""
     text = json.dumps(body).encode()
     if len(text) > max_json_bytes:
         raise TooLarge(f"its {what} is {len(text) / 1e6:.0f} MB of JSON, over the service's limit")
-    data = lzma.compress(text, preset=9 | lzma.PRESET_EXTREME)
+    data = lzma.compress(text, preset=preset)
     if len(data) > MAX_COMPRESSED_BYTES:
         message = f"its {what} is {len(data) / 1e6:.1f} MB compressed, over the service's limit"
         raise TooLarge(message, fits=len(text) * MAX_COMPRESSED_BYTES // len(data))
@@ -765,17 +777,27 @@ def merge_risk_line(result: dict) -> str:
     return f"<!-- codeboarding:merge_risk {text} -->"
 
 
+def merge_risk_request(ctx: dict, files: list[dict], with_patches: bool) -> bytes:
+    """The merge-risk request, compressed at MERGE_RISK_PRESET. Its patches go when the workflow turns
+    source off, or when the file list is over either limit with them: before compressing when the JSON
+    alone is over MERGE_RISK_PATCH_RATIO times the compressed limit. Sizes and paths count without them."""
+    body = {"version": 1, "repo": ctx["repo"], "pr": ctx["pr"], "files": files}
+    if with_patches:
+        clearly_over = MERGE_RISK_PATCH_RATIO * MAX_COMPRESSED_BYTES
+        try:
+            return _encode(body, min(MAX_MERGE_RISK_JSON_BYTES, clearly_over), "file list", MERGE_RISK_PRESET)
+        except TooLarge:
+            pass
+    without_patches = [{**file, "patch": None} for file in files]
+    return _encode({**body, "files": without_patches}, MAX_MERGE_RISK_JSON_BYTES, "file list", MERGE_RISK_PRESET)
+
+
 def run_merge_risk(service_url: str, ctx: dict, headers: dict, env: dict, artifact: Path) -> None:
     """Merge risk at this head, written to closed/merge_risk.json and handed to the review comment as
     the step's `merge_risk_line` output. It needs neither the analysis nor the guide, so it runs whatever
     happens to them, and a failure is one line in the log."""
     try:
-        files = merge_risk_files(ctx)
-        body = {"version": 1, "repo": ctx["repo"], "pr": ctx["pr"], "files": files}
-        try:
-            data = _encode(body, MAX_MERGE_RISK_JSON_BYTES, "file list")
-        except TooLarge:  # the sizes and paths still count without the patches
-            data = _encode({**body, "files": [{**file, "patch": None} for file in files]}, MAX_MERGE_RISK_JSON_BYTES)
+        data = merge_risk_request(ctx, merge_risk_files(ctx), source_allowed(env))
         answer = _post(f"{service_url.rstrip('/')}/v1/merge-risk", data, headers, timeout=120)
         if not isinstance(answer, dict) or not isinstance(answer.get("facts"), dict):
             raise ValueError("the service returned no merge-risk facts")
@@ -789,14 +811,35 @@ def run_merge_risk(service_url: str, ctx: dict, headers: dict, env: dict, artifa
             "reasons": answer.get("reasons") if isinstance(answer.get("reasons"), list) else [],
             "sensitive": bool(answer.get("sensitive")),
         }
+        # Both are built before either is written, so the artifact and the comment never disagree.
+        line, stored = merge_risk_line(result), json.dumps(result, ensure_ascii=False, indent=1)
         path = artifact / "closed" / MERGE_RISK_NAME
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(result, ensure_ascii=False, indent=1))
+        path.write_text(stored)
         if env.get("GITHUB_OUTPUT"):
             with open(env["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-                output.write(f"merge_risk_line={merge_risk_line(result)}\n")
+                output.write(f"merge_risk_line={line}\n")
     except Exception as error:
         print(f"::notice::merge-risk {'skipped' if isinstance(error, Skip) else 'failed'}: {error}")
+
+
+def _guide_and_architecture(pool, service_url: str, ctx: dict, bearer: dict, env: dict, artifact: Path) -> dict:
+    """Collect the analysis once, ask for the guide and architecture side by side, and return
+    architecture's envelope, which records why when neither request went out."""
+    try:
+        headers = {**bearer, **model_headers(env)}
+        guide_request, architecture_request = _requests(ctx, collect(env), env)
+    except TooLarge as error:
+        print(f"::notice::review-guide skipped: {error}")
+        return _no_architecture(ctx, "skipped", str(error))
+    except Exception as error:
+        reason = f"collecting inputs or credentials failed: {type(error).__name__}: {error}"
+        print(f"::notice::review-guide failed: {reason}")
+        return _no_architecture(ctx, "failed", reason)
+    guide = pool.submit(run_review_guide, service_url, guide_request, headers, artifact)
+    architecture = pool.submit(run_architecture, service_url, ctx, architecture_request, headers)
+    guide.result()
+    return architecture.result()
 
 
 def main(env: dict | None = None) -> int:
@@ -808,25 +851,18 @@ def main(env: dict | None = None) -> int:
         service_url = env["CLOSED_FUNCTIONS_URL"]
         if not service_url.strip():
             return 0
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            try:
-                bearer = _bearer(env)
+        try:
+            bearer = _bearer(env)
+        except Exception as error:  # every request needs it, so each feature says it did not run
+            reason = f"getting credentials failed: {type(error).__name__}: {error}"
+            print(f"::notice::merge-risk failed: {reason}")
+            print(f"::notice::review-guide failed: {reason}")
+            architecture = _no_architecture(ctx, "failed", reason)
+        else:
+            with ThreadPoolExecutor(max_workers=3) as pool:
                 # Before collecting the analysis, which merge risk does not need.
                 pool.submit(run_merge_risk, service_url, ctx, bearer, env, artifact)
-                headers = {**bearer, **model_headers(env)}
-                guide_request, architecture_request = _requests(ctx, collect(env), env)
-            except TooLarge as error:
-                print(f"::notice::review-guide skipped: {error}")
-                architecture = _no_architecture(ctx, "skipped", str(error))
-            except Exception as error:
-                reason = f"collecting inputs or credentials failed: {type(error).__name__}: {error}"
-                print(f"::notice::review-guide failed: {reason}")
-                architecture = _no_architecture(ctx, "failed", reason)
-            else:
-                guide = pool.submit(run_review_guide, service_url, guide_request, headers, artifact)
-                result = pool.submit(run_architecture, service_url, ctx, architecture_request, headers)
-                architecture = result.result()
-                guide.result()
+                architecture = _guide_and_architecture(pool, service_url, ctx, bearer, env, artifact)
         path = artifact / "closed" / "architecture.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(architecture, ensure_ascii=False, indent=1))
