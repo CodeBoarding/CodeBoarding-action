@@ -127,7 +127,8 @@ MERGE_RISK_FIELDS = ("filename", "additions", "deletions", "patch")
 # preset, so its patches go before compressing rather than after.
 MERGE_RISK_PRESET = 1
 MERGE_RISK_PATCH_RATIO = 10
-# The most dependency names the review comment's merge-risk line carries; the dashboard shows four.
+# The most dependency names the review comment's merge-risk line carries. The dashboard reads only
+# whether there are any; the four it names come from the reason's own params.
 MAX_MARKER_DEPS = 20
 # The most the hidden line may take of the review comment, whose body GitHub caps at 65,536 characters.
 MAX_MARKER_CHARS = 8_000
