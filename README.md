@@ -185,7 +185,9 @@ model call, and the run never falls back to CodeBoarding's model.
 The action independently calls `POST /v1/review-guide` and `POST /v1/architecture` on the
 same `review_guide_url` base URL. There is no discovery request. Both receive the same
 required analysis inputs. The guide endpoint returns `{guide, usage, timingsMs}`; the action
-saves the bare guide as `review_guide.json`. Architecture returns `{envelope, usage}`; its
+saves the bare guide as `review_guide.json`. When the service has no model for the run, or the
+model step fails or runs out of time, the guide still carries its structure and says what is
+missing in `words` (`{"status": "missing" | "partial", "reason": ...}`). Architecture returns `{envelope, usage}`; its
 envelope is saved unchanged as `closed/architecture.json`, including partial, skipped and
 failed results. Failure of either request does not prevent the other or fail the review.
 The guide's request body, the same xz-compressed bytes the service receives, is saved as
@@ -198,7 +200,7 @@ dependency/build directories, docs/public/fixtures, minified JS and TypeScript d
 Symlinks are not read. Individual files are capped at 300 KB and source at 16 MB. If adding
 source exceeds the 4.3 MB compressed request limit, it is omitted with a reason; architecture
 still runs with the required inputs. `closed_features_source: false` also omits source.
-An unsupported provider skips the guide, but architecture can still return measured findings.
+An unsupported provider still gets the guide's structure and architecture's measured findings.
 
 ### Providers
 

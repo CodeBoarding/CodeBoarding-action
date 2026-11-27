@@ -501,14 +501,22 @@ class EndpointTests(_ServiceCase):
             self.run_service(lambda p, b: (200, {"guide": GUIDE, "envelope": envelope}))
             self.assertEqual(_read(self.env, "closed/architecture.json"), envelope)
 
-    def test_unsupported_provider_still_gets_measured_architecture(self):
+    def test_unsupported_provider_gets_the_guide_structure_and_measured_architecture(self):
         self.env.update(LLM="litellm", LITELLM_API_KEY="secret")
-        service = self.run_service()
-        self.assertEqual([r["path"] for r in service.requests], ["/v1/architecture"])
-        headers = {k.lower(): v for k, v in service.requests[0]["headers"].items()}
-        self.assertEqual(headers["x-llm-provider"], "litellm")
-        self.assertNotIn("x-llm-api-key", headers)
-        self.assertFalse((Path(self.env["ARTIFACT_DIR"]) / "review_guide.json").exists())
+        structure = {**GUIDE, "words": {"status": "missing", "reason": "no_model"}}
+        service = self.run_service(lambda p, b: (200, {"guide": structure, "envelope": ENVELOPE}))
+        self.assertEqual(sorted(r["path"] for r in service.requests), ["/v1/architecture", "/v1/review-guide"])
+        for request in service.requests:
+            headers = {name.lower(): value for name, value in request["headers"].items()}
+            self.assertEqual(headers["x-llm-provider"], "litellm")
+            self.assertNotIn("x-llm-api-key", headers)
+        self.assertEqual(_read(self.env, "review_guide.json"), structure)
+
+    def test_a_guide_without_the_models_words_is_stored_as_returned(self):
+        for status, reason in (("missing", "model_error"), ("missing", "timeout"), ("partial", "timeout")):
+            structure = {**GUIDE, "words": {"status": status, "reason": reason}}
+            self.run_service(lambda p, b: (200, {"guide": structure, "envelope": ENVELOPE}))
+            self.assertEqual(_read(self.env, "review_guide.json"), structure)
 
     def test_missing_shared_input_records_failure_without_requests(self):
         (Path(self.env["HEAD_ANALYSIS_PATH"]).parent / "static_analysis.pkl").unlink()
@@ -614,10 +622,11 @@ class KeptBundleTests(_ServiceCase):
         self.assertEqual(self.run_service().requests, [])
         self.assert_not_kept()
 
-    def test_not_written_when_the_guide_cannot_call_the_provider(self):
+    def test_kept_when_the_service_cannot_call_the_provider(self):
         self.env.update(LLM="litellm", LITELLM_API_KEY="secret")
-        self.assertEqual([request["path"] for request in self.run_service().requests], ["/v1/architecture"])
-        self.assert_not_kept()
+        service = self.run_service()
+        sent = next(request["body"] for request in service.requests if request["path"] == "/v1/review-guide")
+        self.assertEqual(self.bundle().read_bytes(), sent)
 
     def test_not_written_over_the_service_limit(self):
         with mock.patch.object(remote_features, "MAX_COMPRESSED_BYTES", 1):
