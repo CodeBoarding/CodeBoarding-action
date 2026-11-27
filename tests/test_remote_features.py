@@ -675,6 +675,22 @@ class MergeRiskTests(_ServiceCase):
             self.assertEqual(remote_features.main(self.env), 0)
         return service, [call.args[0] for call in log.call_args_list]
 
+    def test_withheld_patches_are_logged_and_ride_on_the_line(self):
+        withheld = {**RISK_ANSWER, "facts": {**RISK_ANSWER["facts"], "patches": "none"}}
+        self.env["CLOSED_FEATURES_SOURCE"] = "false"
+        _, printed = self.run_logged(
+            lambda path, body: (200, withheld) if path == "/v1/merge-risk" else _answer(path, body)
+        )
+        self.assertIn(
+            "::notice::merge-risk read none of the patches (source is off for this workflow): "
+            "mentions and new dependencies not checked",
+            printed,
+        )
+        self.assertIn('"patches":"none"', self.output())
+        self.env["CLOSED_FEATURES_SOURCE"] = "true"
+        _, printed = self.run_logged(_answer)
+        self.assertFalse([line for line in printed if "read none" in line or "read some" in line])
+
     def test_a_credentials_failure_is_logged_for_merge_risk_too(self):
         with mock.patch.object(remote_features, "_bearer", side_effect=RuntimeError("no OIDC token")):
             service, printed = self.run_logged(_answer)
@@ -789,6 +805,7 @@ class MergeRiskLineTests(unittest.TestCase):
                 "deps": ["zod"],
                 "srcLines": 1815,
                 "sourceFiles": 31,
+                "patches": "all",
                 "reasons": [{"level": "medium", "code": "area_changed", "params": reason["params"]}],
             },
         )

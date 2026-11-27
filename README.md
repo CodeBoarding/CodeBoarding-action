@@ -196,7 +196,10 @@ A third request, `POST /v1/merge-risk`, goes to the same base URL at the same ti
 no analysis: only the pull request's changed files with their patches, as GitHub lists them.
 With `closed_features_source: false` it sends no patches, only each file's path, additions and
 deletions, so the diff's size and the areas its paths fall in still count. A diff too large to
-send with its patches goes the same way.
+send with its patches goes the same way. Without patches the checks that read added code (areas it
+mentions, new dependencies) cannot run: the answer says so in `facts.patches`, the run logs a
+notice, and the web platform shows it rather than reading the silence as clean. This input does not
+keep code from the review guide, whose request carries the changed files at both commits.
 The answer, the diff's merge-risk facts and the reasons they give, is saved as
 `closed/merge_risk.json` with the head it describes, and summed up in one hidden line of the
 review comment, `<!-- codeboarding:merge_risk {json} -->`, which the web platform's dashboard
@@ -422,7 +425,7 @@ The update runs after the baseline is saved, stops itself after 10 minutes and n
 | `codeboarding_analysis_location` | both | `codeboarding_branch` | Where the synced branch's analysis is stored: `codeboarding_branch` (on `codeboarding/baseline`, for the default branch; the code is never written) or `in_place` (committed as `.codeboarding/` on the synced branch). Sync saves it there and review reads it from there. |
 | `warmstart_retention_days` | review | `1` | Days to keep the reusable analysis. Only the next run reads it. |
 | `review_guide_url` | both | `https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/` | Experimental. Shared base URL for `/v1/review-guide`, `/v1/architecture` and `/v1/merge-risk`, and for sync's `/v1/briefing` when `problem_history` is on. Saves `review_guide.json`, `closed/architecture.json`, `closed/merge_risk.json` and the guide's request (`closed/bundle.json.xz`) in the review artifact. Set to `''` to disable them all. Never fails the run. |
-| `closed_features_source` | review | `true` | Whether architecture checks may read this repository's source. Only the architecture request carries it, capped in size, and the service keeps nothing. The model sees code around a finding, never the tree. With `false`, source-dependent checks and model review do not run, and the result says so; merge risk sends the changed files' paths and line counts without their patches. |
+| `closed_features_source` | review | `true` | Whether architecture checks may read this repository's source. Only the architecture request carries it, capped in size, and the service keeps nothing. The model sees code around a finding, never the tree. With `false`, source-dependent checks and model review do not run, and the result says so; merge risk sends the changed files' paths and line counts without their patches. It does not change what the review guide's request carries. |
 | `problem_history` | sync | `false` | Opt-in. With `'true'`, each sync sends this repository's issues and merged pull requests to `review_guide_url` and commits the returned problem list as `problems.json` on the orphan branch `codeboarding/briefing`. Needs `contents: write`, `issues: read`, `pull-requests: read`, `actions: read` and `id-token: write` on the sync job. See [Problem history](#problem-history). Never fails the run. |
 
 `target_branch` and `sync_strategy` are deprecated, and read as the `codeboarding_analysis_location` they stand for, with a warning: `sync_strategy: push` as `in_place`, `sync_strategy: pull_request` as `codeboarding_branch`. `target_branch` is accepted only when it names the branch the run is on: the push trigger picks the branch. `force_full: true` is ignored with a warning. Anything the new input cannot express fails, linking to [moving an existing setup](#moving-an-existing-setup).

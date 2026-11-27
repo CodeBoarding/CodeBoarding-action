@@ -766,6 +766,7 @@ def merge_risk_line(result: dict) -> str:
         "deps": (result["facts"].get("deps") or [])[:MAX_MARKER_DEPS],
         "srcLines": result["facts"].get("srcLines", 0),
         "sourceFiles": result["facts"].get("sourceFiles", 0),
+        "patches": result["facts"].get("patches", "all"),
         "reasons": [
             {"level": reason["level"], "code": reason["code"], "params": reason.get("params") or {}}
             for reason in result["reasons"]
@@ -811,6 +812,16 @@ def run_merge_risk(service_url: str, ctx: dict, headers: dict, env: dict, artifa
             "reasons": answer.get("reasons") if isinstance(answer.get("reasons"), list) else [],
             "sensitive": bool(answer.get("sensitive")),
         }
+        patches = answer["facts"].get("patches", "all")
+        if patches != "all":
+            why = (
+                "source is off for this workflow"
+                if not source_allowed(env)
+                else "the diff was too large" if patches == "none" else "GitHub left some out"
+            )
+            print(
+                f"::notice::merge-risk read {patches} of the patches ({why}): mentions and new dependencies not checked"
+            )
         # Both are built before either is written, so the artifact and the comment never disagree.
         line, stored = merge_risk_line(result), json.dumps(result, ensure_ascii=False, indent=1)
         path = artifact / "closed" / MERGE_RISK_NAME
