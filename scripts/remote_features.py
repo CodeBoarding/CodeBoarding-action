@@ -129,6 +129,8 @@ MERGE_RISK_PRESET = 1
 MERGE_RISK_PATCH_RATIO = 10
 # The most dependency names the review comment's merge-risk line carries; the dashboard shows four.
 MAX_MARKER_DEPS = 20
+# The most the hidden line may take of the review comment, whose body GitHub caps at 65,536 characters.
+MAX_MARKER_CHARS = 8_000
 
 
 class Skip(Exception):
@@ -754,10 +756,11 @@ def merge_risk_files(ctx: dict) -> list[dict]:
     return files
 
 
-def merge_risk_line(result: dict) -> str:
+def merge_risk_line(result: dict) -> str | None:
     """The review comment's hidden merge-risk line, for the web platform's dashboard. Compact JSON with
-    `<`, `>`, `-` and `=` escaped, so nothing in it can end the comment or match the status line's
-    `key=value` reader; a JSON parser reads the escapes back."""
+    `<`, `>` and `=` escaped, so nothing in it can end the comment (no `>`, so no `-->`) or match the
+    status line's `key=value` reader; a JSON parser reads the escapes back. None when it would be over
+    MAX_MARKER_CHARS, since a comment has room for 65,536 characters in all."""
     compact = {
         "v": 1,
         "head": result["headSha"],
@@ -773,9 +776,10 @@ def merge_risk_line(result: dict) -> str:
         ],
     }
     text = json.dumps(compact, separators=(",", ":"))
-    for char in "<>-=":
+    for char in "<>=":
         text = text.replace(char, f"\\u{ord(char):04x}")
-    return f"<!-- codeboarding:merge_risk {text} -->"
+    line = f"<!-- codeboarding:merge_risk {text} -->"
+    return line if len(line) <= MAX_MARKER_CHARS else None
 
 
 def merge_risk_request(ctx: dict, files: list[dict], with_patches: bool) -> bytes:
@@ -827,7 +831,9 @@ def run_merge_risk(service_url: str, ctx: dict, headers: dict, env: dict, artifa
         path = artifact / "closed" / MERGE_RISK_NAME
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(stored)
-        if env.get("GITHUB_OUTPUT"):
+        if line is None:
+            print(f"::notice::merge-risk line left out of the comment: over {MAX_MARKER_CHARS} characters")
+        elif env.get("GITHUB_OUTPUT"):
             with open(env["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
                 output.write(f"merge_risk_line={line}\n")
     except Exception as error:

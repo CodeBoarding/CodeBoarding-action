@@ -777,6 +777,19 @@ class MergeRiskFilesTests(unittest.TestCase):
 
 
 class MergeRiskLineTests(unittest.TestCase):
+    def test_a_negative_number_reads_back_and_an_oversized_line_is_left_out(self):
+        result = {
+            "headSha": "abc123",
+            "sensitive": False,
+            "facts": {"srcLines": 3, "sourceFiles": 1, "deps": [], "areas": []},
+            "reasons": [{"level": "low", "code": "future_rule", "params": {"delta": -4}}],
+        }
+        line = remote_features.merge_risk_line(result)
+        payload = re.fullmatch(r"<!-- codeboarding:merge_risk (\{.*\}) -->", line).group(1)
+        self.assertEqual(json.loads(payload)["reasons"][0]["params"], {"delta": -4})
+        huge = {**result, "reasons": [{"level": "low", "code": "x" * 9000, "params": {}}]}
+        self.assertIsNone(remote_features.merge_risk_line(huge))
+
     def test_nothing_in_the_line_can_end_the_comment_and_json_reads_it_back(self):
         reason = {"level": "medium", "code": "area_changed", "params": {"files": ["a-->b<c>=.ts"]}, "file": "x"}
         result = {
@@ -793,7 +806,7 @@ class MergeRiskLineTests(unittest.TestCase):
         }
         match = re.fullmatch(r"<!-- codeboarding:merge_risk (\{.*\}) -->", remote_features.merge_risk_line(result))
         payload = match.group(1) if match else ""
-        for char in "<>-=":
+        for char in "<>=":
             self.assertNotIn(char, payload)
         self.assertEqual(
             json.loads(payload),
