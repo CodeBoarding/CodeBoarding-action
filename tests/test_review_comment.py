@@ -81,6 +81,17 @@ class ReviewCommentTests(unittest.TestCase):
             self.assertIn("**Status:** 0 changed components\n", body)
             self.assertIn("changed=0 analysed_files_changed=2 head=abc123", body)
 
+    def test_merge_risk_rides_on_its_own_hidden_line_before_the_last(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            line = '<!-- codeboarding:merge_risk {"v":1} -->'
+            lines = _build(Path(tmp), MERGE_RISK_LINE=line).rstrip("\n").splitlines()
+            self.assertEqual(lines[-2], line)
+            self.assertTrue(lines[-1].startswith("<!-- codeboarding: platform_url="))
+
+    def test_no_merge_risk_answer_means_no_line(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertNotIn("merge_risk", _build(Path(tmp), MERGE_RISK_LINE=""))
+
 
 if __name__ == "__main__":
     unittest.main()

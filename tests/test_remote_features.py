@@ -4,10 +4,12 @@ import importlib.util
 import json
 import lzma
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import metadata
@@ -428,6 +430,8 @@ class _ServiceCase(unittest.TestCase):
             ("_contents", {"return_value": "base"}),
             ("call_graph", {"return_value": {"nodes": {}, "edges": []}}),
             ("read_analysis", {"return_value": (_analysis([]), {})}),
+            # MergeRiskTests gives the pull request some files.
+            ("merge_risk_files", {"side_effect": remote_features.Skip("no files in this stub")}),
         ):
             patch = mock.patch.object(remote_features, name, **kwargs)
             patch.start()
@@ -576,6 +580,248 @@ class EndpointTests(_ServiceCase):
             with mock.patch.object(remote_features, limit, 1):
                 self.assertEqual(self.run_service().requests, [])
             self.assertEqual(_read(self.env, "closed/architecture.json")["status"], "skipped")
+
+
+RISK_ANSWER = {
+    "facts": {"files": 1, "sourceFiles": 1, "srcLines": 60, "tests": 0, "dirs": 1, "areas": [], "deps": []},
+    "reasons": [{"level": "low", "code": "no_tests", "params": {"srcLines": 60}}],
+    "sensitive": False,
+}
+RISK_FILES = [{"filename": "app.py", "additions": 60, "deletions": 0, "patch": "@@ -0,0 +1 @@\n+x"}]
+
+
+def _answer(path, body):
+    if path == "/v1/merge-risk":
+        return 200, RISK_ANSWER
+    return 200, {"guide": GUIDE, "envelope": ENVELOPE}
+
+
+class MergeRiskTests(_ServiceCase):
+    """Merge risk is a third request beside the guide and architecture, from the pull request's files
+    rather than the analysis, and no failure of one reaches another."""
+
+    def setUp(self):
+        super().setUp()
+        patch = mock.patch.object(remote_features, "merge_risk_files", return_value=RISK_FILES)
+        self.files = patch.start()
+        self.addCleanup(patch.stop)
+        self.env["GITHUB_OUTPUT"] = str(Path(self.env["ARTIFACT_DIR"]).parent / "github_output")
+
+    def result(self):
+        path = Path(self.env["ARTIFACT_DIR"]) / "closed" / "merge_risk.json"
+        return json.loads(path.read_text()) if path.exists() else None
+
+    def output(self):
+        path = Path(self.env["GITHUB_OUTPUT"])
+        return path.read_text() if path.exists() else ""
+
+    def test_sends_the_file_list_and_keeps_the_answer_with_the_head_it_describes(self):
+        service = self.run_service(_answer)
+        self.files.assert_called_once_with({"repo": "o/r", "pr": 7, "head": "H"})
+        [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
+        self.assertEqual(request["headers"]["Authorization"], "Bearer ghs_run")
+        self.assertEqual(
+            json.loads(lzma.decompress(request["body"])), {"version": 1, "repo": "o/r", "pr": 7, "files": RISK_FILES}
+        )
+        expected = {"feature": "merge-risk", "schema": 1, "repo": "o/r", "pr": 7, "headSha": "H", **RISK_ANSWER}
+        self.assertEqual(self.result(), expected)
+        self.assertEqual(self.output(), f"merge_risk_line={remote_features.merge_risk_line(expected)}\n")
+        self.assertEqual(_read(self.env, "review_guide.json"), GUIDE)
+        self.assertEqual(_read(self.env, "closed/architecture.json"), ENVELOPE)
+
+    def test_a_failed_merge_risk_writes_nothing_and_leaves_the_others_alone(self):
+        self.run_service(lambda path, body: (500, {}) if path == "/v1/merge-risk" else _answer(path, body))
+        self.assertIsNone(self.result())
+        self.assertEqual(self.output(), "")
+        self.assertEqual(_read(self.env, "review_guide.json"), GUIDE)
+        self.assertEqual(_read(self.env, "closed/architecture.json"), ENVELOPE)
+        self.files.side_effect = remote_features.Skip("the pull request moved on to a newer head")
+        self.run_service(_answer)
+        self.assertIsNone(self.result())
+
+    def test_merge_risk_does_not_need_the_analysis_or_the_guide(self):
+        (Path(self.env["HEAD_ANALYSIS_PATH"]).parent / "static_analysis.pkl").unlink()
+        service = self.run_service(_answer)
+        self.assertEqual([sent["path"] for sent in service.requests], ["/v1/merge-risk"])
+        self.assertEqual(self.result()["reasons"], RISK_ANSWER["reasons"])
+        self.assertEqual(_read(self.env, "closed/architecture.json")["status"], "failed")
+
+    def test_without_room_for_patches_it_sends_the_files_without_them(self):
+        self.files.return_value = [{**RISK_FILES[0], "patch": os.urandom(3000).hex()}]
+        with mock.patch.object(remote_features, "MAX_COMPRESSED_BYTES", 2000):
+            service = self.run_service(_answer)
+        [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
+        self.assertEqual(json.loads(lzma.decompress(request["body"]))["files"], [{**RISK_FILES[0], "patch": None}])
+
+    def sent_files(self, service):
+        [request] = [sent for sent in service.requests if sent["path"] == "/v1/merge-risk"]
+        return json.loads(lzma.decompress(request["body"]))["files"]
+
+    def test_with_source_turned_off_it_sends_the_files_without_patches(self):
+        for setting in ("false", " False\n"):
+            self.env["CLOSED_FEATURES_SOURCE"] = setting
+            service = self.run_service(_answer)
+            self.assertEqual(self.sent_files(service), [{**RISK_FILES[0], "patch": None}])
+            self.assertEqual(self.result()["facts"], RISK_ANSWER["facts"])
+        self.env["CLOSED_FEATURES_SOURCE"] = "true"
+        self.assertEqual(self.sent_files(self.run_service(_answer)), RISK_FILES)
+
+    def run_logged(self, respond):
+        """run_service, and the lines it printed."""
+        service = _Server(respond)
+        self.addCleanup(service.close)
+        self.env["CLOSED_FUNCTIONS_URL"] = service.url
+        with mock.patch("builtins.print") as log:
+            self.assertEqual(remote_features.main(self.env), 0)
+        return service, [call.args[0] for call in log.call_args_list]
+
+    def test_withheld_patches_are_logged_and_ride_on_the_line(self):
+        withheld = {**RISK_ANSWER, "facts": {**RISK_ANSWER["facts"], "patches": "none"}}
+        self.env["CLOSED_FEATURES_SOURCE"] = "false"
+        _, printed = self.run_logged(
+            lambda path, body: (200, withheld) if path == "/v1/merge-risk" else _answer(path, body)
+        )
+        self.assertIn(
+            "::notice::merge-risk read none of the patches (source is off for this workflow): "
+            "mentions and new dependencies not checked",
+            printed,
+        )
+        self.assertIn('"patches":"none"', self.output())
+        self.env["CLOSED_FEATURES_SOURCE"] = "true"
+        _, printed = self.run_logged(_answer)
+        self.assertFalse([line for line in printed if "read none" in line or "read some" in line])
+
+    def test_a_credentials_failure_is_logged_for_merge_risk_too(self):
+        with mock.patch.object(remote_features, "_bearer", side_effect=RuntimeError("no OIDC token")):
+            service, printed = self.run_logged(_answer)
+        reason = "getting credentials failed: RuntimeError: no OIDC token"
+        self.assertIn(f"::notice::merge-risk failed: {reason}", printed)
+        self.assertIn(f"::notice::review-guide failed: {reason}", printed)
+        self.assertEqual(service.requests, [])
+        self.assertIsNone(self.result())
+        self.assertEqual(_read(self.env, "closed/architecture.json")["status"], "failed")
+
+    def test_an_answer_the_line_cannot_carry_writes_neither_file_nor_line(self):
+        unreadable = {**RISK_ANSWER, "reasons": [{"code": "no_tests"}]}  # no level
+        _, printed = self.run_logged(
+            lambda path, body: (200, unreadable) if path == "/v1/merge-risk" else _answer(path, body)
+        )
+        self.assertIsNone(self.result())
+        self.assertEqual(self.output(), "")
+        self.assertIn("::notice::merge-risk failed: 'level'", printed)
+
+    def test_merge_risk_compresses_fast_and_the_guide_as_before(self):
+        presets = {}
+        compress = lzma.compress
+
+        def recording(data, preset):
+            presets[json.loads(data).get("files").__class__.__name__] = preset
+            return compress(data, preset=preset)
+
+        with mock.patch.object(lzma, "compress", side_effect=recording):
+            self.run_service(_answer)
+        # Merge risk sends a list of files; the guide and architecture a dict of named files.
+        self.assertEqual(presets, {"list": remote_features.MERGE_RISK_PRESET, "dict": 9 | lzma.PRESET_EXTREME})
+
+    def test_a_huge_diff_goes_without_patches_compressed_once_and_quickly(self):
+        clearly_over = remote_features.MERGE_RISK_PATCH_RATIO * remote_features.MAX_COMPRESSED_BYTES
+        patch_bytes = 1_000_000
+        files = [
+            {"filename": f"gen/f{index}.py", "additions": 20_000, "deletions": 0, "patch": "+" * patch_bytes}
+            for index in range(clearly_over // patch_bytes + 1)
+        ]
+        compressed = []
+        compress = lzma.compress
+
+        def recording(data, preset):
+            compressed.append(len(data))
+            return compress(data, preset=preset)
+
+        started = time.monotonic()
+        with mock.patch.object(lzma, "compress", side_effect=recording):
+            data = remote_features.merge_risk_request({"repo": "o/r", "pr": 7}, files, with_patches=True)
+        elapsed = time.monotonic() - started
+        sent = json.loads(lzma.decompress(data))["files"]
+        self.assertEqual(sent, [{**file, "patch": None} for file in files])
+        self.assertEqual(len(compressed), 1)  # only the list without patches
+        self.assertLess(compressed[0], 10_000)
+        self.assertLess(elapsed, 5)
+
+
+class MergeRiskFilesTests(unittest.TestCase):
+    """The file list is the pull request's, page by page, and only while its head is the run's."""
+
+    def test_reads_every_page_and_keeps_the_fields_the_service_reads(self):
+        changed = [
+            {"filename": f"f{index}.py", "status": "added", "additions": index, "deletions": 0} for index in range(130)
+        ]
+        pages = {"page=1": changed[:100], "page=2": changed[100:]}
+
+        def github(path):
+            if path.endswith("/pulls/7"):
+                return {"head": {"sha": "H"}}
+            return pages[path.rsplit("&", 1)[1]]
+
+        with mock.patch.object(remote_features, "_github_json", side_effect=github):
+            files = remote_features.merge_risk_files({"repo": "o/r", "pr": 7, "head": "H"})
+        self.assertEqual(len(files), 130)
+        self.assertEqual(files[129], {"filename": "f129.py", "additions": 129, "deletions": 0, "patch": None})
+
+    def test_a_head_that_moved_on_is_skipped(self):
+        def github(path):
+            return {"head": {"sha": "newer"}} if path.endswith("/pulls/7") else []
+
+        with mock.patch.object(remote_features, "_github_json", side_effect=github):
+            with self.assertRaises(remote_features.Skip):
+                remote_features.merge_risk_files({"repo": "o/r", "pr": 7, "head": "H"})
+
+
+class MergeRiskLineTests(unittest.TestCase):
+    def test_a_negative_number_reads_back_and_an_oversized_line_is_left_out(self):
+        result = {
+            "headSha": "abc123",
+            "sensitive": False,
+            "facts": {"srcLines": 3, "sourceFiles": 1, "deps": [], "areas": []},
+            "reasons": [{"level": "low", "code": "future_rule", "params": {"delta": -4}}],
+        }
+        line = remote_features.merge_risk_line(result)
+        payload = re.fullmatch(r"<!-- codeboarding:merge_risk (\{.*\}) -->", line).group(1)
+        self.assertEqual(json.loads(payload)["reasons"][0]["params"], {"delta": -4})
+        huge = {**result, "reasons": [{"level": "low", "code": "x" * 9000, "params": {}}]}
+        self.assertIsNone(remote_features.merge_risk_line(huge))
+
+    def test_nothing_in_the_line_can_end_the_comment_and_json_reads_it_back(self):
+        reason = {"level": "medium", "code": "area_changed", "params": {"files": ["a-->b<c>=.ts"]}, "file": "x"}
+        result = {
+            "headSha": "abc123",
+            "sensitive": True,
+            "facts": {
+                "srcLines": 1815,
+                "sourceFiles": 31,
+                "tests": 0,
+                "deps": ["zod"],
+                "areas": [{"name": "Sign-in and access", "critical": True}, {"name": "Review", "critical": False}],
+            },
+            "reasons": [reason],
+        }
+        match = re.fullmatch(r"<!-- codeboarding:merge_risk (\{.*\}) -->", remote_features.merge_risk_line(result))
+        payload = match.group(1) if match else ""
+        for char in "<>=":
+            self.assertNotIn(char, payload)
+        self.assertEqual(
+            json.loads(payload),
+            {
+                "v": 1,
+                "head": "abc123",
+                "sensitive": True,
+                "areas": ["Sign-in and access"],
+                "deps": ["zod"],
+                "srcLines": 1815,
+                "sourceFiles": 31,
+                "patches": "all",
+                "reasons": [{"level": "medium", "code": "area_changed", "params": reason["params"]}],
+            },
+        )
 
 
 class KeptBundleTests(_ServiceCase):

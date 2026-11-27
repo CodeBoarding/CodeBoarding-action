@@ -53,6 +53,11 @@ fi
     printf '[download artifacts](%s) · ' "$ARTIFACT_URL"
   fi
   printf 'run [%s](%s)</sub>\n' "$GITHUB_RUN_ID" "$RUN_URL"
+  # Merge risk at this head, for the web platform's dashboard: one more hidden line, only when the
+  # service answered (see merge_risk_line in remote_features.py). Before the line below, which stays last.
+  if [ -n "${MERGE_RISK_LINE:-}" ]; then
+    printf '%s\n' "$MERGE_RISK_LINE"
+  fi
   # The machine-readable line: what a reader of the comment (the web platform's dashboard, an
   # agent) needs without parsing the prose or the diagram. An HTML comment renders as nothing.
   # Keep it one line, `key=value` pairs, values without spaces, so a regex over it stays trivial.

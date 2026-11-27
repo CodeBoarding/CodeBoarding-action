@@ -145,10 +145,12 @@ inputs:
     default: '2'
   review_guide_url:
     description: >-
-      Experimental. Service base URL for POST /v1/review-guide and POST /v1/architecture.
-      Defaults to production. Both receive this run's analysis independently; results are stored
-      as review_guide.json and closed/architecture.json, and the guide's request as sent as
-      closed/bundle.json.xz. Set to an empty string to disable both.
+      Experimental. Service base URL for POST /v1/review-guide, POST /v1/architecture and
+      POST /v1/merge-risk. Defaults to production. The first two receive this run's analysis and
+      the third its changed files, independently; results are stored as review_guide.json,
+      closed/architecture.json and closed/merge_risk.json, and the guide's request as sent as
+      closed/bundle.json.xz. Merge risk is also summed up in a hidden line of the review comment.
+      Set to an empty string to disable all three.
       Sync's opt-in problem_history calls POST /v1/briefing on the same URL.
     required: false
     default: 'https://jxivqwx4or6oip3krgdmdaiunm0iaybf.lambda-url.us-east-1.on.aws/'
@@ -157,7 +159,8 @@ inputs:
       Whether architecture checks may read this repository's source, for checks that
       need the whole tree and to verify a finding. Only the architecture request carries it, capped in
       size, and the service keeps nothing. The model sees the code around a finding, never the tree.
-      With 'false' those checks and the model review do not run, and the result says so.
+      With 'false' those checks and the model review do not run, and the result says so. Merge
+      risk then sends the changed files' paths and line counts without their patches.
     required: false
     default: 'true'
   problem_history:
@@ -809,6 +812,8 @@ runs:
         HEAD_SHA: ${{ steps.guard.outputs.head_sha }}
         # Analysed files whose content hash differs between base and head, from the render step.
         ANALYSED_FILES_CHANGED: ${{ steps.review_render.outputs.analysed_files_changed }}
+        # Set by the remote features step when the service answered merge risk; empty otherwise.
+        MERGE_RISK_LINE: ${{ steps.remote_features.outputs.merge_risk_line }}
       run: "$GITHUB_ACTION_PATH/scripts/action/build-review-comment.sh"
 
     - name: Post review comment
