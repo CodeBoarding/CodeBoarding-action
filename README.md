@@ -193,18 +193,20 @@ The guide's request body, the same xz-compressed bytes the service receives, is 
 never carries `source.json`, and it is left out when no guide request goes out.
 
 A third request, `POST /v1/merge-risk`, goes to the same base URL at the same time and sends
-no analysis: only the pull request's changed files with their patches, as GitHub lists them.
-With `closed_features_source: false` it sends no patches, only each file's path, additions and
-deletions, so the diff's size and the areas its paths fall in still count. A diff too large to
-send with its patches goes the same way. Without patches the checks that read added code (areas it
-mentions, new dependencies) cannot run: the answer says so in `facts.patches`, the run logs a
-notice, and the web platform shows it rather than reading the silence as clean. This input does not
-keep code from the review guide, whose request carries the changed files at both commits.
-The answer, the diff's merge-risk facts and the reasons they give, is saved as
-`closed/merge_risk.json` with the head it describes, and summed up in one hidden line of the
-review comment, `<!-- codeboarding:merge_risk {json} -->`, which the web platform's dashboard
-reads. When the request fails, or the pull request moved on to a newer head during the run,
-neither is written and the run logs one notice.
+no analysis: only the pull request's title and changed files with their patches, as GitHub lists
+them. The service counts size and tests itself and asks a fixed nine-question checklist about the
+diff (sign-in and access, billing, stored data, releases, dependency and platform versions, public
+interfaces, calls to other services), with a sentence and the changed line behind each yes. With
+`closed_features_source: false` it sends no patches, only each file's path, additions and
+deletions; a diff too large to send with its patches goes the same way. Without patches the
+checklist cannot run: the answer comes back `partial` with size and tests only, the run logs a
+notice, and the web platform shows the level as not assessed rather than reading the silence as
+clean. This input does not keep code from the review guide, whose request carries the changed files
+at both commits.
+The answer is saved as `closed/merge_risk.json` with the head it describes, and summed up in one
+hidden line of the review comment, `<!-- codeboarding:merge_risk {json} -->`, which the web
+platform's dashboard reads. When the request fails, or the pull request moved on to a newer head
+during the run, neither is written and the run logs one notice.
 
 Only architecture receives optional `source.json`: tracked Python, JavaScript/TypeScript
 and C# files (`.py`, `.ts`, `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.cs`, `.csproj`), excluding
